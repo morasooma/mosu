@@ -1,0 +1,727 @@
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// See the LICENCE file in the repository root for full licence text.
+
+using System;
+using System.Linq;
+using osu.Framework.Allocation;
+using osu.Framework.Bindables;
+using osu.Framework.Extensions.Color4Extensions;
+using osu.Framework.Graphics;
+using osu.Framework.Graphics.Colour;
+using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Pooling;
+using osu.Framework.Graphics.Shapes;
+using osu.Framework.Graphics.Sprites;
+using osu.Framework.Localisation;
+using osu.Game.Configuration;
+using osu.Game.Graphics;
+using osu.Game.Graphics.Containers;
+using osu.Game.Graphics.Sprites;
+using osu.Game.Localisation.HUD;
+using osu.Game.Rulesets.Judgements;
+using osu.Game.Rulesets.Scoring;
+using osu.Game.Skinning;
+using osuTK;
+using osuTK.Graphics;
+
+namespace osu.Game.Screens.Play.HUD.HitErrorMeters
+{
+    [Cached]
+    public partial class BarHitErrorMeter : HitErrorMeter
+    {
+        private bool directChildrenLifeStable;
+
+        [SettingSource(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.JudgementLineThickness), nameof(BarHitErrorMeterStrings.JudgementLineThicknessDescription))]
+        public BindableNumber<float> JudgementLineThickness { get; } = new BindableNumber<float>(4)
+        {
+            MinValue = 1,
+            MaxValue = 8,
+            Precision = 0.1f,
+        };
+
+        [SettingSource(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.ColourBarVisibility))]
+        public Bindable<bool> ColourBarVisibility { get; } = new Bindable<bool>(true);
+
+        [SettingSource(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.ShowMovingAverage), nameof(BarHitErrorMeterStrings.ShowMovingAverageDescription))]
+        public Bindable<bool> ShowMovingAverage { get; } = new BindableBool(true);
+
+        [SettingSource(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.CentreMarkerStyle), nameof(BarHitErrorMeterStrings.CentreMarkerStyleDescription))]
+        public Bindable<CentreMarkerStyles> CentreMarkerStyle { get; } = new Bindable<CentreMarkerStyles>(CentreMarkerStyles.Circle);
+
+        [SettingSource(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.LabelStyle), nameof(BarHitErrorMeterStrings.LabelStyleDescription))]
+        public Bindable<LabelStyles> LabelStyle { get; } = new Bindable<LabelStyles>(LabelStyles.Icons);
+
+        private const int judgement_line_width = 14;
+
+        private const int max_concurrent_judgements = 50;
+
+        private const int centre_marker_size = 8;
+
+        private double maxHitWindow;
+
+        private double floatingAverage;
+
+        private readonly DrawablePool<JudgementLine> judgementLinePool = new DrawablePool<JudgementLine>(50);
+
+        private readonly BindableBool showPositionalMisses = new BindableBool();
+
+        [Resolved(CanBeNull = true)]
+        private IPositionalMissProvider? positionalMissProvider { get; set; }
+
+        private SpriteIcon arrow = null!;
+        private UprightAspectMaintainingContainer labelEarly = null!;
+        private UprightAspectMaintainingContainer labelLate = null!;
+
+        private Container colourBarsEarly = null!;
+        private Container colourBarsLate = null!;
+
+        private JudgementsContainer judgementsContainer = null!;
+
+        private ColourAxisContainer colourBars = null!;
+        private Container arrowContainer = null!;
+
+        private (HitResult result, double length)[] hitWindows = null!;
+
+        private Drawable[]? centreMarkerDrawables;
+
+        public BarHitErrorMeter()
+        {
+            AutoSizeAxes = Axes.Both;
+        }
+
+        [BackgroundDependencyLoader]
+        private void load(OsuConfigManager config)
+        {
+            const int bar_height = 200;
+            const int bar_width = 2;
+            const float chevron_size = 8;
+
+            hitWindows = HitWindows.GetAllAvailableWindows().Where(w => w.result.IsHit()).ToArray();
+            config.BindWith(OsuSetting.ForkHitErrorMeterShowPositionalMisses, showPositionalMisses);
+
+            InternalChild = new Container
+            {
+                AutoSizeAxes = Axes.X,
+                Height = bar_height,
+                Margin = new MarginPadding(2),
+                Children = new Drawable[]
+                {
+                    judgementLinePool,
+                    colourBars = new ColourAxisContainer
+                    {
+                        Name = "colour axis",
+                        X = chevron_size,
+                        Anchor = Anchor.CentreLeft,
+                        Origin = Anchor.CentreLeft,
+                        Width = judgement_line_width,
+                        RelativeSizeAxes = Axes.Y,
+                        Children = new Drawable[]
+                        {
+                            colourBarsEarly = new Container
+                            {
+                                Anchor = Anchor.Centre,
+                                Origin = Anchor.TopCentre,
+                                Width = bar_width,
+                                RelativeSizeAxes = Axes.Y,
+                                Alpha = 0,
+                                Height = 0.5f,
+                                Scale = new Vector2(1, -1),
+                            },
+                            colourBarsLate = new Container
+                            {
+                                Anchor = Anchor.Centre,
+                                Origin = Anchor.TopCentre,
+                                Alpha = 0,
+                                Width = bar_width,
+                                RelativeSizeAxes = Axes.Y,
+                                Height = 0.5f,
+                            },
+                            judgementsContainer = new JudgementsContainer
+                            {
+                                Name = "judgements",
+                                Anchor = Anchor.TopCentre,
+                                Origin = Anchor.TopCentre,
+                                RelativeSizeAxes = Axes.Y,
+                                Width = judgement_line_width,
+                            },
+                            labelEarly = new UprightAspectMaintainingContainer
+                            {
+                                AutoSizeAxes = Axes.Both,
+                                Anchor = Anchor.TopCentre,
+                                Origin = Anchor.Centre,
+                                Y = -10,
+                            },
+                            labelLate = new UprightAspectMaintainingContainer
+                            {
+                                AutoSizeAxes = Axes.Both,
+                                Anchor = Anchor.BottomCentre,
+                                Origin = Anchor.Centre,
+                                Y = 10,
+                            },
+                        }
+                    },
+                    arrowContainer = new Container
+                    {
+                        Name = "average chevron",
+                        Anchor = Anchor.CentreLeft,
+                        Origin = Anchor.CentreRight,
+                        Width = chevron_size,
+                        X = chevron_size,
+                        RelativeSizeAxes = Axes.Y,
+                        Alpha = 0,
+                        Scale = new Vector2(0, 1),
+                        Child = arrow = new SpriteIcon
+                        {
+                            Anchor = Anchor.TopCentre,
+                            Origin = Anchor.Centre,
+                            RelativePositionAxes = Axes.Y,
+                            Y = 0.5f,
+                            Icon = FontAwesome.Solid.ChevronRight,
+                            Size = new Vector2(chevron_size),
+                        }
+                    },
+                }
+            };
+
+            createColourBars(hitWindows);
+        }
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+
+            if (SkinPerformanceMode.ShouldSimplifyHud)
+                colourBars.Height = 1;
+            else
+            {
+                colourBars.Height = 0;
+                colourBars.ResizeHeightTo(1, 800, Easing.OutQuint);
+            }
+
+            CentreMarkerStyle.BindValueChanged(style => recreateCentreMarker(style.NewValue), true);
+            LabelStyle.BindValueChanged(style => recreateLabels(style.NewValue), true);
+            ColourBarVisibility.BindValueChanged(visible =>
+            {
+                double duration = SkinPerformanceMode.ShouldSimplifyHud ? 0 : 500;
+
+                colourBarsEarly.FadeTo(visible.NewValue ? 1 : 0, duration, Easing.OutQuint);
+                colourBarsLate.FadeTo(visible.NewValue ? 1 : 0, duration, Easing.OutQuint);
+            }, true);
+
+            // delay the appearance animations for only the initial appearance.
+            using (arrowContainer.BeginDelayedSequence(SkinPerformanceMode.ShouldSimplifyHud ? 0 : 450))
+            {
+                ShowMovingAverage.BindValueChanged(visible =>
+                {
+                    double duration = SkinPerformanceMode.ShouldSimplifyHud ? 0 : 250;
+
+                    arrowContainer.FadeTo(visible.NewValue ? 1 : 0, duration, Easing.OutQuint);
+                    arrowContainer.ScaleTo(visible.NewValue ? new Vector2(1) : new Vector2(0, 1), duration, Easing.OutQuint);
+                }, true);
+            }
+
+            directChildrenLifeStable = InternalChildren.Count == AliveInternalChildren.Count;
+
+            showPositionalMisses.BindValueChanged(enabled =>
+            {
+                if (positionalMissProvider == null)
+                    return;
+
+                positionalMissProvider.NewPositionalMiss -= onNewPositionalMiss;
+
+                if (enabled.NewValue)
+                    positionalMissProvider.NewPositionalMiss += onNewPositionalMiss;
+            }, true);
+        }
+
+        private void onNewPositionalMiss(double timeOffset) => Schedule(() =>
+        {
+            if (showPositionalMisses.Value)
+                addJudgementLine(timeOffset, GetColourForHitResult(HitResult.Miss), true);
+        });
+
+        protected override bool CheckChildrenLife()
+        {
+            if (directChildrenLifeStable)
+                return false;
+
+            bool aliveChanged = base.CheckChildrenLife();
+            directChildrenLifeStable = InternalChildren.Count == AliveInternalChildren.Count;
+            return aliveChanged;
+        }
+
+        protected override void AddInternal(Drawable drawable)
+        {
+            directChildrenLifeStable = false;
+            base.AddInternal(drawable);
+        }
+
+        protected override bool RemoveInternal(Drawable drawable, bool disposeImmediately)
+        {
+            directChildrenLifeStable = false;
+            return base.RemoveInternal(drawable, disposeImmediately);
+        }
+
+        protected override void ClearInternal(bool disposeChildren = true)
+        {
+            directChildrenLifeStable = false;
+            base.ClearInternal(disposeChildren);
+        }
+
+        private void recreateCentreMarker(CentreMarkerStyles style)
+        {
+            if (centreMarkerDrawables != null)
+            {
+                foreach (var d in centreMarkerDrawables)
+                {
+                    if (!SkinPerformanceMode.ShouldSimplifyHud)
+                    {
+                        d.ScaleTo(0, 500, Easing.OutQuint)
+                         .FadeOut(500, Easing.OutQuint);
+                    }
+
+                    d.Expire();
+                }
+
+                centreMarkerDrawables = null;
+            }
+
+            switch (style)
+            {
+                case CentreMarkerStyles.None:
+                    break;
+
+                case CentreMarkerStyles.Circle:
+                    centreMarkerDrawables = new Drawable[]
+                    {
+                        new Circle
+                        {
+                            Name = "middle marker behind",
+                            Colour = GetColourForHitResult(hitWindows.Last().result),
+                            Anchor = Anchor.Centre,
+                            Origin = Anchor.Centre,
+                            Depth = float.MaxValue,
+                            Size = new Vector2(centre_marker_size),
+                        },
+                        new Circle
+                        {
+                            Name = "middle marker in front",
+                            Colour = GetColourForHitResult(hitWindows.Last().result).Darken(0.3f),
+                            Anchor = Anchor.Centre,
+                            Origin = Anchor.Centre,
+                            Depth = float.MinValue,
+                            Size = new Vector2(centre_marker_size / 2f),
+                        },
+                    };
+                    break;
+
+                case CentreMarkerStyles.Line:
+                    const float border_size = 1.5f;
+
+                    centreMarkerDrawables = new Drawable[]
+                    {
+                        new Box
+                        {
+                            Name = "middle marker behind",
+                            Colour = GetColourForHitResult(hitWindows.Last().result),
+                            Anchor = Anchor.Centre,
+                            Origin = Anchor.Centre,
+                            Depth = float.MaxValue,
+                            Size = new Vector2(judgement_line_width, centre_marker_size / 3f),
+                        },
+                        new Box
+                        {
+                            Name = "middle marker in front",
+                            Colour = GetColourForHitResult(hitWindows.Last().result).Darken(0.3f),
+                            Anchor = Anchor.Centre,
+                            Origin = Anchor.Centre,
+                            Depth = float.MinValue,
+                            Size = new Vector2(judgement_line_width - border_size, centre_marker_size / 3f - border_size),
+                        },
+                    };
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(style), style, null);
+            }
+
+            if (centreMarkerDrawables != null)
+            {
+                foreach (var d in centreMarkerDrawables)
+                {
+                    colourBars.Add(d);
+
+                    if (SkinPerformanceMode.ShouldSimplifyHud)
+                    {
+                        d.Alpha = 1;
+                        d.Scale = Vector2.One;
+                    }
+                    else
+                    {
+                        d.FadeInFromZero(500, Easing.OutQuint)
+                         .ScaleTo(0).ScaleTo(1, 1000, Easing.OutElasticHalf);
+                    }
+                }
+            }
+        }
+
+        private void recreateLabels(LabelStyles style)
+        {
+            const float icon_size = 14;
+
+            switch (style)
+            {
+                case LabelStyles.None:
+                    labelEarly.Clear();
+                    labelLate.Clear();
+                    break;
+
+                case LabelStyles.Icons:
+                    labelEarly.Child = new SpriteIcon
+                    {
+                        Size = new Vector2(icon_size),
+                        Icon = OsuIcon.Hare
+                    };
+
+                    labelLate.Child = new SpriteIcon
+                    {
+                        Size = new Vector2(icon_size),
+                        Icon = OsuIcon.Tortoise
+                    };
+
+                    break;
+
+                case LabelStyles.Text:
+                    labelEarly.Child = new OsuSpriteText
+                    {
+                        Text = "Early",
+                        Font = OsuFont.Default.With(size: 10),
+                        Height = 12,
+                    };
+
+                    labelLate.Child = new OsuSpriteText
+                    {
+                        Text = "Late",
+                        Font = OsuFont.Default.With(size: 10),
+                        Height = 12,
+                    };
+
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(style), style, null);
+            }
+
+            double duration = SkinPerformanceMode.ShouldSimplifyHud ? 0 : 500;
+
+            labelEarly.FadeInFromZero(duration);
+            labelLate.FadeInFromZero(duration);
+        }
+
+        private void createColourBars((HitResult result, double length)[] windows)
+        {
+            // max to avoid div-by-zero.
+            maxHitWindow = Math.Max(1, windows.First().length);
+
+            for (int i = 0; i < windows.Length; i++)
+            {
+                (var result, double length) = windows[i];
+
+                float hitWindow = (float)(length / maxHitWindow);
+
+                colourBarsEarly.Add(createColourBar(result, hitWindow, i == 0));
+                colourBarsLate.Add(createColourBar(result, hitWindow, i == 0));
+            }
+
+            Drawable createColourBar(HitResult result, float height, bool requireGradient = false)
+            {
+                var colour = GetColourForHitResult(result);
+
+                if (requireGradient)
+                {
+                    // the first bar needs gradient rendering.
+                    const float gradient_start = 0.8f;
+
+                    return new Container
+                    {
+                        RelativeSizeAxes = Axes.Both,
+                        Children = new Drawable[]
+                        {
+                            new Box
+                            {
+                                RelativeSizeAxes = Axes.Both,
+                                Colour = colour,
+                                Height = height * gradient_start
+                            },
+                            new Box
+                            {
+                                RelativeSizeAxes = Axes.Both,
+                                RelativePositionAxes = Axes.Both,
+                                Colour = ColourInfo.GradientVertical(colour, colour.Opacity(0)),
+                                Y = gradient_start,
+                                Height = height * (1 - gradient_start)
+                            },
+                        }
+                    };
+                }
+
+                return new Box
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Colour = colour,
+                    Height = height
+                };
+            }
+        }
+
+        protected override void OnNewJudgement(JudgementResult judgement)
+        {
+            const int arrow_move_duration = 800;
+
+            if (!judgement.IsHit || judgement.HitObject.HitWindows?.WindowFor(HitResult.Miss) == 0)
+                return;
+
+            var visualType = judgement.VisualType ?? judgement.Type;
+            if (!visualType.IsScorable() || visualType.IsBonus())
+                return;
+
+            addJudgementLine(judgement.TimeOffset, GetColourForHitResult(visualType), false);
+
+            arrow.MoveToY(
+                getRelativeJudgementPosition(floatingAverage = floatingAverage * 0.9 + judgement.TimeOffset * 0.1)
+                , SkinPerformanceMode.ShouldSimplifyHud ? 0 : arrow_move_duration, Easing.OutQuint);
+        }
+
+        private void addJudgementLine(double timeOffset, Color4 colour, bool positionalMiss)
+        {
+            if (judgementsContainer.Count > max_concurrent_judgements)
+            {
+                const double quick_fade_time = 100;
+
+                // check with a bit of lenience to avoid precision error in comparison.
+                var old = judgementsContainer.FirstOrDefault(j => j.LifetimeEnd > Clock.CurrentTime + quick_fade_time * 1.1);
+
+                if (old != null)
+                {
+                    old.ClearTransforms();
+                    old.FadeOut(quick_fade_time).Expire();
+                }
+            }
+
+            judgementLinePool.Get(drawableJudgement =>
+            {
+                drawableJudgement.Y = getRelativeJudgementPosition(timeOffset);
+                drawableJudgement.Colour = colour;
+                drawableJudgement.IsPositionalMiss = positionalMiss;
+                drawableJudgement.Scale = Vector2.One;
+                drawableJudgement.Blending = positionalMiss ? BlendingParameters.Mixture : BlendingParameters.Additive;
+
+                judgementsContainer.Add(drawableJudgement);
+            });
+        }
+
+        private float getRelativeJudgementPosition(double value) => Math.Clamp((float)((value / maxHitWindow) + 1) / 2, 0, 1);
+
+        private partial class ColourAxisContainer : Container
+        {
+            private bool directChildrenLifeStable;
+
+            protected override bool CheckChildrenLife()
+            {
+                if (directChildrenLifeStable)
+                    return false;
+
+                bool aliveChanged = base.CheckChildrenLife();
+                directChildrenLifeStable = InternalChildren.Count == AliveInternalChildren.Count;
+                return aliveChanged;
+            }
+
+            protected override void AddInternal(Drawable drawable)
+            {
+                directChildrenLifeStable = false;
+                base.AddInternal(drawable);
+            }
+
+            protected override bool RemoveInternal(Drawable drawable, bool disposeImmediately)
+            {
+                directChildrenLifeStable = false;
+                return base.RemoveInternal(drawable, disposeImmediately);
+            }
+
+            protected override void ClearInternal(bool disposeChildren = true)
+            {
+                directChildrenLifeStable = false;
+                base.ClearInternal(disposeChildren);
+            }
+        }
+
+        private partial class JudgementsContainer : Container
+        {
+            private bool directChildrenLifeStable;
+
+            protected override bool CheckChildrenLife()
+            {
+                if (directChildrenLifeStable)
+                    return false;
+
+                bool aliveChanged = base.CheckChildrenLife();
+                directChildrenLifeStable = InternalChildren.Count == AliveInternalChildren.Count;
+                return aliveChanged;
+            }
+
+            protected override void AddInternal(Drawable drawable)
+            {
+                directChildrenLifeStable = false;
+                base.AddInternal(drawable);
+            }
+
+            protected override bool RemoveInternal(Drawable drawable, bool disposeImmediately)
+            {
+                directChildrenLifeStable = false;
+                return base.RemoveInternal(drawable, disposeImmediately);
+            }
+
+            protected override void ClearInternal(bool disposeChildren = true)
+            {
+                directChildrenLifeStable = false;
+                base.ClearInternal(disposeChildren);
+            }
+        }
+
+        internal partial class JudgementLine : PoolableDrawable
+        {
+            private bool directChildrenLifeStable;
+
+            public readonly BindableNumber<float> JudgementLineThickness = new BindableFloat();
+
+            public bool IsPositionalMiss { get; internal set; }
+
+            [Resolved]
+            private BarHitErrorMeter barHitErrorMeter { get; set; } = null!;
+
+            public JudgementLine()
+            {
+                RelativeSizeAxes = Axes.X;
+                RelativePositionAxes = Axes.Y;
+
+                Blending = BlendingParameters.Additive;
+
+                Origin = Anchor.Centre;
+                Anchor = Anchor.TopCentre;
+
+                InternalChild = new Circle
+                {
+                    RelativeSizeAxes = Axes.Both,
+                };
+            }
+
+            protected override void LoadComplete()
+            {
+                base.LoadComplete();
+
+                JudgementLineThickness.BindTo(barHitErrorMeter.JudgementLineThickness);
+                JudgementLineThickness.BindValueChanged(thickness => Height = thickness.NewValue, true);
+
+                directChildrenLifeStable = InternalChildren.Count == AliveInternalChildren.Count;
+            }
+
+            protected override bool CheckChildrenLife()
+            {
+                if (directChildrenLifeStable)
+                    return false;
+
+                bool aliveChanged = base.CheckChildrenLife();
+                directChildrenLifeStable = InternalChildren.Count == AliveInternalChildren.Count;
+                return aliveChanged;
+            }
+
+            protected override void AddInternal(Drawable drawable)
+            {
+                directChildrenLifeStable = false;
+                base.AddInternal(drawable);
+            }
+
+            protected override bool RemoveInternal(Drawable drawable, bool disposeImmediately)
+            {
+                directChildrenLifeStable = false;
+                return base.RemoveInternal(drawable, disposeImmediately);
+            }
+
+            protected override void ClearInternal(bool disposeChildren = true)
+            {
+                directChildrenLifeStable = false;
+                base.ClearInternal(disposeChildren);
+            }
+
+            protected override void PrepareForUse()
+            {
+                base.PrepareForUse();
+
+                const int judgement_fade_in_duration = 100;
+                const int judgement_fade_out_duration = 5000;
+
+                Alpha = 0;
+                Width = 0;
+
+                if (SkinPerformanceMode.ShouldSimplifyHud)
+                {
+                    Alpha = 0.6f;
+                    Width = 1;
+                    this.Delay(SkinPerformanceMode.HitErrorMeterVisibleDuration)
+                        .FadeOut(SkinPerformanceMode.HitErrorMeterFadeOutDuration)
+                        .Expire();
+                    return;
+                }
+
+                this
+                    .FadeTo(0.6f, judgement_fade_in_duration, Easing.OutQuint)
+                    .ResizeWidthTo(1, judgement_fade_in_duration, Easing.OutQuint)
+                    .Then()
+                    .FadeOut(judgement_fade_out_duration)
+                    .ResizeWidthTo(0, judgement_fade_out_duration, Easing.InQuint)
+                    .Expire();
+            }
+        }
+
+        public override void Clear()
+        {
+            foreach (var j in judgementsContainer)
+            {
+                j.ClearTransforms();
+                j.Expire();
+            }
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (positionalMissProvider != null)
+                positionalMissProvider.NewPositionalMiss -= onNewPositionalMiss;
+
+            base.Dispose(isDisposing);
+        }
+
+        public enum CentreMarkerStyles
+        {
+            [LocalisableDescription(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.CentreMarkerStylesNone))]
+            None,
+
+            [LocalisableDescription(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.CentreMarkerStylesCircle))]
+            Circle,
+
+            [LocalisableDescription(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.CentreMarkerStylesLine))]
+            Line
+        }
+
+        public enum LabelStyles
+        {
+            [LocalisableDescription(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.LabelStylesNone))]
+            None,
+
+            [LocalisableDescription(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.LabelStylesIcons))]
+            Icons,
+
+            [LocalisableDescription(typeof(BarHitErrorMeterStrings), nameof(BarHitErrorMeterStrings.LabelStylesText))]
+            Text
+        }
+    }
+}

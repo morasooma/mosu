@@ -1,0 +1,49 @@
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// See the LICENCE file in the repository root for full licence text.
+
+using NUnit.Framework;
+using osu.Game.Beatmaps;
+using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Osu.Mods;
+
+namespace osu.Game.Rulesets.Osu.Tests.Mods
+{
+    [TestFixture]
+    public class OsuModPerformancePointHelperTest
+    {
+        [Test]
+        public void TestFlashlightSettingsMakeScoreUnranked()
+        {
+            var beatmapInfo = new BeatmapInfo(new OsuRuleset().RulesetInfo, new BeatmapDifficulty());
+
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo, new Mod[] { new OsuModFlashlight() }), Is.True);
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo,
+                new Mod[] { new OsuModFlashlight { SizeMultiplier = { Value = 2 } } }), Is.False);
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo,
+                new Mod[] { new OsuModFlashlight { ComboBasedSize = { Value = false } } }), Is.False);
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo,
+                new Mod[] { new OsuModFlashlight { FollowDelay = { Value = 240 } } }), Is.False);
+        }
+
+        [TestCase(0, false)]
+        [TestCase(1.9f, false)]
+        [TestCase(2, true)]
+        [TestCase(10, true)]
+        [TestCase(10.1f, false)]
+        public void TestDifficultyAdjustCircleSizeRankedRange(float circleSize, bool expected)
+        {
+            var beatmapInfo = new BeatmapInfo(new OsuRuleset().RulesetInfo, new BeatmapDifficulty
+            {
+                CircleSize = 5,
+                OverallDifficulty = 8,
+            });
+
+            var difficultyAdjust = new OsuModDifficultyAdjust
+            {
+                CircleSize = { Value = circleSize },
+            };
+
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo, new[] { difficultyAdjust }), Is.EqualTo(expected));
+        }
+    }
+}

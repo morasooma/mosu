@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup Label="Project">
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>click the circles. to the beat.</Description>
+    <Authors>ppy Pty Ltd, Mosu contributors</Authors>
+    <Copyright>Copyright (c) 2026 ppy Pty Ltd and contributors</Copyright>
+    <PackageProjectUrl>https://morasooma.net</PackageProjectUrl>
+    <PackageReleaseNotes>osu! ruleset modified for Mosu. See NOTICE.md for attribution.</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Nuget">
+    <Title>osu! (ruleset)</Title>
+    <PackageId>Mosu.osu.Game.Rulesets.Osu</PackageId>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup Label="Project References">
+    <ProjectReference Include="..\osu.Game\osu.Game.csproj" />
+  </ItemGroup>
+</Project>
