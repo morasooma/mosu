@@ -1,0 +1,187 @@
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// See the LICENCE file in the repository root for full licence text.
+
+using osu.Framework.Allocation;
+using osu.Framework.Bindables;
+using osu.Framework.Extensions.Color4Extensions;
+using osu.Framework.Graphics;
+using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Shapes;
+using osu.Framework.Utils;
+using osu.Game.Configuration;
+using osu.Game.Graphics;
+using osu.Game.Graphics.Sprites;
+using osu.Game.Overlays;
+using osu.Game.Rulesets.Mods;
+using osuTK.Graphics;
+
+namespace osu.Game.Rulesets.UI
+{
+    public partial class ModSwitchTiny : CompositeDrawable
+    {
+        public BindableBool Active { get; } = new BindableBool();
+
+        public const float DEFAULT_HEIGHT = 30;
+        public const float WIDTH = 73;
+
+        protected readonly IMod Mod;
+        private readonly bool showExtendedInformation;
+
+        private readonly Box background;
+        private readonly OsuSpriteText acronymText;
+
+        private Color4 activeForegroundColour;
+        private Color4 inactiveForegroundColour;
+
+        private Color4 activeBackgroundColour;
+        private Color4 inactiveBackgroundColour;
+
+        private readonly CircularContainer extendedContent;
+        private readonly Box extendedBackground;
+        private readonly OsuSpriteText extendedText;
+        private ModSettingChangeTracker? modSettingsChangeTracker;
+        private IBindable<Colour4>? themeColour;
+        private OverlayColourProvider? overlayColours;
+        private OsuColour? osuColours;
+
+        public ModSwitchTiny(IMod mod, bool showExtendedInformation = false)
+        {
+            Mod = mod;
+            this.showExtendedInformation = showExtendedInformation;
+            AutoSizeAxes = Axes.X;
+            Height = DEFAULT_HEIGHT;
+
+            InternalChildren = new Drawable[]
+            {
+                extendedContent = new CircularContainer
+                {
+                    Name = "extended content",
+                    Width = 100 + DEFAULT_HEIGHT / 2,
+                    RelativeSizeAxes = Axes.Y,
+                    Masking = true,
+                    X = WIDTH,
+                    Margin = new MarginPadding { Left = -DEFAULT_HEIGHT },
+                    Children = new Drawable[]
+                    {
+                        extendedBackground = new Box
+                        {
+                            RelativeSizeAxes = Axes.Both,
+                        },
+                        extendedText = new OsuSpriteText
+                        {
+                            Margin = new MarginPadding { Left = 3 * DEFAULT_HEIGHT / 4 },
+                            Font = OsuFont.Default.With(size: 30f, weight: FontWeight.Bold),
+                            UseFullGlyphHeight = false,
+                            Text = mod.ExtendedIconInformation,
+                            Anchor = Anchor.Centre,
+                            Origin = Anchor.Centre,
+                        },
+                    }
+                },
+                new CircularContainer
+                {
+                    Width = WIDTH,
+                    RelativeSizeAxes = Axes.Y,
+                    Masking = true,
+                    Children = new Drawable[]
+                    {
+                        background = new Box
+                        {
+                            RelativeSizeAxes = Axes.Both
+                        },
+                        acronymText = new OsuSpriteText
+                        {
+                            Anchor = Anchor.Centre,
+                            Origin = Anchor.Centre,
+                            Shadow = false,
+                            Font = OsuFont.Numeric.With(size: 24, weight: FontWeight.Black),
+                            Text = mod.Acronym,
+                            Margin = new MarginPadding
+                            {
+                                Top = 4
+                            }
+                        },
+                    },
+                }
+            };
+        }
+
+        [BackgroundDependencyLoader(true)]
+        private void load(OsuColour colours, OverlayColourProvider? colourProvider)
+        {
+            overlayColours = colourProvider;
+            osuColours = colours;
+            activeBackgroundColour = colours.ForModType(Mod.Type);
+            activeForegroundColour = Interpolation.ValueAt<Colour4>(0.1f, Colour4.Black, activeBackgroundColour, 0, 1);
+
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ => updateThemeColours(), true);
+            }
+            else
+                updateThemeColours();
+        }
+
+        private void updateThemeColours()
+        {
+            if (overlayColours != null && OverlayColourProvider.IsDarkTheme)
+            {
+                inactiveBackgroundColour = overlayColours.Background5;
+                inactiveForegroundColour = overlayColours.Light4;
+            }
+            else if (overlayColours != null && OverlayColourProvider.IsLightTheme)
+            {
+                inactiveBackgroundColour = overlayColours.GetDefaultColour(0.1f, 0.15f);
+                inactiveForegroundColour = overlayColours.GetDefaultColour(0.4f, 0.5f);
+            }
+            else
+            {
+                inactiveBackgroundColour = overlayColours?.Background5 ?? osuColours!.Gray3;
+                inactiveForegroundColour = overlayColours?.Background2 ?? osuColours!.Gray5;
+            }
+
+            if (IsLoaded)
+                updateState();
+        }
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+
+            Active.BindValueChanged(_ => updateState(), true);
+            FinishTransforms(true);
+
+            if (Mod is Mod actualMod)
+            {
+                modSettingsChangeTracker = new ModSettingChangeTracker(new[] { actualMod });
+                modSettingsChangeTracker.SettingChanged = _ => updateExtendedInformation();
+            }
+
+            updateExtendedInformation();
+        }
+
+        private void updateExtendedInformation()
+        {
+            bool showExtended = showExtendedInformation && !string.IsNullOrEmpty(Mod.ExtendedIconInformation);
+
+            extendedContent.Alpha = showExtended ? 1 : 0;
+            extendedText.Text = Mod.ExtendedIconInformation;
+        }
+
+        private void updateState()
+        {
+            acronymText.FadeColour(Active.Value ? activeForegroundColour : inactiveForegroundColour, 200, Easing.OutQuint);
+            background.FadeColour(Active.Value ? activeBackgroundColour : inactiveBackgroundColour, 200, Easing.OutQuint);
+
+            extendedText.Colour = Active.Value ? activeBackgroundColour.Lighten(0.2f) : inactiveBackgroundColour;
+            extendedBackground.Colour = Active.Value ? activeBackgroundColour.Darken(2.4f) : inactiveBackgroundColour.Darken(2.8f);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            base.Dispose(isDisposing);
+            modSettingsChangeTracker?.Dispose();
+        }
+    }
+}

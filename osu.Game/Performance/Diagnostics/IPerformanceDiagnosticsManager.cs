@@ -1,0 +1,30 @@
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// See the LICENCE file in the repository root for full licence text.
+
+using osu.Framework.Configuration;
+
+namespace osu.Game.Performance.Diagnostics
+{
+    public interface IPerformanceDiagnosticsManager
+    {
+        bool IsRunning { get; }
+
+        MosuDiagnosticsSession? CurrentSession { get; }
+
+        void ShowSetup();
+
+        void BeginSession(MosuDiagnosticsSetupOptions options);
+
+        void ShowResultsIfPending();
+
+        void ResumeSession();
+
+        void CancelSession();
+
+        void ApplyRecommendedSettings(RendererType renderer);
+
+        void OpenExportFolder();
+
+        void DismissResults();
+    }
+}
