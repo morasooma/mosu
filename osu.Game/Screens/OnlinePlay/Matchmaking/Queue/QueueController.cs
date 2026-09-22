@@ -85,7 +85,21 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             lastRandomMods = randomMods;
             QueueTimer.Restart();
 
-            client.MatchmakingJoinQueue(pool.Id, randomMods).FireAndForget();
+            joinQueue(pool, randomMods, client.Room).FireAndForget();
+        }
+
+        private async Task joinQueue(MatchmakingPool pool, bool randomMods, MultiplayerRoom? staleRoom)
+        {
+            // A previous ranked match may still be joined after its screen has gone away (for
+            // example after an interrupted transition). The matchmaking server correctly rejects
+            // queue admission in that state, so leave the stale room before joining the queue.
+            if (staleRoom != null)
+            {
+                Logger.Log($"{nameof(QueueController)}: Leaving stale room {staleRoom.RoomID} before joining matchmaking.", LoggingTarget.Runtime, LogLevel.Important);
+                await client.LeaveRoom().ConfigureAwait(false);
+            }
+
+            await client.MatchmakingJoinQueue(pool.Id, randomMods).ConfigureAwait(false);
         }
 
         /// <summary>

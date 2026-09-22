@@ -207,39 +207,31 @@ namespace osu.Game.Overlays
 
             try
             {
-                // Palette entries are interdependent in most consumers (for
-                // example a Content1 callback also applies Background3 and
-                // Content2). Publish them only after the complete palette has
-                // been calculated so no callback can see a half-updated theme.
-                // The public build targets the stock framework, which has no cross-bindable
-                // notification batch. Recalculate the palette first, then notify bound copies.
-                {
-                    colour0.Value = getColour(1, 0.8f);
-                    colour1.Value = getColour(1, 0.7f);
-                    colour2.Value = getColour(0.8f, 0.6f);
-                    colour3.Value = getColour(0.6f, 0.5f);
-                    colour4.Value = getColour(0.4f, 0.3f);
-                    highlight1.Value = getColour(1, 0.7f);
-                    content1.Value = getColour(0.4f, 1);
-                    content2.Value = getColour(0.4f, 0.9f);
-                    light1.Value = getColour(0.4f, 0.8f);
-                    light2.Value = getColour(0.4f, 0.75f);
-                    light3.Value = getColour(0.4f, 0.7f);
-                    light4.Value = getColour(0.4f, 0.5f);
-                    dark1.Value = getColour(0.2f, 0.35f);
-                    dark2.Value = getColour(0.2f, 0.3f);
-                    dark3.Value = getColour(0.2f, 0.25f);
-                    dark4.Value = getColour(0.2f, 0.2f);
-                    dark5.Value = getColour(0.2f, 0.15f);
-                    dark6.Value = getColour(0.2f, 0.1f);
-                    foreground1.Value = getColour(0.1f, 0.6f);
-                    background1.Value = getColour(0.1f, 0.4f);
-                    background2.Value = getColour(0.1f, 0.3f);
-                    background3.Value = getColour(0.1f, 0.25f);
-                    background4.Value = getColour(0.1f, 0.2f);
-                    background5.Value = getColour(0.1f, 0.15f);
-                    background6.Value = getColour(0.1f, 0.1f);
-                }
+                colour0.Value = getColour(1, 0.8f);
+                colour1.Value = getColour(1, 0.7f);
+                colour2.Value = getColour(0.8f, 0.6f);
+                colour3.Value = getColour(0.6f, 0.5f);
+                colour4.Value = getColour(0.4f, 0.3f);
+                highlight1.Value = getColour(1, 0.7f);
+                content1.Value = getColour(0.4f, 1);
+                content2.Value = getColour(0.4f, 0.9f);
+                light1.Value = getColour(0.4f, 0.8f);
+                light2.Value = getColour(0.4f, 0.75f);
+                light3.Value = getColour(0.4f, 0.7f);
+                light4.Value = getColour(0.4f, 0.5f);
+                dark1.Value = getColour(0.2f, 0.35f);
+                dark2.Value = getColour(0.2f, 0.3f);
+                dark3.Value = getColour(0.2f, 0.25f);
+                dark4.Value = getColour(0.2f, 0.2f);
+                dark5.Value = getColour(0.2f, 0.15f);
+                dark6.Value = getColour(0.2f, 0.1f);
+                foreground1.Value = getColour(0.1f, 0.6f);
+                background1.Value = getColour(0.1f, 0.4f);
+                background2.Value = getColour(0.1f, 0.3f);
+                background3.Value = getColour(0.1f, 0.25f);
+                background4.Value = getColour(0.1f, 0.2f);
+                background5.Value = getColour(0.1f, 0.15f);
+                background6.Value = getColour(0.1f, 0.1f);
 
                 colour0.TriggerChange();
                 colour1.TriggerChange();

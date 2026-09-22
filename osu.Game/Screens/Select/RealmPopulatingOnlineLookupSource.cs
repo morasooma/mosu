@@ -40,6 +40,9 @@ namespace osu.Game.Screens.Select
 
         public Task<APIBeatmapSet?> GetBeatmapSetAsync(int id, CancellationToken token = default)
         {
+            if (Online.MosuServerEnvironment.UsesStableProtocol)
+                return Task.FromResult<APIBeatmapSet?>(null);
+
             var request = new GetBeatmapSetRequest(id);
             var tcs = new TaskCompletionSource<APIBeatmapSet?>();
 
@@ -76,6 +79,10 @@ namespace osu.Game.Screens.Select
 
             foreach (var dbBeatmapSet in dbBeatmapSets)
             {
+                bool serverExclusive = onlineBeatmapSet.OnlineID >= BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD
+                                       || dbBeatmapSet.OnlineID >= BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD
+                                       || dbBeatmapSet.IsServerExclusive();
+
                 // note that every single write to realm models is preceded by a guard, even if it technically would write the same value back.
                 // the reason this matters is that doing so avoids triggering realm subscription callbacks.
                 // unfortunately in terms of subscriptions realm treats *every* write to any realm object as a modification,
@@ -91,10 +98,38 @@ namespace osu.Game.Screens.Select
 
                 foreach (var dbBeatmap in dbBeatmapSet.Beatmaps)
                 {
-                    if (onlineBeatmaps.TryGetValue(dbBeatmap.OnlineID, out var onlineBeatmap))
+                    if (!onlineBeatmaps.TryGetValue(dbBeatmap.OnlineID, out var onlineBeatmap) && serverExclusive)
+                    {
+                        // Server uploads allocate new difficulty IDs for each revision. Match the
+                        // replacement without changing the local ID until the archive is imported.
+                        onlineBeatmap = onlineBeatmapSet.Beatmaps.SingleOrDefault(b =>
+                            b.RulesetID == dbBeatmap.Ruleset.OnlineID
+                            && string.Equals(b.DifficultyName, dbBeatmap.DifficultyName, System.StringComparison.OrdinalIgnoreCase));
+
+                        if (onlineBeatmap == null
+                            && dbBeatmapSet.Beatmaps.Count == 1
+                            && onlineBeatmapSet.Beatmaps.Length == 1)
+                            onlineBeatmap = onlineBeatmapSet.Beatmaps[0];
+
+                        if (onlineBeatmap == null)
+                        {
+                            // A removed or renamed difficulty is still enough to make the set stale.
+                            if (dbBeatmap.OnlineMD5Hash != string.Empty)
+                                dbBeatmap.OnlineMD5Hash = string.Empty;
+
+                            var revisionTime = onlineBeatmapSet.LastUpdated
+                                               ?? onlineBeatmapSet.Beatmaps.Select(b => b.LastUpdated).DefaultIfEmpty().Max();
+                            if (dbBeatmap.LastOnlineUpdate != revisionTime)
+                                dbBeatmap.LastOnlineUpdate = revisionTime;
+
+                            continue;
+                        }
+                    }
+
+                    if (onlineBeatmap != null)
                     {
                         // compare `BeatmapUpdaterMetadataLookup`
-                        if (!Online.MosuServerEnvironment.IsThirdPartyServer)
+                        if (!Online.MosuServerEnvironment.IsThirdPartyServer || serverExclusive)
                         {
                             if (dbBeatmap.OnlineMD5Hash != onlineBeatmap.MD5Hash)
                                 dbBeatmap.OnlineMD5Hash = onlineBeatmap.MD5Hash;
@@ -111,7 +146,6 @@ namespace osu.Game.Screens.Select
                             }
                         }
 
-                        onlineBeatmap.BeatmapSet = onlineBeatmapSet;
                         HashSet<string> userTags = onlineBeatmap.GetTopUserTags(confirmedOnly: true)
                                                                 .Select(t => t.Tag.Name)
                                                                 .ToHashSet();

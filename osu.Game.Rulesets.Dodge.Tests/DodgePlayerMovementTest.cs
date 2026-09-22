@@ -435,13 +435,13 @@ namespace osu.Game.Rulesets.Dodge.Tests
         [Test]
         public void TestBulletCollision()
         {
-            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(100), new Vector2(100)), Is.True);
-            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(113), new Vector2(100)), Is.True);
-            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(115), new Vector2(100)), Is.False);
-            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(120), new Vector2(100), 32), Is.True);
-            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(125), new Vector2(100), 32), Is.False);
-            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(120), new Vector2(100), DodgeBullet.SIZE, 32), Is.True);
-            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(125), new Vector2(100), DodgeBullet.SIZE, 32), Is.False);
+            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(100, 100), new Vector2(100, 100)), Is.True);
+            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(113, 100), new Vector2(100, 100)), Is.True);
+            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(115, 100), new Vector2(100, 100)), Is.False);
+            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(120, 100), new Vector2(100, 100), 32), Is.True);
+            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(125, 100), new Vector2(100, 100), 32), Is.False);
+            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(120, 100), new Vector2(100, 100), DodgeBullet.SIZE, 32), Is.True);
+            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(125, 100), new Vector2(100, 100), DodgeBullet.SIZE, 32), Is.False);
         }
 
         [Test]
@@ -508,6 +508,103 @@ namespace osu.Game.Rulesets.Dodge.Tests
             Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(115, 100), player), Is.False);
             Assert.That(DodgeBullet.IsWithinGrazeDistance(new Vector2(115, 100), player, 4), Is.True);
             Assert.That(DodgeBullet.IsWithinGrazeDistance(new Vector2(120, 100), player, 4), Is.False);
+        }
+
+        [Test]
+        public void TestBulletCollisionIncludesCornersOfSharedCollisionBox()
+        {
+            Vector2 player = new Vector2(100, 100);
+
+            // collisionDistance = (12 + 16) / 2 = 14. The player and projectile
+            // visuals use a shared square collision box, so an overlapping corner
+            // must not become a safe diagonal path.
+            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(110, 110), player), Is.True);
+            Assert.That(DodgeBullet.IntersectsPlayer(new Vector2(115, 115), player), Is.False);
+
+            // Both endpoints are outside the box, but the swept segment crosses
+            // its corner. This is the frame-to-frame equivalent of the same bug.
+            Assert.That(
+                DodgeBullet.IntersectsPlayerSwept(
+                    new Vector2(100, 128),
+                    new Vector2(128, 100),
+                    player,
+                    player),
+                Is.True);
+        }
+
+        [Test]
+        public void TestBeamSweptCollisionCatchesTunnelling()
+        {
+            var beam = new DodgeBeam
+            {
+                Position = new Vector2(200, 100),
+                EndPosition = new Vector2(200, 300),
+                BeamWidth = 20,
+            };
+
+            Vector2 previousPlayer = new Vector2(150, 200);
+            Vector2 currentPlayer = new Vector2(250, 200);
+
+            // Discrete endpoint checks are both false (player starts and ends outside beam)
+            Assert.That(
+                DodgeBeam.IntersectsPlayer(
+                    beam.BeamCenter, beam.BeamDirection, beam.PerpendicularDirection,
+                    beam.BeamLength, beam.BeamWidth, previousPlayer, DodgePlayer.SIZE),
+                Is.False);
+            Assert.That(
+                DodgeBeam.IntersectsPlayer(
+                    beam.BeamCenter, beam.BeamDirection, beam.PerpendicularDirection,
+                    beam.BeamLength, beam.BeamWidth, currentPlayer, DodgePlayer.SIZE),
+                Is.False);
+
+            // Swept collision catches player moving across beam
+            Assert.That(
+                DodgeBeam.IntersectsPlayerSwept(
+                    beam.BeamCenter, beam.BeamDirection, beam.PerpendicularDirection,
+                    beam.BeamLength, beam.BeamWidth, previousPlayer, currentPlayer, DodgePlayer.SIZE),
+                Is.True);
+
+            // Distant movement does not collide
+            Assert.That(
+                DodgeBeam.IntersectsPlayerSwept(
+                    beam.BeamCenter, beam.BeamDirection, beam.PerpendicularDirection,
+                    beam.BeamLength, beam.BeamWidth, new Vector2(150, 50), new Vector2(250, 50), DodgePlayer.SIZE),
+                Is.False);
+        }
+
+        [Test]
+        public void TestBeamSweptGraze()
+        {
+            var beam = new DodgeBeam
+            {
+                Position = new Vector2(200, 100),
+                EndPosition = new Vector2(200, 300),
+                BeamWidth = 20,
+            };
+
+            // Player moves near beam within graze band (graze distance = 16)
+            // halfWidth + playerSize/2 = 10 + 8 = 18. Graze boundary = 18 + 16 = 34.
+            Vector2 previousPlayer = new Vector2(170, 150); // distance X = 30 (within 34)
+            Vector2 currentPlayer = new Vector2(170, 250);
+
+            Assert.That(
+                DodgeBeam.IntersectsPlayerSwept(
+                    beam.BeamCenter, beam.BeamDirection, beam.PerpendicularDirection,
+                    beam.BeamLength, beam.BeamWidth, previousPlayer, currentPlayer, DodgePlayer.SIZE),
+                Is.False);
+
+            Assert.That(
+                DodgeBeam.IsWithinGrazeDistanceSwept(
+                    beam.BeamCenter, beam.BeamDirection, beam.PerpendicularDirection,
+                    beam.BeamLength, beam.BeamWidth, previousPlayer, currentPlayer, DodgePlayer.SIZE, 16),
+                Is.True);
+
+            // Beyond graze boundary (distance X = 40 > 34)
+            Assert.That(
+                DodgeBeam.IsWithinGrazeDistanceSwept(
+                    beam.BeamCenter, beam.BeamDirection, beam.PerpendicularDirection,
+                    beam.BeamLength, beam.BeamWidth, new Vector2(160, 150), new Vector2(160, 250), DodgePlayer.SIZE, 16),
+                Is.False);
         }
 
         [Test]

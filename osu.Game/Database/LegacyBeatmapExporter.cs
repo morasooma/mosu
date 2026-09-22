@@ -54,7 +54,11 @@ namespace osu.Game.Database
             var beatmapContent = new LegacyBeatmapDecoder(LegacyBeatmapEncoder.FIRST_LAZER_VERSION).Decode(contentStreamReader);
 
             var workingBeatmap = new FlatWorkingBeatmap(beatmapContent);
-            var playableBeatmap = workingBeatmap.GetPlayableBeatmap(beatmapInfo.Ruleset);
+            // Custom rulesets store a legacy-compatible beatmap in the .osu file while
+            // their actual gameplay objects live in a sidecar. The decoded compatibility
+            // beatmap therefore has the ruleset it can actually be converted for (usually
+            // osu!), whereas beatmapInfo.Ruleset may be a custom ruleset such as Dodge.
+            var playableBeatmap = workingBeatmap.GetPlayableBeatmap(beatmapContent.BeatmapInfo.Ruleset);
 
             using var skinStream = base.GetFileContents(model, file);
 

@@ -56,10 +56,10 @@ namespace osu.Game.Screens.Play
         private OsuConfigManager config { get; set; } = null!;
 
         [Resolved(canBeNull: true)]
-        private IRenderGameplaySampleTriggerRecorder renderGameplaySampleTriggerRecorder { get; set; }
+        private IRenderGameplaySampleTriggerRecorder? renderGameplaySampleTriggerRecorder { get; set; }
 
         [Resolved(canBeNull: true)]
-        private IGameplayClock gameplayClock { get; set; }
+        private IGameplayClock? gameplayClock { get; set; }
 
         protected override Container<Drawable> Content { get; } = new Container
         {

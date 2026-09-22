@@ -28,7 +28,6 @@ namespace osu.Game.Rulesets.Osu.Mods
 
         public override LocalisableString Description => MosuModsStrings.ModAntiAimAssistDescription;
 
-        public override double ScoreMultiplier => 1.0;
 
         public override bool HasImplementation => true;
 

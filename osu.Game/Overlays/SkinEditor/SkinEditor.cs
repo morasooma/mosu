@@ -539,6 +539,9 @@ namespace osu.Game.Overlays.SkinEditor
         {
             settingsSidebar.Clear();
 
+            if (selectedTarget.Value?.Ruleset?.ShortName == "mania" && currentSkin?.Value != null)
+                settingsSidebar.Add(new ManiaSkinSettingsToolbox(currentSkin.Value, () => Save(false)));
+
             foreach (var component in SelectedComponents.OfType<Drawable>())
                 settingsSidebar.Add(new SkinSettingsToolbox(component));
         }
@@ -555,6 +558,8 @@ namespace osu.Game.Overlays.SkinEditor
         private void revert()
         {
             SkinnableContainer[] targetContainers = availableTargets.ToArray();
+
+            currentSkin.Value.MosuSettings.SetManiaNoteScalePercent(100);
 
             foreach (var t in targetContainers)
             {

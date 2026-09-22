@@ -28,6 +28,9 @@ namespace osu.Game.Online.API
         OsuDirect,
 
         [LocalisableDescription(typeof(ForkSettingsStrings), nameof(ForkSettingsStrings.DownloadMirrorServer))]
-        Server
+        Server,
+
+        [LocalisableDescription(typeof(ForkSettingsStrings), nameof(ForkSettingsStrings.DownloadMirrorHinamizawa))]
+        Hinamizawa
     }
 }

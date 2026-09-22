@@ -11,6 +11,8 @@ namespace osu.Game.Rulesets.Dodge.Localisation
 
         public static LocalisableString Arena => get(@"arena", @"Arena");
         public static LocalisableString ArenaRotation => get(@"arena_rotation", @"Вращение арены");
+        public static LocalisableString ArenaEasing => get(@"arena_easing", @"Movement curve");
+        public static LocalisableString ArenaEasingHint => get(@"arena_easing_hint", @"Changes the acceleration of an arena transition, including its movement, size, rotation and appearance.");
         public static LocalisableString ArenaKiaiShakeAngle => get(@"arena_kiai_shake_angle", @"Kiai shake (°)");
         public static LocalisableString Bullet => get(@"bullet", @"Bullet");
         public static LocalisableString Emitter => get(@"emitter", @"Emitter");
@@ -18,8 +20,32 @@ namespace osu.Game.Rulesets.Dodge.Localisation
         public static LocalisableString BeamToolTip => get(@"beam_tooltip", @"Place a full-arena beam danger zone.");
         public static LocalisableString BeamWidth => get(@"beam_width", @"Ширина луча");
         public static LocalisableString Camera => get(@"camera", @"Camera");
+        public static LocalisableString Trigger => get(@"trigger", @"Triggers");
+        public static LocalisableString TriggerAction => get(@"trigger_action", @"Action");
+        public static LocalisableString TriggerStrength => get(@"trigger_strength", @"Strength");
+        public static LocalisableString TriggerDuration => get(@"trigger_duration", @"Effect duration (ms)");
+        public static LocalisableString TriggerColour => get(@"trigger_colour", @"Effect colour");
+        public static LocalisableString TriggerToolTip => get(@"trigger_tooltip", @"Place a time-based trigger that fires without player contact.");
+        public static LocalisableString TriggerClearBullets => get(@"trigger_clear_bullets", @"Clear bullets");
+        public static LocalisableString TriggerToggleHud => get(@"trigger_toggle_hud", @"Toggle HUD");
+        public static LocalisableString TriggerHideHud => get(@"trigger_hide_hud", @"Hide HUD");
+        public static LocalisableString TriggerShowHud => get(@"trigger_show_hud", @"Show HUD");
+        public static LocalisableString TriggerScreenShake => get(@"trigger_screen_shake", @"Screen shake");
+        public static LocalisableString TriggerFlashEffect => get(@"trigger_flash_effect", @"Flash effect");
+        public static LocalisableString TriggerTrailEnable => get(@"trigger_trail_enable", @"Enable player trail");
+        public static LocalisableString TriggerTrailDisable => get(@"trigger_trail_disable", @"Disable player trail");
         public static LocalisableString CameraContinuousScroll => get(@"camera_continuous_scroll", @"Continuous scroll");
         public static LocalisableString CameraContinuousScrollHint => get(@"camera_continuous_scroll_hint", @"When enabled, the camera follows the beatmap scroll position instead of being centred on the arena.");
+        public static LocalisableString CameraEasing => get(@"camera_easing", @"Movement curve");
+        public static LocalisableString CameraEasingHint => get(@"camera_easing_hint", @"Changes the acceleration of a timed camera move. Continuous scroll always uses a constant velocity.");
+        public static LocalisableString CameraEasingLinear => get(@"camera_easing_linear", @"Linear");
+        public static LocalisableString CameraEasingIn => get(@"camera_easing_in", @"Ease in");
+        public static LocalisableString CameraEasingOut => get(@"camera_easing_out", @"Ease out");
+        public static LocalisableString CameraEasingInOut => get(@"camera_easing_in_out", @"Ease in/out");
+        public static LocalisableString CameraEasingSmooth => get(@"camera_easing_smooth", @"Smooth");
+        public static LocalisableString CameraEasingOvershoot => get(@"camera_easing_overshoot", @"Overshoot");
+        public static LocalisableString CameraEasingBounce => get(@"camera_easing_bounce", @"Bounce");
+        public static LocalisableString CameraEasingElastic => get(@"camera_easing_elastic", @"Elastic");
         public static LocalisableString Grid => get(@"grid", @"Grid");
         public static LocalisableString Patterns => get(@"patterns", @"Patterns");
         public static LocalisableString Transform => get(@"transform", @"Transform");
@@ -163,11 +189,17 @@ namespace osu.Game.Rulesets.Dodge.Localisation
         public static LocalisableString ContinueUntilOutside => get(@"continue_until_outside", @"Continue until outside playfield");
         public static LocalisableString LockFlight => get(@"lock_flight", @"Lock flight time and speed");
         public static LocalisableString MovementType => get(@"movement_type", @"Projectile movement");
+        public static LocalisableString MovementEasing => get(@"movement_easing", @"Speed curve");
+        public static LocalisableString MovementEasingLinear => get(@"movement_easing_linear", @"Constant speed");
+        public static LocalisableString MovementEasingIn => get(@"movement_easing_in", @"Accelerate");
+        public static LocalisableString MovementEasingOut => get(@"movement_easing_out", @"Decelerate");
+        public static LocalisableString MovementEasingInOut => get(@"movement_easing_in_out", @"Accelerate and decelerate");
         public static LocalisableString MovementLinear => get(@"movement_linear", @"Linear");
         public static LocalisableString MovementSine => get(@"movement_sine", @"Wave");
         public static LocalisableString WaveAmplitude => get(@"wave_amplitude", @"Wave amplitude");
         public static LocalisableString WaveCycles => get(@"wave_cycles", @"Wave cycles");
         public static LocalisableString WavePhase => get(@"wave_phase", @"Wave phase");
+        public static LocalisableString BurstRotation => get(@"burst_rotation", @"Rotation per burst");
         public static LocalisableString TrajectoryGuide => get(@"trajectory_guide", @"Trajectory guide");
         public static LocalisableString GuideArrow => get(@"guide_arrow", @"Arrow");
         public static LocalisableString GuidePath => get(@"guide_path", @"Path");
@@ -227,6 +259,8 @@ namespace osu.Game.Rulesets.Dodge.Localisation
         public static LocalisableString Cross => get(@"cross", @"Cross");
         public static LocalisableString SaveQuickPrefab => get(@"save_quick_prefab", @"Save quick prefab");
         public static LocalisableString InsertQuickPrefab => get(@"insert_quick_prefab", @"Insert quick prefab");
+        public static LocalisableString EmptyPatternSlot => get(@"empty_pattern_slot", @"Empty slot");
+        public static LocalisableString SavePatternHere => get(@"save_pattern_here", @"Save here");
         public static LocalisableString PatternSelectionRequired => get(@"pattern_selection_required", @"Select objects to enable Repeat and Save prefab.");
 
         public static LocalisableString RelativeX => get(@"relative_x", @"Relative X");
@@ -261,6 +295,10 @@ namespace osu.Game.Rulesets.Dodge.Localisation
         public static LocalisableString MissSoundHint => get(@"miss_sound_hint", @"Play a skin-replaceable sound when the player is hit.");
         public static LocalisableString MissSoundVolume => get(@"miss_sound_volume", @"Collision sound volume");
         public static LocalisableString MissSoundVolumeHint => get(@"miss_sound_volume_hint", @"Volume of the Dodge collision sound.");
+        public static LocalisableString EffectsEnabled => get(@"effects_enabled", @"Эффекты карты");
+        public static LocalisableString EffectsEnabledHint => get(@"effects_enabled_hint", @"Тряска экрана, вспышки и прочие визуальные эффекты, добавленные триггерами карты. Не влияет на столкновения и счёт.");
+        public static LocalisableString PlayerTrailEnabled => get(@"player_trail_enabled", @"След игрока");
+        public static LocalisableString PlayerTrailEnabledHint => get(@"player_trail_enabled_hint", @"Отключает след игрока, включая след, включённый триггерами карты.");
 
         public static LocalisableString FullPathsDescription => get(@"full_paths_description", @"Shows the complete route of every active projectile.");
 

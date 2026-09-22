@@ -14,16 +14,24 @@ namespace osu.Game.Tests.NonVisual
     public class OverlayColourProviderTest
     {
         private ThemeMode previousTheme;
+        private bool previousTransparency;
 
         [SetUp]
         public void SetUp()
         {
             previousTheme = OverlayColourProvider.CurrentTheme.Value;
             OverlayColourProvider.CurrentTheme.Value = ThemeMode.Default;
+
+            previousTransparency = OverlayTransparency.Enabled.Value;
+            OverlayTransparency.Enabled.Value = false;
         }
 
         [TearDown]
-        public void TearDown() => OverlayColourProvider.CurrentTheme.Value = previousTheme;
+        public void TearDown()
+        {
+            OverlayColourProvider.CurrentTheme.Value = previousTheme;
+            OverlayTransparency.Enabled.Value = previousTransparency;
+        }
 
         [Test]
         public void TestColourBindableUpdatesForEveryTheme()
@@ -97,6 +105,20 @@ namespace osu.Game.Tests.NonVisual
         public void TestEffectiveThemeHonoursMosuServerPolicy(ThemeMode configuredTheme, bool forceLightTheme, bool isThirdPartyServer, ThemeMode expected)
         {
             Assert.That(ThemeModeResolver.Resolve(configuredTheme, forceLightTheme, isThirdPartyServer), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void TestTransparencyDoesNotMutatePalette()
+        {
+            var provider = new OverlayColourProvider(OverlayColourScheme.Blue);
+            var background = provider.GetColourBindable(OverlayColour.Background4);
+            Color4 original = provider.Background4;
+
+            OverlayTransparency.Enabled.Value = true;
+
+            assertEqual(original, provider.Background4);
+            assertEqual(original, background.Value);
+            Assert.That(provider.Background4.A, Is.EqualTo(1f));
         }
 
         private static void assertEqual(Color4 expected, Colour4 actual)

@@ -74,6 +74,63 @@ namespace osu.Game.Rulesets.Dodge.Tests
         }
 
         [Test]
+        public void TestBeatmapLengthUsesOnlyGameplayThreats()
+        {
+            var beatmap = new Beatmap<DodgeHitObject>
+            {
+                BeatmapInfo = new BeatmapInfo
+                {
+                    Ruleset = new RulesetInfo(RulesetInfo.DODGE_MODE_SHORTNAME, "Dodge", string.Empty, DodgeRuleset.ONLINE_ID),
+                },
+                HitObjects =
+                {
+                    new DodgeArenaChange { StartTime = 0, Duration = 10000 },
+                    new DodgeCameraChange { StartTime = 500, Duration = 12000 },
+                    new DodgeBullet { StartTime = 1000, Duration = 500 },
+                    new DodgeEmitter { StartTime = 2000, Duration = 750 },
+                    new DodgeBeam { StartTime = 4000, Duration = 250 },
+                },
+            };
+
+            beatmap.BeatmapInfo.UpdateStatisticsFromBeatmap(beatmap);
+
+            Assert.That(beatmap.BeatmapInfo.Length, Is.EqualTo(3250));
+        }
+
+        [Test]
+        public void TestBeatmapWithoutThreatsHasZeroLength()
+        {
+            var beatmap = new Beatmap<DodgeHitObject>
+            {
+                BeatmapInfo = new BeatmapInfo
+                {
+                    Ruleset = new RulesetInfo(RulesetInfo.DODGE_MODE_SHORTNAME, "Dodge", string.Empty, DodgeRuleset.ONLINE_ID),
+                },
+                HitObjects =
+                {
+                    new DodgeArenaChange { StartTime = 0, Duration = 10000 },
+                    new DodgeCameraChange { StartTime = 500, Duration = 12000 },
+                },
+            };
+
+            beatmap.BeatmapInfo.UpdateStatisticsFromBeatmap(beatmap);
+
+            Assert.That(beatmap.BeatmapInfo.Length, Is.Zero);
+        }
+
+        [Test]
+        public void TestOnlyFinalThreatReceivesTrackBoundaryLenience()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(DodgeGameplayTiming.HasReachedJudgementTime(950, 1000, 1000), Is.True);
+                Assert.That(DodgeGameplayTiming.HasReachedJudgementTime(949.999, 1000, 1000), Is.False);
+                Assert.That(DodgeGameplayTiming.HasReachedJudgementTime(950, 1000, 2000), Is.False);
+                Assert.That(DodgeGameplayTiming.HasReachedJudgementTime(1000, 1000, 2000), Is.True);
+            });
+        }
+
+        [Test]
         public void TestPlayfieldCachesOnlyRefreshAfterObjectChanges()
         {
             var bullet = new DodgeBullet

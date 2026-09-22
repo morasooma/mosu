@@ -11,10 +11,13 @@ using osu.Framework.Bindables;
 using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Localisation;
 using osu.Framework.Input.Bindings;
 using osu.Framework.Input.Events;
+using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Cursor;
+using osu.Game.Graphics.Sprites;
 using osu.Game.Input.Bindings;
 using osu.Game.Online.Rooms;
 using osuTK;
@@ -38,40 +41,58 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
         /// </summary>
         public IBindable<Room?> SelectedRoom => selectedRoom;
 
+        public LocalisableString EmptyStateText
+        {
+            get => emptyStateText.Text;
+            init => emptyStateText.Text = value;
+        }
+
         private readonly Bindable<Room?> selectedRoom = new Bindable<Room?>();
 
         public IReadOnlyList<RoomPanel> DrawableRooms => roomFlow.FlowingChildren.Cast<RoomPanel>().ToArray();
 
         private readonly ScrollContainer<Drawable> scroll;
         private readonly FillFlowContainer<LoungeRoomPanel> roomFlow;
+        private readonly OsuSpriteText emptyStateText;
 
         // handle deselection
         public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => true;
 
         public RoomListing()
         {
-            InternalChild = scroll = new Scroll
+            InternalChildren = new Drawable[]
             {
-                Masking = false,
-                RelativeSizeAxes = Axes.Both,
-                Anchor = Anchor.TopCentre,
-                Origin = Anchor.TopCentre,
-                Width = 0.8f,
-                ScrollbarOverlapsContent = false,
-                Padding = new MarginPadding { Right = 5 },
-                Child = new OsuContextMenuContainer
+                scroll = new Scroll
                 {
-                    RelativeSizeAxes = Axes.X,
-                    AutoSizeAxes = Axes.Y,
-                    Child = roomFlow = new FillFlowContainer<LoungeRoomPanel>
+                    Masking = false,
+                    RelativeSizeAxes = Axes.Both,
+                    Anchor = Anchor.TopCentre,
+                    Origin = Anchor.TopCentre,
+                    Width = 0.8f,
+                    ScrollbarOverlapsContent = false,
+                    Padding = new MarginPadding { Right = 5 },
+                    Child = new OsuContextMenuContainer
                     {
                         RelativeSizeAxes = Axes.X,
                         AutoSizeAxes = Axes.Y,
-                        Direction = FillDirection.Vertical,
-                        Spacing = new Vector2(5),
-                        Margin = new MarginPadding { Vertical = 10 },
+                        Child = roomFlow = new FillFlowContainer<LoungeRoomPanel>
+                        {
+                            RelativeSizeAxes = Axes.X,
+                            AutoSizeAxes = Axes.Y,
+                            Direction = FillDirection.Vertical,
+                            Spacing = new Vector2(5),
+                            Margin = new MarginPadding { Vertical = 10 },
+                        }
                     }
-                }
+                },
+                emptyStateText = new OsuSpriteText
+                {
+                    Anchor = Anchor.Centre,
+                    Origin = Anchor.Centre,
+                    Font = OsuFont.Style.Heading1,
+                    Text = "No rooms match the selected filters.",
+                    Alpha = 0,
+                },
             };
         }
 
@@ -89,6 +110,8 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
 
         private void applyFilterCriteria(LoungeFilterCriteria? criteria)
         {
+            bool hasMatchingRooms = false;
+
             roomFlow.Children.ForEach(r =>
             {
                 if (criteria == null)
@@ -107,7 +130,11 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
 
                     r.MatchingFilter = matchingFilter;
                 }
+
+                hasMatchingRooms |= r.MatchingFilter;
             });
+
+            emptyStateText.FadeTo(hasMatchingRooms ? 0 : 1, 200, Easing.OutQuint);
 
             // Lifted from SearchContainer.
             static bool checkTerm(string haystack, string needle)
@@ -175,6 +202,8 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
 
                     break;
             }
+
+            applyFilterCriteria(Filter.Value);
         }
 
         private void addRooms(IEnumerable<Room> rooms)
@@ -192,8 +221,6 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
 
                 roomFlow.SetLayoutPosition(drawableRoom, room.Pinned ? float.MinValue : -(room.RoomID ?? 0));
             }
-
-            applyFilterCriteria(Filter.Value);
         }
 
         private void removeRooms(IEnumerable<Room> rooms)

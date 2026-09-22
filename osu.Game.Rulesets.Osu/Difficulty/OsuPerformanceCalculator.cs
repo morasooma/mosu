@@ -6,13 +6,16 @@ using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Game.Beatmaps;
+using osu.Game.Configuration;
 using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Difficulty.Skills;
 using osu.Game.Rulesets.Difficulty.Utils;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Difficulty.Skills;
+using osu.Game.Rulesets.Osu.Difficulty.Relax.Realistik;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Osu.Objects;
+using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Osu.Scoring;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
@@ -77,6 +80,32 @@ namespace osu.Game.Rulesets.Osu.Difficulty
         {
         }
 
+        public override bool ShouldCalculateLivePerformance(ScoreInfo score, HitObject hitObject, bool isReverting)
+        {
+            if (!ManagedRealistikRelaxCalculator.IsRelax(score.Mods))
+                return true;
+
+            // Relax PP uses the combo of completed osu! objects. Slider ticks and repeats
+            // update the regular score combo before the slider has finished, which would make
+            // the live RX calculation repeatedly reinterpret the same slider as progress.
+            if (hitObject is SliderHeadCircle or SliderTick or SliderRepeat)
+                return false;
+
+            // Classic sliders report their final result on the parent slider. With regular
+            // slider scoring the tail is the final meaningful result and the parent is ignored.
+            if (hitObject is SliderTailCircle tail)
+                return !tail.ClassicSliderBehaviour;
+
+            if (hitObject is Slider slider)
+                return slider.ClassicSliderBehaviour;
+
+            return true;
+        }
+
+        public override bool RequiresBackgroundLivePerformanceCalculation(ScoreInfo score)
+            => RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuRealistik
+               && ManagedRealistikRelaxCalculator.IsRelax(score.Mods);
+
         protected override PerformanceAttributes CreatePerformanceAttributes(ScoreInfo score, DifficultyAttributes attributes)
         {
             var osuAttributes = (OsuDifficultyAttributes)attributes;
@@ -84,8 +113,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty
             usingClassicSliderAccuracy = score.Mods.OfType<OsuModClassic>().Any(m => m.NoSliderHeadAccuracy.Value);
             usingScoreV2 = score.Mods.Any(m => m is ModScoreV2);
 
-            accuracy = score.Accuracy;
-            scoreMaxCombo = score.MaxCombo;
+            accuracy = Math.Clamp(score.Accuracy, 0, 1);
+            scoreMaxCombo = Math.Clamp(score.MaxCombo, 0, osuAttributes.MaxCombo);
             countGreat = score.Statistics.GetValueOrDefault(HitResult.Great);
             countOk = score.Statistics.GetValueOrDefault(HitResult.Ok);
             countMeh = score.Statistics.GetValueOrDefault(HitResult.Meh);
@@ -117,10 +146,16 @@ namespace osu.Game.Rulesets.Osu.Difficulty
             overallDifficulty = lockDifficulty ? difficulty.OverallDifficulty : (79.5 - greatHitWindow) / 6;
             drainRate = difficulty.DrainRate;
 
+            // The pinned Mosu/Realistik RX calculator owns relax PP under the fork system;
+            // LazerVanilla falls through to the upstream lazer relax formula below.
+            if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuRealistik
+                && ManagedRealistikRelaxCalculator.IsRelax(score.Mods))
+                return ManagedRealistikRelaxCalculator.CalculatePerformance(score, osuAttributes);
+
             double comboBasedEstimatedMissCount = calculateComboBasedEstimatedMissCount(osuAttributes);
             double? scoreBasedEstimatedMissCount = null;
 
-            if (usingClassicSliderAccuracy && !usingScoreV2 && score.LegacyTotalScore != null)
+            if (usingClassicSliderAccuracy && !usingScoreV2 && score.LegacyTotalScore > 0)
             {
                 var legacyScoreMissCalculator = new OsuLegacyScoreMissCalculator(score, osuAttributes);
                 scoreBasedEstimatedMissCount = legacyScoreMissCalculator.Calculate();
@@ -135,6 +170,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
             effectiveMissCount = Math.Max(countMiss, effectiveMissCount);
             effectiveMissCount = Math.Min(totalHits, effectiveMissCount);
+            effectiveMissCount = Math.Max(0, effectiveMissCount);
 
             if (effectiveMissCount > 0)
             {
@@ -242,7 +278,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
             aimValue *= accuracy;
 
-            if (score.Mods.Any(h => h is OsuModRelax or OsuModMosuRelax))
+            // The historical aim scale-up belongs to the fork's Mosu relax balance;
+            // the vanilla PP system must stay faithful to upstream lazer.
+            if (score.Mods.Any(h => h is OsuModRelax or OsuModMosuRelax)
+                && RelaxPpSystemSelection.Current != ForkRelaxPpSystem.LazerVanilla)
                 aimValue *= RELAX_AIM_MULTIPLIER;
 
             // Aim assist directly reduces the movement and precision required from the player.

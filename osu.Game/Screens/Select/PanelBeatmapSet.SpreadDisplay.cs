@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.LocalisationExtensions;
@@ -51,8 +52,14 @@ namespace osu.Game.Screens.Select
             [Resolved]
             private RulesetStore rulesets { get; set; } = null!;
 
+            [Resolved]
+            private BeatmapDifficultyCache difficultyCache { get; set; } = null!;
+
             private FillFlowContainer flow = null!;
             private SpriteIcon icon = null!;
+            private readonly List<(BeatmapInfo Beatmap, IBindable<StarDifficulty> Difficulty)> difficulties = new List<(BeatmapInfo, IBindable<StarDifficulty>)>();
+            private CancellationTokenSource? difficultyCancellationSource;
+            private int difficultyUpdateVersion;
 
             public SpreadDisplay()
             {
@@ -115,15 +122,18 @@ namespace osu.Game.Screens.Select
 
             private void updateBeatmapSet()
             {
+                difficultyCancellationSource?.Cancel();
+                difficultyCancellationSource?.Dispose();
+                difficultyCancellationSource = null;
+                difficulties.Clear();
+                difficultyUpdateVersion++;
+
                 if (BeatmapSet.Value == null)
                 {
+                    flow.Clear();
                     this.FadeOut(transition_duration, Easing.OutQuint);
                     return;
                 }
-
-                flow.Clear();
-
-                const int max_difficulties_before_collapsing = 12;
 
                 var beatmaps = BeatmapSet.Value.Beatmaps
                                          .Where(b => b.AllowGameplayWithRuleset(ruleset.Value, showConvertedBeatmaps.Value))
@@ -131,12 +141,45 @@ namespace osu.Game.Screens.Select
                 this.FadeTo(beatmaps.Count > 0 ? 1 : 0, transition_duration, Easing.OutQuint);
 
                 if (beatmaps.Count == 0)
+                {
+                    flow.Clear();
                     return;
+                }
+
+                difficultyCancellationSource = new CancellationTokenSource();
+                int updateVersion = difficultyUpdateVersion;
+
+                foreach (BeatmapInfo beatmap in beatmaps)
+                {
+                    IBindable<StarDifficulty> difficulty = difficultyCache.GetBindableDifficulty(
+                        beatmap,
+                        difficultyCancellationSource.Token,
+                        SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE,
+                        calculatePerformance: false);
+                    difficulties.Add((beatmap, difficulty));
+                    difficulty.BindValueChanged(_ =>
+                    {
+                        if (updateVersion == difficultyUpdateVersion)
+                            Scheduler.AddOnce(updateDifficultyFlow);
+                    });
+                }
+
+                updateDifficultyFlow();
+
+                Action = () => songSelect?.ScopeToBeatmapSet(BeatmapSet.Value);
+                updateEnabled();
+            }
+
+            private void updateDifficultyFlow()
+            {
+                flow.Clear();
+
+                const int max_difficulties_before_collapsing = 12;
 
                 bool showVisible = VisibleBeatmaps.Value == null || VisibleBeatmaps.Value?.Count <= max_difficulties_before_collapsing;
-                bool showHidden = beatmaps.Count <= max_difficulties_before_collapsing;
+                bool showHidden = difficulties.Count <= max_difficulties_before_collapsing;
 
-                var beatmapsByRuleset = beatmaps.GroupBy(beatmap => beatmap.Ruleset.OnlineID).OrderBy(group => group.Key);
+                var beatmapsByRuleset = difficulties.GroupBy(entry => entry.Beatmap.Ruleset.OnlineID).OrderBy(group => group.Key);
 
                 foreach (var rulesetGrouping in beatmapsByRuleset)
                 {
@@ -153,8 +196,9 @@ namespace osu.Game.Screens.Select
                     int overflowHidden = 0;
                     bool? lastBeatmapVisible = null;
 
-                    foreach (var beatmap in rulesetGrouping.OrderBy(beatmap => beatmap.StarRating))
+                    foreach (var entry in rulesetGrouping.OrderBy(entry => entry.Difficulty.Value.Stars))
                     {
+                        BeatmapInfo beatmap = entry.Beatmap;
                         bool visible = VisibleBeatmaps.Value?.Contains(beatmap) != false;
 
                         if ((visible && showVisible) || (!visible && showHidden))
@@ -165,7 +209,7 @@ namespace osu.Game.Screens.Select
                                 Alpha = visible ? 1 : 0.5f,
                                 Anchor = Anchor.CentreLeft,
                                 Origin = Anchor.CentreLeft,
-                                Colour = colours.ForStarDifficulty(beatmap.StarRating),
+                                Colour = colours.ForStarDifficulty(entry.Difficulty.Value.Stars),
                                 Margin = new MarginPadding { Left = lastBeatmapVisible != null && lastBeatmapVisible != visible ? 1 : 0 }
                             };
                             flow.Add(circle);
@@ -204,9 +248,14 @@ namespace osu.Game.Screens.Select
                         });
                     }
                 }
+            }
 
-                Action = () => songSelect?.ScopeToBeatmapSet(BeatmapSet.Value);
-                updateEnabled();
+            protected override void Dispose(bool isDisposing)
+            {
+                difficultyUpdateVersion++;
+                difficultyCancellationSource?.Cancel();
+                difficultyCancellationSource?.Dispose();
+                base.Dispose(isDisposing);
             }
 
             private void updateEnabled()

@@ -13,11 +13,13 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
+using osu.Framework.Input.Events;
 using osu.Framework.Localisation;
 using osu.Game.Database;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Online.Matchmaking;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
 using osu.Game.Overlays;
 using osu.Game.Users;
@@ -27,8 +29,10 @@ using osuTK.Graphics;
 
 namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 {
-    public partial class RankedPlayMatchPanel : CompositeDrawable
+    public partial class RankedPlayMatchPanel : CompositeDrawable, IHasTooltip
     {
+        public LocalisableString TooltipText => "View match details";
+
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
 
@@ -38,7 +42,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         [Resolved]
         private UserLookupCache userLookupCache { get; set; } = null!;
 
+        [Resolved]
+        private OsuGame? game { get; set; }
+
+        private readonly long roomId;
         private readonly RankedPlayRoomState state;
+        private readonly bool hasFinalState;
 
         private Drawable leftResultLight = null!;
         private Drawable rightResultLight = null!;
@@ -50,9 +59,11 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         private bool leftWinner;
         private bool rightWinner;
 
-        public RankedPlayMatchPanel(RankedPlayRoomState state)
+        public RankedPlayMatchPanel(RankedPlayRecentMatch match)
         {
-            this.state = state;
+            roomId = match.RoomId;
+            state = match.State;
+            hasFinalState = match.HasFinalState;
 
             Width = 280;
             AutoSizeAxes = Axes.Y;
@@ -270,7 +281,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                         Origin = Anchor.CentreRight,
                                                         X = -15,
                                                         Colour = colourProvider.Foreground1,
-                                                        Text = users[0].Info.Life.ToString("N0"),
+                                                        Text = hasFinalState ? users[0].Info.Life.ToString("N0") : "—",
                                                         UseFullGlyphHeight = false,
                                                     },
                                                     rightLifeText = new OsuSpriteText
@@ -279,7 +290,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                         Origin = Anchor.CentreLeft,
                                                         X = 15,
                                                         Colour = colourProvider.Foreground1,
-                                                        Text = users[1].Info.Life.ToString("N0"),
+                                                        Text = hasFinalState ? users[1].Info.Life.ToString("N0") : "—",
                                                         UseFullGlyphHeight = false,
                                                     }
                                                 },
@@ -305,7 +316,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                         Origin = Anchor.CentreRight,
                                                         X = -15,
                                                         Colour = colourProvider.Foreground1,
-                                                        Text = users[0].Info.RoundsWon.ToString(),
+                                                        Text = hasFinalState ? users[0].Info.RoundsWon.ToString() : "—",
                                                         UseFullGlyphHeight = false,
                                                     },
                                                     new OsuSpriteText
@@ -314,7 +325,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                         Origin = Anchor.CentreLeft,
                                                         X = 15,
                                                         Colour = colourProvider.Foreground1,
-                                                        Text = users[1].Info.RoundsWon.ToString(),
+                                                        Text = hasFinalState ? users[1].Info.RoundsWon.ToString() : "—",
                                                         UseFullGlyphHeight = false,
                                                     }
                                                 },
@@ -358,11 +369,11 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                 }
             };
 
-            bool leftWin = users[0].Info.Life > users[1].Info.Life;
-            bool rightWin = users[1].Info.Life > users[0].Info.Life;
+            bool leftWin = state.WinningUserId == users[0].UserId;
+            bool rightWin = state.WinningUserId == users[1].UserId;
             leftWinner = leftWin;
             rightWinner = rightWin;
-            bool isDraw = users[0].Info.Life == users[1].Info.Life;
+            bool isDraw = !leftWin && !rightWin;
 
             if (isDraw)
             {
@@ -397,6 +408,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         }
 
         private Colour4 getContentColour(float opacity) => (OverlayColourProvider.IsLightTheme ? (Colour4)colourProvider.Content1 : Colour4.White).Opacity(opacity);
+
+        protected override bool OnClick(ClickEvent e)
+        {
+            game?.OpenUrlExternally($@"/ranked/matches/{roomId}");
+            return true;
+        }
 
         protected override void LoadComplete()
         {

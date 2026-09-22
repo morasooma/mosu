@@ -55,6 +55,60 @@ namespace osu.Game.Rulesets.Dodge.Tests
         }
 
         [Test]
+        public void TestAllSpeedChangingModsAreUnranked()
+        {
+            var ruleset = new DodgeRuleset();
+            var beatmapInfo = new BeatmapInfo { Ruleset = ruleset.RulesetInfo };
+            Mod[] speedChangingMods = System.Enum.GetValues<ModType>()
+                                                   .SelectMany(type => flatten(ruleset.GetModsFor(type)))
+                                                   .Where(mod => mod is IApplicableToRate)
+                                                   .ToArray();
+
+            Assert.That(speedChangingMods.Select(mod => mod.Acronym), Is.EquivalentTo(new[]
+            {
+                "HT", "DC", "DT", "NC", "SB", "TS", "WU", "WD", "AS",
+            }));
+            Assert.Multiple(() =>
+            {
+                foreach (Mod mod in speedChangingMods)
+                {
+                    Assert.That(mod.Ranked, Is.False, mod.Acronym);
+                    Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo, new[] { mod }), Is.False, mod.Acronym);
+                }
+            });
+        }
+
+        [TestCase(BeatmapOnlineStatus.Pending, false)]
+        [TestCase(BeatmapOnlineStatus.Qualified, false)]
+        [TestCase(BeatmapOnlineStatus.Loved, false)]
+        [TestCase(BeatmapOnlineStatus.Ranked, true)]
+        [TestCase(BeatmapOnlineStatus.Approved, true)]
+        public void TestBeatmapPerformanceEligibilityRequiresRankedDodgeStatus(BeatmapOnlineStatus status, bool expected)
+        {
+            var ruleset = new DodgeRuleset();
+            var beatmapInfo = new BeatmapInfo
+            {
+                Ruleset = ruleset.RulesetInfo,
+                Status = status,
+            };
+
+            Assert.That(ModPerformancePointHelper.BeatmapAwardsPerformancePoints(ruleset.RulesetInfo, beatmapInfo), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void TestAutoplayCannotFail()
+        {
+            var autoplay = new DodgeModAutoplay();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(autoplay, Is.AssignableTo<IApplicableFailOverride>());
+                Assert.That(autoplay.PerformFail(), Is.False);
+                Assert.That(autoplay.RestartOnFail, Is.False);
+            });
+        }
+
+        [Test]
         public void TestAudioEffectsSerialisesForScoreSubmission()
         {
             var mod = new DodgeModAudioEffects

@@ -1,7 +1,7 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
+#nullable disable warnings
 
 using System;
 using System.Linq;
@@ -109,6 +109,19 @@ namespace osu.Game.Graphics.UserInterface
         protected override void UpdateAfterChildren()
         {
             base.UpdateAfterChildren();
+
+            // The overflow dropdown's menu defaults to the compact "..." header width when presented
+            // in the global dropdown layer, which truncates item labels. Feed it the widest tab's width
+            // so overflowing tabs retain readable dropdown items without clipped text.
+            if (Dropdown is OsuTabDropdown<T> tabDropdown)
+            {
+                float widestTab = 0;
+
+                foreach (var tab in TabContainer)
+                    widestTab = Math.Max(widestTab, tab.DrawWidth);
+
+                tabDropdown.MinimumMenuWidth = widestTab + HORIZONTAL_SPACING * 2 + 20;
+            }
 
             // dont bother calculating if the strip is invisible
             if (strip.Colour.MaxAlpha > 0)

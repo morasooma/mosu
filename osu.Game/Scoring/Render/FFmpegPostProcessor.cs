@@ -9,6 +9,15 @@ namespace osu.Game.Scoring.Render
 {
     internal static class FFmpegPostProcessor
     {
+        /// <summary>
+        /// Each source is pre-scaled by this factor and summed by amix with normalize=0.
+        /// This keeps a constant per-source level for the whole video. amix's default
+        /// normalization renormalizes the remaining input (doubling it) once the hitsound
+        /// stream ends mid-video (last trigger + tail), making the music gradually louder
+        /// toward the end of the video.
+        /// </summary>
+        private const double amix_input_scale = 0.5;
+
         public static void MixHitsoundsIntoVideo(string inputVideoPath, string hitsoundPath, string outputPath, bool videoAlreadyHasAudio, double hitsoundGain = 1,
                                                  double trimLeadingMs = 0, double placeAtMs = 0, double? playDurationMs = null,
                                                  double musicVolume = 0.85)
@@ -24,11 +33,12 @@ namespace osu.Game.Scoring.Render
             // Music volume is scaled by the player's client music volume setting (VolumeTrack).
             // Hitsound gain incorporates the player's effect volume setting (VolumeSample).
             string musicFilterArg = Math.Abs(musicVolume - 1) > 0.001 ? $"volume={formatInvariant(musicVolume)}" : "anull";
-            // amix default normalization divides each input by the number of inputs (1/2 each),
-            // giving ~50% volume per source — matching what the player heard in-game.
-            // normalize=0 was causing clipping (full+full) which the alimiter had to squash → distortion.
+            // Both inputs are explicitly halved above/in the hitsound chain (matching the previous
+            // amix behaviour while both sources are active), then summed without renormalisation.
+            // A naive normalize=0 without the pre-scaling used to clip (full + full); with it, the
+            // headroom is identical to the old normalized mix.
             string filterAndMapArgs = videoAlreadyHasAudio
-                ? $"-filter_complex \"{gainFilter};[0:a:0]{musicFilterArg}[m];[m][hs]amix=inputs=2:duration=first[a]\" -map 0:v:0 -map \"[a]\""
+                ? $"-filter_complex \"{gainFilter};[0:a:0]{musicFilterArg},volume={formatInvariant(amix_input_scale)}[m];[m][hs]amix=inputs=2:duration=first:normalize=0[a]\" -map 0:v:0 -map \"[a]\""
                 : $"-filter_complex \"{gainFilter};[hs]anull[a]\" -map 0:v:0 -map \"[a]\"";
 
             string arguments = $"-i \"{inputVideoPath}\" -i \"{hitsoundPath}\" {filterAndMapArgs} -c:v copy -c:a aac -b:a 192k -movflags +faststart -y \"{tempOutputPath}\"";
@@ -72,6 +82,67 @@ namespace osu.Game.Scoring.Render
             File.Move(tempOutputPath, outputPath);
         }
 
+        /// <summary>
+        /// Re-containers the intermediate render (Matroska with PCM audio) into a real MP4 with AAC audio.
+        /// A bare file rename would leave a mislabelled MKV that most players refuse to play audio from.
+        /// </summary>
+        /// <param name="inputVideoPath">Path to intermediate input video file.</param>
+        /// <param name="outputPath">Destination path for the remuxed MP4.</param>
+        /// <param name="hasAudio">Whether the intermediate is expected to contain an audio stream.</param>
+        /// <param name="musicVolume">Constant gain applied to the audio during the remux.</param>
+        public static void RemuxToMp4(string inputVideoPath, string outputPath, bool hasAudio, double musicVolume = 1)
+        {
+            if (!File.Exists(inputVideoPath))
+                throw new FileNotFoundException("Rendered video for remuxing was not found.", inputVideoPath);
+
+            string tempOutputPath = $"{outputPath}.remux.mp4";
+            string audioArgs = hasAudio
+                ? $"-map 0:a:0 -c:a aac -b:a 192k{(Math.Abs(musicVolume - 1) > 0.001 ? $" -af \"volume={formatInvariant(musicVolume)}\"" : string.Empty)}"
+                : "-an";
+            string arguments = $"-i \"{inputVideoPath}\" -map 0:v:0 {audioArgs} -c:v copy -movflags +faststart -y \"{tempOutputPath}\"";
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = FFmpegEncoder.ExecutablePath,
+                Arguments = arguments,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+
+            Framework.Logging.Logger.Log($"[FFmpeg] Remuxing intermediate into final MP4: {inputVideoPath} -> {outputPath} (hasAudio={hasAudio}, musicVolume={formatInvariant(musicVolume)})",
+                Framework.Logging.LoggingTarget.Runtime,
+                Framework.Logging.LogLevel.Verbose);
+
+            string? lastErrorLine = null;
+
+            using var process = Process.Start(startInfo)
+                                ?? throw new InvalidOperationException("Failed to start FFmpeg remux step.");
+
+            process.ErrorDataReceived += (_, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                    lastErrorLine = e.Data;
+            };
+            process.BeginErrorReadLine();
+            if (!process.WaitForExit(120000))
+            {
+                process.Kill(true);
+                throw new InvalidOperationException("FFmpeg remux timed out after 120 seconds.");
+            }
+
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException(lastErrorLine ?? $"FFmpeg remux exited with code {process.ExitCode}.");
+
+            if (File.Exists(outputPath))
+                File.Delete(outputPath);
+
+            File.Move(tempOutputPath, outputPath);
+
+            if (File.Exists(inputVideoPath) && inputVideoPath != outputPath)
+                File.Delete(inputVideoPath);
+        }
+
         private static string buildHitsoundFilter(double hitsoundGain, double trimLeadingMs, double placeAtMs, double? playDurationMs)
         {
             string current = "[1:a:0]";
@@ -89,11 +160,9 @@ namespace osu.Game.Scoring.Render
                 current = "[hs1]";
             }
 
-            if (Math.Abs(hitsoundGain - 1) > 0.0001)
-            {
-                filter.Append($"{current}volume={formatInvariant(hitsoundGain)}[hs2];");
-                current = "[hs2]";
-            }
+            // Always apply the mix scale so amix (normalize=0) receives a constant-level input.
+            filter.Append($"{current}volume={formatInvariant(amix_input_scale * hitsoundGain)}[hs2];");
+            current = "[hs2]";
 
             if (placeAtMs > 0.5)
             {

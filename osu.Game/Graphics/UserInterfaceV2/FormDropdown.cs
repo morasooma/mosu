@@ -111,7 +111,10 @@ namespace osu.Game.Graphics.UserInterfaceV2
                     captionText = value;
 
                     if (caption.IsNotNull())
+                    {
                         caption.Caption = value;
+                        updateState();
+                    }
                 }
             }
 
@@ -235,6 +238,8 @@ namespace osu.Game.Graphics.UserInterfaceV2
             private void updateState()
             {
                 caption.Colour = Dropdown.Current.Disabled ? colourProvider.Background1 : colourProvider.Content2;
+                caption.Alpha = Caption == default ? 0 : 1;
+
                 label.Colour = Dropdown.Current.Disabled ? colourProvider.Background1 : colourProvider.Content1;
                 chevron.Colour = Dropdown.Current.Disabled ? colourProvider.Background1 : colourProvider.Content1;
                 DisabledColour = Colour4.White;
@@ -288,6 +293,8 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
         private partial class FormDropdownMenu : OsuDropdownMenu
         {
+            private IBindable<Colour4>? borderColour;
+
             [BackgroundDependencyLoader]
             private void load(OverlayColourProvider colourProvider)
             {
@@ -295,7 +302,8 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
                 MaskingContainer.BorderThickness = FormControlBackground.BORDER_THICKNESS;
                 MaskingContainer.CornerExponent = FormControlBackground.CORNER_EXPONENT;
-                MaskingContainer.BorderColour = colourProvider.Highlight1;
+                borderColour = colourProvider.GetColourBindable(OverlayColour.Highlight1);
+                borderColour.BindValueChanged(c => MaskingContainer.BorderColour = c.NewValue, true);
             }
 
             protected override void AnimateOpen()

@@ -30,6 +30,7 @@ namespace osu.Game.Rulesets.Osu.UI
         private Container infoContainer = null!;
         private Container flowPathContainer = null!;
         private CircularContainer currentTargetMarker = null!;
+        private CircularContainer assistRadiusMarker = null!;
         private CircularContainer currentAssistPointMarker = null!;
         private CircularContainer nextTargetMarker = null!;
         private CircularContainer flowAnchorMarker = null!;
@@ -82,6 +83,7 @@ namespace osu.Game.Rulesets.Osu.UI
                     RelativeSizeAxes = Axes.Both,
                 },
                 nextTargetMarker = createMarker(Color4.Gold, 2, 0f),
+                assistRadiusMarker = createMarker(Color4.Orange, 2, 0f),
                 currentTargetMarker = createMarker(Color4.LimeGreen, 2, 0f), // thin ring to clearly show the target radius boundary
                 currentAssistPointMarker = createPointMarker(),
                 flowAnchorMarker = createAnchorMarker(),
@@ -144,12 +146,14 @@ namespace osu.Game.Rulesets.Osu.UI
             if (!showTargetAndRadius)
             {
                 currentTargetMarker.Hide();
+                assistRadiusMarker.Hide();
                 currentAssistPointMarker.Hide();
                 nextTargetMarker.Hide();
             }
             else
             {
                 updateMarker(currentTargetMarker, aimAssistController.CurrentTargetPosition, aimAssistController.CurrentTargetRadius, current_marker_padding);
+                updateMarker(assistRadiusMarker, aimAssistController.CurrentTargetPosition, aimAssistController.CurrentAssistRadius, 0);
                 updatePointMarker(currentAssistPointMarker, aimAssistController.CurrentAssistPointPosition);
                 updateMarker(nextTargetMarker, aimAssistController.CurrentNextTargetPosition, aimAssistController.CurrentNextTargetRadius, next_marker_padding);
             }
@@ -209,12 +213,15 @@ namespace osu.Game.Rulesets.Osu.UI
                 lines = new[]
                 {
                     $"mode: {aimAssistController.CurrentModeName}",
-                    $"markers: red=real(raw)  cyan=assist  green=target radius",
+                    $"state: {aimAssistController.CurrentAssistStateName}",
+                    $"AA: target-gravity / authority: {aimAssistController.CurrentAssistAuthority:P0}",
+                    $"markers: red=raw  cyan=assist  green=hitbox  orange=assist field",
                     $"real→assist offset: {(aimAssistController.CurrentOutputPosition - aimAssistController.RawCursorPosition).Length:0.0}px",
                     $"offset: {aimAssistController.CurrentOffsetMagnitude:0.0}px",
                     $"focus delta: {(aimAssistController.CurrentFocusTime.HasValue ? aimAssistController.CurrentFocusTime.Value - Time.Current : double.NaN):0.0}ms",
                     $"radius: {aimAssistController.CurrentTargetRadius:0.0}px (green circle size)",
                     $"base radius: {aimAssistController.CurrentBaseTargetRadius:0.0}px",
+                    $"assist radius: {aimAssistController.CurrentAssistRadius:0.0}px",
                     $"adaptive scale: x{aimAssistController.CurrentAdaptiveRadiusScale:0.00}",
                     $"intent: {aimAssistController.CurrentIntentScore:0.00}",
                     $"filters: {(aimAssistController.PassedActivationFilters ? "on" : "off")}",
@@ -227,6 +234,7 @@ namespace osu.Game.Rulesets.Osu.UI
                 lines = new[]
                 {
                     $"mode: {aimAssistController.CurrentFlowDebugModeName}",
+                    $"AA: target-gravity / authority: {aimAssistController.CurrentAssistAuthority:P0}",
                     $"real→assist offset: {(aimAssistController.CurrentOutputPosition - aimAssistController.RawCursorPosition).Length:0.0}px"
                 };
             }

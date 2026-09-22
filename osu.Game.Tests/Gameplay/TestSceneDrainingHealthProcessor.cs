@@ -176,6 +176,27 @@ namespace osu.Game.Tests.Gameplay
             AddAssert("failed", () => processor.HasFailed);
         }
 
+        [Test]
+        public void TestHealthCanRecoverAfterFailureWhenEnabled()
+        {
+            var beatmap = createBeatmap(0, 1000);
+            createProcessor(beatmap);
+
+            setHealth(0);
+            AddStep("trigger failure", () => processor.TriggerFailure());
+            AddAssert("failed", () => processor.HasFailed);
+
+            AddStep("apply hit while recovery disabled", () => processor.ApplyResult(
+                new JudgementResult(beatmap.HitObjects[0], new Judgement()) { Type = HitResult.Perfect }));
+            assertHealthEqualTo(0);
+
+            AddStep("enable post-fail recovery", () => processor.ApplyNewJudgementsWhenFailed = true);
+            AddStep("apply hit while recovery enabled", () => processor.ApplyResult(
+                new JudgementResult(beatmap.HitObjects[1], new Judgement()) { Type = HitResult.Perfect }));
+            AddAssert("health recovered", () => processor.Health.Value > 0);
+            AddAssert("failed state preserved", () => processor.HasFailed);
+        }
+
         [TestCase(HitResult.Miss)]
         [TestCase(HitResult.Meh)]
         public void TestMultipleFailConditions(HitResult resultApplied)

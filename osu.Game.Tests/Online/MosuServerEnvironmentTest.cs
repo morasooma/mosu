@@ -7,22 +7,33 @@ using osu.Game.Online;
 namespace osu.Game.Tests.Online
 {
     [TestFixture]
+    [NonParallelizable]
     public class MosuServerEnvironmentTest
     {
         [Test]
-        public void TestPublicServerUrl() =>
-            Assert.That(MosuServerEnvironment.PublicServerUrl, Is.EqualTo("https://morasooma.net"));
+        public void TestBreakSkippingIsLazerOnly()
+        {
+            bool previousThirdParty = MosuServerEnvironment.IsThirdPartyServer;
+            bool previousStable = MosuServerEnvironment.UsesStableProtocol;
 
-        [Test]
-        public void TestPrimaryServerUrl() =>
-            Assert.That(MosuServerEnvironment.GetServerUrl(false), Is.EqualTo(MosuServerEnvironment.ServerUrl));
+            try
+            {
+                MosuServerEnvironment.IsThirdPartyServer = false;
+                MosuServerEnvironment.UsesStableProtocol = false;
+                Assert.That(MosuServerEnvironment.SupportsBreakSkipping, Is.True);
 
-        [Test]
-        public void TestProxyServerUrl() =>
-            Assert.That(MosuServerEnvironment.GetServerUrl(true), Is.EqualTo(MosuServerEnvironment.ProxyServerUrl));
+                MosuServerEnvironment.IsThirdPartyServer = true;
+                Assert.That(MosuServerEnvironment.SupportsBreakSkipping, Is.True);
 
-        [Test]
-        public void TestUpdateFeedUsesConfiguredServer() =>
-            Assert.That(MosuServerEnvironment.UpdateUrl, Is.EqualTo(MosuServerEnvironment.ServerUrl + MosuServerEnvironment.UpdateFeedPath));
+                MosuServerEnvironment.IsThirdPartyServer = false;
+                MosuServerEnvironment.UsesStableProtocol = true;
+                Assert.That(MosuServerEnvironment.SupportsBreakSkipping, Is.False);
+            }
+            finally
+            {
+                MosuServerEnvironment.IsThirdPartyServer = previousThirdParty;
+                MosuServerEnvironment.UsesStableProtocol = previousStable;
+            }
+        }
     }
 }

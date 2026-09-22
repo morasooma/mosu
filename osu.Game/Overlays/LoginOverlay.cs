@@ -18,7 +18,7 @@ namespace osu.Game.Overlays
     public partial class LoginOverlay : OsuFocusedOverlayContainer
     {
         private LoginPanel panel = null!;
-        private Box background = null!;
+        private BackdropBlurSurface background = null!;
         private IBindable<Colour4> themeColour = null!;
 
         private const float transition_time = 400;
@@ -52,7 +52,7 @@ namespace osu.Game.Overlays
                     AutoSizeAxes = Axes.Y,
                     Children = new Drawable[]
                     {
-                        background = new Box
+                        background = new BackdropBlurSurface
                         {
                             RelativeSizeAxes = Axes.Both,
                         },
@@ -74,7 +74,7 @@ namespace osu.Game.Overlays
             };
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
-            themeColour.BindValueChanged(colour => background.Colour = colour.NewValue, true);
+            themeColour.BindValueChanged(colour => background.SurfaceColour = colour.NewValue, true);
         }
 
         protected override void PopIn()

@@ -58,6 +58,18 @@ namespace osu.Game.Tests.Visual.Gameplay
         }
 
         [Test]
+        public void TestUpperCaseServerEventName()
+        {
+            awardMedal(new UserAchievementUnlock
+            {
+                Title = "500 Combo",
+                Description = "500 big ones! You're moving up in the world!",
+                Slug = @"osu-combo-500"
+            }, @"USER_ACHIEVEMENT_UNLOCK");
+            AddUntilStep("overlay shown", () => overlay.State.Value, () => Is.EqualTo(Visibility.Visible));
+        }
+
+        [Test]
         public void TestMultipleMedalsInQuickSuccession()
         {
             awardMedal(new UserAchievementUnlock
@@ -96,12 +108,12 @@ namespace osu.Game.Tests.Visual.Gameplay
             AddUntilStep("overlay shown", () => overlay.State.Value, () => Is.EqualTo(Visibility.Visible));
         }
 
-        private void awardMedal(UserAchievementUnlock unlock) => AddStep("award medal", () => dummyAPI.NotificationsClient.Receive(new SocketMessage
+        private void awardMedal(UserAchievementUnlock unlock, string eventName = @"user_achievement_unlock") => AddStep("award medal", () => dummyAPI.NotificationsClient.Receive(new SocketMessage
         {
             Event = @"new",
             Data = JObject.FromObject(new NewPrivateNotificationEvent
             {
-                Name = @"user_achievement_unlock",
+                Name = eventName,
                 Details = JObject.FromObject(unlock)
             })
         }));

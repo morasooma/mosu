@@ -21,9 +21,12 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
         private readonly bool hasHiddenMod;
 
-        public Reading(Mod[] mods)
+        public bool UseMosuRelaxProfile { get; }
+
+        public Reading(Mod[] mods, bool useMosuRelaxProfile = false)
             : base(mods)
         {
+            UseMosuRelaxProfile = useMosuRelaxProfile;
             hasHiddenMod = mods.OfType<OsuModHidden>().Any(m => !m.OnlyFadeApproachCircles.Value);
         }
 
@@ -47,7 +50,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
         private double calculateAdjustedDifficulty(DifficultyHitObject current)
         {
-            double difficulty = ReadingEvaluator.EvaluateDifficultyOf(current, hasHiddenMod);
+            double difficulty = ReadingEvaluator.EvaluateDifficultyOf(current, hasHiddenMod, UseMosuRelaxProfile);
+
+            if (UseMosuRelaxProfile)
+                return difficulty;
 
             if (Mods.Any(m => m is OsuModTouchDevice))
                 difficulty = DiffUtils.Pow(difficulty, 0.89);
@@ -89,6 +95,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             if (objectList.Count == 0)
                 return 0;
+
+            // The pinned Mosu implementation applies its progressive memorisation
+            // transformation over the full map rather than only the first minute.
+            if (UseMosuRelaxProfile)
+                return objectList.Count;
 
             double reducedDuration = objectList.First().StartTime + reduced_difficulty_duration;
 

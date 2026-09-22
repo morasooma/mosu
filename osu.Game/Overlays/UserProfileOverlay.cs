@@ -158,12 +158,17 @@ namespace osu.Game.Overlays
             Debug.Assert(user != null);
 
             bool sameUser = user.OnlineID == Header.User.Value?.User.Id;
-            if (sameUser && ruleset?.MatchesOnlineID(Header.User.Value?.Ruleset) == true
-                         && string.Equals(variant, Header.User.Value?.Variant, StringComparison.OrdinalIgnoreCase))
+            // Keep Morasooma's existing profile reuse behaviour intact. On third-party
+            // servers always refetch when a profile is opened: their user/statistics
+            // caches are commonly refreshed after score submission, and reusing the
+            // already rendered profile otherwise leaves the previous values on screen.
+            if (ShouldReuseDisplayedProfile(Online.MosuServerEnvironment.IsThirdPartyServer,
+                    sameUser,
+                    ruleset?.MatchesOnlineID(Header.User.Value?.Ruleset) == true,
+                    string.Equals(variant, Header.User.Value?.Variant, StringComparison.OrdinalIgnoreCase)))
                 return;
 
-            if (sectionsContainer != null)
-                sectionsContainer.ExpandableHeader = null;
+            sectionsContainer?.ExpandableHeader = null;
 
             userReq?.Cancel();
             lastSection = null;
@@ -204,6 +209,9 @@ namespace osu.Game.Overlays
                 loadingLayer.Show();
             }
         }
+
+        internal static bool ShouldReuseDisplayedProfile(bool isThirdPartyServer, bool sameUser, bool sameRuleset, bool sameVariant)
+            => !isThirdPartyServer && sameUser && sameRuleset && sameVariant;
 
         private void userLoadComplete(APIUser loadedUser, IRulesetInfo? userRuleset, string? userVariant)
         {

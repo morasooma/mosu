@@ -15,7 +15,7 @@ namespace osu.Game.Rulesets.Dodge.Objects
     /// A beam danger zone defined by a line segment (Position → EndPosition)
     /// representing the beam centerline length and an adjustable thickness (BeamWidth).
     /// </summary>
-    public class DodgeBeam : DodgeHitObject, IHasPosition, IHasDuration
+    public class DodgeBeam : DodgeHitObject, IHasPosition, IHasDuration, IContributesToGameplayDuration
     {
         public const float DEFAULT_WIDTH = 40;
         public const float MIN_WIDTH = 8;
@@ -171,9 +171,37 @@ namespace osu.Game.Rulesets.Dodge.Objects
             Vector2 previousPlayerPosition,
             Vector2 currentPlayerPosition,
             float playerSize)
+            => IntersectsPlayerSwept(
+                beamCenter,
+                beamCenter,
+                beamDirection,
+                perpDirection,
+                beamLength,
+                beamWidth,
+                previousPlayerPosition,
+                currentPlayerPosition,
+                playerSize);
+
+        public static bool IntersectsPlayerSwept(
+            Vector2 previousBeamCenter,
+            Vector2 currentBeamCenter,
+            Vector2 beamDirection,
+            Vector2 perpDirection,
+            float beamLength,
+            float beamWidth,
+            Vector2 previousPlayerPosition,
+            Vector2 currentPlayerPosition,
+            float playerSize)
         {
-            return IntersectsPlayer(beamCenter, beamDirection, perpDirection, beamLength, beamWidth, currentPlayerPosition, playerSize)
-                   || IntersectsPlayer(beamCenter, beamDirection, perpDirection, beamLength, beamWidth, previousPlayerPosition, playerSize);
+            Vector2 relStart = previousPlayerPosition - previousBeamCenter;
+            Vector2 relEnd = currentPlayerPosition - currentBeamCenter;
+            Vector2 localStart = new Vector2(Vector2.Dot(relStart, beamDirection), Vector2.Dot(relStart, perpDirection));
+            Vector2 localEnd = new Vector2(Vector2.Dot(relEnd, beamDirection), Vector2.Dot(relEnd, perpDirection));
+
+            float halfLength = beamLength / 2 + playerSize / 2;
+            float halfWidth = beamWidth / 2 + playerSize / 2;
+
+            return relativeSegmentIntersectsBox(localStart, localEnd, halfLength, halfWidth);
         }
 
         public static bool IsWithinGrazeDistanceSwept(
@@ -186,9 +214,66 @@ namespace osu.Game.Rulesets.Dodge.Objects
             Vector2 currentPlayerPosition,
             float playerSize,
             float grazeDistance)
+            => IsWithinGrazeDistanceSwept(
+                beamCenter,
+                beamCenter,
+                beamDirection,
+                perpDirection,
+                beamLength,
+                beamWidth,
+                previousPlayerPosition,
+                currentPlayerPosition,
+                playerSize,
+                grazeDistance);
+
+        public static bool IsWithinGrazeDistanceSwept(
+            Vector2 previousBeamCenter,
+            Vector2 currentBeamCenter,
+            Vector2 beamDirection,
+            Vector2 perpDirection,
+            float beamLength,
+            float beamWidth,
+            Vector2 previousPlayerPosition,
+            Vector2 currentPlayerPosition,
+            float playerSize,
+            float grazeDistance)
         {
-            return IsWithinGrazeDistance(beamCenter, beamDirection, perpDirection, beamLength, beamWidth, currentPlayerPosition, playerSize, grazeDistance)
-                   || IsWithinGrazeDistance(beamCenter, beamDirection, perpDirection, beamLength, beamWidth, previousPlayerPosition, playerSize, grazeDistance);
+            Vector2 relStart = previousPlayerPosition - previousBeamCenter;
+            Vector2 relEnd = currentPlayerPosition - currentBeamCenter;
+            Vector2 localStart = new Vector2(Vector2.Dot(relStart, beamDirection), Vector2.Dot(relStart, perpDirection));
+            Vector2 localEnd = new Vector2(Vector2.Dot(relEnd, beamDirection), Vector2.Dot(relEnd, perpDirection));
+
+            float extra = Math.Max(0, grazeDistance);
+            float halfLength = beamLength / 2 + playerSize / 2 + extra;
+            float halfWidth = beamWidth / 2 + playerSize / 2 + extra;
+
+            return relativeSegmentIntersectsBox(localStart, localEnd, halfLength, halfWidth);
+        }
+
+        private static bool relativeSegmentIntersectsBox(Vector2 start, Vector2 end, float halfExtentX, float halfExtentY)
+        {
+            Vector2 delta = end - start;
+            float entry = 0;
+            float exit = 1;
+
+            return clipAxis(start.X, delta.X, halfExtentX, ref entry, ref exit)
+                   && clipAxis(start.Y, delta.Y, halfExtentY, ref entry, ref exit);
+        }
+
+        private static bool clipAxis(float start, float delta, float halfExtent, ref float entry, ref float exit)
+        {
+            if (Math.Abs(delta) < float.Epsilon)
+                return Math.Abs(start) <= halfExtent;
+
+            float first = (-halfExtent - start) / delta;
+            float second = (halfExtent - start) / delta;
+
+            if (first > second)
+                (first, second) = (second, first);
+
+            entry = Math.Max(entry, first);
+            exit = Math.Min(exit, second);
+            return entry <= exit;
         }
     }
 }

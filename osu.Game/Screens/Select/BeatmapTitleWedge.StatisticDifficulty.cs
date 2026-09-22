@@ -4,6 +4,7 @@
 using System;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
+using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
@@ -42,6 +43,10 @@ namespace osu.Game.Screens.Select
 
             public float LabelWidth => labelText.DrawWidth;
 
+            internal Color4 TrackBarColour => trackBar.Colour;
+            internal ColourInfo AdjustedBarColour => adjustedBar.Colour;
+
+            private readonly Circle trackBar;
             private readonly Circle bar;
             private readonly Circle adjustedBar;
             private readonly OsuSpriteText labelText;
@@ -78,7 +83,7 @@ namespace osu.Game.Screens.Select
                             AutoSizeAxes = Axes.Y,
                             Children = new[]
                             {
-                                new Circle
+                                trackBar = new Circle
                                 {
                                     RelativeSizeAxes = Axes.X,
                                     Height = 2f,
@@ -156,7 +161,14 @@ namespace osu.Game.Screens.Select
 
                 if (value.Value == value.AdjustedValue)
                     valueText.Colour = colourProvider.Content1;
+
+                trackBar.Colour = getTrackBaseColour();
+
+                if (IsLoaded)
+                    updateDisplay();
             }
+
+            private Color4 getTrackBaseColour() => OverlayColourProvider.IsLightTheme ? Color4.Black.Opacity(0.25f) : colourProvider.Background2;
 
             protected override void LoadComplete()
             {
@@ -188,7 +200,7 @@ namespace osu.Game.Screens.Select
                     {
                         bars.ChangeChildDepth(adjustedBar, 1);
                         bar.FadeIn(300, Easing.OutQuint);
-                        adjustedBar.FadeColour(ColourInfo.GradientHorizontal(Color4.Black, colours.Red1), 300, Easing.OutQuint);
+                        adjustedBar.FadeColour(ColourInfo.GradientHorizontal(getTrackBaseColour(), colours.Red1), 300, Easing.OutQuint);
 
                         valueText.FadeColour(colours.Red1, 300, Easing.OutQuint);
                         valueIcon.Show();

@@ -83,6 +83,12 @@ namespace osu.Game.Rulesets.Objects.Drawables
         /// </summary>
         public bool HandleUserInput { get; set; } = true;
 
+        /// <summary>
+        /// Prevents passive time-based judgement while still allowing an explicitly supplied result.
+        /// Used by network game modes which receive the result from another client.
+        /// </summary>
+        public bool SuppressAutomaticJudgement { get; set; }
+
         public override bool PropagatePositionalInputSubTree => HandleUserInput;
 
         public override bool PropagateNonPositionalInputSubTree => HandleUserInput;
@@ -165,6 +171,10 @@ namespace osu.Game.Rulesets.Objects.Drawables
 
         [Resolved(CanBeNull = true)]
         private IPooledHitObjectProvider pooledObjectProvider { get; set; }
+
+        [Resolved(CanBeNull = true)]
+        [CanBeNull]
+        private GameplayState gameplayState { get; set; }
 
         /// <summary>
         /// Whether the initialization logic in <see cref="Playfield" /> has applied.
@@ -392,6 +402,9 @@ namespace osu.Game.Rulesets.Objects.Drawables
         /// </summary>
         protected virtual void OnFree()
         {
+            SuppressAutomaticJudgement = false;
+            HandleUserInput = true;
+
         }
 
         /// <summary>
@@ -628,6 +641,7 @@ namespace osu.Game.Rulesets.Objects.Drawables
                 renderGameplayHitsoundRenderer?.PlaySamples(Samples.Samples, balance, MINIMUM_SAMPLE_VOLUME);
                 Samples.Balance.Value = balance;
                 Samples.Play();
+                gameplayState?.ApplySamples(Samples.Samples);
             }
         }
 
@@ -712,7 +726,16 @@ namespace osu.Game.Rulesets.Objects.Drawables
             // this could occur in a non-frame-stable context where DrawableHitObjects get killed before a SkinnableSound has the chance to be stopped.
             StopAllSamples();
 
-            UpdateResult(false);
+            // A network-owned object may leave the drawable lifetime before its remote
+            // judgement arrives. It must still produce a result or the score processor can
+            // never complete. Nested objects are handled above, preserving slider ordering.
+            if (SuppressAutomaticJudgement && !Judged)
+            {
+                Result.IgnoreForHitErrorMeter = true;
+                ApplyMaxResult();
+            }
+            else
+                UpdateResult(false);
         }
 
         protected void ApplyMaxResult() => ApplyResult((r, _) => r.Type = r.Judgement.MaxResult);
@@ -775,6 +798,9 @@ namespace osu.Game.Rulesets.Objects.Drawables
                 return false;
 
             if (Judged)
+                return false;
+
+            if (SuppressAutomaticJudgement && !userTriggered)
                 return false;
 
             CheckForResult(userTriggered, Time.Current - HitObject.GetEndTime());

@@ -94,6 +94,94 @@ namespace osu.Game.Rulesets.Dodge.Tests
         }
 
         [Test]
+        public void TestCameraAwareContinuationWaitsForOutsideBulletToEnter()
+        {
+            double exitTime = DodgeTrajectory.CalculateExitTimeWithCamera(
+                0,
+                500,
+                new Vector2(-100, 192),
+                new Vector2(-50, 192),
+                12,
+                DodgeMovementType.Linear,
+                DodgeHitObject.DEFAULT_WAVE_AMPLITUDE,
+                DodgeHitObject.DEFAULT_WAVE_CYCLES,
+                0,
+                _ => Vector2.Zero,
+                10000);
+
+            Vector2 exitPosition = DodgeTrajectory.PositionAtProgress(
+                new Vector2(-100, 192),
+                new Vector2(-50, 192),
+                (float)(exitTime / 500),
+                DodgeMovementType.Linear,
+                DodgeHitObject.DEFAULT_WAVE_AMPLITUDE,
+                DodgeHitObject.DEFAULT_WAVE_CYCLES,
+                0);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitTime, Is.GreaterThan(1000), "The projectile must survive long enough to enter the playfield.");
+                Assert.That(exitPosition.X, Is.EqualTo(DodgePlayfield.WIDTH + 6).Within(0.01));
+            });
+        }
+
+        [Test]
+        public void TestSineBulletOutsideAtAuthoredEndCanStillEnterAndLeave()
+        {
+            var bullet = new DodgeBullet
+            {
+                StartTime = 0,
+                Duration = 500,
+                Position = new Vector2(-100, 192),
+                EndPosition = new Vector2(-50, 192),
+                MovementType = DodgeMovementType.Sine,
+                WaveAmplitude = 20,
+                WaveCycles = 1,
+                ContinueUntilExit = true,
+            };
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(bullet.MovementEndTime, Is.GreaterThan(1000), "The projectile must not expire before entering the playfield.");
+                Assert.That(bullet.TrajectoryEndPosition.X, Is.GreaterThanOrEqualTo(DodgePlayfield.WIDTH + bullet.BulletSize / 2 - 0.01f));
+            });
+        }
+
+        [Test]
+        public void TestBulletOutsideFlyingAwayExpiresImmediately()
+        {
+            var bullet = new DodgeBullet
+            {
+                StartTime = 1000,
+                Duration = 500,
+                Position = new Vector2(-100, 192),
+                EndPosition = new Vector2(-150, 192),
+                ContinueUntilExit = true,
+            };
+
+            Assert.That(bullet.MovementEndTime, Is.EqualTo(1000), "A projectile starting outside and flying away should expire immediately.");
+        }
+
+        [Test]
+        public void TestCameraAwareBulletOutsideFlyingAwayDoesNotLoopOrSurvive()
+        {
+            double exitTime = DodgeTrajectory.CalculateExitTimeWithCamera(
+                1000,
+                500,
+                new Vector2(-100, 192),
+                new Vector2(-150, 192),
+                12,
+                DodgeMovementType.Linear,
+                0,
+                0,
+                0,
+                _ => Vector2.Zero,
+                180000);
+
+            Assert.That(exitTime, Is.EqualTo(1000), "Camera-aware search should immediately discard an outside projectile moving away.");
+        }
+
+        [Test]
         public void TestEmitterKeepsEachBulletUntilItsOwnExit()
         {
             var emitter = new DodgeEmitter
@@ -118,7 +206,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
         }
 
         [Test]
-        public void TestLastContinuedObjectGetsTwoSecondGracePeriod()
+        public void TestLastContinuedObjectIsNotClippedByGracePeriod()
         {
             var bullet = new DodgeBullet
             {
@@ -134,8 +222,9 @@ namespace osu.Game.Rulesets.Dodge.Tests
             {
                 Assert.That(bullet.MovementEndTime, Is.GreaterThan(bullet.EndTime));
                 Assert.That(playfield.GameplayEndTime, Is.EqualTo(bullet.EndTime));
-                Assert.That(playfield.ContinuedBulletEndTime, Is.EqualTo(bullet.EndTime + 2000));
-                Assert.That(playfield.GetEffectiveMovementEndTime(bullet), Is.EqualTo(bullet.EndTime + 2000));
+                Assert.That(bullet.MovementEndTime, Is.GreaterThan(bullet.EndTime + DodgePlayfield.CONTINUED_BULLET_GRACE_PERIOD));
+                Assert.That(playfield.ContinuedBulletEndTime, Is.EqualTo(bullet.MovementEndTime));
+                Assert.That(playfield.GetEffectiveMovementEndTime(bullet), Is.EqualTo(bullet.MovementEndTime));
             });
         }
 
@@ -229,7 +318,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
             Assert.Multiple(() =>
             {
                 Assert.That(playfield.GameplayEndTime, Is.EqualTo(bullet.EndTime));
-                Assert.That(playfield.GetEffectiveMovementEndTime(bullet), Is.EqualTo(bullet.EndTime + DodgePlayfield.CONTINUED_BULLET_GRACE_PERIOD));
+                Assert.That(playfield.GetEffectiveMovementEndTime(bullet), Is.EqualTo(bullet.MovementEndTime));
             });
         }
     }

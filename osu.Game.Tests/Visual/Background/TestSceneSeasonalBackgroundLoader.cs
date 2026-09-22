@@ -131,7 +131,23 @@ namespace osu.Game.Tests.Visual.Background
             assertNoBackgrounds();
         }
 
-        private void registerBackgroundsResponse(DateTimeOffset endDate)
+        [Test]
+        public void TestMosuBackgroundUsesHashAsCacheIdentity()
+        {
+            const string url = "http://localhost/file/seasonal-backgrounds/background.png";
+            const string hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+            registerBackgroundsResponse(DateTimeOffset.Now.AddDays(5),
+                [new APISeasonalBackground { Url = url, Hash = hash }]);
+            setSeasonalBackgroundMode(SeasonalBackgroundMode.Always);
+            createLoader();
+            loadNextBackground();
+
+            AddAssert("hash added to lookup URL", () => textureStore.PerformedLookups.Single(),
+                () => Is.EqualTo($"{url}?mosu_hash={hash}"));
+        }
+
+        private void registerBackgroundsResponse(DateTimeOffset endDate, List<APISeasonalBackground> backgrounds = null)
             => AddStep("setup request handler", () =>
             {
                 dummyAPI.HandleRequest = request =>
@@ -141,7 +157,7 @@ namespace osu.Game.Tests.Visual.Background
 
                     backgroundsRequest.TriggerSuccess(new APISeasonalBackgrounds
                     {
-                        Backgrounds = seasonal_background_urls.Select(url => new APISeasonalBackground { Url = url }).ToList(),
+                        Backgrounds = backgrounds ?? seasonal_background_urls.Select(url => new APISeasonalBackground { Url = url }).ToList(),
                         EndDate = endDate
                     });
 

@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
+using osu.Framework.Development;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Logging;
@@ -36,6 +37,8 @@ namespace osu.Game.Database
     /// </summary>
     public partial class BackgroundDataStoreProcessor : Component
     {
+        private const string dodge_ruleset_short_name = "dodge";
+
         protected Task ProcessingTask { get; private set; } = null!;
 
         [Resolved]
@@ -74,23 +77,49 @@ namespace osu.Game.Database
         [Resolved]
         private OsuConfigManager config { get; set; } = null!;
 
+        [Resolved]
+        private BeatmapDifficultyCache difficultyCache { get; set; } = null!;
+
+        private static int relaxRecalcRunning;
+        private static int relaxRecalcPending;
+
+        /// <summary>
+        /// Singleton instance so the config-change subscription (which lives in
+        /// <see cref="OsuGameBase"/>, ahead of component load order) can trigger
+        /// the recalculation pass.
+        /// </summary>
+        private static BackgroundDataStoreProcessor? instance;
+
         private LocalCachedBeatmapMetadataSource localMetadataSource = null!;
 
         protected virtual int TimeToSleepDuringGameplay => 30000;
+
+        protected virtual bool SkipProcessing => DebugUtils.IsNUnitRunning;
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
 
+            if (SkipProcessing)
+                return;
+
             localMetadataSource = new LocalCachedBeatmapMetadataSource(storage);
+
+            // The config-change subscription lives in OsuGameBase (created before any
+            // component); register here so it can reach the recalculation pass.
+            instance = this;
 
             ProcessingTask = Task.Factory.StartNew(() =>
             {
                 Logger.Log("Beginning background data store processing..");
 
-                clearOutdatedStarRatings();
-                populateMissingStarRatings();
+                // Fork PP cache maintenance must be first. A failure in upstream/custom
+                // ruleset star-rating maintenance must never prevent Relax maps from being
+                // discovered and queued.
                 populateMissingPerformancePoints();
+                clearOutdatedStarRatings();
+                populateOutdatedDodgeStarRatings();
+                populateMissingStarRatings();
                 processOnlineBeatmapSetsWithNoUpdate();
                 // Note that the previous method will also update these on a fresh run.
                 processBeatmapsWithMissingObjectCounts();
@@ -106,9 +135,15 @@ namespace osu.Game.Database
                 backpopulateUserTags();
             }, TaskCreationOptions.LongRunning).ContinueWith(t =>
             {
-                if (t.Exception?.InnerException is ObjectDisposedException)
+                if (t.Exception?.GetBaseException() is ObjectDisposedException)
                 {
                     Logger.Log("Finished background aborted during shutdown");
+                    return;
+                }
+
+                if (t.Exception != null)
+                {
+                    Logger.Error(t.Exception.GetBaseException(), "Background data store processing failed");
                     return;
                 }
 
@@ -124,6 +159,12 @@ namespace osu.Game.Database
         {
             foreach (var ruleset in rulesetStore.AvailableRulesets)
             {
+                // Dodge difficulty belongs to fork.realm. Its previous value is
+                // intentionally retained while a new calculator version runs;
+                // never invalidate or version it through the upstream Realm.
+                if (ruleset.ShortName == dodge_ruleset_short_name)
+                    continue;
+
                 // beatmap being passed in is arbitrary here. just needs to be non-null.
                 int currentVersion = ruleset.CreateInstance().CreateDifficultyCalculator(gameBeatmap.Value).Version;
 
@@ -152,6 +193,84 @@ namespace osu.Game.Database
             }
         }
 
+        private void populateOutdatedDodgeStarRatings()
+        {
+            var forkStore = ForkDataStore.Instance;
+            RulesetInfo? rulesetInfo = rulesetStore.AvailableRulesets.FirstOrDefault(r => r.ShortName == dodge_ruleset_short_name);
+
+            if (forkStore == null || rulesetInfo == null)
+                return;
+
+            Ruleset ruleset = rulesetInfo.CreateInstance();
+            int currentVersion = ruleset.CreateDifficultyCalculator(gameBeatmap.Value).Version;
+            HashSet<Guid> beatmapIds = new HashSet<Guid>();
+            var initialRatings = new List<(Guid BeatmapId, double StarRating)>();
+
+            realmAccess.Run(r =>
+            {
+                // Realm cannot translate comparisons through a linked object's property
+                // (`b.Ruleset.ShortName`). Keep the persisted null check in the query and
+                // perform the ruleset comparison after materialisation.
+                foreach (var beatmap in r.All<BeatmapInfo>().Where(b => b.BeatmapSet != null))
+                {
+                    if (beatmap.Ruleset.ShortName != dodge_ruleset_short_name)
+                        continue;
+
+                    if (forkStore.HasDodgeDifficultyAttributes(beatmap.ID, currentVersion, beatmap.MD5Hash))
+                        continue;
+
+                    // One-time seed for installations upgrading to the fork
+                    // cache: preserve the last upstream-stored number on screen
+                    // until the new calculation replaces it. This is read-only
+                    // with respect to client.realm.
+                    if (forkStore.GetDodgeDifficulty(beatmap.ID).StarRating < 0 && beatmap.StarRating >= 0)
+                        initialRatings.Add((beatmap.ID, beatmap.StarRating));
+
+                    beatmapIds.Add(beatmap.ID);
+                }
+            });
+
+            foreach ((Guid beatmapId, double starRating) in initialRatings)
+                forkStore.SetDodgeDifficulty(beatmapId, starRating, Math.Max(1, currentVersion - 1));
+
+            if (beatmapIds.Count == 0)
+                return;
+
+            Logger.Log($"Found {beatmapIds.Count} Dodge beatmaps which require fork difficulty reprocessing.");
+            var notification = showProgressNotification(beatmapIds.Count, "Reprocessing Dodge star rating", "Dodge star ratings have been updated");
+            int processedCount = 0;
+            int failedCount = 0;
+
+            foreach (Guid id in beatmapIds)
+            {
+                if (notification?.State == ProgressNotificationState.Cancelled)
+                    break;
+
+                updateNotificationProgress(notification, processedCount, beatmapIds.Count);
+                sleepIfRequired();
+
+                BeatmapInfo? beatmap = realmAccess.Run(r => r.Find<BeatmapInfo>(id)?.Detach());
+
+                if (beatmap == null)
+                    continue;
+
+                try
+                {
+                    IWorkingBeatmap working = beatmapManager.GetWorkingBeatmap(beatmap);
+                    var difficulty = ruleset.CreateDifficultyCalculator(working).Calculate();
+                    forkStore.SetDodgeDifficulty(id, beatmap.MD5Hash, difficulty, currentVersion);
+                    processedCount++;
+                }
+                catch (Exception e)
+                {
+                    Logger.Log($"Background Dodge difficulty processing failed on {beatmap}: {e}");
+                    failedCount++;
+                }
+            }
+
+            completeNotification(notification, processedCount, beatmapIds.Count, failedCount);
+        }
+
         /// <remarks>
         /// This is split out from <see cref="processOnlineBeatmapSetsWithNoUpdate"/> as a separate process to prevent high server-side load
         /// from the <see cref="beatmapUpdater"/> firing online requests as part of the update.
@@ -165,8 +284,15 @@ namespace osu.Game.Database
 
             realmAccess.Run(r =>
             {
-                foreach (var b in r.All<BeatmapInfo>().Where(b => b.StarRating < 0 && b.BeatmapSet != null))
+                // Realm does not support filtering through the linked Ruleset object.
+                foreach (var b in r.All<BeatmapInfo>().Where(b => b.StarRating < 0
+                                                                  && b.BeatmapSet != null))
+                {
+                    if (b.Ruleset.ShortName == dodge_ruleset_short_name)
+                        continue;
+
                     beatmapIds.Add(b.ID);
+                }
             });
 
             if (beatmapIds.Count == 0)
@@ -235,7 +361,7 @@ namespace osu.Game.Database
             completeNotification(notification, processedCount, beatmapIds.Count, failedCount);
         }
 
-        private void populateMissingPerformancePoints()
+        private void populateMissingPerformancePoints(bool relaxOnly = false)
         {
             var forkStore = ForkDataStore.Instance;
 
@@ -251,14 +377,35 @@ namespace osu.Game.Database
 
             realmAccess.Run(r =>
             {
-                foreach (var b in r.All<BeatmapInfo>().Where(b => b.StarRating >= 0 && b.BeatmapSet != null))
+                foreach (var b in r.All<BeatmapInfo>().Where(b => b.BeatmapSet != null))
                 {
-                    bool missingStandardPp = !forkStore.HasPP(b.ID);
-                    bool supportsRelax = b.Ruleset.CreateInstance().GetModsFor(ModType.Automation).OfType<ModRelax>().Any();
-                    bool missingRelaxData = supportsRelax && !forkStore.HasRelaxData(b.ID);
+                    try
+                    {
+                        if (relaxOnly)
+                        {
+                            // Only the active Relax PP system's cache is inspected; the other
+                            // system's stored data must never be invalidated by a recalculation.
+                            Ruleset relaxRuleset = b.Ruleset.CreateInstance();
 
-                    if (missingStandardPp || missingRelaxData)
-                        beatmapIds.Add(b.ID);
+                            if (relaxRuleset.GetModsFor(ModType.Automation).OfType<ModRelax>().Any() && !forkStore.HasRelaxData(b.ID))
+                                beatmapIds.Add(b.ID);
+
+                            continue;
+                        }
+
+                        Ruleset ruleset = b.Ruleset.CreateInstance();
+                        bool missingStandardPp = !forkStore.HasPP(b.ID);
+                        bool supportsRelax = ruleset.GetModsFor(ModType.Automation).OfType<ModRelax>().Any();
+                        bool missingRelaxData = supportsRelax && !forkStore.HasRelaxData(b.ID);
+
+                        if (missingStandardPp || missingRelaxData)
+                            beatmapIds.Add(b.ID);
+                    }
+                    catch (Exception exception)
+                    {
+                        // A removed custom ruleset must not abort discovery for every osu! map.
+                        Logger.Error(exception, $"Skipping PP cache discovery for {b.ID} ({b.Ruleset.ShortName})");
+                    }
                 }
             });
 
@@ -267,7 +414,11 @@ namespace osu.Game.Database
 
             Logger.Log($"Found {beatmapIds.Count} beatmaps which require performance points processing.");
 
-            var notification = showProgressNotification(beatmapIds.Count, "Calculating performance points for beatmaps", "beatmaps' performance points have been calculated");
+            var notification = showProgressNotification(
+                beatmapIds.Count,
+                relaxOnly ? "Recalculating Relax performance points" : "Calculating performance points for beatmaps",
+                relaxOnly ? "Relax performance points have been recalculated" : "beatmaps' performance points have been calculated",
+                relaxOnly ? 1 : 10);
 
             int processedCount = 0;
             int failedCount = 0;
@@ -304,39 +455,65 @@ namespace osu.Game.Database
                     Debug.Assert(ruleset != null);
 
                     var calculator = ruleset.CreateDifficultyCalculator(working);
-                    var difficultyAttributes = calculator.Calculate();
-
-                    double pp = 0;
-
                     var performanceCalculator = ruleset.CreatePerformanceCalculator();
 
-                    if (performanceCalculator != null)
+                    if (!relaxOnly)
                     {
-                        var playableBeatmap = working.GetPlayableBeatmap(ruleset.RulesetInfo);
-                        var scoreProcessor = ruleset.CreateScoreProcessor();
-                        scoreProcessor.Mods.Value = Array.Empty<Mod>();
-                        scoreProcessor.ApplyBeatmap(playableBeatmap);
+                        int calculationVersion = calculator.Version;
+                        var difficultyAttributes = calculator.Calculate();
 
-                        var perfectScore = new ScoreInfo(beatmap, ruleset.RulesetInfo)
+                        if (beatmap.StarRating < 0)
                         {
-                            Passed = true,
-                            Accuracy = 1,
-                            Mods = Array.Empty<Mod>(),
-                            MaxCombo = scoreProcessor.MaximumCombo,
-                            Combo = scoreProcessor.MaximumCombo,
-                            TotalScore = scoreProcessor.MaximumTotalScore,
-                            Statistics = scoreProcessor.MaximumStatistics,
-                            MaximumStatistics = scoreProcessor.MaximumStatistics
-                        };
+                            realmAccess.Write(r =>
+                            {
+                                if (r.Find<BeatmapInfo>(id) is BeatmapInfo liveBeatmapInfo)
+                                    liveBeatmapInfo.StarRating = difficultyAttributes.StarRating;
+                            });
 
-                        var performance = performanceCalculator.Calculate(perfectScore, difficultyAttributes);
-                        pp = double.IsFinite(performance.Total) ? performance.Total : 0;
+                            Scheduler.Add(() => ((IWorkingBeatmapCache)beatmapManager).Invalidate(beatmap));
+                        }
+
+                        double pp = 0;
+
+                        if (performanceCalculator != null)
+                        {
+                            var playableBeatmap = working.GetPlayableBeatmap(ruleset.RulesetInfo);
+                            var scoreProcessor = ruleset.CreateScoreProcessor();
+                            scoreProcessor.Mods.Value = Array.Empty<Mod>();
+                            scoreProcessor.ApplyBeatmap(playableBeatmap);
+
+                            var perfectScore = new ScoreInfo(beatmap, ruleset.RulesetInfo)
+                            {
+                                Passed = true,
+                                Accuracy = 1,
+                                Mods = Array.Empty<Mod>(),
+                                MaxCombo = scoreProcessor.MaximumCombo,
+                                Combo = scoreProcessor.MaximumCombo,
+                                TotalScore = scoreProcessor.MaximumTotalScore,
+                                Statistics = scoreProcessor.MaximumStatistics,
+                                MaximumStatistics = scoreProcessor.MaximumStatistics
+                            };
+
+                            var performance = performanceCalculator.Calculate(perfectScore, difficultyAttributes);
+                            pp = double.IsFinite(performance.Total) ? performance.Total : 0;
+                        }
+
+                        forkStore.SetPP(id, pp, calculationVersion);
                     }
-
-                    forkStore.SetPP(id, pp);
 
                     if (ruleset.GetModsFor(ModType.Automation).OfType<ModRelax>().FirstOrDefault() is ModRelax relaxMod)
                     {
+                        // Object-less maps cannot be scored by the RX core (it rejects empty
+                        // beatmaps outright). Store zeroed data so they stop re-appearing as
+                        // "missing" on every startup / PP-system switch and re-triggering the
+                        // recalculation pass forever.
+                        if (!working.Beatmap.HitObjects.Any())
+                        {
+                            forkStore.SetRelaxData(id, 0, 0);
+                            ++processedCount;
+                            continue;
+                        }
+
                         Mod[] relaxMods = { relaxMod };
                         var relaxDifficulty = calculator.Calculate(relaxMods);
                         double relaxPp = 0;
@@ -377,6 +554,61 @@ namespace osu.Game.Database
             }
 
             completeNotification(notification, processedCount, beatmapIds.Count, failedCount);
+        }
+
+        /// <summary>
+        /// Requests a background pass that fills in relax SR/PP cache entries missing for the
+        /// currently-selected Relax PP system. Data stored for the other system is left intact.
+        /// Safe to call repeatedly: concurrent passes are coalesced, and a request arriving while
+        /// a pass is running re-runs it afterwards so a mid-run system switch is fully handled.
+        /// </summary>
+        public static void QueueRelaxPpRecalculation()
+        {
+            // The pass itself needs the component's resolved dependencies; if the
+            // processor hasn't loaded yet there is nothing to recalculate with.
+            if (instance == null)
+            {
+                Logger.Log("Relax PP recalculation requested before processor load; skipped.");
+                return;
+            }
+
+            instance.queueRelaxPpRecalculation();
+        }
+
+        private void queueRelaxPpRecalculation()
+        {
+            if (Interlocked.CompareExchange(ref relaxRecalcRunning, 1, 0) != 0)
+            {
+                Interlocked.Exchange(ref relaxRecalcPending, 1);
+                return;
+            }
+
+            Task.Factory.StartNew(() =>
+            {
+                try
+                {
+                    do
+                    {
+                        Interlocked.Exchange(ref relaxRecalcPending, 0);
+                        populateMissingPerformancePoints(relaxOnly: true);
+                    }
+                    while (Interlocked.Exchange(ref relaxRecalcPending, 0) == 1);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref relaxRecalcRunning, 0);
+                }
+            }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+            {
+                if (t.Exception?.GetBaseException() is ObjectDisposedException)
+                {
+                    Logger.Log("Relax PP recalculation aborted during shutdown");
+                    return;
+                }
+
+                if (t.Exception != null)
+                    Logger.Error(t.Exception.GetBaseException(), "Relax PP recalculation failed");
+            });
         }
 
         private void processOnlineBeatmapSetsWithNoUpdate()
@@ -858,7 +1090,7 @@ namespace osu.Game.Database
         {
             if (!localMetadataSource.Available || !localMetadataSource.IsAtLeastVersion(3))
             {
-                Logger.Log(@"Local metadata cache has too low version to backpopulate user tags, attempting refetch...");
+                Logger.Log(@"Local metadata cache doesn't exist, or has too low version to backpopulate user tags, attempting refetch...");
                 localMetadataSource.FetchCache().WaitSafely();
 
                 if (!localMetadataSource.Available || !localMetadataSource.IsAtLeastVersion(3))
@@ -1005,12 +1237,12 @@ namespace osu.Game.Database
             }
         }
 
-        private ProgressNotification? showProgressNotification(int totalCount, string running, string completed)
+        private ProgressNotification? showProgressNotification(int totalCount, string running, string completed, int minimumCount = 10)
         {
             if (notificationOverlay == null)
                 return null;
 
-            if (totalCount < 10)
+            if (totalCount < minimumCount)
                 return null;
 
             ProgressNotification notification = new ProgressNotification

@@ -60,7 +60,10 @@ namespace osu.Game.Rulesets.Edit.Checks
                 try
                 {
                     // We use TagLib here for platform invariance; BASS cannot detect audio presence on Linux.
-                    using (Stream data = context.CurrentDifficulty.Working.GetStream(storagePath))
+                    using Stream? data = context.CurrentDifficulty.Working.GetStream(storagePath);
+                    if (data == null)
+                        continue;
+
                     using (File tagFile = TagLibUtils.GetTagLibFile(filename, data))
                     {
                         if (tagFile.Properties.AudioChannels == 0)

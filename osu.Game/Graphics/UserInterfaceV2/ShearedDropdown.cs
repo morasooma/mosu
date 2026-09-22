@@ -53,6 +53,8 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
         protected partial class ShearedDropdownMenu : OsuDropdown<T>.OsuDropdownMenu
         {
+            private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
+
             public ShearedDropdownMenu()
             {
                 Shear = OsuGame.SHEAR;
@@ -64,6 +66,12 @@ namespace osu.Game.Graphics.UserInterfaceV2
                 };
             }
 
+            protected override void LoadComplete()
+            {
+                base.LoadComplete();
+                disableShear.BindValueChanged(_ => Shear = OsuGame.SHEAR, true);
+            }
+
             protected override DrawableDropdownMenuItem CreateDrawableDropdownMenuItem(MenuItem item) => new ShearedMenuItem(item)
             {
                 BackgroundColourHover = HoverColour,
@@ -72,10 +80,18 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
             public partial class ShearedMenuItem : DrawableOsuDropdownMenuItem
             {
+                private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
+
                 public ShearedMenuItem(MenuItem item)
                     : base(item)
                 {
                     Foreground.Shear = -OsuGame.SHEAR;
+                }
+
+                protected override void LoadComplete()
+                {
+                    base.LoadComplete();
+                    disableShear.BindValueChanged(_ => Foreground.Shear = -OsuGame.SHEAR, true);
                 }
             }
         }
@@ -101,10 +117,12 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
             private readonly OsuSpriteText labelText;
             private readonly OsuSpriteText valueText;
+            private readonly Container valueContainer;
             private readonly Box labelBox;
             private Box headerBackgroundBox = null!;
             private readonly SpriteIcon chevron;
             private IBindable<Colour4> themeColour = null!;
+            private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
             public Container LabelContainer { get; }
 
@@ -161,7 +179,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
                                         },
                                     },
                                 },
-                                new Container
+                                valueContainer = new Container
                                 {
                                     Anchor = Anchor.CentreLeft,
                                     Origin = Anchor.CentreLeft,
@@ -213,6 +231,14 @@ namespace osu.Game.Graphics.UserInterfaceV2
                 {
                     updateLabelBoxColour();
                     updateColour();
+                }, true);
+
+                disableShear.BindValueChanged(_ =>
+                {
+                    Shear = OsuGame.SHEAR;
+                    labelText.Shear = -OsuGame.SHEAR;
+                    if (valueContainer != null)
+                        valueContainer.Shear = -OsuGame.SHEAR;
                 }, true);
 
                 Dropdown.Menu.StateChanged += _ =>
@@ -298,11 +324,12 @@ namespace osu.Game.Graphics.UserInterfaceV2
                 private partial class DropdownSearchTextBox : OsuTextBox
                 {
                     private IBindable<Colour4>? themeColour;
+                    private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
                     [BackgroundDependencyLoader]
                     private void load(OverlayColourProvider? colourProvider)
                     {
-                        TextContainer.Shear = -OsuGame.SHEAR;
+                        disableShear.BindValueChanged(_ => TextContainer.Shear = -OsuGame.SHEAR, true);
 
                         if (colourProvider == null)
                         {

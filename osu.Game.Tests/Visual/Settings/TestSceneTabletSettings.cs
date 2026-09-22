@@ -199,6 +199,15 @@ namespace osu.Game.Tests.Visual.Settings
                 Precision = 0.01f,
             };
 
+            public BindableBool BezierInterpolatorEnabled { get; } = new BindableBool();
+
+            public BindableFloat BezierSmoothingFactor { get; } = new BindableFloat(1.0f)
+            {
+                MinValue = 0.01f,
+                MaxValue = 1.0f,
+                Precision = 0.01f,
+            };
+
             public IBindable<TabletInfo> Tablet => tablet;
 
             private readonly Bindable<TabletInfo> tablet = new Bindable<TabletInfo>();

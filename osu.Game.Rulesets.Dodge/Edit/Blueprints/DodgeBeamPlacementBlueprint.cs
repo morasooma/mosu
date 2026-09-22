@@ -37,7 +37,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         public DodgeBeamPlacementBlueprint()
             : base(new DodgeBeam())
         {
-            InternalChild = pathPiece = new DodgeBeamPathPiece();
+            Child = pathPiece = new DodgeBeamPathPiece();
         }
 
         protected override void LoadComplete()

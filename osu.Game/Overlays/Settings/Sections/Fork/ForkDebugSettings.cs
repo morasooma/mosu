@@ -1,20 +1,27 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using osu.Framework.Allocation;
-using osu.Framework.Graphics;
-using osu.Framework.Localisation;
-using osu.Framework.Platform;
-using osu.Game.Localisation;
-using osu.Game.Configuration;
-using osu.Game.Graphics.UserInterfaceV2;
-using osu.Game.Overlays.Settings;
-using osu.Game.Overlays.Notifications;
-using osu.Game.Scoring;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Threading;
+using System.Threading.Tasks;
+using osu.Framework.Allocation;
+using osu.Framework.Graphics;
+using osu.Framework.Localisation;
+using osu.Framework.Logging;
+using osu.Framework.Platform;
+using osu.Game.Configuration;
+using osu.Game.Database;
+using osu.Game.Graphics.UserInterfaceV2;
+using osu.Game.Localisation;
+using osu.Game.Overlays.Dialog;
+using osu.Game.Overlays.Notifications;
+using osu.Game.Overlays.Settings;
+using osu.Game.Scoring;
+using osu.Game.Performance.Debug;
+using osu.Game.Performance.Diagnostics;
 
 namespace osu.Game.Overlays.Settings.Sections.Fork
 {
@@ -26,6 +33,21 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
         [Resolved]
         private INotificationOverlay? notificationOverlay { get; set; }
 
+        [Resolved(canBeNull: true)]
+        private IDialogOverlay? dialogOverlay { get; set; }
+
+        [Resolved]
+        private RealmAccess realm { get; set; } = null!;
+
+        [Resolved(canBeNull: true)]
+        private PerformanceDebugService? performanceDebugService { get; set; }
+
+        [Resolved(canBeNull: true)]
+        private IPerformanceDiagnosticsManager? diagnosticsManager { get; set; }
+
+        private SettingsButtonV2 forceDatabaseConversionButton = null!;
+        private int memoryDumpCaptureInProgress;
+
         protected override LocalisableString Header => ForkSettingsStrings.DebugHeader;
 
         [BackgroundDependencyLoader]
@@ -33,6 +55,12 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
         {
             var children = new List<Drawable>
             {
+                (forceDatabaseConversionButton = new DangerousSettingsButtonV2
+                {
+                    Text = "Принудительно конвертировать newer-version БД",
+                    TooltipText = "Находит последний client*_newer_version.realm, конвертирует его и принудительно устанавливает после перезапуска. Текущая client.realm останется в backup.",
+                    Action = () => _ = forceDatabaseConversionAsync()
+                }),
                 new DangerousSettingsButtonV2
                 {
                     Text = ForkSettingsStrings.QuickExportLogsBtn,
@@ -47,6 +75,27 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 {
                     Keywords = new[] { @"performance", @"logging", @"fps", @"frametime", @"cpu", @"metrics" },
                 },
+                new SettingsItemV2(new FormEnumDropdown<DebugHudMode>
+                {
+                    Caption = "Диагностический HUD",
+                    HintText = "Показывает frametime потоков, память, GC и вероятную причину фризов. Подробный режим выводит дополнительные счётчики GC.",
+                    Current = config.GetBindable<DebugHudMode>(OsuSetting.ForkDebugHudMode)
+                })
+                {
+                    Keywords = new[] { @"debug", @"hud", @"freeze", @"stutter", @"ram", @"gc" },
+                },
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = "Показывать память в верхней панели",
+                    HintText = "Добавляет компактный индикатор RAM и размера .NET GC heap в toolbar.",
+                    Current = config.GetBindable<bool>(OsuSetting.ForkShowMemoryInToolbar)
+                }),
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = "Показывать уведомления о фризах",
+                    HintText = "На несколько секунд показывает длительность и вероятную причину кадра дольше 20 мс.",
+                    Current = config.GetBindable<bool>(OsuSetting.ForkDebugFreezeAlerts)
+                }),
                 new SettingsItemV2(new FormEnumDropdown<ReplayRenderQualityPreset>
                 {
                     Caption = ForkSettingsStrings.ReplayQualityPresetCaption,
@@ -73,7 +122,116 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 }),
             };
 
+#if DEBUG
+            children.Insert(0, new SettingsItemV2(new FormEnumDropdown<GameplayIntegrityDebugScenario>
+            {
+                Caption = "Античит: тестовый сигнал (только DEBUG)",
+                HintText = "Одноразово подменяет только итоговый integrity-отчёт следующей игры и автоматически вернётся в None. Не влияет на gameplay.",
+                Current = config.GetBindable<GameplayIntegrityDebugScenario>(OsuSetting.ForkGameplayIntegrityDebugScenario),
+            }));
+#endif
+
+            if (diagnosticsManager != null)
+            {
+                children.InsertRange(2, new Drawable[]
+                {
+                    new DangerousSettingsButtonV2
+                    {
+                        Text = "Создать дамп памяти",
+                        TooltipText = "Дамп может содержать токены, личные данные и другие секреты из памяти. Никому не отправляйте его целиком без доверия к получателю.",
+                        Action = confirmMemoryDumpCapture,
+                    },
+                    new SettingsButtonV2
+                    {
+                        Text = "Открыть папку дампов памяти",
+                        Action = diagnosticsManager.OpenMemoryDumpFolder,
+                    },
+                });
+            }
+
             Children = children;
+        }
+
+        private void confirmMemoryDumpCapture()
+        {
+            dialogOverlay?.Push(new ConfirmDialog(
+                "Дамп памяти может занимать несколько гигабайт и содержать токены авторизации, личные данные, сообщения, пути к файлам и другие секреты из памяти процесса. Не публикуйте и не отправляйте файл недоверенным людям. Продолжить?",
+                captureMemoryDump));
+        }
+
+        private void captureMemoryDump()
+        {
+            if (diagnosticsManager == null || Interlocked.Exchange(ref memoryDumpCaptureInProgress, 1) != 0)
+                return;
+
+            var notification = new ProgressNotification
+            {
+                State = ProgressNotificationState.Active,
+                Text = "Создаётся дамп памяти. Клиент может временно зависнуть…",
+            };
+
+            notificationOverlay?.Post(notification);
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    string path = await diagnosticsManager.CaptureMemoryDumpAsync(notification.CancellationToken).ConfigureAwait(false);
+                    notification.CompletionText = $"Дамп памяти сохранён: {Path.GetFileName(Path.GetDirectoryName(path))}";
+                    notification.CompletionClickAction = () =>
+                    {
+                        diagnosticsManager.OpenMemoryDumpFolder();
+                        return true;
+                    };
+                    notification.State = ProgressNotificationState.Completed;
+                }
+                catch (OperationCanceledException)
+                {
+                    notification.State = ProgressNotificationState.Cancelled;
+                }
+                catch (Exception e)
+                {
+                    Logger.Error(e, "Memory dump capture failed");
+                    notification.State = ProgressNotificationState.Cancelled;
+                    notificationOverlay?.Post(new SimpleErrorNotification
+                    {
+                        Text = $"Не удалось создать дамп памяти: {e.Message}",
+                    });
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref memoryDumpCaptureInProgress, 0);
+                }
+            });
+        }
+
+        private async Task forceDatabaseConversionAsync()
+        {
+            forceDatabaseConversionButton.Enabled.Value = false;
+
+            try
+            {
+                bool succeeded = await Task.Run(realm.TryForceConvertNewerVersionedDatabase).ConfigureAwait(true);
+
+                notificationOverlay?.Post(new SimpleNotification
+                {
+                    Text = succeeded
+                        ? "База успешно сконвертирована. Перезапустите клиент для принудительной установки; текущая client.realm будет сохранена в backup."
+                        : "Подходящий newer-version backup не найден или конвертация завершилась ошибкой. Оригинальные файлы не изменены."
+                });
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e, "Forced newer-version database conversion failed.");
+                notificationOverlay?.Post(new SimpleErrorNotification
+                {
+                    Text = "Принудительная конвертация базы завершилась ошибкой. Оригинальные файлы не изменены."
+                });
+            }
+            finally
+            {
+                forceDatabaseConversionButton.Enabled.Value = true;
+            }
         }
 
         private void exportQuickLogs()
@@ -125,7 +283,7 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 }
             }
 
-            if (filesToExport.Count == 0)
+            if (filesToExport.Count == 0 && (performanceDebugService == null || performanceDebugService.FreezeEvents.Count == 0))
             {
                 notificationOverlay?.Post(new SimpleNotification
                 {
@@ -142,6 +300,13 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 using (var zipStream = exportStorage.GetStream(zipFileName, FileAccess.Write, FileMode.Create))
                 using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
                 {
+                    if (performanceDebugService != null)
+                    {
+                        var freezeEntry = archive.CreateEntry("performance/freeze-events.csv");
+                        using var freezeWriter = new StreamWriter(freezeEntry.Open());
+                        freezeWriter.Write(performanceDebugService.CreateCsvReport());
+                    }
+
                     foreach (var filePath in filesToExport)
                     {
                         try

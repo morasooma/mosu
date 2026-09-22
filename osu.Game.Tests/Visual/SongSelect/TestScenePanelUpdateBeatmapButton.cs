@@ -5,6 +5,7 @@ using System;
 using NUnit.Framework;
 using osu.Framework.Graphics;
 using osu.Game.Beatmaps;
+using osu.Game.Online.API;
 using osu.Game.Screens.Select;
 
 namespace osu.Game.Tests.Visual.SongSelect
@@ -28,10 +29,12 @@ namespace osu.Game.Tests.Visual.SongSelect
         {
             AddStep("non-updated beatmap", () => button.BeatmapSet = new BeatmapSetInfo
             {
+                OnlineID = 123,
                 Beatmaps =
                 {
                     new BeatmapInfo
                     {
+                        OnlineID = 456,
                         MD5Hash = "test",
                         OnlineMD5Hash = "online",
                         LastOnlineUpdate = DateTimeOffset.Now,
@@ -54,9 +57,35 @@ namespace osu.Game.Tests.Visual.SongSelect
         {
             AddStep("updated beatmap", () => button.BeatmapSet = new BeatmapSetInfo
             {
-                Beatmaps = { new BeatmapInfo() }
+                OnlineID = 123,
+                Beatmaps = { new BeatmapInfo { OnlineID = 456 } }
             });
             AddAssert("button invisible", () => button.Alpha == 0f);
+        }
+
+        [Test]
+        public void TestServerExclusiveRevisionChangeUpdatesButtonWithoutRebinding()
+        {
+            BeatmapInfo beatmap = null!;
+
+            AddStep("bind current server revision", () =>
+            {
+                beatmap = new BeatmapInfo
+                {
+                    OnlineID = BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD + 1,
+                    MD5Hash = "current",
+                    OnlineMD5Hash = "current",
+                    LastOnlineUpdate = DateTimeOffset.Now,
+                };
+                button.BeatmapSet = new BeatmapSetInfo
+                {
+                    OnlineID = BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD + 10,
+                    Beatmaps = { beatmap },
+                };
+            });
+            AddAssert("button initially invisible", () => button.Alpha == 0f);
+            AddStep("online revision changes", () => beatmap.OnlineMD5Hash = "updated");
+            AddUntilStep("update button becomes visible", () => button.Alpha, () => Is.EqualTo(1f));
         }
     }
 }

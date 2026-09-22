@@ -86,9 +86,17 @@ namespace osu.Game.Rulesets.Dodge.UI
                     return target;
 
                 float progress = (float)Math.Clamp((time - change.StartTime) / change.Duration, 0, 1);
+                progress = change.Easing.Apply(progress);
+                Vector2 size = new Vector2(
+                    Math.Clamp(lerp(startStates[i].Size.X, target.Size.X, progress), DodgeArenaChange.MIN_SIZE, DodgePlayfield.WIDTH),
+                    Math.Clamp(lerp(startStates[i].Size.Y, target.Size.Y, progress), DodgeArenaChange.MIN_SIZE, DodgePlayfield.HEIGHT));
+                Vector2 position = new Vector2(
+                    Math.Clamp(lerp(startStates[i].Position.X, target.Position.X, progress), 0, DodgePlayfield.WIDTH - size.X),
+                    Math.Clamp(lerp(startStates[i].Position.Y, target.Position.Y, progress), 0, DodgePlayfield.HEIGHT - size.Y));
+
                 return new DodgeArenaState(
-                    Vector2.Lerp(startStates[i].Position, target.Position, progress),
-                    Vector2.Lerp(startStates[i].Size, target.Size, progress),
+                    position,
+                    size,
                     startStates[i].Rotation + (target.Rotation - startStates[i].Rotation) * progress,
                     interpolate(startStates[i].BackgroundColour, target.BackgroundColour, progress),
                     interpolate(startStates[i].BackgroundOpacity, target.BackgroundOpacity, progress),
@@ -127,12 +135,15 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         private static Colour4 interpolate(Colour4 from, Colour4 to, float progress)
             => new Colour4(
-                from.R + (to.R - from.R) * progress,
-                from.G + (to.G - from.G) * progress,
-                from.B + (to.B - from.B) * progress,
-                from.A + (to.A - from.A) * progress);
+                Math.Clamp(from.R + (to.R - from.R) * progress, 0, 1),
+                Math.Clamp(from.G + (to.G - from.G) * progress, 0, 1),
+                Math.Clamp(from.B + (to.B - from.B) * progress, 0, 1),
+                Math.Clamp(from.A + (to.A - from.A) * progress, 0, 1));
 
         private static float interpolate(float from, float to, float progress)
-            => Math.Clamp(from + (to - from) * progress, 0, 1);
+            => Math.Clamp(lerp(from, to, progress), 0, 1);
+
+        private static float lerp(float from, float to, float progress)
+            => from + (to - from) * progress;
     }
 }

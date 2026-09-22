@@ -10,7 +10,10 @@ using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.UserInterface;
+using osu.Framework.Input.Bindings;
+using osu.Framework.Input.Events;
 using osu.Framework.Localisation;
+using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
@@ -42,12 +45,24 @@ namespace osu.Game.Screens.Edit.Components.TernaryButtons
         /// </summary>
         public Func<Drawable>? CreateIcon { get; init; }
 
+        private OverlayColourProvider colourProvider = null!;
+        private IBindable<Colour4>? themeColour;
+
         private Color4 defaultBackgroundColour;
         private Color4 defaultIconColour;
         private Color4 selectedBackgroundColour;
         private Color4 selectedIconColour;
 
+        internal Color4 SelectedBackgroundColour => selectedBackgroundColour;
+        new internal Color4 DefaultBackgroundColour => defaultBackgroundColour;
+        internal Color4 SelectedIconColour => selectedIconColour;
+        internal Color4 DefaultIconColour => defaultIconColour;
+        internal Color4 CurrentTextColour => SpriteText.Colour;
+        internal Color4 CurrentIconColour => Icon.Colour;
+
         public Drawable Icon { get; private set; } = null!;
+        protected HotkeyDisplay HotkeyDisplay { get; private set; } = null!;
+        public Hotkey? Hotkey { get; init; }
 
         public DrawableTernaryButton(HoverSampleSet? hoverSampleSet = HoverSampleSet.Button)
             : base(hoverSampleSet)
@@ -58,11 +73,7 @@ namespace osu.Game.Screens.Edit.Components.TernaryButtons
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
-            defaultBackgroundColour = colourProvider.Background3;
-            selectedBackgroundColour = colourProvider.Background1;
-
-            defaultIconColour = defaultBackgroundColour.Darken(0.5f);
-            selectedIconColour = selectedBackgroundColour.Lighten(0.5f);
+            this.colourProvider = colourProvider;
 
             Add(Icon = (CreateIcon?.Invoke() ?? new Circle()).With(b =>
             {
@@ -72,6 +83,45 @@ namespace osu.Game.Screens.Edit.Components.TernaryButtons
                 b.Size = new Vector2(20);
                 b.X = 10;
             }));
+
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+            themeColour.BindValueChanged(_ => updateColours(), true);
+
+            if (Hotkey != null)
+            {
+                SpriteText.Origin = Anchor.BottomLeft;
+                SpriteText.Y = -1;
+
+                Add(HotkeyDisplay = new HotkeyDisplay
+                {
+                    Hotkey = Hotkey.Value,
+                    Anchor = Anchor.CentreLeft,
+                    Origin = Anchor.TopLeft,
+                    X = 40,
+                    Y = 1,
+                });
+            }
+        }
+
+        private void updateColours()
+        {
+            defaultBackgroundColour = colourProvider.Background3;
+            selectedBackgroundColour = colourProvider.Background1;
+
+            if (OverlayColourProvider.IsLightTheme)
+            {
+                defaultIconColour = colourProvider.Light4;
+                selectedIconColour = colourProvider.Content1;
+                Icon.Blending = BlendingParameters.Inherit;
+            }
+            else
+            {
+                defaultIconColour = defaultBackgroundColour.Darken(0.5f);
+                selectedIconColour = selectedBackgroundColour.Lighten(0.5f);
+                Icon.Blending = BlendingParameters.Additive;
+            }
+
+            updateSelectionState();
         }
 
         protected override void LoadComplete()
@@ -128,6 +178,8 @@ namespace osu.Game.Screens.Edit.Components.TernaryButtons
                     BackgroundColour = selectedBackgroundColour;
                     break;
             }
+
+            SpriteText.Colour = OsuColour.ForegroundTextColourFor(BackgroundColour);
         }
 
         protected override SpriteText CreateText() => new OsuSpriteText
@@ -137,5 +189,29 @@ namespace osu.Game.Screens.Edit.Components.TernaryButtons
             Anchor = Anchor.CentreLeft,
             X = 40f
         };
+    }
+
+    public partial class DrawableTernaryButton<TAction> : DrawableTernaryButton, IKeyBindingHandler<TAction>
+        where TAction : struct, Enum
+    {
+        public new TAction? Action { get; init; }
+
+        public DrawableTernaryButton(HoverSampleSet? hoverSampleSet = HoverSampleSet.Button)
+            : base(hoverSampleSet)
+        {
+        }
+
+        public bool OnPressed(KeyBindingPressEvent<TAction> e)
+        {
+            if (e.Repeat || !Nullable.Equals(Action, e.Action))
+                return false;
+
+            TriggerClick();
+            return true;
+        }
+
+        public void OnReleased(KeyBindingReleaseEvent<TAction> e)
+        {
+        }
     }
 }

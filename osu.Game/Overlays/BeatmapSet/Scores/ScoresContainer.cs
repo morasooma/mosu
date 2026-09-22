@@ -30,6 +30,7 @@ namespace osu.Game.Overlays.BeatmapSet.Scores
         private const int spacing = 15;
 
         public readonly Bindable<APIBeatmap> Beatmap = new Bindable<APIBeatmap>();
+        public readonly Bindable<RulesetInfo> LeaderboardRuleset = new Bindable<RulesetInfo>();
         private readonly Bindable<IRulesetInfo> ruleset = new Bindable<IRulesetInfo>();
         private readonly Bindable<BeatmapLeaderboardScope> scope = new Bindable<BeatmapLeaderboardScope>(BeatmapLeaderboardScope.Global);
         private readonly IBindable<APIUser> user = new Bindable<APIUser>();
@@ -213,6 +214,7 @@ namespace osu.Game.Overlays.BeatmapSet.Scores
             base.LoadComplete();
             scope.BindValueChanged(_ => getScores());
             ruleset.BindValueChanged(_ => getScores());
+            LeaderboardRuleset.BindValueChanged(_ => getScores());
 
             modSelector.SelectedMods.CollectionChanged += (_, _) => getScores();
 
@@ -276,7 +278,8 @@ namespace osu.Game.Overlays.BeatmapSet.Scores
             Show();
             loading.Show();
 
-            getScoresRequest = new GetScoresRequest(Beatmap.Value, Beatmap.Value.Ruleset, scope.Value, modSelector.SelectedMods);
+            IRulesetInfo leaderboardRuleset = LeaderboardRuleset.Value ?? Beatmap.Value.Ruleset;
+            getScoresRequest = new GetScoresRequest(Beatmap.Value, leaderboardRuleset, scope.Value, modSelector.SelectedMods);
             getScoresRequest.Success += scores =>
             {
                 Scores = scores;

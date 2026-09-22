@@ -3,25 +3,35 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input;
 using osu.Framework.Input.Events;
 using osu.Framework.Localisation;
+using osu.Framework.Testing;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
 using osuTK;
+using osuTK.Graphics;
 
 namespace osu.Game.Graphics.UserInterfaceV2
 {
     public partial class FormTextBox : CompositeDrawable, IHasCurrentValue<string>, IFormControl
     {
+        internal Color4 InnerBackgroundColour => textBox.UnfocusedColour;
+        internal float InnerBackgroundAlpha => textBox.ChildrenOfType<Box>().FirstOrDefault()?.Alpha ?? 0;
+        internal Color4 SubtreeColour => textBox.Colour;
+        internal Color4 PlaceholderColour => textBox.InnerPlaceholder.Colour;
+        internal Color4 TextColour => textBox.TextFlowColour;
+
         public Bindable<string> Current
         {
             get => current.Current;
@@ -188,10 +198,10 @@ namespace osu.Game.Graphics.UserInterfaceV2
             bool disabled = Current.Disabled || ReadOnly;
 
             textBox.ReadOnly = disabled;
-            textBox.Alpha = 1;
+            textBox.Alpha = disabled ? 0.5f : 1;
 
             caption.Colour = disabled ? colourProvider.Background1 : colourProvider.Content2;
-            textBox.Colour = disabled ? colourProvider.Foreground1 : colourProvider.Content1;
+            textBox.Colour = Colour4.White;
 
             if (Current.Disabled)
                 background.VisualStyle = VisualStyle.Disabled;
@@ -206,6 +216,9 @@ namespace osu.Game.Graphics.UserInterfaceV2
         internal partial class InnerTextBox : OsuTextBox
         {
             public BindableBool Focused { get; } = new BindableBool();
+
+            internal Color4 UnfocusedColour => BackgroundUnfocused;
+            internal SpriteText InnerPlaceholder => Placeholder;
 
             public Action? OnInputError { get; set; }
 
@@ -222,6 +235,21 @@ namespace osu.Game.Graphics.UserInterfaceV2
                 Height = 16;
                 TextContainer.Height = 1;
                 BackgroundUnfocused = BackgroundFocused = BackgroundCommit = Colour4.Transparent;
+                CornerRadius = 0;
+
+                var basicBg = this.ChildrenOfType<Box>().FirstOrDefault();
+                if (basicBg != null)
+                    basicBg.Alpha = 0;
+            }
+
+            protected override void UpdateThemeColours()
+            {
+                base.UpdateThemeColours();
+                BackgroundUnfocused = BackgroundFocused = BackgroundCommit = Colour4.Transparent;
+
+                var basicBg = this.ChildrenOfType<Box>().FirstOrDefault();
+                if (basicBg != null)
+                    basicBg.Alpha = 0;
             }
 
             protected override SpriteText CreatePlaceholder() => base.CreatePlaceholder().With(t => t.Margin = default);

@@ -3,6 +3,7 @@
 
 using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -33,6 +34,12 @@ namespace osu.Game.Beatmaps.Drawables.Cards
 
         private BeatmapCardThumbnail thumbnail = null!;
         private CollapsibleButtonContainer buttonContainer = null!;
+
+        private TruncatingSpriteText titleText = null!;
+        private TruncatingSpriteText artistText = null!;
+        private TruncatingSpriteText sourceText = null!;
+        private OsuSpriteText? mappedByText;
+        private IBindable<Colour4> themeColour = null!;
 
         private GridContainer statisticsContainer = null!;
 
@@ -112,7 +119,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                                             {
                                                 new Drawable[]
                                                 {
-                                                    new TruncatingSpriteText
+                                                    titleText = new TruncatingSpriteText
                                                     {
                                                         Text = new RomanisableString(BeatmapSet.TitleUnicode, BeatmapSet.Title),
                                                         Font = OsuFont.Default.With(size: 18f, weight: FontWeight.SemiBold),
@@ -145,7 +152,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                                             {
                                                 new[]
                                                 {
-                                                    new TruncatingSpriteText
+                                                    artistText = new TruncatingSpriteText
                                                     {
                                                         Text = createArtistText(),
                                                         Font = OsuFont.Default.With(size: 14f, weight: FontWeight.SemiBold),
@@ -155,7 +162,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                                                 },
                                             }
                                         },
-                                        new TruncatingSpriteText
+                                        sourceText = new TruncatingSpriteText
                                         {
                                             RelativeSizeAxes = Axes.X,
                                             Text = BeatmapSet.Source,
@@ -191,7 +198,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                                                 {
                                                     d.AutoSizeAxes = Axes.Both;
                                                     d.Margin = new MarginPadding { Top = 1 };
-                                                    d.AddText("mapped by ", t => t.Colour = colourProvider.Content2);
+                                                    d.AddText("mapped by ", t => { t.Colour = colourProvider.Content2; mappedByText = (OsuSpriteText)t; });
                                                     d.AddUserLink(BeatmapSet.Author);
                                                 }),
                                                 statisticsContainer = new GridContainer
@@ -290,6 +297,16 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             }
 
             createStatistics();
+
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+            themeColour.BindValueChanged(_ =>
+            {
+                titleText.Colour = colourProvider.Content1;
+                artistText.Colour = colourProvider.Content2;
+                sourceText.Colour = colourProvider.Content2;
+                if (mappedByText != null)
+                    mappedByText.Colour = colourProvider.Content2;
+            }, true);
         }
 
         private LocalisableString createArtistText()

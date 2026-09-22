@@ -11,7 +11,7 @@ namespace osu.Game.Graphics.Sprites
     /// </summary>
     internal class CyrillicFallbackGlyphStore : ITexturedGlyphLookupStore
     {
-        public const string DEFAULT_RUSSIAN_FONT = @"Noto";
+        public const string DEFAULT_RUSSIAN_FONT = @"Comfortaa Regular.fnt";
 
         private readonly ITexturedGlyphLookupStore inner;
         private readonly string fallbackFontName;

@@ -7,6 +7,7 @@ using System;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Threading;
 using Newtonsoft.Json;
 using osu.Framework.Bindables;
 
@@ -118,7 +119,7 @@ namespace osu.Game.Online.API
             }
         }
 
-        private static readonly object access_token_retrieval_lock = new object();
+        private static readonly Lock access_token_retrieval_lock = new Lock();
 
         /// <summary>
         /// Should be run before any API request to make sure we have a valid key.
@@ -201,6 +202,14 @@ namespace osu.Game.Online.API
 
             internal string ClientId;
             internal string ClientSecret;
+
+            protected AccessTokenRequest()
+            {
+                // Password authentication may need multiple bcrypt checks while upgrading legacy hashes.
+                // Avoid timing out at the framework-wide 10 second default or repeating that expensive work.
+                Timeout = 30_000;
+                AllowRetryOnTimeout = false;
+            }
 
             protected override void PrePerform()
             {

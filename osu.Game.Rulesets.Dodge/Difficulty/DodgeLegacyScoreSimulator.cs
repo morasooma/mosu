@@ -11,7 +11,7 @@ namespace osu.Game.Rulesets.Dodge.Difficulty
     internal class DodgeLegacyScoreSimulator : ILegacyScoreSimulator
     {
         public LegacyScoreAttributes Simulate(IWorkingBeatmap workingBeatmap, IBeatmap playableBeatmap)
-            => new LegacyScoreAttributes { MaxCombo = playableBeatmap.HitObjects.Count };
+            => new LegacyScoreAttributes { MaxCombo = DodgeDifficultyCalculator.CalculateMaxCombo(playableBeatmap) };
 
         public double GetLegacyScoreMultiplier(IReadOnlyList<Mod> mods, LegacyBeatmapConversionDifficultyInfo difficulty) => 1;
     }

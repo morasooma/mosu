@@ -5,7 +5,10 @@ using System;
 using MessagePack;
 using osu.Game.Online.Matchmaking.Events;
 using osu.Game.Online.Multiplayer.Countdown;
+using osu.Game.Online.Multiplayer.MatchTypes.Dodge;
+using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
 using osu.Game.Online.RankedPlay;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 
 namespace osu.Game.Online.Multiplayer
 {
@@ -20,6 +23,14 @@ namespace osu.Game.Online.Multiplayer
     [Union(2, typeof(MatchmakingAvatarActionEvent))]
     [Union(3, typeof(RankedPlayCardHandReplayEvent))]
     [Union(4, typeof(RollEvent))]
+    [Union(5, typeof(TagCoopCursorPositionEvent))]
+    [Union(6, typeof(TagCoopPingEvent))]
+    [Union(7, typeof(TagCoopJudgementEvent))]
+    [Union(8, typeof(DodgePlayerPositionEvent))]
+    [Union(9, typeof(DodgePingEvent))]
+    [Union(10, typeof(TagCoopReplayFramesEvent))]
+    [Union(11, typeof(RankedPlayCursorPositionEvent))]
+    [Union(12, typeof(RankedPlayPingEvent))]
     public abstract class MatchServerEvent
     {
     }

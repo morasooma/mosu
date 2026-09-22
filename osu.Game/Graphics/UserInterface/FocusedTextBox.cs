@@ -61,6 +61,8 @@ namespace osu.Game.Graphics.UserInterface
             {
                 BackgroundUnfocused = colourProvider?.Background5 ?? new Color4(10, 10, 10, 255);
                 BackgroundFocused = colourProvider?.Background5 ?? new Color4(10, 10, 10, 255);
+                BackgroundCommit = BorderColour = colourProvider?.Highlight1 ?? Color4.Yellow;
+                SetSelectionColour(colourProvider?.Background1 ?? new Color4(249, 90, 255, 255));
 
                 var textColour = colourProvider?.Content1 ?? (OverlayColourProvider.IsLightTheme ? Color4.Black : Color4.White);
                 TextFlow.Colour = textColour;

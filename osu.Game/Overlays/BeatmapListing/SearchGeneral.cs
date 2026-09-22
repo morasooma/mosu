@@ -22,10 +22,6 @@ namespace osu.Game.Overlays.BeatmapListing
         Follows,
 
         [LocalisableDescription(typeof(BeatmapsStrings), nameof(BeatmapsStrings.GeneralSpotlights))]
-        Spotlights,
-
-        [LocalisableDescription(typeof(BeatmapsStrings), nameof(BeatmapsStrings.GeneralFeaturedArtists))]
-        [Description("Featured artists")]
-        FeaturedArtists
+        Spotlights
     }
 }

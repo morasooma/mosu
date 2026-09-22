@@ -16,6 +16,7 @@ using osu.Framework.Logging;
 using osu.Game.Beatmaps;
 using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Replays.Legacy;
 using osu.Game.Rulesets.Replays;
 using osu.Game.Rulesets.Replays.Types;
@@ -95,6 +96,11 @@ namespace osu.Game.Online.Spectator
         private readonly Queue<FrameDataBundle> pendingFrameBundles = new Queue<FrameDataBundle>();
 
         private readonly List<LegacyReplayFrame> pendingFrames = new List<LegacyReplayFrame>();
+        private readonly List<TagCoopReplayFrame> pendingTagCoopFrames = new List<TagCoopReplayFrame>();
+        private bool replaceTagCoopReplayOnNextBundle;
+        private TaskCompletionSource<bool>? replacementTagCoopBundleSent;
+        private Score? nextTagCoopScore;
+        private TagCoopReplayPlayer[] nextTagCoopPlayers = Array.Empty<TagCoopReplayPlayer>();
 
         private double lastPurgeTime;
 
@@ -161,8 +167,14 @@ namespace osu.Game.Online.Spectator
 
         Task ISpectatorClient.UserSentFrames(int userId, FrameDataBundle data)
         {
-            if (data.Frames.Count > 0)
-                data.Frames[^1].Header = data.Header;
+            // Extension-only bundles may be accepted by a newer spectator server for replay
+            // storage, but there is no ordinary replay timeline data for live spectators to
+            // consume. Do not expose such bundles to handlers written against the legacy
+            // non-empty FrameDataBundle contract.
+            if (data.Frames.Count == 0)
+                return Task.CompletedTask;
+
+            data.Frames[^1].Header = data.Header;
 
             Schedule(() => OnNewFrames?.Invoke(userId, data));
 
@@ -214,6 +226,11 @@ namespace osu.Game.Online.Spectator
                 currentState.Mods = score.ScoreInfo.Mods.Select(m => new APIMod(m)).ToArray();
                 currentState.State = SpectatedUserState.Playing;
                 currentState.MaximumStatistics = state.ScoreProcessor.MaximumStatistics;
+                currentState.TagCoopPlayers = ReferenceEquals(nextTagCoopScore, score)
+                    ? nextTagCoopPlayers
+                    : Array.Empty<TagCoopReplayPlayer>();
+                nextTagCoopScore = null;
+                nextTagCoopPlayers = Array.Empty<TagCoopReplayPlayer>();
 
                 setStateForScore(scoreToken, state, score);
 
@@ -253,24 +270,82 @@ namespace osu.Game.Online.Spectator
                 return;
             }
 
-            if (frame is IConvertibleReplayFrame convertible)
-            {
-                Debug.Assert(currentBeatmap != null);
+            // In Tag Co-op the ordinary recorder only contains the local player's input. The
+            // compatibility stream is instead assembled from every labelled player track below.
+            if (currentState.TagCoopPlayers.Length > 0)
+                return;
 
-                var convertedFrame = convertible.ToLegacy(currentBeatmap);
-
-                // this reduces redundancy of frames in the resulting replay.
-                // it is also done at `ReplayRecorder`, but needs to be done here as well
-                // due to the flow being handled differently.
-                if (pendingFrames.LastOrDefault()?.IsEquivalentTo(convertedFrame) == true)
-                    pendingFrames[^1] = convertedFrame;
-                else
-                    pendingFrames.Add(convertedFrame);
-            }
+            appendCompatibilityFrame(frame);
 
             if (pendingFrames.Count > max_pending_frames)
                 purgePendingFrames();
         });
+
+        /// <summary>
+        /// Configures the ordered players represented by additional labelled Tag Co-op tracks.
+        /// The configuration is consumed only when the matching score begins, preventing an
+        /// abandoned multiplayer screen from leaking Tag Co-op metadata into a later solo play.
+        /// </summary>
+        public void ConfigureTagCoopReplay(Score score, IEnumerable<TagCoopReplayPlayer> players) => Schedule(() =>
+        {
+            nextTagCoopScore = score;
+            nextTagCoopPlayers = players.DistinctBy(player => player.UserID).ToArray();
+        });
+
+        /// <summary>
+        /// Adds a sample to the fork-owned Tag Co-op replay extension without changing the
+        /// ordinary replay track consumed by default clients.
+        /// </summary>
+        public void HandleTagCoopFrame(TagCoopReplayFrame frame, ReplayFrame? compatibilityFrame = null) => Schedule(() =>
+        {
+            if (!isPlaying || currentState.TagCoopPlayers.Length == 0)
+                return;
+
+            pendingTagCoopFrames.Add(frame);
+
+            if (compatibilityFrame != null)
+                appendCompatibilityFrame(compatibilityFrame);
+
+            if (pendingFrames.Count > max_pending_frames || pendingTagCoopFrames.Count > max_pending_frames)
+                purgePendingFrames();
+        });
+
+        /// <summary>
+        /// Replaces the in-flight Tag Co-op data with the post-game native player tracks and
+        /// their compatibility replay immediately before the spectator session is finalised.
+        /// </summary>
+        public Task HandleCompletedTagCoopReplayAsync(IEnumerable<TagCoopReplayFrame> playerFrames, IEnumerable<ReplayFrame> compatibilityFrames)
+        {
+            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void replace()
+            {
+                if (!isPlaying || currentState.TagCoopPlayers.Length == 0)
+                {
+                    completion.TrySetResult(false);
+                    return;
+                }
+
+                pendingFrames.Clear();
+                pendingTagCoopFrames.Clear();
+
+                pendingTagCoopFrames.AddRange(playerFrames);
+                replaceTagCoopReplayOnNextBundle = true;
+                replacementTagCoopBundleSent = completion;
+
+                foreach (ReplayFrame frame in compatibilityFrames)
+                    appendCompatibilityFrame(frame);
+
+                purgePendingFrames();
+            }
+
+            if (ThreadSafety.IsUpdateThread)
+                replace();
+            else
+                Schedule(replace);
+
+            return completion.Task;
+        }
 
         public void EndPlaying(GameplayState state)
         {
@@ -286,7 +361,7 @@ namespace osu.Game.Online.Spectator
                 if (currentScore != state.Score)
                     return;
 
-                if (pendingFrames.Count > 0)
+                if (pendingFrames.Count > 0 || pendingTagCoopFrames.Count > 0)
                     purgePendingFrames();
 
                 clearScoreState();
@@ -321,6 +396,7 @@ namespace osu.Game.Online.Spectator
             currentScore = null;
             currentScoreProcessor = null;
             currentScoreToken = null;
+            pendingTagCoopFrames.Clear();
         }
 
         public virtual void WatchUser(int userId)
@@ -372,13 +448,13 @@ namespace osu.Game.Online.Spectator
         {
             base.Update();
 
-            if (pendingFrames.Count > 0 && Time.Current - lastPurgeTime > TIME_BETWEEN_SENDS)
+            if ((pendingFrames.Count > 0 || pendingTagCoopFrames.Count > 0) && Time.Current - lastPurgeTime > TIME_BETWEEN_SENDS)
                 purgePendingFrames();
         }
 
         private void purgePendingFrames()
         {
-            if (pendingFrames.Count == 0)
+            if (pendingFrames.Count == 0 && pendingTagCoopFrames.Count == 0)
                 return;
 
             if (!isPlaying)
@@ -388,6 +464,7 @@ namespace osu.Game.Online.Spectator
                 // and then `BeginPlayingInternal()` finally fails and `clearScoreState()` is called to abort the streaming session.
                 Logger.Log($"{nameof(SpectatorClient)} dropping pending frames as the user is no longer considered to be playing.");
                 pendingFrames.Clear();
+                pendingTagCoopFrames.Clear();
                 return;
             }
 
@@ -395,14 +472,37 @@ namespace osu.Game.Online.Spectator
             Debug.Assert(currentScoreProcessor != null);
 
             var frames = pendingFrames.ToArray();
-            var bundle = new FrameDataBundle(currentScore.ScoreInfo, currentScoreProcessor, frames);
+            var tagCoopFrames = pendingTagCoopFrames.ToArray();
+            var bundle = new FrameDataBundle(currentScore.ScoreInfo, currentScoreProcessor, frames, tagCoopFrames)
+            {
+                ReplaceTagCoopReplay = replaceTagCoopReplayOnNextBundle,
+            };
 
             pendingFrames.Clear();
+            pendingTagCoopFrames.Clear();
+            replaceTagCoopReplayOnNextBundle = false;
             lastPurgeTime = Time.Current;
 
             pendingFrameBundles.Enqueue(bundle);
 
             sendNextBundleIfRequired();
+        }
+
+        private void appendCompatibilityFrame(ReplayFrame frame)
+        {
+            if (frame is not IConvertibleReplayFrame convertible)
+                return;
+
+            Debug.Assert(currentBeatmap != null);
+
+            var convertedFrame = convertible.ToLegacy(currentBeatmap);
+
+            // This reduces redundancy of frames in the resulting replay. It is also done at
+            // ReplayRecorder, but this streaming flow is handled separately.
+            if (pendingFrames.LastOrDefault()?.IsEquivalentTo(convertedFrame) == true)
+                pendingFrames[^1] = convertedFrame;
+            else
+                pendingFrames.Add(convertedFrame);
         }
 
         private void sendNextBundleIfRequired()
@@ -414,6 +514,8 @@ namespace osu.Game.Online.Spectator
 
             if (!pendingFrameBundles.TryPeek(out var bundle))
                 return;
+
+            bool completesTagCoopReplacement = bundle.ReplaceTagCoopReplay;
 
             TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
 
@@ -428,7 +530,15 @@ namespace osu.Game.Online.Spectator
                 {
                     // If the last bundle send wasn't successful, try again without dequeuing.
                     if (wasSuccessful)
+                    {
                         pendingFrameBundles.Dequeue();
+
+                        if (completesTagCoopReplacement)
+                        {
+                            replacementTagCoopBundleSent?.TrySetResult(true);
+                            replacementTagCoopBundleSent = null;
+                        }
+                    }
 
                     tcs.SetResult(wasSuccessful);
                     sendNextBundleIfRequired();

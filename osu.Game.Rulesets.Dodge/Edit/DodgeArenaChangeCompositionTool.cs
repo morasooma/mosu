@@ -13,11 +13,12 @@ using osuTK.Graphics;
 
 namespace osu.Game.Rulesets.Dodge.Edit
 {
-    public class DodgeArenaChangeCompositionTool : CompositionTool
+    public class DodgeArenaChangeCompositionTool : CompositionTool<DodgeAction>
     {
         public DodgeArenaChangeCompositionTool()
             : base(DodgeEditorStrings.Arena)
         {
+            Action = DodgeAction.EditorArenaChangeTool;
             TooltipText = DodgeEditorStrings.ArenaToolTip;
         }
 

@@ -38,7 +38,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         public DodgeBulletPlacementBlueprint()
             : base(new DodgeBullet())
         {
-            InternalChild = pathPiece = new DodgeBulletPathPiece();
+            Child = pathPiece = new DodgeBulletPathPiece();
         }
 
         protected override void LoadComplete()
@@ -86,6 +86,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             HitObject.ContinueUntilExit = settings.BulletContinueUntilExit.Value;
             HitObject.TrajectoryGuideStyle = settings.BulletTrajectoryGuideStyle.Value;
             HitObject.MovementType = settings.BulletMovementType.Value;
+            HitObject.MovementEasing = settings.BulletMovementEasing.Value;
             HitObject.WaveAmplitude = settings.BulletWaveAmplitude.Value;
             HitObject.WaveCycles = settings.BulletWaveCycles.Value;
             HitObject.WavePhase = settings.BulletWavePhase.Value;

@@ -678,13 +678,21 @@ namespace osu.Game.Beatmaps
         /// Perform a lookup query on available <see cref="BeatmapInfo"/>s for a specific online ID.
         /// </summary>
         /// <returns>A matching local beatmap info if existing and in a valid state.</returns>
-        public BeatmapInfo? QueryOnlineBeatmapId(int id) => Realm.Run(r =>
-            r.All<BeatmapInfo>()
-             .ForOnlineId(id)
-             // See https://github.com/ppy/osu/issues/36234 for why this isn't a SingleOrDefault().
-             .FirstOrDefault()
-             ?.Detach()
-        );
+        public BeatmapInfo? QueryOnlineBeatmapId(int id, string? expectedChecksum = null)
+        {
+            BeatmapInfo? realmBeatmap = Realm.Run(r =>
+            {
+                IQueryable<BeatmapInfo> beatmaps = r.All<BeatmapInfo>().ForOnlineId(id);
+
+                if (!string.IsNullOrEmpty(expectedChecksum))
+                    beatmaps = beatmaps.Filter($@"{nameof(BeatmapInfo.MD5Hash)} == $0", expectedChecksum);
+
+                // See https://github.com/ppy/osu/issues/36234 for why this isn't a SingleOrDefault().
+                return beatmaps.FirstOrDefault()?.Detach();
+            });
+
+            return realmBeatmap ?? StablePathManager.GetBeatmapInfo(id, expectedChecksum);
+        }
 
         /// <summary>
         /// A default representation of a WorkingBeatmap to use when no beatmap is available.
@@ -1114,7 +1122,7 @@ namespace osu.Game.Beatmaps
             return workingBeatmapCache.GetWorkingBeatmap(beatmapInfo);
         }
 
-        WorkingBeatmap IWorkingBeatmapCache.GetWorkingBeatmap(BeatmapInfo beatmapInfo) => GetWorkingBeatmap(beatmapInfo);
+        WorkingBeatmap IWorkingBeatmapCache.GetWorkingBeatmap(BeatmapInfo? beatmapInfo) => GetWorkingBeatmap(beatmapInfo);
         void IWorkingBeatmapCache.Invalidate(BeatmapSetInfo beatmapSetInfo) => workingBeatmapCache.Invalidate(beatmapSetInfo);
         void IWorkingBeatmapCache.Invalidate(BeatmapInfo beatmapInfo) => workingBeatmapCache.Invalidate(beatmapInfo);
 

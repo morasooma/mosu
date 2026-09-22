@@ -55,6 +55,11 @@ namespace osu.Game.Skinning
 
         public readonly Bindable<Live<SkinInfo>> CurrentSkinInfo = new Bindable<Live<SkinInfo>>(ArgonSkin.CreateInfo().ToLiveUnmanaged());
 
+        /// <summary>
+        /// Persistent collection of skins pinned by the user.
+        /// </summary>
+        public readonly PinnedSkinsStore PinnedSkins;
+
         private readonly SkinImporter skinImporter;
 
         private readonly LegacySkinExporter skinExporter;
@@ -92,6 +97,8 @@ namespace osu.Game.Skinning
             this.resources = resources;
 
             userFiles = new StorageBackedResourceStore(storage.GetStorageForDirectory("files"));
+
+            PinnedSkins = new PinnedSkinsStore(storage);
 
             skinImporter = new SkinImporter(storage, realm, this)
             {
@@ -166,7 +173,16 @@ namespace osu.Game.Skinning
                     skins.Add(s);
             });
 
-            return skins;
+            return skins.OrderByDescending(s => PinnedSkins.IsPinned(s.ID)).ToList();
+        }
+
+        /// <summary>
+        /// Toggles whether a skin is pinned in skin selection lists.
+        /// </summary>
+        public void TogglePinned(Live<SkinInfo> skin)
+        {
+            Guid id = skin.ID;
+            PinnedSkins.SetPinned(id, !PinnedSkins.IsPinned(id));
         }
 
         public void SelectRandomSkin()

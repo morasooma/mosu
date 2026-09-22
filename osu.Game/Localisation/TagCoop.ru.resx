@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="all_players" xml:space="preserve"><value>Все игроки</value></data>
+  <data name="spin_now" xml:space="preserve"><value>Крутите спиннер</value></data>
+  <data name="your_turn" xml:space="preserve"><value>Твой ход</value></data>
+  <data name="hit_this_combo" xml:space="preserve"><value>Сыграй эту комбо-цепочку</value></data>
+  <data name="all_get_ready" xml:space="preserve"><value>Всем приготовиться</value></data>
+  <data name="get_ready" xml:space="preserve"><value>Приготовься</value></data>
+  <data name="playing_now" xml:space="preserve"><value>Сейчас играет</value></data>
+  <data name="waiting_for_turn" xml:space="preserve"><value>Ожидание хода</value></data>
+  <data name="tag_coop" xml:space="preserve"><value>Tag Co-op</value></data>
+  <data name="spinner_in" xml:space="preserve"><value>Спиннер через {0:0.0} с</value></data>
+  <data name="your_turn_in" xml:space="preserve"><value>Твой ход через {0:0.0} с</value></data>
+  <data name="status_with_ping" xml:space="preserve"><value>{0} · {1} мс</value></data>
+  <data name="remote_miss" xml:space="preserve"><value>{0}: промах</value></data>
+</root>

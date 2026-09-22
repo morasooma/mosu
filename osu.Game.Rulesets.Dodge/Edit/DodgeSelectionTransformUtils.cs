@@ -14,7 +14,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
     internal static class DodgeSelectionTransformUtils
     {
         public static HitObject[] Transformable(IEnumerable<HitObject> items, bool includeArena = true)
-            => items.Where(item => item is DodgeBullet or DodgeEmitter or DodgeBeam or DodgeCameraChange || includeArena && item is DodgeArenaChange).ToArray();
+            => items.Where(item => item is DodgeBullet or DodgeEmitter or DodgeBeam or DodgeCameraChange or DodgeTrigger || includeArena && item is DodgeArenaChange).ToArray();
 
         public static (Vector2 Start, Vector2 End) GetPoints(HitObject hitObject) => hitObject switch
         {
@@ -23,6 +23,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             DodgeArenaChange arena => (arena.TargetPosition, arena.TargetPosition + arena.TargetSize),
             DodgeBeam beam => (beam.Position, beam.EndPosition),
             DodgeCameraChange camera => (camera.Position, camera.EndPosition),
+            DodgeTrigger trigger => (trigger.Position, trigger.Position),
             _ => throw new ArgumentException($"Unsupported transform object {hitObject.GetType().Name}.", nameof(hitObject)),
         };
 
@@ -73,6 +74,10 @@ namespace osu.Game.Rulesets.Dodge.Edit
                     arena.TargetPosition = Vector2.ComponentMin(start, end);
                     arena.TargetSize = Vector2.ComponentMax(start, end) - arena.TargetPosition;
                     arena.ClampToBaseBounds();
+                    break;
+
+                case DodgeTrigger trigger:
+                    trigger.Position = start;
                     break;
             }
         }

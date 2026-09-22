@@ -7,8 +7,10 @@ using osu.Game.Online.Matchmaking;
 using osu.Game.Online.Matchmaking.Events;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.Countdown;
+using osu.Game.Online.Multiplayer.MatchTypes.Dodge;
 using osu.Game.Online.Multiplayer.MatchTypes.Matchmaking;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Online.Multiplayer.MatchTypes.TeamVersus;
 using osu.Game.Online.RankedPlay;
 using osu.Game.Users;
@@ -30,12 +32,30 @@ namespace osu.Game.Online
             (typeof(StopCountdownRequest), typeof(MatchUserRequest)),
             (typeof(SetLockStateRequest), typeof(MatchUserRequest)),
             (typeof(RollRequest), typeof(MatchUserRequest)),
+            (typeof(TagCoopCursorPositionRequest), typeof(MatchUserRequest)),
+            (typeof(TagCoopPingRequest), typeof(MatchUserRequest)),
+            (typeof(TagCoopJudgementRequest), typeof(MatchUserRequest)),
+            (typeof(TagCoopReplayFramesRequest), typeof(MatchUserRequest)),
+            (typeof(DodgePlayerPositionRequest), typeof(MatchUserRequest)),
+            (typeof(DodgePingRequest), typeof(MatchUserRequest)),
+            (typeof(RankedPlayCursorPositionRequest), typeof(MatchUserRequest)),
+            (typeof(RankedPlayPingRequest), typeof(MatchUserRequest)),
             (typeof(CountdownStartedEvent), typeof(MatchServerEvent)),
             (typeof(CountdownStoppedEvent), typeof(MatchServerEvent)),
             (typeof(RollEvent), typeof(MatchServerEvent)),
+            (typeof(TagCoopCursorPositionEvent), typeof(MatchServerEvent)),
+            (typeof(TagCoopPingEvent), typeof(MatchServerEvent)),
+            (typeof(TagCoopJudgementEvent), typeof(MatchServerEvent)),
+            (typeof(TagCoopReplayFramesEvent), typeof(MatchServerEvent)),
+            (typeof(DodgePlayerPositionEvent), typeof(MatchServerEvent)),
+            (typeof(DodgePingEvent), typeof(MatchServerEvent)),
+            (typeof(RankedPlayCursorPositionEvent), typeof(MatchServerEvent)),
+            (typeof(RankedPlayPingEvent), typeof(MatchServerEvent)),
             (typeof(StandardMatchRoomState), typeof(MatchRoomState)),
             (typeof(TeamVersusRoomState), typeof(MatchRoomState)),
             (typeof(TeamVersusUserState), typeof(MatchUserState)),
+            (typeof(TagCoopRoomState), typeof(MatchRoomState)),
+            (typeof(TagCoopUserState), typeof(MatchUserState)),
             (typeof(MatchStartCountdown), typeof(MultiplayerCountdown)),
             (typeof(ForceGameplayStartCountdown), typeof(MultiplayerCountdown)),
             (typeof(ServerShuttingDownCountdown), typeof(MultiplayerCountdown)),

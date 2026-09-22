@@ -4,6 +4,8 @@
 using System;
 using osu.Framework.Audio.Track;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Sprites;
+using osu.Framework.Graphics.Textures;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Graphics.Containers;
 using osuTK.Graphics;
@@ -20,6 +22,7 @@ namespace osu.Game.Skinning
             set => FlashingDrawable.Colour = value;
         }
 
+        private readonly Drawable mainDrawable;
         public readonly Drawable FlashingDrawable;
 
         private const float flash_opacity = 0.3f;
@@ -28,7 +31,7 @@ namespace osu.Game.Skinning
         {
             AutoSizeAxes = Axes.Both;
 
-            Drawable baseDrawable = (creationFunc.Invoke() ?? Empty()).With(d =>
+            mainDrawable = (creationFunc.Invoke() ?? Empty()).With(d =>
             {
                 d.Anchor = Anchor.Centre;
                 d.Origin = Anchor.Centre;
@@ -36,17 +39,14 @@ namespace osu.Game.Skinning
 
             if (SkinPerformanceMode.ShouldDisableKiaiFlashing)
             {
-                // Kiai flashing duplicates every legacy hitcircle/overlay texture. In the
-                // explicitly visual-changing performance mode keep only the base sprite.
-                // This removes one drawable and one texture-backed draw opportunity per layer.
                 FlashingDrawable = Empty();
-                InternalChild = baseDrawable;
+                InternalChild = mainDrawable;
                 return;
             }
 
             Children = new[]
             {
-                baseDrawable,
+                mainDrawable,
                 FlashingDrawable = (creationFunc.Invoke() ?? Empty()).With(d =>
                 {
                     d.Anchor = Anchor.Centre;
@@ -83,6 +83,24 @@ namespace osu.Game.Skinning
         {
             directChildrenLifeStable = false;
             base.ClearInternal(disposeChildren);
+        }
+
+        /// <summary>
+        /// Torii: swap the texture of BOTH inner sprites (the main one + the kiai-flash
+        /// overlay) at runtime. Used by <c>osu.Game.Rulesets.Osu.Skinning.Legacy.LegacyMainCirclePiece</c>
+        /// to pick a different hitcircle texture per combo color slot
+        /// (<c>hitcircle1.png</c>, <c>hitcircle2.png</c>, …) without rebuilding the
+        /// drawable tree on every pool-acquisition. No-op for non-<see cref="Sprite"/>
+        /// inner children — the factory the caller passes us must produce sprites for
+        /// the texture swap to land; if it produced something else (a composite, an
+        /// animation), this returns silently without throwing.
+        /// </summary>
+        public void SetTexture(Texture? texture)
+        {
+            if (mainDrawable is Sprite mainSprite)
+                mainSprite.Texture = texture;
+            if (FlashingDrawable is Sprite flashSprite)
+                flashSprite.Texture = texture;
         }
 
         protected override void OnNewBeat(int beatIndex, TimingControlPoint timingPoint, EffectControlPoint effectPoint, ChannelAmplitudes amplitudes)

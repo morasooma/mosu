@@ -1,7 +1,4 @@
-<Project>
-  <ItemGroup>
-    <PackageReference Include="ppy.osu.Framework.iOS" Version="2026.629.0" />
-  </ItemGroup>
+﻿<Project>
   <PropertyGroup>
     <CodesignKey>iPhone Developer</CodesignKey>
     <NullabilityInfoContextSupport>true</NullabilityInfoContextSupport>
@@ -19,4 +16,7 @@
     <UseInterpreter>false</UseInterpreter>
     <MtouchInterpreter>-all</MtouchInterpreter>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ppy.osu.Framework.iOS" Version="2026.918.0" />
+  </ItemGroup>
 </Project>

@@ -46,8 +46,23 @@ namespace osu.Game.Graphics.UserInterface
         protected bool DrawBorder { get; init; } = true;
 
         private OsuCaret? caret;
+        private Color4 currentCaretColour = Color4.White;
         private IBindable<Colour4>? themeColour;
         private IBindable<ThemeMode>? themeMode;
+
+        protected void SetCaretColour(Color4 colour)
+        {
+            currentCaretColour = colour;
+            if (caret != null)
+                caret.CaretColour = colour;
+        }
+
+        protected void SetSelectionColour(Color4 colour)
+        {
+            selectionColour = colour;
+            if (caret != null)
+                caret.SelectionColour = colour;
+        }
 
         private bool selectionStarted;
         private double sampleLastPlaybackTime;
@@ -83,36 +98,39 @@ namespace osu.Game.Graphics.UserInterface
             Current.DisabledChanged += disabled => { Alpha = disabled ? 0.3f : 1; };
         }
 
+        protected OverlayColourProvider? ColourProvider { get; private set; }
+        protected OsuColour? Colours { get; private set; }
+
+        protected virtual void UpdateThemeColours()
+        {
+            BackgroundUnfocused = ColourProvider?.Background5 ?? Color4.Black.Opacity(0.5f);
+            BackgroundFocused = ColourProvider?.Background4 ?? OsuColour.Gray(0.3f).Opacity(0.8f);
+            BackgroundCommit = BorderColour = ColourProvider?.Highlight1 ?? (Colours?.Yellow ?? Color4.Yellow);
+            SetSelectionColour(ColourProvider?.Background1 ?? new Color4(249, 90, 255, 255));
+            Color4 textColour = ColourProvider?.Content1 ?? (OverlayColourProvider.IsLightTheme ? Color4.Black : Color4.White);
+            SetCaretColour(textColour);
+
+            Placeholder.Colour = ColourProvider?.Foreground1 ?? new Color4(180, 180, 180, 255);
+            TextFlow.Colour = textColour;
+        }
+
+        internal Color4 TextFlowColour => TextFlow.Colour;
+
         [BackgroundDependencyLoader(true)]
         private void load(OverlayColourProvider? colourProvider, OsuColour colour, AudioManager audio)
         {
-            void updateThemeColours()
-            {
-                BackgroundUnfocused = colourProvider?.Background5 ?? Color4.Black.Opacity(0.5f);
-                BackgroundFocused = colourProvider?.Background4 ?? OsuColour.Gray(0.3f).Opacity(0.8f);
-                BackgroundCommit = BorderColour = colourProvider?.Highlight1 ?? colour.Yellow;
-                selectionColour = colourProvider?.Background1 ?? new Color4(249, 90, 255, 255);
-                textColour = colourProvider?.Content1 ?? (OverlayColourProvider.IsLightTheme ? Color4.Black : Color4.White);
-
-                if (caret != null)
-                {
-                    caret.SelectionColour = selectionColour;
-                    caret.CaretColour = textColour;
-                }
-
-                Placeholder.Colour = colourProvider?.Foreground1 ?? new Color4(180, 180, 180, 255);
-                TextFlow.Colour = textColour;
-            }
+            ColourProvider = colourProvider;
+            Colours = colour;
 
             if (colourProvider != null)
             {
                 themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-                themeColour.BindValueChanged(_ => updateThemeColours(), true);
+                themeColour.BindValueChanged(_ => UpdateThemeColours(), true);
             }
             else
             {
                 themeMode = OverlayColourProvider.CurrentTheme.GetBoundCopy();
-                themeMode.BindValueChanged(_ => updateThemeColours(), true);
+                themeMode.BindValueChanged(_ => UpdateThemeColours(), true);
             }
 
             // Note that `KeyBindingRow` uses similar logic for input feedback, so remember to update there if changing here.
@@ -136,7 +154,6 @@ namespace osu.Game.Graphics.UserInterface
         }
 
         private Color4 selectionColour;
-        private Color4 textColour;
 
         protected override Color4 SelectionColour => selectionColour;
 
@@ -302,22 +319,17 @@ namespace osu.Game.Graphics.UserInterface
         protected override Drawable GetDrawableCharacter(char c) => new FallingDownContainer
         {
             AutoSizeAxes = Axes.Both,
-            Child = new OsuSpriteText { Text = c.ToString(), Font = OsuFont.GetFont(size: FontSize) },
+            Child = new OsuSpriteText { Text = c.ToString(), Font = Font },
         };
+
+        protected virtual FontUsage Font => OsuFont.GetFont(size: FontSize);
 
         protected override Caret CreateCaret() => caret = new OsuCaret
         {
             CaretWidth = CaretWidth,
             SelectionColour = SelectionColour,
+            CaretColour = currentCaretColour,
         };
-
-        protected Color4 TextColour => textColour;
-
-        protected void SetCaretColour(Color4 colour)
-        {
-            if (caret != null)
-                caret.CaretColour = colour;
-        }
 
         private SampleChannel? getSampleChannel(FeedbackSampleType feedbackSampleType)
         {

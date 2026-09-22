@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -14,6 +15,12 @@ namespace osu.Game.Screens.Select
     /// </summary>
     public partial class BeatmapDetailsArea : VisibilityContainer
     {
+        /// <summary>
+        /// When enabled, empty leaderboard space lets positional input reach the presentation behind it.
+        /// Actual score panels remain interactive.
+        /// </summary>
+        public Func<bool> UseScorePanelOnlyInput { get; init; } = () => false;
+
         private Header header = null!;
         private Container contentContainer = null!;
 
@@ -86,6 +93,7 @@ namespace osu.Game.Screens.Select
                 case Header.Selection.Ranking:
                     currentContent = new BeatmapLeaderboardWedge
                     {
+                        UseScorePanelOnlyInput = UseScorePanelOnlyInput,
                         Scope = { BindTarget = header.Scope },
                         Sorting = { BindTarget = header.Sorting },
                         FilterBySelectedMods = { BindTarget = header.FilterBySelectedMods },

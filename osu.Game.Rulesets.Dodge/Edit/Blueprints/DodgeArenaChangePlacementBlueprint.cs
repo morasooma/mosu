@@ -44,7 +44,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         public DodgeArenaChangePlacementBlueprint()
             : base(new DodgeArenaChange())
         {
-            InternalChild = piece = new DodgeArenaChangePiece();
+            Child = piece = new DodgeArenaChangePiece();
         }
 
         protected override void LoadComplete()

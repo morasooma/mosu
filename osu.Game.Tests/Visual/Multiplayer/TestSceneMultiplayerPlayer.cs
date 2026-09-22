@@ -5,14 +5,21 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using osu.Framework.Allocation;
+using osu.Framework.Extensions;
+using osu.Framework.Graphics;
 using osu.Framework.Screens;
 using osu.Framework.Testing;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Online.Rooms;
+using osu.Game.Overlays;
+using osu.Game.Overlays.Notifications;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Scoring;
+using osu.Game.Rulesets.TagCoop;
 using osu.Game.Screens.OnlinePlay.Multiplayer;
 using osu.Game.Screens.Play;
 
@@ -21,6 +28,14 @@ namespace osu.Game.Tests.Visual.Multiplayer
     public partial class TestSceneMultiplayerPlayer : MultiplayerTestScene
     {
         private MultiplayerPlayer player = null!;
+
+        [Cached(typeof(INotificationOverlay))]
+        private readonly NotificationOverlay notificationOverlay;
+
+        public TestSceneMultiplayerPlayer()
+        {
+            Add(notificationOverlay = new NotificationOverlay());
+        }
 
         public override void SetUpSteps()
         {
@@ -35,6 +50,35 @@ namespace osu.Game.Tests.Visual.Multiplayer
             setup();
 
             AddUntilStep("wait for gameplay start", () => player.LocalUserPlaying.Value);
+        }
+
+        [Test]
+        public void TestTagCoopGameplayInitialisation()
+        {
+            AddStep("configure tag co-op room", () =>
+            {
+                MultiplayerClient.ServerAPIRoom!.Type = MatchType.TagCoop;
+
+                int[] playerOrder = MultiplayerClient.ServerRoom!.Users.Select(user => user.UserID).OrderBy(id => id).ToArray();
+                var roomState = TagCoopRoomState.CreateDefault(MultiplayerClient.ServerRoom.Settings.MaxParticipants);
+                roomState.PlayerOrder = playerOrder;
+                MultiplayerClient.ServerRoom.MatchState = roomState;
+
+                ((IMultiplayerClient)MultiplayerClient).MatchRoomStateChanged(roomState).WaitSafely();
+            });
+
+            setup();
+
+            AddAssert("tag co-op controller loaded", () => player.ChildrenOfType<TagCoopGameplayController>().Single().IsLoaded);
+            AddAssert("turn display uses bottom-right HUD anchor", () =>
+            {
+                var display = player.ChildrenOfType<TagCoopTurnDisplay>().Single();
+                return display.Anchor == Anchor.BottomRight && display.Origin == Anchor.BottomRight;
+            });
+            AddUntilStep("wait for gameplay start", () => player.LocalUserPlaying.Value);
+            AddAssert("combined replay contains player list", () =>
+                player.GameplayState.Score.ScoreInfo.TagCoopReplay?.Players.Select(p => p.UserID)
+                      .SequenceEqual(MultiplayerClient.ServerRoom!.Users.Select(user => user.UserID).OrderBy(id => id)) == true);
         }
 
         [Test]

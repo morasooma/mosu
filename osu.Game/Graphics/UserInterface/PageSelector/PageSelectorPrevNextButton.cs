@@ -78,5 +78,15 @@ namespace osu.Game.Graphics.UserInterface.PageSelector
 
         protected override void UpdateHoverState() =>
             Background.FadeColour(IsHovered ? ColourProvider.Dark3 : ColourProvider.Dark4, DURATION, Easing.OutQuint);
+
+        protected override void UpdateColours()
+        {
+            base.UpdateColours();
+            Background.Colour = IsHovered ? ColourProvider.Dark3 : ColourProvider.Dark4;
+            if (name != null)
+                name.Colour = ColourProvider.Light1;
+            if (icon != null)
+                icon.Colour = ColourProvider.Light1;
+        }
     }
 }

@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using Humanizer;
-using Humanizer.Localisation;
 using osu.Game.Rulesets;
 using osu.Game.Utils;
 
@@ -49,8 +48,13 @@ namespace osu.Game.Online.Rooms
 
                 if (p.RequiredMods.Length > 0)
                 {
-                    var ruleset = rulesetStore.GetRuleset(p.RulesetID)!.CreateInstance();
-                    rate = ModUtils.CalculateRateWithMods(p.RequiredMods.Select(mod => mod.ToMod(ruleset)));
+                    var rulesetInfo = rulesetStore.GetRuleset(p.RulesetID);
+
+                    if (rulesetInfo != null)
+                    {
+                        var ruleset = rulesetInfo.CreateInstance();
+                        rate = ModUtils.CalculateRateWithMods(p.RequiredMods.Select(mod => mod.ToMod(ruleset)));
+                    }
                 }
 
                 return p.Beatmap.Length / rate;

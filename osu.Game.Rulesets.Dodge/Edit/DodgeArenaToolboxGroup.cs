@@ -54,6 +54,12 @@ namespace osu.Game.Rulesets.Dodge.Edit
                     Current = settings.ArenaRotation,
                     KeyboardStep = 1f,
                 },
+                new SettingsEnumDropdown<DodgeCameraEasing>
+                {
+                    LabelText = DodgeEditorStrings.ArenaEasing,
+                    Current = settings.ArenaEasing,
+                    TooltipText = DodgeEditorStrings.ArenaEasingHint,
+                },
                 new SettingsSlider<float>
                 {
                     LabelText = DodgeEditorStrings.ArenaKiaiShakeAngle,
@@ -89,6 +95,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             base.LoadComplete();
 
             settings.ArenaRotation.BindValueChanged(_ => applyToSelection());
+            settings.ArenaEasing.BindValueChanged(_ => applyToSelection());
             settings.ArenaKiaiShakeAngle.BindValueChanged(_ => applyToSelection());
             settings.ArenaBackgroundColour.BindValueChanged(_ => applyToSelection());
             settings.ArenaBackgroundOpacity.BindValueChanged(_ => applyToSelection());
@@ -107,6 +114,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
             syncingSelection = true;
             settings.ArenaRotation.Value = change.TargetRotation;
+            settings.ArenaEasing.Value = change.Easing;
             settings.ArenaKiaiShakeAngle.Value = change.KiaiShakeAngle;
             settings.ArenaBackgroundColour.Value = change.Colour;
             settings.ArenaBackgroundOpacity.Value = change.Opacity;
@@ -139,6 +147,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
         private void applyAppearance(DodgeArenaChange change)
         {
             change.TargetRotation = settings.ArenaRotation.Value;
+            change.Easing = settings.ArenaEasing.Value;
             change.KiaiShakeAngle = settings.ArenaKiaiShakeAngle.Value;
             change.Colour = settings.ArenaBackgroundColour.Value;
             change.Opacity = settings.ArenaBackgroundOpacity.Value;

@@ -5,10 +5,13 @@ using System;
 using System.Security.Cryptography;
 using System.Text;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using osu.Framework.Logging;
+using osu.Framework.Extensions;
 using osu.Game.Beatmaps;
 using osu.Game.IO;
 using osu.Game.Rulesets;
@@ -171,7 +174,9 @@ namespace osu.Game.Database
                             AudioFile = audioFile
                         };
 
-                        RulesetInfo ruleset = rulesetStore.GetRuleset(mode) ?? rulesetStore.GetRuleset(0);
+                        RulesetInfo ruleset = rulesetStore.GetRuleset(mode)
+                                              ?? rulesetStore.GetRuleset(0)
+                                              ?? throw new InvalidDataException("No rulesets are available while importing the stable beatmap database.");
 
                         double starRating = mode == 0 ? srStd :
                                             mode == 1 ? srTaiko :
@@ -273,11 +278,8 @@ namespace osu.Game.Database
         
         private static Guid CreateDeterministicGuid(string input)
         {
-            using (MD5 md5 = MD5.Create())
-            {
-                byte[] hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
-                return new Guid(hash);
-            }
+            byte[] hash = MD5.HashData(Encoding.UTF8.GetBytes(input));
+            return new Guid(hash);
         }
     }
 
@@ -298,7 +300,14 @@ namespace osu.Game.Database
     public static class StablePathManager
     {
         private static readonly object syncRoot = new object();
-        private static PathSnapshot current = new PathSnapshot(new Dictionary<Guid, string>(), new Dictionary<Guid, string>(), new Dictionary<int, HashSet<string>>(), new HashSet<int>());
+        private static readonly ConcurrentDictionary<string, StableFileChecksum> checksumCache = new ConcurrentDictionary<string, StableFileChecksum>(StringComparer.OrdinalIgnoreCase);
+        private static PathSnapshot current = new PathSnapshot(
+            new Dictionary<Guid, string>(),
+            new Dictionary<Guid, string>(),
+            new Dictionary<int, HashSet<string>>(),
+            new Dictionary<int, string>(),
+            new Dictionary<int, BeatmapInfo>(),
+            new Dictionary<int, string[]>());
 
         public static event Action? AvailabilityChanged;
 
@@ -307,7 +316,13 @@ namespace osu.Game.Database
             lock (syncRoot)
             {
                 var beatmapPaths = new Dictionary<Guid, string>(current.BeatmapPaths) { [id] = path };
-                Volatile.Write(ref current, new PathSnapshot(beatmapPaths, current.AudioPaths, current.ChecksumsByOnlineId, current.BeatmapSetOnlineIds));
+                Volatile.Write(ref current, new PathSnapshot(
+                    beatmapPaths,
+                    current.AudioPaths,
+                    current.ChecksumsByOnlineId,
+                    current.PathsByOnlineId,
+                    current.BeatmapsByOnlineId,
+                    current.PathsByBeatmapSetOnlineId));
             }
         }
 
@@ -316,22 +331,41 @@ namespace osu.Game.Database
             lock (syncRoot)
             {
                 var audioPaths = new Dictionary<Guid, string>(current.AudioPaths) { [id] = path };
-                Volatile.Write(ref current, new PathSnapshot(current.BeatmapPaths, audioPaths, current.ChecksumsByOnlineId, current.BeatmapSetOnlineIds));
+                Volatile.Write(ref current, new PathSnapshot(
+                    current.BeatmapPaths,
+                    audioPaths,
+                    current.ChecksumsByOnlineId,
+                    current.PathsByOnlineId,
+                    current.BeatmapsByOnlineId,
+                    current.PathsByBeatmapSetOnlineId));
             }
         }
 
         public static void Replace(IReadOnlyDictionary<Guid, string> newBeatmapPaths, IReadOnlyDictionary<Guid, string> newAudioPaths, IEnumerable<BeatmapSetInfo>? beatmapSets = null)
         {
             var checksumsByOnlineId = new Dictionary<int, HashSet<string>>();
-            var beatmapSetOnlineIds = new HashSet<int>();
+            var pathsByOnlineId = new Dictionary<int, string>();
+            var beatmapsByOnlineId = new Dictionary<int, BeatmapInfo>();
+            var pathsByBeatmapSetOnlineId = new Dictionary<int, string[]>();
 
             if (beatmapSets != null)
             {
                 foreach (var set in beatmapSets.Where(set => set.OnlineID > 0))
-                    beatmapSetOnlineIds.Add(set.OnlineID);
+                {
+                    pathsByBeatmapSetOnlineId[set.OnlineID] = set.Beatmaps
+                        .Select(beatmap => newBeatmapPaths.TryGetValue(beatmap.ID, out string? path) ? path : null)
+                        .Where(path => !string.IsNullOrEmpty(path))
+                        .Cast<string>()
+                        .ToArray();
+                }
 
                 foreach (var beatmap in beatmapSets.SelectMany(set => set.Beatmaps).Where(beatmap => beatmap.OnlineID > 0))
                 {
+                    if (!newBeatmapPaths.TryGetValue(beatmap.ID, out string? path) || string.IsNullOrEmpty(path))
+                        continue;
+
+                    pathsByOnlineId[beatmap.OnlineID] = path;
+                    beatmapsByOnlineId[beatmap.OnlineID] = beatmap;
                     if (!checksumsByOnlineId.TryGetValue(beatmap.OnlineID, out var checksums))
                         checksumsByOnlineId[beatmap.OnlineID] = checksums = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -340,15 +374,22 @@ namespace osu.Game.Database
                 }
             }
 
-            var replacement = new PathSnapshot(new Dictionary<Guid, string>(newBeatmapPaths), new Dictionary<Guid, string>(newAudioPaths), checksumsByOnlineId, beatmapSetOnlineIds);
+            var replacement = new PathSnapshot(
+                new Dictionary<Guid, string>(newBeatmapPaths),
+                new Dictionary<Guid, string>(newAudioPaths),
+                checksumsByOnlineId,
+                pathsByOnlineId,
+                beatmapsByOnlineId,
+                pathsByBeatmapSetOnlineId);
+            checksumCache.Clear();
             Volatile.Write(ref current, replacement);
             AvailabilityChanged?.Invoke();
         }
 
-        public static bool TryGetPath(Guid id, out string path)
+        public static bool TryGetPath(Guid id, [NotNullWhen(true)] out string? path)
             => Volatile.Read(ref current).BeatmapPaths.TryGetValue(id, out path);
 
-        public static bool TryGetAudioPath(Guid id, out string path)
+        public static bool TryGetAudioPath(Guid id, [NotNullWhen(true)] out string? path)
             => Volatile.Read(ref current).AudioPaths.TryGetValue(id, out path);
         
         public static bool IsStableBeatmap(Guid id)
@@ -356,29 +397,100 @@ namespace osu.Game.Database
 
         public static bool IsAvailableLocally(int onlineId, string? md5Hash = null)
         {
-            if (onlineId <= 0 || !Volatile.Read(ref current).ChecksumsByOnlineId.TryGetValue(onlineId, out var checksums))
-                return false;
+            var snapshot = Volatile.Read(ref current);
+            return isAvailableLocally(snapshot, onlineId, md5Hash);
+        }
 
-            return string.IsNullOrEmpty(md5Hash) || checksums.Contains(md5Hash);
+        /// <summary>
+        /// Returns metadata for a directly-accessed stable beatmap when its backing file exists
+        /// and, when supplied, matches the expected online checksum.
+        /// </summary>
+        public static BeatmapInfo? GetBeatmapInfo(int onlineId, string? md5Hash = null)
+        {
+            var snapshot = Volatile.Read(ref current);
+
+            if (!isAvailableLocally(snapshot, onlineId, md5Hash) ||
+                !snapshot.BeatmapsByOnlineId.TryGetValue(onlineId, out BeatmapInfo? beatmapInfo))
+                return null;
+
+            // Consumers may mutate status and hashes while loading. Never expose the snapshot's
+            // shared instance, otherwise one failed load could poison future lookups.
+            return beatmapInfo.Clone();
         }
 
         public static bool IsBeatmapSetAvailableLocally(int onlineId)
-            => onlineId > 0 && Volatile.Read(ref current).BeatmapSetOnlineIds.Contains(onlineId);
+            => onlineId > 0 &&
+               Volatile.Read(ref current).PathsByBeatmapSetOnlineId.TryGetValue(onlineId, out string[]? paths) &&
+               paths.Any(File.Exists);
+
+        private static bool isAvailableLocally(PathSnapshot snapshot, int onlineId, string? md5Hash)
+        {
+            if (onlineId <= 0 ||
+                !snapshot.PathsByOnlineId.TryGetValue(onlineId, out string? path) ||
+                !File.Exists(path) ||
+                !snapshot.ChecksumsByOnlineId.TryGetValue(onlineId, out var checksums))
+                return false;
+
+            if (string.IsNullOrEmpty(md5Hash))
+                return true;
+
+            return checksums.Contains(md5Hash) && fileMatchesChecksum(path, md5Hash);
+        }
+
+        private static bool fileMatchesChecksum(string path, string expectedMD5)
+        {
+            try
+            {
+                var file = new System.IO.FileInfo(path);
+                if (!file.Exists)
+                    return false;
+
+                long length = file.Length;
+                DateTime lastWriteTimeUtc = file.LastWriteTimeUtc;
+                if (checksumCache.TryGetValue(path, out var cached) &&
+                    cached.Length == length &&
+                    cached.LastWriteTimeUtc == lastWriteTimeUtc)
+                    return string.Equals(cached.MD5, expectedMD5, StringComparison.OrdinalIgnoreCase);
+
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                string actualMD5 = stream.ComputeMD5Hash();
+
+                file.Refresh();
+                if (!file.Exists || file.Length != length || file.LastWriteTimeUtc != lastWriteTimeUtc)
+                    return false;
+
+                checksumCache[path] = new StableFileChecksum(length, lastWriteTimeUtc, actualMD5);
+                return string.Equals(actualMD5, expectedMD5, StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private sealed record StableFileChecksum(long Length, DateTime LastWriteTimeUtc, string MD5);
 
         private sealed class PathSnapshot
         {
             public IReadOnlyDictionary<Guid, string> BeatmapPaths { get; }
             public IReadOnlyDictionary<Guid, string> AudioPaths { get; }
             public IReadOnlyDictionary<int, HashSet<string>> ChecksumsByOnlineId { get; }
-            public IReadOnlySet<int> BeatmapSetOnlineIds { get; }
+            public IReadOnlyDictionary<int, string> PathsByOnlineId { get; }
+            public IReadOnlyDictionary<int, BeatmapInfo> BeatmapsByOnlineId { get; }
+            public IReadOnlyDictionary<int, string[]> PathsByBeatmapSetOnlineId { get; }
 
             public PathSnapshot(IReadOnlyDictionary<Guid, string> beatmapPaths, IReadOnlyDictionary<Guid, string> audioPaths,
-                                IReadOnlyDictionary<int, HashSet<string>> checksumsByOnlineId, IReadOnlySet<int> beatmapSetOnlineIds)
+                                IReadOnlyDictionary<int, HashSet<string>> checksumsByOnlineId,
+                                IReadOnlyDictionary<int, string> pathsByOnlineId,
+                                IReadOnlyDictionary<int, BeatmapInfo> beatmapsByOnlineId,
+                                IReadOnlyDictionary<int, string[]> pathsByBeatmapSetOnlineId)
             {
                 BeatmapPaths = beatmapPaths;
                 AudioPaths = audioPaths;
                 ChecksumsByOnlineId = checksumsByOnlineId;
-                BeatmapSetOnlineIds = beatmapSetOnlineIds;
+                PathsByOnlineId = pathsByOnlineId;
+                BeatmapsByOnlineId = beatmapsByOnlineId;
+                PathsByBeatmapSetOnlineId = pathsByBeatmapSetOnlineId;
             }
         }
     }

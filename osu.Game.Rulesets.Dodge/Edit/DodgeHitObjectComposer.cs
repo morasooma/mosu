@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
+using osu.Framework.Bindables;
+using osu.Game.Graphics.UserInterface;
 using osu.Game.Beatmaps;
 using osu.Game.Rulesets.Dodge.Objects;
 using osu.Game.Rulesets.Edit;
@@ -19,8 +21,10 @@ using osuTK;
 namespace osu.Game.Rulesets.Dodge.Edit
 {
     [Cached]
-    public partial class DodgeHitObjectComposer : HitObjectComposer<DodgeHitObject>, IEditorTimelineLayoutProvider
+    public partial class DodgeHitObjectComposer : HitObjectComposer<DodgeHitObject, DodgeAction>, IEditorTimelineLayoutProvider
     {
+        public override Bindable<TernaryState>? SelectionNewComboState => null;
+
         [Cached]
         public readonly DodgeArenaToolboxGroup ArenaToolbox = new DodgeArenaToolboxGroup();
 
@@ -38,6 +42,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
         private DodgePatternToolboxGroup patternToolbox = null!;
         private DodgeEditorViewToolboxGroup viewToolbox = null!;
         private DodgeCameraToolboxGroup cameraToolbox = null!;
+        private DodgeTriggerToolboxGroup triggerToolbox = null!;
 
         private DodgeEditorGrid positionSnapGrid = null!;
         private ToolboxContext lastToolboxContext;
@@ -55,6 +60,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
         {
             RightToolbox.Add(new DodgeEditorContextToolboxGroup());
             RightToolbox.Add(cameraToolbox = new DodgeCameraToolboxGroup());
+            RightToolbox.Add(triggerToolbox = new DodgeTriggerToolboxGroup());
             RightToolbox.Add(timingToolbox = new DodgeTimingToolboxGroup
             {
                 Expanded = { Value = false },
@@ -91,7 +97,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
         public Vector2 SnapToPositionGrid(Vector2 position)
             => EditorSettings.GridSnapEnabled.Value ? positionSnapGrid.GetSnappedPosition(position) : position;
 
-        protected override IReadOnlyList<CompositionTool> CompositionTools => new CompositionTool[]
+        protected override IReadOnlyList<CompositionTool<DodgeAction>> CompositionTools => new CompositionTool<DodgeAction>[]
         {
             new DodgeBulletCompositionTool(),
             new DodgeArenaChangeCompositionTool(),
@@ -100,6 +106,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             // Camera is appended last: tool hotkeys are assigned by array order,
             // and existing maps/tests rely on the established numbering.
             new DodgeCameraChangeCompositionTool(),
+            new DodgeTriggerCompositionTool(),
         };
 
         protected override ComposeBlueprintContainer CreateBlueprintContainer() => new DodgeBlueprintContainer(this);
@@ -129,6 +136,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                     DodgeArenaChange => 4,
                     DodgeBeam => 8,
                     DodgeCameraChange => 16,
+                    DodgeTrigger => 32,
                     _ => 0,
                 };
             }
@@ -145,7 +153,8 @@ namespace osu.Game.Rulesets.Dodge.Edit
             bool placingArena = BlueprintContainer.CurrentTool is DodgeArenaChangeCompositionTool;
             bool placingBeam = BlueprintContainer.CurrentTool is DodgeBeamCompositionTool;
             bool placingCamera = BlueprintContainer.CurrentTool is DodgeCameraChangeCompositionTool;
-            bool selecting = !placingBullet && !placingEmitter && !placingArena && !placingBeam && !placingCamera;
+            bool placingTrigger = BlueprintContainer.CurrentTool is DodgeTriggerCompositionTool;
+            bool selecting = !placingBullet && !placingEmitter && !placingArena && !placingBeam && !placingCamera && !placingTrigger;
             bool hasSelection = selectionMask != 0;
 
             setVisible(bulletToolbox, placingBullet || selecting && (selectionMask & 1) != 0);
@@ -153,6 +162,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             setVisible(ArenaToolbox, placingArena || selecting && (selectionMask & 4) != 0);
             setVisible(beamToolbox, placingBeam || selecting && (selectionMask & 8) != 0);
             setVisible(cameraToolbox, placingCamera || selecting && (selectionMask & 16) != 0);
+            setVisible(triggerToolbox, placingTrigger || selecting && (selectionMask & 32) != 0);
             setVisible(timingToolbox, selecting && hasSelection);
             setVisible(transformToolbox, selecting && hasSelection);
             setVisible(patternToolbox, !placingArena && (!hasSelection || (selectionMask & 3) != 0));
@@ -171,6 +181,9 @@ namespace osu.Game.Rulesets.Dodge.Edit
             if (placingBeam || selectionMask == 8)
                 beamToolbox.Expanded.Value = true;
 
+            if (placingTrigger || selectionMask == 32)
+                triggerToolbox.Expanded.Value = true;
+
             timingToolbox.Expanded.Value = selecting && hasSelection;
         }
 
@@ -178,7 +191,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
         private readonly record struct ToolboxContext(System.Type? ToolType, int SelectionMask);
 
-        public int TimelineLaneCount => 5;
+        public int TimelineLaneCount => 6;
 
         public EditorTimelineLane GetTimelineLane(DodgeHitObject hitObject) => hitObject switch
         {
@@ -187,6 +200,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             DodgeArenaChange => GetTimelineLaneByIndex(2),
             DodgeBeam => GetTimelineLaneByIndex(3),
             DodgeCameraChange => GetTimelineLaneByIndex(4),
+            DodgeTrigger => GetTimelineLaneByIndex(5),
             _ => GetTimelineLaneByIndex(0),
         };
 
@@ -200,6 +214,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             2 => new EditorTimelineLane(2, Localisation.DodgeEditorStrings.Arena, Colour4.FromHex("#C59CFF"), "A"),
             3 => new EditorTimelineLane(3, Localisation.DodgeEditorStrings.Beam, Colour4.FromHex("#FF6B6B"), "L"),
             4 => new EditorTimelineLane(4, Localisation.DodgeEditorStrings.Camera, Colour4.FromHex("#FFDF6B"), "C"),
+            5 => new EditorTimelineLane(5, Localisation.DodgeEditorStrings.Trigger, Colour4.FromHex("#FF69B4"), "T"),
             _ => throw new System.ArgumentOutOfRangeException(nameof(index)),
         };
 
@@ -224,6 +239,9 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
                 case DodgeCameraChange camera:
                     return camera.EndTime;
+
+                case DodgeTrigger trigger:
+                    return trigger.IsTimedEffect ? trigger.EndTime : trigger.StartTime;
 
                 default:
                     return hitObject.GetEndTime();

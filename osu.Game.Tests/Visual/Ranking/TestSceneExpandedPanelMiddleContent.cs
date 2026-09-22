@@ -110,12 +110,36 @@ namespace osu.Game.Tests.Visual.Ranking
         }
 
         [Test]
-        public void TestPPShownAsProvisionalWhenScoreIsNotRanked()
+        public void TestPendingStandardBeatmapIgnoresStatusAndScoreRankedFlag()
         {
             AddStep("show example score", () =>
             {
                 var score = TestResources.CreateTestScoreInfo(createTestBeatmap(new RealmUser()));
+                score.PP = 400;
                 score.Ranked = false;
+                score.BeatmapInfo!.Status = BeatmapOnlineStatus.Pending;
+                showPanel(score);
+            });
+
+            AddUntilStep("pp display remains active", () =>
+            {
+                var ppDisplay = this.ChildrenOfType<PerformanceStatistic>().Single();
+                return ppDisplay.Alpha == 1 && ppDisplay.TooltipText == default;
+            });
+        }
+
+        [Test]
+        public void TestPendingDodgeBeatmapFadesPp()
+        {
+            AddStep("show pending Dodge score", () =>
+            {
+                var score = TestResources.CreateTestScoreInfo(createTestBeatmap(new RealmUser()));
+                RulesetInfo dodgeRuleset = createTestDodgeRuleset();
+                score.PP = 400;
+                score.Ruleset = dodgeRuleset;
+                score.BeatmapInfo!.Ruleset = dodgeRuleset;
+                score.BeatmapInfo.Status = BeatmapOnlineStatus.Pending;
+                score.Mods = System.Array.Empty<Mod>();
                 showPanel(score);
             });
 
@@ -126,13 +150,37 @@ namespace osu.Game.Tests.Visual.Ranking
             });
         }
 
+        [TestCase(BeatmapOnlineStatus.Ranked)]
+        [TestCase(BeatmapOnlineStatus.Approved)]
+        public void TestRankedDodgeBeatmapKeepsPpActive(BeatmapOnlineStatus status)
+        {
+            AddStep($"show {status} Dodge score", () =>
+            {
+                var score = TestResources.CreateTestScoreInfo(createTestBeatmap(new RealmUser()));
+                RulesetInfo dodgeRuleset = createTestDodgeRuleset();
+                score.PP = 400;
+                score.Ruleset = dodgeRuleset;
+                score.BeatmapInfo!.Ruleset = dodgeRuleset;
+                score.BeatmapInfo.Status = status;
+                score.Mods = System.Array.Empty<Mod>();
+                showPanel(score);
+            });
+
+            AddUntilStep("pp display remains active", () =>
+            {
+                var ppDisplay = this.ChildrenOfType<PerformanceStatistic>().Single();
+                return ppDisplay.Alpha == 1 && ppDisplay.TooltipText == default;
+            });
+        }
+
         [Test]
         public void TestPPShownAsProvisionalWhenUnrankedModsArePresent()
         {
             AddStep("show example score", () =>
             {
                 var score = TestResources.CreateTestScoreInfo(createTestBeatmap(new RealmUser()));
-                score.Mods = score.Mods.Append(new OsuModDifficultyAdjust()).ToArray();
+                score.PP = 400;
+                score.Mods = score.Mods.Append(new OsuModRandom()).ToArray();
                 showPanel(score);
             });
 
@@ -193,6 +241,15 @@ namespace osu.Game.Tests.Visual.Ranking
 
         private void showPanel(ScoreInfo score, bool withFlair = false) =>
             Child = new ExpandedPanelMiddleContentContainer(score, withFlair);
+
+        private static RulesetInfo createTestDodgeRuleset() => new RulesetInfo(
+            RulesetInfo.DODGE_MODE_SHORTNAME,
+            "Dodge",
+            new OsuRuleset().RulesetInfo.InstantiationInfo,
+            10)
+        {
+            Available = true,
+        };
 
         private BeatmapInfo createTestBeatmap([NotNull] RealmUser author)
         {

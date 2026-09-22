@@ -1,7 +1,7 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
+#nullable disable warnings
 
 using System;
 using System.Collections.Generic;
@@ -23,9 +23,9 @@ namespace osu.Game.Beatmaps
 {
     public class DummyWorkingBeatmap : WorkingBeatmap
     {
-        private readonly TextureStore textures;
+        private readonly TextureStore? textures;
 
-        public DummyWorkingBeatmap([NotNull] AudioManager audio, TextureStore textures)
+        public DummyWorkingBeatmap([NotNull] AudioManager audio, TextureStore? textures)
             : base(new BeatmapInfo
             {
                 Metadata = new BeatmapMetadata
@@ -53,13 +53,13 @@ namespace osu.Game.Beatmaps
 
         protected override IBeatmap GetBeatmap() => new Beatmap();
 
-        public override Texture GetBackground() => textures?.Get(@"Backgrounds/bg2");
+        public override Texture? GetBackground() => textures?.Get(@"Backgrounds/bg2");
 
         protected override Track GetBeatmapTrack() => GetVirtualTrack();
 
-        protected internal override ISkin GetSkin() => null;
+        protected internal override ISkin? GetSkin() => null;
 
-        public override Stream GetStream(string storagePath) => null;
+        public override Stream? GetStream(string storagePath) => null;
 
         private class DummyRuleset : Ruleset
         {

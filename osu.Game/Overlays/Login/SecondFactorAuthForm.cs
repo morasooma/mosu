@@ -123,7 +123,53 @@ namespace osu.Game.Overlays.Login
                 case SessionVerificationMethod.TimedOneTimePassword:
                     showTotpVerification();
                     break;
+
+                case SessionVerificationMethod.TelegramMessage:
+                    showTelegramVerification();
+                    break;
             }
+        }
+
+        private void showTelegramVerification()
+        {
+            LinkFlowContainer explainText;
+
+            contentFlow.Clear();
+            contentFlow.AddRange(new Drawable[]
+            {
+                new OsuTextFlowContainer(s => s.Font = OsuFont.GetFont(weight: FontWeight.Regular))
+                {
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                    Text = "An 8-digit one-time code was sent to the server's Telegram bot.",
+                },
+                codeTextBox = new OsuNumberBox
+                {
+                    InputProperties = new TextInputProperties(TextInputType.NumericalPassword),
+                    PlaceholderText = LoginPanelStrings.EnterCode,
+                    RelativeSizeAxes = Axes.X,
+                    TabbableContentContainer = this,
+                },
+                explainText = new LinkFlowContainer(s => s.Font = OsuFont.GetFont(weight: FontWeight.Regular))
+                {
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                },
+            });
+
+            explainText.AddParagraph("The code is valid for 5 minutes. Keep it private.");
+            explainText.AddLink(UserVerificationStrings.BoxInfoLogoutLink, () => { api.Logout(); });
+
+            codeTextBox.Current.BindValueChanged(code =>
+            {
+                string trimmedCode = code.NewValue.Trim();
+
+                if (trimmedCode.Length == 8)
+                {
+                    api.AuthenticateSecondFactor(trimmedCode);
+                    codeTextBox.Current.Disabled = true;
+                }
+            });
         }
 
         private void showEmailVerification()

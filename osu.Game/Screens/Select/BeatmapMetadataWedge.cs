@@ -71,6 +71,12 @@ namespace osu.Game.Screens.Select
         private Sample? wedgeAppearSample;
         private Sample? wedgeHideSample;
 
+        private FillFlowContainer outerFlow = null!;
+        private Container mainInner = null!;
+        private GridContainer ratingsInner = null!;
+        private Container failRetryInner = null!;
+        private readonly IBindable<bool> disableShear = new BindableBool();
+
         [BackgroundDependencyLoader]
         private void load(AudioManager audio)
         {
@@ -80,7 +86,7 @@ namespace osu.Game.Screens.Select
 
             Width = 0.9f;
 
-            InternalChild = new FillFlowContainer
+            InternalChild = outerFlow = new FillFlowContainer
             {
                 RelativeSizeAxes = Axes.X,
                 AutoSizeAxes = Axes.Y,
@@ -98,7 +104,7 @@ namespace osu.Game.Screens.Select
                         Children = new Drawable[]
                         {
                             new WedgeBackground(),
-                            new Container
+                            mainInner = new Container
                             {
                                 RelativeSizeAxes = Axes.X,
                                 AutoSizeAxes = Axes.Y,
@@ -191,7 +197,7 @@ namespace osu.Game.Screens.Select
                         Children = new Drawable[]
                         {
                             new WedgeBackground(),
-                            new GridContainer
+                            ratingsInner = new GridContainer
                             {
                                 RelativeSizeAxes = Axes.X,
                                 AutoSizeAxes = Axes.Y,
@@ -230,7 +236,7 @@ namespace osu.Game.Screens.Select
                         Children = new Drawable[]
                         {
                             new WedgeBackground(),
-                            new Container
+                            failRetryInner = new Container
                             {
                                 RelativeSizeAxes = Axes.X,
                                 AutoSizeAxes = Axes.Y,
@@ -242,6 +248,15 @@ namespace osu.Game.Screens.Select
                     }),
                 }
             };
+
+            disableShear.BindTo(OsuGame.DisableShear);
+            disableShear.BindValueChanged(sheared =>
+            {
+                outerFlow.Shear = sheared.NewValue ? Vector2.Zero : OsuGame.SHEAR;
+                mainInner.Shear = sheared.NewValue ? Vector2.Zero : -OsuGame.SHEAR;
+                ratingsInner.Shear = sheared.NewValue ? Vector2.Zero : -OsuGame.SHEAR;
+                failRetryInner.Shear = sheared.NewValue ? Vector2.Zero : -OsuGame.SHEAR;
+            }, true);
 
             wedgeAppearSample = audio.Samples.Get(@"SongSelect/metadata-wedge-pop-in");
             wedgeHideSample = audio.Samples.Get(@"SongSelect/metadata-wedge-pop-out");
@@ -351,12 +366,12 @@ namespace osu.Game.Screens.Select
             creator.Data = (metadata.Author.Username, () => linkHandler?.HandleLink(new LinkDetails(LinkAction.OpenUserProfile, metadata.Author)));
 
             if (!string.IsNullOrEmpty(metadata.Source))
-                source.Data = (metadata.Source, () => songSelect?.Search(metadata.Source));
+                source.Data = (metadata.Source, () => songSelect?.AddToSearch(metadata.Source));
             else
                 source.Data = ("-", null);
 
             if (!string.IsNullOrEmpty(metadata.Tags))
-                mapperTags.Tags = (metadata.Tags.Split(' '), t => songSelect?.Search(t));
+                mapperTags.Tags = (metadata.Tags.Split(' '), t => songSelect?.AddToSearch(t));
             else
                 mapperTags.Tags = (Array.Empty<string>(), _ => { });
 
@@ -388,8 +403,8 @@ namespace osu.Game.Screens.Select
                 var onlineBeatmapSet = onlineLookupResult.Value.Result;
                 var onlineBeatmap = onlineBeatmapSet.Beatmaps.SingleOrDefault(b => b.OnlineID == beatmapInfo.OnlineID);
 
-                genre.Data = (onlineBeatmapSet.Genre.Name, () => songSelect?.Search(onlineBeatmapSet.Genre.Name));
-                language.Data = (onlineBeatmapSet.Language.Name, () => songSelect?.Search(onlineBeatmapSet.Language.Name));
+                genre.Data = (onlineBeatmapSet.Genre.Name, () => songSelect?.AddToSearch(onlineBeatmapSet.Genre.Name));
+                language.Data = (onlineBeatmapSet.Language.Name, () => songSelect?.AddToSearch(onlineBeatmapSet.Language.Name));
 
                 if (onlineBeatmap != null)
                 {
@@ -434,7 +449,7 @@ namespace osu.Game.Screens.Select
                     }
 
                     userTags.FadeIn(transition_duration, Easing.OutQuint);
-                    userTags.Tags = (tags, tag => songSelect?.Search($@"tag=""{tag}""!"));
+                    userTags.Tags = (tags, tag => songSelect?.AddToSearch($@"tag=""{tag}""!"));
                 });
             }, token);
         }

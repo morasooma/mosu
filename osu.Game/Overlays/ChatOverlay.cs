@@ -42,7 +42,7 @@ namespace osu.Game.Overlays
         private ChannelListing channelListing = null!;
         private ChatTextBar textBar = null!;
         private Container<DrawableChannel> currentChannelContainer = null!;
-        private Box background = null!;
+        private BackdropBlurSurface background = null!;
         private IBindable<Colour4> themeColour = null!;
 
         private readonly Dictionary<Channel, DrawableChannel> loadedChannels = new Dictionary<Channel, DrawableChannel>();
@@ -115,11 +115,11 @@ namespace osu.Game.Overlays
                     Padding = new MarginPadding { Top = top_bar_height },
                     Children = new Drawable[]
                     {
-                        background = new Box
+                        background = new BackdropBlurSurface
                         {
                             RelativeSizeAxes = Axes.Both,
                         },
-                        new OnlineViewContainer("Sign in to chat")
+                        new OnlineViewContainer("Sign in to chat", allowStableProtocol: true)
                         {
                             RelativeSizeAxes = Axes.Both,
                             Children = new Drawable[]
@@ -174,7 +174,7 @@ namespace osu.Game.Overlays
             };
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
-            themeColour.BindValueChanged(colour => background.Colour = colour.NewValue, true);
+            themeColour.BindValueChanged(colour => background.SurfaceColour = colour.NewValue, true);
         }
 
         protected override void LoadComplete()
@@ -296,6 +296,14 @@ namespace osu.Game.Overlays
         {
             this.MoveToY(0, transition_length, Easing.OutQuint);
             this.FadeIn(transition_length, Easing.OutQuint);
+
+            // The active channel may have received its initial history while the overlay
+            // was hidden, without causing a CurrentChannel change when it is shown again.
+            Schedule(() =>
+            {
+                if (currentChannel.Value is { } channel && channel is not ChannelListing.ChannelListingChannel && channel.Messages.Any())
+                    channelManager.MarkChannelAsRead(channel);
+            });
         }
 
         protected override void PopOut()
@@ -362,6 +370,9 @@ namespace osu.Game.Overlays
                         currentChannelContainer.Clear(false);
                         currentChannelContainer.Add(loadedDrawable);
                         loading.Hide();
+
+                        if (IsPresent && loadedDrawable.Channel.Messages.Any())
+                            channelManager.MarkChannelAsRead(loadedDrawable.Channel);
                     });
                 }
             }

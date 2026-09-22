@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Collections.Generic;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions.ObjectExtensions;
@@ -67,7 +68,7 @@ namespace osu.Game.Overlays
                 return;
 
             var data = obj.Data?.ToObject<NewPrivateNotificationEvent>();
-            if (data == null || data.Name != @"user_achievement_unlock")
+            if (data == null || !string.Equals(data.Name, @"user_achievement_unlock", StringComparison.OrdinalIgnoreCase))
                 return;
 
             var details = data.Details?.ToObject<UserAchievementUnlock>();

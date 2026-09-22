@@ -5,12 +5,15 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using osu.Framework.Audio.Track;
 using osu.Framework.Extensions;
+using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Screens;
 using osu.Framework.Testing;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
+using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Online.API;
 using osu.Game.Overlays.Dialog;
@@ -25,7 +28,9 @@ using osu.Game.Screens.Play.Leaderboards;
 using osu.Game.Screens.Ranking;
 using osu.Game.Screens.Select;
 using osu.Game.Screens.Select.Filter;
+using osu.Game.Skinning.Select;
 using osu.Game.Tests.Resources;
+using osuTK;
 using osuTK.Input;
 using BeatmapCarousel = osu.Game.Screens.Select.BeatmapCarousel;
 using FooterButtonMods = osu.Game.Screens.Select.FooterButtonMods;
@@ -91,6 +96,217 @@ namespace osu.Game.Tests.Visual.SongSelect
             LoadSongSelect();
 
             AddAssert("single filter", () => Carousel.FilterCount, () => Is.EqualTo(1));
+        }
+
+        [Test]
+        public void TestCarouselRestoredAfterLeavingInfiniteGlass()
+        {
+            ImportBeatmapForRuleset(0);
+            AddStep("start in InfiniteGlass", () => Config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.InfiniteGlass));
+            LoadSongSelect();
+
+            AddUntilStep("regular carousel hidden", () => Carousel.Alpha, () => Is.Zero.Within(0.001f));
+            AddAssert("hidden carousel kept updating", () => Carousel.AlwaysPresent, () => Is.True);
+
+            BeatmapInfo? infiniteGlassBeatmap = null;
+            AddStep("store InfiniteGlass selection", () => infiniteGlassBeatmap = Beatmap.Value.BeatmapInfo);
+            AddStep("select next map in InfiniteGlass", () => InputManager.Key(Key.Down));
+            AddUntilStep("InfiniteGlass selection changed", () => Beatmap.Value.BeatmapInfo.ID, () => Is.Not.EqualTo(infiniteGlassBeatmap!.ID));
+
+            addTransitionAndNavigationSteps(ForkSongSelectStyle.Modern, Key.Up);
+
+            AddStep("return to InfiniteGlass", () => Config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.InfiniteGlass));
+            AddUntilStep("regular carousel hidden again", () => Carousel.Alpha, () => Is.Zero.Within(0.001f));
+            AddAssert("hidden carousel still updating", () => Carousel.AlwaysPresent, () => Is.True);
+
+            BeatmapInfo? returnedInfiniteGlassBeatmap = null;
+            AddStep("store returned InfiniteGlass selection", () => returnedInfiniteGlassBeatmap = Beatmap.Value.BeatmapInfo);
+            AddStep("select next map after returning to InfiniteGlass", () => InputManager.Key(Key.Down));
+            AddUntilStep("returned InfiniteGlass selection changed", () => Beatmap.Value.BeatmapInfo.ID, () => Is.Not.EqualTo(returnedInfiniteGlassBeatmap!.ID));
+
+            addTransitionAndNavigationSteps(ForkSongSelectStyle.LegacySkinned, Key.Up);
+
+            void addTransitionAndNavigationSteps(ForkSongSelectStyle targetStyle, Key navigationKey)
+            {
+                AddStep($"switch to {targetStyle}", () => Config.SetValue(OsuSetting.ForkSongSelectStyle, targetStyle));
+                AddUntilStep($"{targetStyle} carousel visible", () => Carousel.Alpha, () => Is.EqualTo(1).Within(0.001f));
+                AddAssert($"{targetStyle} carousel present", () => Carousel.IsPresent, () => Is.True);
+                AddAssert($"{targetStyle} forced presence released", () => Carousel.AlwaysPresent, () => Is.False);
+
+                BeatmapInfo? previousBeatmap = null;
+                AddStep($"store {targetStyle} selection", () => previousBeatmap = Beatmap.Value.BeatmapInfo);
+                AddStep($"select adjacent map in {targetStyle}", () => InputManager.Key(navigationKey));
+                AddUntilStep($"{targetStyle} selection changed", () => Beatmap.Value.BeatmapInfo.ID, () => Is.Not.EqualTo(previousBeatmap!.ID));
+                AddAssert($"{targetStyle} selected track loaded", () => Beatmap.Value.TrackLoaded, () => Is.True);
+            }
+        }
+
+        [TestCase(1024)]
+        [TestCase(1366)]
+        public void TestStableChromeKeepsSkinScale(float viewportWidth)
+        {
+            ScalingContainer scalingContainer = null!;
+            MarginPadding originalPadding = default;
+            float originalScale = 1;
+            ForkSongSelectStyle originalStyle = default;
+
+            AddStep("set stable viewport", () =>
+            {
+                scalingContainer = this.ChildrenOfType<ScalingContainer>().First();
+                originalPadding = Stack.Padding;
+                originalScale = Config.Get<float>(OsuSetting.UIScale);
+                originalStyle = Config.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle);
+                scalingContainer.RelativeSizeAxes = Axes.None;
+                scalingContainer.Size = new Vector2(viewportWidth, 768);
+                Stack.Padding = default;
+                Config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.LegacySkinned);
+            });
+            ImportBeatmapForRuleset(0);
+            LoadSongSelect();
+
+            foreach (float scale in new[] { 1f, 1.25f, 0.8f })
+            {
+                AddStep($"set UI scale to {scale}", () => Config.SetValue(OsuSetting.UIScale, scale));
+                AddUntilStep("screen applies UI scale", () => SongSelect.DrawHeight, () => Is.EqualTo(768 / scale).Within(0.01f));
+                AddUntilStep("top keeps skin coordinates", () => SongSelect.ChildrenOfType<LegacySongSelectTop>().Single().DrawSize,
+                    () => Is.EqualTo(new Vector2(viewportWidth, 768)).Using<Vector2>((actual, expected) => (actual - expected).Length < 0.01f));
+                AddUntilStep("footer matches top coordinates", () => this.ChildrenOfType<LegacyFooter>().SingleOrDefault()?.DrawSize,
+                    () => Is.EqualTo(new Vector2(viewportWidth, 768)).Using<Vector2>((actual, expected) => (actual - expected).Length < 0.01f));
+            }
+
+            AddStep("restore viewport and settings", () =>
+            {
+                scalingContainer.RelativeSizeAxes = Axes.Both;
+                scalingContainer.Size = Vector2.One;
+                Stack.Padding = originalPadding;
+                Config.SetValue(OsuSetting.UIScale, originalScale);
+                Config.SetValue(OsuSetting.ForkSongSelectStyle, originalStyle);
+            });
+        }
+
+        [Test]
+        public void TestStableSelectionUsesDifficultyRows()
+        {
+            AddStep("use stable style", () => Config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.LegacySkinned));
+            ImportBeatmapForRuleset(0);
+            LoadSongSelect();
+
+            AddUntilStep("difficulty rows loaded", () => Carousel.ChildrenOfType<PanelBeatmapStandalone>().Any(panel => panel.Item?.IsVisible == true));
+            AddAssert("expanded set row is hidden", () => Carousel.ChildrenOfType<PanelBeatmapSet>().Any(panel => panel.Item?.IsVisible == true && panel.Expanded.Value), () => Is.False);
+            AddAssert("selected difficulty is a visible full row", () => Carousel.ChildrenOfType<PanelBeatmapStandalone>().Any(panel => panel.Item?.IsVisible == true && panel.Selected.Value && panel.Item.Model is GroupedBeatmap grouped && grouped.Beatmap.Equals(Carousel.CurrentBeatmap)), () => Is.True);
+            AddAssert("skin layer is above carousel", () => SongSelect.SkinLayerIsAboveCarousel, () => Is.True);
+
+            BeatmapInfo? previousDifficulty = null;
+            AddStep("store selected difficulty", () => previousDifficulty = Carousel.CurrentBeatmap);
+            AddStep("select next difficulty", () => InputManager.Key(Key.Down));
+            AddUntilStep("difficulty selection changes", () => Carousel.CurrentBeatmap, () => Is.Not.EqualTo(previousDifficulty));
+            AddAssert("new selected difficulty stays visible", () => Carousel.ChildrenOfType<PanelBeatmapStandalone>().Any(panel => panel.Item?.IsVisible == true && panel.Selected.Value && panel.Item.Model is GroupedBeatmap grouped && grouped.Beatmap.Equals(Carousel.CurrentBeatmap)), () => Is.True);
+            AddUntilStep("selected difficulty protrudes", () =>
+            {
+                var rows = Carousel.ChildrenOfType<PanelBeatmapStandalone>().Where(panel => panel.Item?.IsVisible == true).ToArray();
+                var selected = rows.Single(panel => panel.Selected.Value);
+                return rows.Where(panel => panel != selected).All(panel => selected.TopLevelContent.DrawPosition.X < panel.TopLevelContent.DrawPosition.X);
+            });
+        }
+
+        [Test]
+        public void TestModernMouseSelectionAfterLeavingInfiniteGlass()
+        {
+            ImportBeatmapForRuleset(_ => { }, 1, 0);
+            ImportBeatmapForRuleset(_ => { }, 1, 0);
+            AddStep("start in Modern", () => Config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.Modern));
+            LoadSongSelect();
+
+            int initialFilterCount = 0;
+            AddStep("store initial filter count", () => initialFilterCount = Carousel.FilterCount);
+            AddStep("switch to InfiniteGlass", () => Config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.InfiniteGlass));
+            AddUntilStep("Modern carousel hidden", () => Carousel.Alpha, () => Is.Zero.Within(0.001f));
+            AddAssert("InfiniteGlass switch did not refilter", () => Carousel.FilterCount, () => Is.EqualTo(initialFilterCount));
+
+            AddStep("switch back to Modern", () => Config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.Modern));
+            AddUntilStep("returned Modern carousel visible", () => Carousel.Alpha, () => Is.EqualTo(1).Within(0.001f));
+            AddAssert("Modern switch did not refilter", () => Carousel.FilterCount, () => Is.EqualTo(initialFilterCount));
+
+            Panel? targetPanel = null;
+            BeatmapInfo? targetBeatmap = null;
+
+            AddUntilStep("find another visible Modern panel", () =>
+            {
+                targetPanel = Carousel.ChildrenOfType<Panel>().FirstOrDefault(panel =>
+                    panel.IsPresent
+                    && panel.Item?.IsVisible == true
+                    && getBeatmap(panel.Item.Model) is BeatmapInfo panelBeatmap
+                    && panelBeatmap.ID != Beatmap.Value.BeatmapInfo.ID);
+
+                return targetPanel != null;
+            });
+            AddStep("click another Modern panel", () =>
+            {
+                targetBeatmap = getBeatmap(targetPanel!.Item!.Model);
+                InputManager.MoveMouseTo(targetPanel.TopLevelContent);
+                InputManager.Click(MouseButton.Left);
+            });
+            AddUntilStep("clicked Modern beatmap selected", () => Beatmap.Value.BeatmapInfo.ID, () => Is.EqualTo(targetBeatmap!.ID));
+
+            static BeatmapInfo? getBeatmap(object model) => model switch
+            {
+                GroupedBeatmap groupedBeatmap => groupedBeatmap.Beatmap,
+                GroupedBeatmapSet groupedBeatmapSet => groupedBeatmapSet.BeatmapSet.Beatmaps.FirstOrDefault(),
+                _ => null,
+            };
+        }
+
+        [Test]
+        public void TestModernMouseSelectionAfterReenter()
+        {
+            ImportBeatmapForRuleset(_ => { }, 1, 0);
+            ImportBeatmapForRuleset(_ => { }, 1, 0);
+            AddStep("use Modern", () => Config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.Modern));
+            LoadSongSelect();
+
+            Screens.Select.SongSelect? firstSongSelect = null;
+            AddStep("store first song select", () => firstSongSelect = SongSelect);
+            AddStep("leave song select", () => SongSelect.Exit());
+            AddUntilStep("first song select exited", () => !firstSongSelect!.ValidForPush);
+
+            LoadSongSelect();
+            AddAssert("new song select instance", () => SongSelect, () => Is.Not.SameAs(firstSongSelect));
+
+            Panel? targetPanel = null;
+            BeatmapInfo? targetBeatmap = null;
+            WorkingBeatmap? previousWorkingBeatmap = null;
+            ITrack? previousTrack = null;
+
+            AddUntilStep("find another visible panel after re-entering", () =>
+            {
+                targetPanel = Carousel.ChildrenOfType<Panel>().FirstOrDefault(panel =>
+                    panel.IsPresent
+                    && panel.Item?.IsVisible == true
+                    && getBeatmap(panel.Item.Model) is BeatmapInfo panelBeatmap
+                    && panelBeatmap.ID != Beatmap.Value.BeatmapInfo.ID);
+
+                return targetPanel != null;
+            });
+            AddStep("click another panel after re-entering", () =>
+            {
+                previousWorkingBeatmap = Beatmap.Value;
+                previousTrack = previousWorkingBeatmap.Track;
+                targetBeatmap = getBeatmap(targetPanel!.Item!.Model);
+                InputManager.MoveMouseTo(targetPanel.TopLevelContent);
+                InputManager.Click(MouseButton.Left);
+            });
+            AddUntilStep("mouse selection works after re-entering", () => Beatmap.Value.BeatmapInfo.ID, () => Is.EqualTo(targetBeatmap!.ID));
+            AddUntilStep("selected track loaded", () => Beatmap.Value.TrackLoaded);
+            AddAssert("selected track replaced", () => Beatmap.Value.Track, () => Is.Not.SameAs(previousTrack));
+            AddUntilStep("selected track playing", () => Beatmap.Value.Track.IsRunning);
+            AddUntilStep("previous track stopped", () => previousTrack!.IsRunning, () => Is.False);
+
+            static BeatmapInfo? getBeatmap(object model) => model switch
+            {
+                GroupedBeatmap groupedBeatmap => groupedBeatmap.Beatmap,
+                GroupedBeatmapSet groupedBeatmapSet => groupedBeatmapSet.BeatmapSet.Beatmaps.FirstOrDefault(),
+                _ => null,
+            };
         }
 
         [Test]
@@ -728,6 +944,27 @@ namespace osu.Game.Tests.Visual.SongSelect
                 Beatmap.Value.BeatmapInfo.ID != firstBeatmap!.ID);
 
             AddUntilStep("wait for return to song select", () => SongSelect.IsCurrentScreen());
+
+            Panel? targetPanel = null;
+            BeatmapInfo? targetBeatmap = null;
+
+            AddUntilStep("find another panel after returning from loader", () =>
+            {
+                targetPanel = Carousel.ChildrenOfType<Panel>().FirstOrDefault(panel =>
+                    panel.IsPresent
+                    && panel.Item?.IsVisible == true
+                    && panel.Item.Model is GroupedBeatmap groupedBeatmap
+                    && groupedBeatmap.Beatmap.ID != Beatmap.Value.BeatmapInfo.ID);
+
+                return targetPanel != null;
+            });
+            AddStep("click another panel after returning from loader", () =>
+            {
+                targetBeatmap = ((GroupedBeatmap)targetPanel!.Item!.Model).Beatmap;
+                InputManager.MoveMouseTo(targetPanel.TopLevelContent);
+                InputManager.Click(MouseButton.Left);
+            });
+            AddUntilStep("selection works after returning from loader", () => Beatmap.Value.BeatmapInfo.ID, () => Is.EqualTo(targetBeatmap!.ID));
         }
 
         #endregion

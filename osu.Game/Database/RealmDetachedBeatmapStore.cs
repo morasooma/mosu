@@ -23,7 +23,7 @@ namespace osu.Game.Database
 
         private IDisposable? realmSubscription;
 
-        private readonly Queue<OperationArgs> pendingOperations = new Queue<OperationArgs>();
+        private OperationArgs? pendingOperation;
 
         [Resolved]
         private RealmAccess realm { get; set; } = null!;
@@ -41,14 +41,14 @@ namespace osu.Game.Database
         [Resolved]
         private osu.Game.Configuration.OsuConfigManager config { get; set; } = null!;
 
-        [Resolved]
-        private OsuGame game { get; set; } = null!;
+        [Resolved(CanBeNull = true)]
+        private OsuGame? game { get; set; }
 
         private const int stable_sets_per_frame = 25;
 
         private readonly List<BeatmapSetInfo> activeStableSets = new List<BeatmapSetInfo>();
         private readonly Queue<BeatmapSetInfo> pendingStableSets = new Queue<BeatmapSetInfo>();
-        private int stableSetsToRemove;
+        private int realmSetCount;
         private StableBeatmapLoadResult? pendingStableResult;
         private CancellationTokenSource? stableReloadCancellation;
         private Bindable<bool> useStableDirectory = null!;
@@ -59,11 +59,10 @@ namespace osu.Game.Database
         {
             if (config.Get<bool>(osu.Game.Configuration.OsuSetting.ForkUseStableDirectoryDirectly))
             {
-                var stableStorage = game.GetStorageForStableInstall();
+                var stableStorage = game?.GetStorageForStableInstall();
                 if (stableStorage != null)
                 {
-                    var provider = new StableBeatmapProvider(rulesets);
-                    var result = provider.GetBeatmaps(stableStorage);
+                    var result = new StableBeatmapProvider(rulesets).GetBeatmaps(stableStorage);
                     StablePathManager.Replace(result.BeatmapPaths, result.AudioPaths, result.BeatmapSets);
                     activeStableSets.AddRange(result.BeatmapSets);
                 }
@@ -73,7 +72,6 @@ namespace osu.Game.Database
 
             useStableDirectory = config.GetBindable<bool>(osu.Game.Configuration.OsuSetting.ForkUseStableDirectoryDirectly);
             stableDirectoryPath = config.GetBindable<string>(osu.Game.Configuration.OsuSetting.ForkStableDirectoryPath);
-
             useStableDirectory.BindValueChanged(_ => Schedule(reloadStableBeatmaps));
             stableDirectoryPath.BindValueChanged(_ =>
             {
@@ -95,8 +93,7 @@ namespace osu.Game.Database
                 return;
             }
 
-            var stableStorage = game.GetStorageForStableInstall();
-
+            var stableStorage = game?.GetStorageForStableInstall();
             if (stableStorage == null)
             {
                 beginStableReplacement(new StableBeatmapLoadResult([], new Dictionary<Guid, string>(), new Dictionary<Guid, string>()));
@@ -122,7 +119,6 @@ namespace osu.Game.Database
         {
             pendingStableSets.Clear();
             pendingStableResult = result;
-            stableSetsToRemove = activeStableSets.Count;
         }
 
         private void beatmapSetsChanged(IRealmCollection<BeatmapSetInfo> sender, ChangeSet? changes)
@@ -147,83 +143,55 @@ namespace osu.Game.Database
                 {
                     try
                     {
-                        realm.Run(_ =>
-                        {
-                            var detached = frozenSets.Detach();
+                        // operations purposefully not wrapped in `Realm.Run()`.
+                        // `frozenSets` is, as the name suggests, frozen, and thus documented as safe to access from any thread for reading.
+                        // using `Realm.Run()` would only be misdirection here as it would take out a *second, non-frozen* realm instance.
+                        var detached = frozenSets.Detach();
 
-                            lock (detachedBeatmapSets)
-                            {
-                                detachedBeatmapSets.Clear();
-                                detachedBeatmapSets.AddRange(detached);
-                                detachedBeatmapSets.AddRange(activeStableSets);
-                            }
-                        });
+                        lock (detachedBeatmapSets)
+                        {
+                            detachedBeatmapSets.Clear();
+                            detachedBeatmapSets.AddRange(detached);
+                            realmSetCount = detached.Count;
+                            detachedBeatmapSets.AddRange(activeStableSets);
+                        }
                     }
                     finally
                     {
                         loaded.Set();
+
+                        // Freezing a collection incurs a full freeze of the realm too,
+                        // which wraps a separate new `SharedRealmHandle` representing the frozen realm:
+                        // https://github.com/realm/realm-dotnet/blob/113c01264fc00f6cedf3c829caa9cfb30b963914/Realm/Realm/DatabaseTypes/RealmCollectionBase.cs#L180-L191
+                        // (note suppressed CA2000 inspection above!)
+                        // https://github.com/realm/realm-dotnet/blob/113c01264fc00f6cedf3c829caa9cfb30b963914/Realm/Realm/Handles/SharedRealmHandle.cs#L650-L655
+                        // https://github.com/realm/realm-core/blob/f8752e180b7f288feadffafdef818068755efe0a/src/realm/object-store/impl/realm_coordinator.cpp#L296-L313
+                        //
+                        // The freezing API on the .NET side does not expose a direct way to eagerly clean up that frozen handle.
+                        // It appears that handle is simply allowed to fall out of scope and eventually get picked up by GC.
+                        // This is a problem when considering interactions with the `BlockAllOperations()` API,
+                        // which is designed to support moving the realm to custom locations.
+                        // Not eagerly disposing the realm associated with the frozen collection as below can cause `BlockAllOperations()` to time out and crash.
+                        //
+                        // If freezing objects and/or collections is going to be more widely used in the repository,
+                        // this should be extracted to an extension method and the direct usage of the freezing APIs banned in kind via `BannedSymbols.txt`.
+                        frozenSets.Realm.Dispose();
                     }
                 }, TaskCreationOptions.LongRunning).FireAndForget();
 
                 return;
             }
 
-            if (changes.InsertedIndices.Length == 1 && changes.DeletedIndices.Length == 1)
+
+            // Queue one atomic snapshot per Realm notification. Applying individual index operations
+            // across multiple queued notifications is unsafe because all ChangeSet indices are relative
+            // to the collection state for their own notification.
+            // Only the newest complete snapshot matters. Replacing the pending snapshot also prevents
+            // multiple detached copies of a large library from accumulating between update frames.
+            Interlocked.Exchange(ref pendingOperation, new OperationArgs
             {
-                lock (detachedBeatmapSets)
-                {
-                    var deletedSet = detachedBeatmapSets[changes.DeletedIndices[0]];
-                    var insertedSet = sender[changes.InsertedIndices[0]];
-
-                    // this handles beatmap updates using a heuristic that a beatmap update will preserve the online ID.
-                    // it relies on the fact that updates are performed by removing the old set and adding a new one, in a single transaction.
-                    // instead of removing the old set and adding a new one to the collection too, which would trigger consumers' logic related to set removals,
-                    // move the deleted set to the index occupied by the new one and then replace it in-place.
-                    // due to this, the operation can be presented to consumer in a manner that permits them to actually handle this as a replace operation
-                    // and not trigger any set removal logic that may result in selections changing or similar undesirable side effects.
-                    if (deletedSet.OnlineID == insertedSet.OnlineID)
-                    {
-                        pendingOperations.Enqueue(new OperationArgs
-                        {
-                            Type = OperationType.MoveAndReplace,
-                            BeatmapSet = insertedSet.Detach(),
-                            Index = changes.DeletedIndices[0],
-                            NewIndex = changes.InsertedIndices[0],
-                        });
-
-                        return;
-                    }
-                }
-            }
-
-            foreach (int i in changes.DeletedIndices.OrderDescending())
-            {
-                pendingOperations.Enqueue(new OperationArgs
-                {
-                    Type = OperationType.Remove,
-                    Index = i,
-                });
-            }
-
-            foreach (int i in changes.InsertedIndices)
-            {
-                pendingOperations.Enqueue(new OperationArgs
-                {
-                    Type = OperationType.Insert,
-                    BeatmapSet = sender[i].Detach(),
-                    Index = i,
-                });
-            }
-
-            foreach (int i in changes.NewModifiedIndices)
-            {
-                pendingOperations.Enqueue(new OperationArgs
-                {
-                    Type = OperationType.Update,
-                    BeatmapSet = sender[i].Detach(),
-                    Index = i,
-                });
-            }
+                BeatmapSets = sender.Detach(),
+            });
         }
 
         protected override void Update()
@@ -236,34 +204,21 @@ namespace osu.Game.Database
 
             processStableReplacement();
 
-            if (pendingOperations.Count == 0)
+            // Every operation is a complete Realm snapshot, so intermediate snapshots are stale as
+            // soon as a newer one is available. Atomically consume only the latest snapshot.
+            var operation = Interlocked.Exchange(ref pendingOperation, null);
+
+            if (operation == null)
                 return;
 
             lock (detachedBeatmapSets)
             {
-                // If this ever leads to performance issues, we could dequeue a limited number of operations per update frame.
-                while (pendingOperations.TryDequeue(out var op))
-                {
-                    switch (op.Type)
-                    {
-                        case OperationType.Insert:
-                            detachedBeatmapSets.Insert(op.Index, op.BeatmapSet!);
-                            break;
-
-                        case OperationType.Update:
-                            detachedBeatmapSets.ReplaceRange(op.Index, 1, new[] { op.BeatmapSet! });
-                            break;
-
-                        case OperationType.MoveAndReplace:
-                            detachedBeatmapSets.Move(op.Index, op.NewIndex!.Value);
-                            detachedBeatmapSets.ReplaceRange(op.NewIndex!.Value, 1, [op.BeatmapSet!]);
-                            break;
-
-                        case OperationType.Remove:
-                            detachedBeatmapSets.RemoveAt(op.Index);
-                            break;
-                    }
-                }
+                // Publish the full snapshot as one collection change. Inserting each set separately
+                // causes consumers such as BeatmapCarousel to enqueue one scheduler task per set
+                // (tens of thousands for large libraries). Replace only the Realm-owned prefix so
+                // directly loaded stable sets remain intact.
+                detachedBeatmapSets.ReplaceRange(0, realmSetCount, operation.BeatmapSets);
+                realmSetCount = operation.BeatmapSets.Count;
             }
         }
 
@@ -271,17 +226,18 @@ namespace osu.Game.Database
         {
             lock (detachedBeatmapSets)
             {
-                if (stableSetsToRemove > 0)
-                {
-                    int count = Math.Min(stable_sets_per_frame, stableSetsToRemove);
-                    detachedBeatmapSets.RemoveRange(detachedBeatmapSets.Count - count, count);
-                    activeStableSets.RemoveRange(activeStableSets.Count - count, count);
-                    stableSetsToRemove -= count;
-                    return;
-                }
-
                 if (pendingStableResult != null)
                 {
+                    int count = Math.Min(stable_sets_per_frame, activeStableSets.Count);
+                    if (count > 0)
+                    {
+                        for (int i = 0; i < count; i++)
+                            detachedBeatmapSets.Remove(activeStableSets[activeStableSets.Count - 1 - i]);
+
+                        activeStableSets.RemoveRange(activeStableSets.Count - count, count);
+                        return;
+                    }
+
                     StablePathManager.Replace(pendingStableResult.BeatmapPaths, pendingStableResult.AudioPaths, pendingStableResult.BeatmapSets);
                     enqueueStableSets(pendingStableResult.BeatmapSets);
                     pendingStableResult = null;
@@ -291,11 +247,13 @@ namespace osu.Game.Database
                     return;
 
                 var batch = new List<BeatmapSetInfo>(stable_sets_per_frame);
-
                 while (batch.Count < stable_sets_per_frame && pendingStableSets.TryDequeue(out var set))
                     batch.Add(set);
 
-                detachedBeatmapSets.AddRange(batch);
+                int insertionIndex = realmSetCount + activeStableSets.Count;
+                foreach (var set in batch)
+                    detachedBeatmapSets.Insert(insertionIndex++, set);
+
                 activeStableSets.AddRange(batch);
             }
         }
@@ -319,18 +277,7 @@ namespace osu.Game.Database
 
         private record OperationArgs
         {
-            public OperationType Type;
-            public BeatmapSetInfo? BeatmapSet;
-            public int Index;
-            public int? NewIndex;
-        }
-
-        private enum OperationType
-        {
-            Insert,
-            Update,
-            Remove,
-            MoveAndReplace,
+            public required IReadOnlyList<BeatmapSetInfo> BeatmapSets;
         }
     }
 }

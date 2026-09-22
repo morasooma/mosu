@@ -16,6 +16,7 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Input.Bindings;
 using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.TagCoop;
 using osu.Game.Scoring;
 using osu.Game.Screens.Play.HUD;
 using osu.Game.Screens.Play.Leaderboards;
@@ -108,9 +109,20 @@ namespace osu.Game.Screens.Play
 
             ReplayOverlay.Settings.AddAtStart(playbackSettings);
 
+            var tagCoopReplay = Score.ScoreInfo.TagCoopReplay;
+            if (tagCoopReplay?.Players.Count > 0 && tagCoopReplay.Frames.Count > 0)
+            {
+                // The ordinary single-cursor track remains embedded for unmodified clients, but
+                // showing it together with the labelled tracks creates a misleading extra cursor.
+                DrawableRuleset.Cursor.Alpha = 0;
+                DrawableRuleset.Overlays.Add(new TagCoopReplayOverlay(DrawableRuleset, tagCoopReplay));
+            }
+
             OsuTextFlowContainer message = new OsuTextFlowContainer(cp => cp.Font = OsuFont.Style.Body) { AutoSizeAxes = Axes.Both };
-            message.AddText("Watching ");
-            message.AddText(Score.ScoreInfo.User.Username, s => s.Font = s.Font.With(weight: FontWeight.SemiBold));
+            message.AddText(tagCoopReplay?.Players.Count > 0 ? "Watching Tag Co-op: " : "Watching ");
+            message.AddText(tagCoopReplay?.Players.Count > 0
+                ? string.Join(", ", tagCoopReplay.Players.Select(player => player.Username))
+                : Score.ScoreInfo.User.Username, s => s.Font = s.Font.With(weight: FontWeight.SemiBold));
             message.AddText(" play ");
             message.AddText(Beatmap.Value.BeatmapInfo.GetDisplayTitleRomanisable(), s => s.Font = s.Font.With(weight: FontWeight.SemiBold));
             message.AddText(" on ");
@@ -148,6 +160,19 @@ namespace osu.Game.Screens.Play
 
         protected override void PrepareReplay()
         {
+            var tagCoopReplay = Score.ScoreInfo.TagCoopReplay;
+
+            if (tagCoopReplay?.Players.Count > 0 && tagCoopReplay.Frames.Count > 0
+                && Score.ScoreInfo.Ruleset.CreateInstance() is ITagCoopRuleset tagCoopRuleset)
+            {
+                // Rebuild in memory as well, allowing this client to repair older fork replays
+                // which already contain all labelled tracks but predate the combined stream.
+                var combinedFrames = tagCoopRuleset.CreateTagCoopCompatibilityReplayFrames(DrawableRuleset, tagCoopReplay);
+
+                if (combinedFrames.Count > 0)
+                    Score.Replay.Frames = combinedFrames.ToList();
+            }
+
             DrawableRuleset?.SetReplayScore(Score);
             lastFrameTime = Score.Replay.Frames.LastOrDefault()?.Time;
         }

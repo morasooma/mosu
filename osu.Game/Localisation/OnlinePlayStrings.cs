@@ -10,9 +10,9 @@ namespace osu.Game.Localisation
         private const string prefix = @"osu.Game.Resources.Localisation.OnlinePlay";
 
         /// <summary>
-        /// "Playlist durations longer than 2 weeks require an active osu!supporter tag."
+        /// "Playlist durations longer than 2 weeks require an active Morasooma Supporter tag."
         /// </summary>
-        public static LocalisableString SupporterOnlyDurationNotice => new TranslatableString(getKey(@"supporter_only_duration_notice"), @"Playlist durations longer than 2 weeks require an active osu!supporter tag.");
+        public static LocalisableString SupporterOnlyDurationNotice => new TranslatableString(getKey(@"supporter_only_duration_notice"), @"Playlist durations longer than 2 weeks require an active Morasooma Supporter tag.");
 
         /// <summary>
         /// "Can&#39;t invite this user as you have blocked them or they have blocked you."
@@ -73,6 +73,11 @@ namespace osu.Game.Localisation
         /// "Close playlist"
         /// </summary>
         public static LocalisableString ClosePlaylist => new TranslatableString(getKey(@"close_playlist"), @"Close playlist");
+
+        /// <summary>
+        /// "No playlists are available for the selected mode."
+        /// </summary>
+        public static LocalisableString NoPlaylistsForSelectedMode => new TranslatableString(getKey(@"no_playlists_for_selected_mode"), @"No playlists are available for the selected mode.");
 
         private static string getKey(string key) => $@"{prefix}:{key}";
     }

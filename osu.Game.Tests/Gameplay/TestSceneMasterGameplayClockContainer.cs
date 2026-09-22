@@ -10,6 +10,7 @@ using osu.Framework.Bindables;
 using osu.Framework.Testing;
 using osu.Framework.Timing;
 using osu.Game.Configuration;
+using osu.Game.Beatmaps.Timing;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Screens.Play;
 using osu.Game.Tests.Visual;
@@ -167,6 +168,27 @@ namespace osu.Game.Tests.Gameplay
             AddStep("seek while stopped", () => gameplayClockContainer.Seek(6500));
             AddAssert("seek not counted", () => gameplayClockContainer.GameplaySeekCount, () => Is.Zero);
             AddAssert("seek delta not recorded", () => gameplayClockContainer.GameplaySeekDeltaMilliseconds, () => Is.Zero);
+        }
+
+        [Test]
+        public void TestBreakSkipIsAuthorisedAndBounded()
+        {
+            MasterGameplayClockContainer gameplayClockContainer = null;
+            var breakPeriod = new BreakPeriod(10000, 20000);
+
+            AddStep("create container in break", () =>
+            {
+                var working = new ClockBackedTestWorkingBeatmap(new OsuRuleset().RulesetInfo, new FramedClock(new ManualClock()), Audio);
+                Child = gameplayClockContainer = new MasterGameplayClockContainer(working, 0);
+                gameplayClockContainer.Reset(12000, true);
+            });
+
+            AddUntilStep("clock is running", () => gameplayClockContainer.IsRunning);
+            AddStep("skip break", () => gameplayClockContainer.SkipBreak(breakPeriod, 2, false));
+            AddAssert("seeked to safe lead-in", () => gameplayClockContainer.CurrentTime, () => Is.EqualTo(19000).Within(10));
+            AddAssert("one authorised skip", () => gameplayClockContainer.AuthorisedSkips.Count, () => Is.EqualTo(1));
+            AddAssert("break index recorded", () => gameplayClockContainer.AuthorisedSkips[0].BreakIndex, () => Is.EqualTo(2));
+            AddAssert("seek and skip counts match", () => gameplayClockContainer.GameplaySeekCount, () => Is.EqualTo(gameplayClockContainer.AuthorisedSkips.Count));
         }
 
         protected override void Dispose(bool isDisposing)

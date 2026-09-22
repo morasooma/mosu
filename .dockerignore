@@ -1,0 +1,12 @@
+# The only Docker build using the repository root as its context is the local
+# performance-server image. Keep the 49+ GB working tree, client releases,
+# build outputs and test data out of BuildKit; the image only consumes these
+# two paths.
+**
+!deploy/
+!deploy/mosu/
+!deploy/mosu/deploy/
+!deploy/mosu/deploy/performance.Dockerfile
+!artifacts/
+!artifacts/performance-publish/
+!artifacts/performance-publish/**

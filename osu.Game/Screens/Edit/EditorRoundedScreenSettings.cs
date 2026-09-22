@@ -3,17 +3,24 @@
 
 using System.Collections.Generic;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Game.Graphics.Containers;
 using osu.Game.Overlays;
 using osuTK;
+using osuTK.Graphics;
 
 namespace osu.Game.Screens.Edit
 {
     public abstract partial class EditorRoundedScreenSettings : CompositeDrawable
     {
+        private Box background = null!;
+        private IBindable<Colour4>? themeColour;
+
+        internal Color4 BackgroundColour => background.Colour;
+
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colours)
         {
@@ -21,7 +28,7 @@ namespace osu.Game.Screens.Edit
 
             InternalChildren = new Drawable[]
             {
-                new Box
+                background = new Box
                 {
                     Colour = colours.Background6,
                     RelativeSizeAxes = Axes.Both,
@@ -40,6 +47,9 @@ namespace osu.Game.Screens.Edit
                     },
                 }
             };
+
+            themeColour = colours.GetColourBindable(OverlayColour.Background6);
+            themeColour.BindValueChanged(c => background.Colour = c.NewValue, true);
         }
 
         protected abstract IReadOnlyList<Drawable> CreateSections();

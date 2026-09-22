@@ -18,6 +18,7 @@ namespace osu.Game.Tests.Visual.Gameplay
 
         private readonly Container mainContainer;
 
+        private FrameStabilityContainer stabilityContainer;
         private ClockConsumingChild consumer;
 
         public TestSceneFrameStabilityContainer()
@@ -76,6 +77,22 @@ namespace osu.Game.Tests.Visual.Gameplay
         }
 
         [Test]
+        public void TestExplicitlyAllowedLargeJumpUsesSingleFrame()
+        {
+            seekManualTo(0);
+            createStabilityContainer();
+
+            AddStep("allow and perform large seek", () =>
+            {
+                manualClock.CurrentTime = 100000;
+                stabilityContainer.AllowOneFrameClockSeek();
+            });
+
+            AddAssert("seek consumed immediately", () => consumer.Clock.CurrentTime, () => Is.EqualTo(100000));
+            checkFrameCount(1);
+        }
+
+        [Test]
         public void TestInitialSeekWithGameplayStart()
         {
             seekManualTo(1000);
@@ -131,7 +148,7 @@ namespace osu.Game.Tests.Visual.Gameplay
 
         private void createStabilityContainer(double gameplayStartTime = double.MinValue) => AddStep("create container", () =>
         {
-            mainContainer.Child = new FrameStabilityContainer(gameplayStartTime).WithChild(consumer = new ClockConsumingChild());
+            mainContainer.Child = stabilityContainer = new FrameStabilityContainer(gameplayStartTime).WithChild(consumer = new ClockConsumingChild());
         });
 
         private void seekManualTo(double time) => AddStep($"seek manual clock to {time}", () => manualClock.CurrentTime = time);

@@ -487,7 +487,24 @@ namespace osu.Game.Rulesets.Osu.UI
             prepareRailProjectionPath(current, previous, railTargets, patternInfo);
 
             Vector2 projectionQuery = getRailProjectionQuery(rawPosition, motionScale);
-            return projectOntoPolyline(projectionPointBuffer, projectionQuery);
+            return projectOntoCurrentRail(projectionQuery, current.StartTime);
+        }
+
+        private ProjectionResult projectOntoCurrentRail(Vector2 query, double focusTime)
+        {
+            if (railSourceTimeBuffer.Count == 0 || railSourcePathIndices.Count != railSourceTimeBuffer.Count)
+                return projectOntoPolyline(projectionPointBuffer, query);
+
+            int sourceIndex = 0;
+
+            while (sourceIndex + 1 < railSourceTimeBuffer.Count && railSourceTimeBuffer[sourceIndex] < focusTime - 0.01)
+                sourceIndex++;
+
+            // Ограничиваем проекцию входящим и исходящим переходами текущей ноты.
+            // Это сохраняет изгибы сплайна и исключает захват далёкой ветки на пересечениях.
+            int startIndex = railSourcePathIndices[Math.Max(0, sourceIndex - 1)];
+            int endIndex = railSourcePathIndices[Math.Min(railSourcePathIndices.Count - 1, sourceIndex + 1)];
+            return projectOntoPolyline(projectionPointBuffer, query, startIndex, endIndex);
         }
 
         private void prepareRailProjectionPath(TargetDescriptor current, TargetDescriptor? previous, IReadOnlyList<TargetDescriptor> railTargets, OsuPatternInfo patternInfo)
@@ -508,7 +525,8 @@ namespace osu.Game.Rulesets.Osu.UI
 
             if (committedStreamPathBuffer.Count < 2
                 || committedStreamSourceBuffer.Count < 2
-                || committedStreamSourceBuffer.Count != committedStreamSourceTimeBuffer.Count)
+                || committedStreamSourceBuffer.Count != committedStreamSourceTimeBuffer.Count
+                || committedStreamSourcePathIndices.Count != committedStreamSourceBuffer.Count)
             {
                 clearCommittedStreamProjectionState();
                 return false;
@@ -518,21 +536,23 @@ namespace osu.Game.Rulesets.Osu.UI
                 return false;
 
             double startTolerance = scaleRealTimeWindow(140);
-            double endTolerance = scaleRealTimeWindow(180);
             double visibleEndTime = railTargets.Count > 0 ? railTargets[^1].StartTime : current.StartTime;
 
+            // Перестраиваем путь, как только текущая или новая видимая нота выходит за его конец.
             if (current.StartTime < committedStreamStartTime - startTolerance
-                || current.StartTime > committedStreamEndTime + endTolerance
-                || visibleEndTime > committedStreamEndTime + endTolerance)
+                || current.StartTime > committedStreamEndTime + 0.01
+                || visibleEndTime > committedStreamEndTime + 0.01)
                 return false;
 
             railSourcePointBuffer.Clear();
             railSourceTimeBuffer.Clear();
             projectionPointBuffer.Clear();
+            railSourcePathIndices.Clear();
 
             railSourcePointBuffer.AddRange(committedStreamSourceBuffer);
             railSourceTimeBuffer.AddRange(committedStreamSourceTimeBuffer);
             projectionPointBuffer.AddRange(committedStreamPathBuffer);
+            railSourcePathIndices.AddRange(committedStreamSourcePathIndices);
             rebuildProjectionArcLengths();
             return true;
         }
@@ -547,10 +567,12 @@ namespace osu.Game.Rulesets.Osu.UI
             committedStreamPathBuffer.Clear();
             committedStreamSourceBuffer.Clear();
             committedStreamSourceTimeBuffer.Clear();
+            committedStreamSourcePathIndices.Clear();
 
             committedStreamPathBuffer.AddRange(projectionPointBuffer);
             committedStreamSourceBuffer.AddRange(railSourcePointBuffer);
             committedStreamSourceTimeBuffer.AddRange(railSourceTimeBuffer);
+            committedStreamSourcePathIndices.AddRange(railSourcePathIndices);
             committedStreamStartTime = railSourceTimeBuffer[0];
             committedStreamEndTime = railSourceTimeBuffer[^1];
             committedStreamShape = patternInfo.StreamShape;
@@ -823,6 +845,7 @@ namespace osu.Game.Rulesets.Osu.UI
         {
             projectionPointBuffer.Clear();
             projectionArcLengthBuffer.Clear();
+            railSourcePathIndices.Clear();
 
             if (points.Count == 0)
                 return;
@@ -833,7 +856,10 @@ namespace osu.Game.Rulesets.Osu.UI
                     projectionPointBuffer.Capacity = points.Count;
 
                 for (int i = 0; i < points.Count; i++)
+                {
+                    railSourcePathIndices.Add(projectionPointBuffer.Count);
                     projectionPointBuffer.Add(points[i]);
+                }
 
                 rebuildProjectionArcLengths();
 
@@ -848,7 +874,10 @@ namespace osu.Game.Rulesets.Osu.UI
                     projectionPointBuffer.Capacity = points.Count;
 
                 for (int i = 0; i < points.Count; i++)
+                {
+                    railSourcePathIndices.Add(projectionPointBuffer.Count);
                     projectionPointBuffer.Add(points[i]);
+                }
 
                 rebuildProjectionArcLengths();
 
@@ -856,6 +885,7 @@ namespace osu.Game.Rulesets.Osu.UI
             }
 
             projectionPointBuffer.Add(points[0]);
+            railSourcePathIndices.Add(0);
 
             for (int i = 0; i < points.Count - 1; i++)
             {
@@ -878,6 +908,8 @@ namespace osu.Game.Rulesets.Osu.UI
 
                     projectionPointBuffer.Add(point);
                 }
+
+                railSourcePathIndices.Add(projectionPointBuffer.Count - 1);
             }
 
             rebuildProjectionArcLengths();
@@ -1007,7 +1039,7 @@ namespace osu.Game.Rulesets.Osu.UI
         private double getGreatWindow(DrawableOsuHitObject drawable)
             => Math.Max(18, drawable.HitObject.HitWindows?.WindowFor(HitResult.Great) ?? 50);
 
-        private ProjectionResult projectOntoPolyline(IReadOnlyList<Vector2> points, Vector2 query)
+        private ProjectionResult projectOntoPolyline(IReadOnlyList<Vector2> points, Vector2 query, int startIndex = 0, int endIndex = -1)
         {
             if (points.Count == 0)
                 return new ProjectionResult(query, Vector2.Zero);
@@ -1015,11 +1047,17 @@ namespace osu.Game.Rulesets.Osu.UI
             if (points.Count == 1)
                 return new ProjectionResult(points[0], Vector2.Zero);
 
-            Vector2 bestPoint = points[0];
-            Vector2 bestTangent = points[1] - points[0];
+            startIndex = Math.Clamp(startIndex, 0, points.Count - 1);
+            endIndex = endIndex < 0 ? points.Count - 1 : Math.Clamp(endIndex, startIndex, points.Count - 1);
+
+            if (startIndex == endIndex)
+                return new ProjectionResult(points[startIndex], Vector2.Zero);
+
+            Vector2 bestPoint = points[startIndex];
+            Vector2 bestTangent = points[startIndex + 1] - points[startIndex];
             float bestDistance = float.MaxValue;
 
-            for (int i = 0; i < points.Count - 1; i++)
+            for (int i = startIndex; i < endIndex; i++)
             {
                 Vector2 segmentStart = points[i];
                 Vector2 segmentEnd = points[i + 1];

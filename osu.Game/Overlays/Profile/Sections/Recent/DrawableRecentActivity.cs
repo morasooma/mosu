@@ -165,8 +165,7 @@ namespace osu.Game.Overlays.Profile.Sections.Recent
                     break;
 
                 case RecentActivityType.BeatmapsetDelete:
-                    addBeatmapsetLink();
-                    addText(" has been deleted.");
+                    addText($"{activity.Beatmapset.AsNonNull().Title} has been deleted.");
                     break;
 
                 case RecentActivityType.BeatmapsetRevive:
@@ -207,17 +206,17 @@ namespace osu.Game.Overlays.Profile.Sections.Recent
 
                 case RecentActivityType.UserSupportAgain:
                     addUserLink();
-                    addText(" has once again chosen to support osu! - thanks for your generosity!");
+                    addText(" has once again chosen to support Morasooma - thanks for your generosity!");
                     break;
 
                 case RecentActivityType.UserSupportFirst:
                     addUserLink();
-                    addText(" has become an osu!supporter - thanks for your generosity!");
+                    addText(" has become a Morasooma Supporter - thanks for your generosity!");
                     break;
 
                 case RecentActivityType.UserSupportGift:
                     addUserLink();
-                    addText(" has received the gift of osu!supporter!");
+                    addText(" has received the gift of Morasooma Supporter!");
                     break;
 
                 case RecentActivityType.UsernameChange:

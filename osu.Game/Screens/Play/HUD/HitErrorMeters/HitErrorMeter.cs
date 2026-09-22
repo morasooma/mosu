@@ -62,7 +62,11 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
         }
 
         // Scheduled as meter implementations are likely going to change/add drawables when reacting to this.
-        private void processorNewJudgement(JudgementResult j) => Schedule(() => OnNewJudgement(j));
+        private void processorNewJudgement(JudgementResult j)
+        {
+            if (!j.IgnoreForHitErrorMeter)
+                Schedule(() => OnNewJudgement(j));
+        }
 
         /// <summary>
         /// Fired when a new judgement arrives.

@@ -202,7 +202,8 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                                         {
                                             new PlaylistsRoomPanel(room)
                                             {
-                                                SelectedItem = SelectedItem
+                                                SelectedItem = SelectedItem,
+                                                ShowDescription = true,
                                             }
                                         },
                                         null,
@@ -497,6 +498,10 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                 case nameof(Room.UserScore):
                     updateUserScore();
                     break;
+
+                case nameof(Room.Playlist):
+                    updateDisplayedPlaylist();
+                    break;
             }
         }
 
@@ -522,14 +527,20 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                 Schedule(() =>
                 {
                     progressSection.Alpha = room.MaxAttempts != null ? 1 : 0;
-                    drawablePlaylist.Items.ReplaceRange(0, drawablePlaylist.Items.Count, room.Playlist);
-
-                    updateUserScore();
-
-                    // Select an initial item for the user to help them get into a playable state quicker.
-                    SelectedItem.Value = room.Playlist.FirstOrDefault();
+                    updateDisplayedPlaylist();
                 });
             }
+        }
+
+        private void updateDisplayedPlaylist()
+        {
+            foreach (var item in room.Playlist.Where(item => rulesets.GetRuleset(item.RulesetID) == null))
+                item.MarkInvalid();
+
+            drawablePlaylist.ReplaceItemsBatched(room.Playlist, updateUserScore);
+
+            if (SelectedItem.Value == null || !room.Playlist.Contains(SelectedItem.Value) || !SelectedItem.Value.Valid.Value)
+                SelectedItem.Value = room.Playlist.FirstOrDefault(item => item.Valid.Value);
         }
 
         /// <summary>
@@ -546,7 +557,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             foreach (var item in room.UserScore.PlaylistItemAttempts)
             {
                 if (item.Passed)
-                    drawablePlaylist.Items.Single(i => i.ID == item.PlaylistItemID).MarkCompleted();
+                    drawablePlaylist.Items.FirstOrDefault(i => i.ID == item.PlaylistItemID)?.MarkCompleted();
             }
         }
 
@@ -593,7 +604,14 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                 return;
 
             PlaylistItem item = SelectedItem.Value;
-            RulesetInfo gameplayRuleset = UserRuleset.Value ?? rulesets.GetRuleset(item.RulesetID)!;
+            RulesetInfo? gameplayRuleset = UserRuleset.Value ?? rulesets.GetRuleset(item.RulesetID);
+
+            if (gameplayRuleset == null)
+            {
+                UserMods.Value = Array.Empty<Mod>();
+                return;
+            }
+
             Mod[] allowedMods = ModUtils.EnumerateUserSelectableFreeMods(MatchType.Playlists, item.RequiredMods, item.AllowedMods, item.Freestyle, gameplayRuleset.CreateInstance());
 
             UserMods.Value = UserMods.Value.Where(m => allowedMods.Any(a => m.GetType() == a.GetType())).ToArray();
@@ -610,13 +628,21 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             PlaylistItem item = SelectedItem.Value;
 
             IBeatmapInfo gameplayBeatmap = UserBeatmap.Value ?? item.Beatmap;
-            RulesetInfo gameplayRuleset = UserRuleset.Value ?? rulesets.GetRuleset(item.RulesetID)!;
+            RulesetInfo? gameplayRuleset = UserRuleset.Value ?? rulesets.GetRuleset(item.RulesetID);
+
+            if (gameplayRuleset == null)
+            {
+                item.MarkInvalid();
+                SelectedItem.Value = null;
+                return;
+            }
+
             Ruleset rulesetInstance = gameplayRuleset.CreateInstance();
             Mod[] allowedMods = ModUtils.EnumerateUserSelectableFreeMods(MatchType.Playlists, item.RequiredMods, item.AllowedMods, item.Freestyle, gameplayRuleset.CreateInstance());
 
             // Update global gameplay state to correspond to the new selection.
             // Retrieve the corresponding local beatmap, since we can't directly use the playlist's beatmap info
-            var localBeatmap = beatmapManager.QueryOnlineBeatmapId(gameplayBeatmap.OnlineID);
+            var localBeatmap = beatmapManager.QueryOnlineBeatmapId(gameplayBeatmap.OnlineID, gameplayBeatmap.MD5Hash);
             Beatmap.Value = beatmapManager.GetWorkingBeatmap(localBeatmap);
             Ruleset.Value = gameplayRuleset;
             Mods.Value = UserMods.Value.Concat(item.RequiredMods.Select(m => m.ToMod(rulesetInstance))).ToArray();
@@ -670,7 +696,15 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             PlaylistItem item = SelectedItem.Value;
 
             // Required for validation inside the player.
-            RulesetInfo gameplayRuleset = UserRuleset.Value ?? rulesets.GetRuleset(item.RulesetID)!;
+            RulesetInfo? gameplayRuleset = UserRuleset.Value ?? rulesets.GetRuleset(item.RulesetID);
+
+            if (gameplayRuleset == null)
+            {
+                item.MarkInvalid();
+                SelectedItem.Value = null;
+                return;
+            }
+
             IBeatmapInfo gameplayBeatmap = UserBeatmap.Value ?? item.Beatmap;
             PlaylistItem gameplayItem = item.With(ruleset: gameplayRuleset.OnlineID, beatmap: new Optional<IBeatmapInfo>(gameplayBeatmap));
 

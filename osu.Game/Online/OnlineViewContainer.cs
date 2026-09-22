@@ -10,6 +10,7 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Online.API;
+using osu.Game.Online.Legacy;
 using osu.Game.Online.Placeholders;
 
 namespace osu.Game.Online
@@ -25,6 +26,7 @@ namespace osu.Game.Online
         protected override Container<Drawable> Content { get; } = new Container { RelativeSizeAxes = Axes.Both };
 
         private readonly string placeholderMessage;
+        private readonly bool allowStableProtocol;
 
         private Drawable placeholder;
 
@@ -33,13 +35,18 @@ namespace osu.Game.Online
         [Resolved]
         protected IAPIProvider API { get; private set; }
 
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession stableBanchoSession { get; set; }
+
         /// <summary>
         /// Construct a new instance of an online view container.
         /// </summary>
         /// <param name="placeholderMessage">The message to display when not logged in. If empty, no button will display.</param>
-        public OnlineViewContainer(string placeholderMessage)
+        /// <param name="allowStableProtocol">Whether an active Stable Bancho session should also count as online.</param>
+        public OnlineViewContainer(string placeholderMessage, bool allowStableProtocol = false)
         {
             this.placeholderMessage = placeholderMessage;
+            this.allowStableProtocol = allowStableProtocol;
         }
 
         private readonly IBindable<APIState> apiState = new Bindable<APIState>();
@@ -59,11 +66,24 @@ namespace osu.Game.Online
 
             apiState.BindTo(api.State);
             apiState.BindValueChanged(onlineStateChanged, true);
+
+            if (allowStableProtocol && stableBanchoSession != null)
+            {
+                stableBanchoSession.IsConnected.ValueChanged += stableConnectionChanged;
+                updateState(apiState.Value);
+            }
         }
 
-        private void onlineStateChanged(ValueChangedEvent<APIState> state) => Schedule(() =>
+        private void onlineStateChanged(ValueChangedEvent<APIState> state) => updateState(state.NewValue);
+
+        private void stableConnectionChanged(ValueChangedEvent<bool> _) => updateState(apiState.Value);
+
+        private void updateState(APIState state) => Schedule(() =>
         {
-            switch (state.NewValue)
+            if (allowStableProtocol && stableBanchoSession?.IsConnected.Value == true)
+                state = APIState.Online;
+
+            switch (state)
             {
                 case APIState.Offline:
                     PopContentOut(Content);
@@ -87,9 +107,17 @@ namespace osu.Game.Online
                     break;
 
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(state.NewValue));
+                    throw new ArgumentOutOfRangeException(nameof(state));
             }
         });
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (stableBanchoSession != null)
+                stableBanchoSession.IsConnected.ValueChanged -= stableConnectionChanged;
+
+            base.Dispose(isDisposing);
+        }
 
         /// <summary>
         /// Applies a transform to the online content to make it hidden.

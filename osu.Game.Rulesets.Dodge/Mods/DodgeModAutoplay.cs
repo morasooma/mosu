@@ -3,14 +3,18 @@
 
 using System.Collections.Generic;
 using osu.Game.Beatmaps;
-using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Dodge.Replays;
+using osu.Game.Rulesets.Mods;
 
 namespace osu.Game.Rulesets.Dodge.Mods
 {
-    public class DodgeModAutoplay : ModAutoplay
+    public class DodgeModAutoplay : ModAutoplay, IApplicableFailOverride
     {
         public override ModReplayData CreateReplayData(IBeatmap beatmap, IReadOnlyList<Mod> mods)
             => new ModReplayData(new DodgeAutoGenerator(beatmap).Generate(), new ModCreatedUser { Username = "DodgeBot" });
+
+        public bool PerformFail() => false;
+
+        public bool RestartOnFail => false;
     }
 }

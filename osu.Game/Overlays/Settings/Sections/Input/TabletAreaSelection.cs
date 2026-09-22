@@ -38,8 +38,9 @@ namespace osu.Game.Overlays.Settings.Sections.Input
 
         private OsuSpriteText tabletName;
 
-        private Box usableFill;
-        private OsuSpriteText usableAreaText;
+        private Box outerBackgroundBox;
+        private Box tabletBackgroundBox;
+        private IBindable<Colour4> themeColour;
 
         [Resolved]
         private OsuColour colour { get; set; }
@@ -50,6 +51,11 @@ namespace osu.Game.Overlays.Settings.Sections.Input
 
             Padding = SettingsPanel.CONTENT_PADDING;
         }
+
+        private Box usableFill;
+        private Box crosshairH = null!;
+        private Box crosshairV = null!;
+        private OsuSpriteText usableAreaText = null!;
 
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
@@ -64,7 +70,7 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                     CornerExponent = 2.5f,
                     Children = new Drawable[]
                     {
-                        new Box
+                        outerBackgroundBox = new Box
                         {
                             Colour = colourProvider.Background5,
                             RelativeSizeAxes = Axes.Both,
@@ -79,7 +85,7 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                             BorderColour = colourProvider.Background3,
                             Children = new Drawable[]
                             {
-                                new Box
+                                tabletBackgroundBox = new Box
                                 {
                                     RelativeSizeAxes = Axes.Both,
                                     Colour = colourProvider.Background4,
@@ -94,16 +100,16 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                                             RelativeSizeAxes = Axes.Both,
                                             Alpha = 0.6f,
                                         },
-                                        new Box
+                                        crosshairH = new Box
                                         {
-                                            Colour = Color4.White,
+                                            Colour = colourProvider.Content1,
                                             Anchor = Anchor.Centre,
                                             Origin = Anchor.Centre,
                                             Height = 5,
                                         },
-                                        new Box
+                                        crosshairV = new Box
                                         {
-                                            Colour = Color4.White,
+                                            Colour = colourProvider.Content1,
                                             Anchor = Anchor.Centre,
                                             Origin = Anchor.Centre,
                                             Width = 5,
@@ -112,7 +118,7 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                                         {
                                             Anchor = Anchor.Centre,
                                             Origin = Anchor.Centre,
-                                            Colour = Color4.White,
+                                            Colour = colourProvider.Content1,
                                             Font = OsuFont.Default.With(size: 12),
                                             Y = 10
                                         }
@@ -121,13 +127,26 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                                 tabletName = new OsuSpriteText
                                 {
                                     Padding = new MarginPadding(3),
-                                    Font = OsuFont.Default.With(size: 8)
+                                    Font = OsuFont.Default.With(size: 8),
+                                    Colour = colourProvider.Foreground1,
                                 },
                             }
                         }
                     }
                 },
             };
+
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Background5);
+            themeColour.BindValueChanged(_ =>
+            {
+                outerBackgroundBox.Colour = colourProvider.Background5;
+                tabletContainer.BorderColour = colourProvider.Background3;
+                tabletBackgroundBox.Colour = colourProvider.Background4;
+                tabletName.Colour = colourProvider.Foreground1;
+                crosshairH.Colour = colourProvider.Content1;
+                crosshairV.Colour = colourProvider.Content1;
+                usableAreaText.Colour = colourProvider.Content1;
+            }, true);
         }
 
         protected override void LoadComplete()

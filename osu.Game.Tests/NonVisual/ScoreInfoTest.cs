@@ -1,8 +1,10 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Linq;
 using NUnit.Framework;
 using osu.Game.Online.API;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Rulesets.Mania;
 using osu.Game.Rulesets.Mania.Mods;
 using osu.Game.Rulesets.Mods;
@@ -46,6 +48,47 @@ namespace osu.Game.Tests.NonVisual
             Assert.That(score.Mods, Is.Empty);
             Assert.That(score.APIMods, Is.Empty);
             Assert.That(score.ModsJson, Is.Empty);
+        }
+
+        [Test]
+        public void TestInvalidTagCoopReplayMetadataIsIgnored()
+        {
+            var score = new ScoreInfo { TagCoopReplayJson = "{invalid" };
+
+            Assert.That(score.TagCoopReplay, Is.Null);
+            Assert.That(score.TagCoopReplay, Is.Null);
+        }
+
+        [Test]
+        public void TestTagCoopReplayFramesAddedAfterInitialisationArePersistedByClone()
+        {
+            var score = new ScoreInfo
+            {
+                TagCoopReplay = new TagCoopReplayMetadata
+                {
+                    Players =
+                    [
+                        new TagCoopReplayPlayer { UserID = 1, Username = "first" },
+                        new TagCoopReplayPlayer { UserID = 2, Username = "second" },
+                    ]
+                }
+            };
+
+            score.TagCoopReplay.Frames.Add(new TagCoopReplayFrame
+            {
+                UserID = 2,
+                Sequence = 5,
+                GameplayTime = 1234,
+                X = 0.25f,
+                Y = 0.75f,
+            });
+
+            ScoreInfo clone = score.DeepClone();
+            var restored = new ScoreInfo { TagCoopReplayJson = clone.TagCoopReplayJson };
+
+            Assert.That(restored.TagCoopReplay?.Players.Select(player => player.Username), Is.EqualTo(new[] { "first", "second" }));
+            Assert.That(restored.TagCoopReplay?.Frames, Has.Count.EqualTo(1));
+            Assert.That(restored.TagCoopReplay?.Frames[0].UserID, Is.EqualTo(2));
         }
 
         [Test]

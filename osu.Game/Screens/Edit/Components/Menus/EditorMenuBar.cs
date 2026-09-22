@@ -1,7 +1,10 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
+using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
@@ -14,12 +17,22 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
 using osuTK;
+using osuTK.Graphics;
 
 namespace osu.Game.Screens.Edit.Components.Menus
 {
     public partial class EditorMenuBar : OsuMenu
     {
         private const float heading_area = 114;
+
+        private SpriteIcon brandIcon = null!;
+        private ITextPart morasoomaPart = null!;
+        private ITextPart editorPart = null!;
+        private IBindable<Colour4>? themeColour;
+
+        internal Color4 MenuBarBackgroundColour => BackgroundColour;
+        internal Color4 BrandIconColour => brandIcon.Colour;
+        internal Color4 MorasoomaTextColour => morasoomaPart.Drawables.OfType<SpriteText>().FirstOrDefault()?.Colour ?? Color4.White;
 
         public EditorMenuBar()
             : base(Direction.Horizontal, true)
@@ -36,8 +49,6 @@ namespace osu.Game.Screens.Edit.Components.Menus
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider, TextureStore textures)
         {
-            BackgroundColour = colourProvider.Background3;
-
             TextFlowContainer text;
 
             AddRangeInternal(new[]
@@ -49,7 +60,7 @@ namespace osu.Game.Screens.Edit.Components.Menus
                     Padding = new MarginPadding(8),
                     Children = new Drawable[]
                     {
-                        new SpriteIcon
+                        brandIcon = new SpriteIcon
                         {
                             Size = new Vector2(26),
                             Anchor = Anchor.CentreLeft,
@@ -66,12 +77,25 @@ namespace osu.Game.Screens.Edit.Components.Menus
                 },
             });
 
-            text.AddText(@"osu!", t => t.Font = OsuFont.TorusAlternate);
-            text.AddText(@"editor", t =>
+            morasoomaPart = text.AddText(@"Morasooma ", t =>
+            {
+                t.Font = OsuFont.TorusAlternate;
+                t.Colour = colourProvider.Content1;
+            });
+            editorPart = text.AddText(@"editor", t =>
             {
                 t.Font = OsuFont.TorusAlternate;
                 t.Colour = colourProvider.Highlight1;
             });
+
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+            themeColour.BindValueChanged(_ =>
+            {
+                BackgroundColour = colourProvider.Background3;
+                brandIcon.Colour = colourProvider.Content1;
+                foreach (var p in morasoomaPart.Drawables) p.Colour = colourProvider.Content1;
+                foreach (var p in editorPart.Drawables) p.Colour = colourProvider.Highlight1;
+            }, true);
         }
 
         protected override Framework.Graphics.UserInterface.Menu CreateSubMenu() => new SubMenu
@@ -85,6 +109,7 @@ namespace osu.Game.Screens.Edit.Components.Menus
         {
             private HoverClickSounds hoverClickSounds = null!;
             private TextContainer text = null!;
+            private IBindable<Colour4>? themeColour;
 
             public DrawableEditorBarMenuItem(MenuItem item)
                 : base(item)
@@ -98,6 +123,16 @@ namespace osu.Game.Screens.Edit.Components.Menus
                 BackgroundColour = colourProvider.Background2;
                 ForegroundColourHover = colourProvider.Content1;
                 BackgroundColourHover = colourProvider.Background1;
+
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ =>
+                {
+                    ForegroundColour = colourProvider.Light3;
+                    BackgroundColour = colourProvider.Background2;
+                    ForegroundColourHover = colourProvider.Content1;
+                    BackgroundColourHover = colourProvider.Background1;
+                    updateState();
+                });
 
                 AddInternal(hoverClickSounds = new HoverClickSounds(HoverSampleSet.MenuOpen));
             }

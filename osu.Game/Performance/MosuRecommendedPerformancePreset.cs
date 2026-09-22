@@ -15,6 +15,16 @@ namespace osu.Game.Performance
         private static readonly (OsuSetting Setting, bool Value)[] recommended_boolean_settings =
         {
             (OsuSetting.ForkWindowsUltraPerformanceMode, false),
+            (OsuSetting.ForkUse8kPollingRate, false),
+            (OsuSetting.ForkLargeTextureAtlas, false),
+            (OsuSetting.ForkDeferredVertexUploadBatching, false),
+            (OsuSetting.ForkDeferredDirectVertexUpload, false),
+            (OsuSetting.ForkDeferredDirectUniformUpload, false),
+            (OsuSetting.ForkVeldridPipelineLookupCache, false),
+            (OsuSetting.ForkStaticChildLifetimeCache, false),
+            (OsuSetting.ForkAtlasRegionAllocator, false),
+            (OsuSetting.ForkAllowTearing, true),
+            (OsuSetting.ForkUpdateThreadSpinWait, false),
             (OsuSetting.ForkSkinPerformanceMode, true),
             (OsuSetting.ForkSkinPerformanceFreezeAnimations, true),
             (OsuSetting.ForkSkinPerformanceSimplifyEffects, true),
@@ -23,6 +33,7 @@ namespace osu.Game.Performance
             (OsuSetting.ForkSkinPerformanceSimplifyCounters, true),
             (OsuSetting.ForkSkinPerformanceDisableKiaiFlashing, true),
             (OsuSetting.ForkSkinPerformanceBlackBackground, true),
+            (OsuSetting.ForkArgonFollowRing, true),
         };
 
         public static IReadOnlyList<(OsuSetting Setting, bool Value)> Settings => recommended_boolean_settings;

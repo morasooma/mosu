@@ -27,6 +27,7 @@ using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
 using osu.Game.Online;
 using osu.Game.Online.API;
+using osu.Game.Online.Legacy;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Rooms;
 using osu.Game.Rulesets;
@@ -59,6 +60,9 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
 
         [Resolved]
         private MultiplayerClient client { get; set; } = null!;
+
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
 
         private SpriteIcon crown = null!;
 
@@ -339,12 +343,19 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
                 if (current.Value.IsEmpty)
                 {
                     if (current.Value.IsLocked)
-                        return null;
+                    {
+                        return client.IsHost || client.IsReferee
+                            ? new MenuItem[] { new OsuMenuItem("Open slot", MenuItemType.Highlighted, toggleSlotLock) }
+                            : null;
+                    }
 
                     var items = new List<MenuItem>
                     {
                         new OsuMenuItem(MultiplayerMatchStrings.MoveToSlot, MenuItemType.Highlighted, moveToSlot),
                     };
+
+                    if (stableBanchoSession != null && (client.IsHost || client.IsReferee))
+                        items.Add(new OsuMenuItem("Close slot", MenuItemType.Destructive, toggleSlotLock));
 
                     return items.ToArray();
                 }
@@ -393,9 +404,21 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
         private void interactWithEmptySlot()
         {
             if (current.Value.IsLocked)
+            {
+                if (client.IsHost || client.IsReferee)
+                    toggleSlotLock();
                 return;
+            }
 
             moveToSlot();
+        }
+
+        private void toggleSlotLock()
+        {
+            if (stableBanchoSession == null || !current.Value.IsEmpty || (!client.IsHost && !client.IsReferee))
+                return;
+
+            stableBanchoSession.LockSlotAsync(current.Value.SlotId!.Value).FireAndForget();
         }
 
         public partial class KickButton : IconButton

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Utils;
+using osu.Game.Configuration;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Skills;
 using osu.Game.Rulesets.Difficulty.Utils;
@@ -14,6 +15,7 @@ using osu.Game.Rulesets.Osu.Difficulty.Evaluators.Aim;
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Osu.Objects;
+using osuTK;
 
 namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 {
@@ -23,39 +25,44 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
     public class Aim : VariableLengthStrainSkill
     {
         private static readonly double reference_circle_radius = OsuHitObject.OBJECT_RADIUS * LegacyRulesetExtensions.CalculateScaleFromCircleSize(4, true);
+        private const double relax_pattern_full_speed_time = 100;
+        private const double relax_pattern_fade_end_time = 130;
+        private const double relax_spaced_stream_full_distance = 150;
+        private const double relax_spaced_stream_max_jump_distance = 215;
 
         public readonly bool IncludeSliders;
 
         private readonly bool applyMappingAntiAbuse;
+        private readonly bool isRelax;
 
         public Aim(Mod[] mods, bool includeSliders, bool applyMappingAntiAbuse = true)
             : base(mods)
         {
             IncludeSliders = includeSliders;
             this.applyMappingAntiAbuse = applyMappingAntiAbuse;
+            isRelax = mods.Any(m => m is OsuModRelax or OsuModMosuRelax);
         }
 
         private double currentStrain;
         private double maxEndTime;
         private int relaxPatternStreak;
 
-        /// <summary>
-        /// The number of sections with the highest strains, which the peak strain reductions will apply to.
-        /// This is done in order to decrease their impact on the overall difficulty of the map for this skill.
-        /// </summary>
-        private int reducedSectionTime => 4000;
-
-        /// <summary>
-        /// The baseline multiplier applied to the section with the biggest strain.
-        /// </summary>
-        private const double reduced_strain_baseline = 0.727;
+        private int relaxFlowRunNotes;
+        private double relaxFlowWeightSum;
+        private double relaxExtremeJumpWeightSum;
+        private double relaxWideFlowWeightSum;
+        private double relaxRawPatternDifficultySum;
+        private double relaxBalancedPatternDifficultySum;
+        private double relaxHardJumpWeightSum;
+        private double relaxVerticalHardJumpWeightSum;
+        private int relaxQualifyingVerticalJumps;
 
         private readonly List<double> sliderStrains = new List<double>();
 
         private double strainDecay(double ms) => DiffUtils.Pow(0.2, ms / 1000);
 
         protected override double CalculateInitialStrain(double time, DifficultyHitObject current) =>
-            currentStrain * strainDecay(time - current.Previous(0).StartTime);
+            currentStrain * strainDecay(time - current.Previous().StartTime);
 
         protected override double StrainValueAt(DifficultyHitObject current)
         {
@@ -69,6 +76,12 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             double decay = strainDecay(((OsuDifficultyHitObject)current).AdjustedDeltaTime);
 
+            if (isRelax && IncludeSliders)
+            {
+                processRelaxVerticalMetrics((OsuDifficultyHitObject)current);
+                processRelaxFlowMetrics((OsuDifficultyHitObject)current);
+            }
+
             currentStrain *= decay;
 
             if (!isOverlapping)
@@ -81,6 +94,171 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             return currentStrain;
         }
+
+        private void processRelaxFlowMetrics(OsuDifficultyHitObject current)
+        {
+            if (current.Index <= 1 || current.Previous(0) is not OsuDifficultyHitObject previous)
+                return;
+
+            // The pinned Mosu calculator normalises to radius 52 while the current lazer
+            // preprocessing uses radius 50. Convert only for its parity metrics.
+            const double mosu_distance_scale = 52.0 / OsuDifficultyHitObject.NORMALISED_RADIUS;
+            double jumpDistance = current.LazyJumpDistance * mosu_distance_scale;
+            double previousJumpDistance = previous.LazyJumpDistance * mosu_distance_scale;
+
+            double maxTime = Math.Max(current.AdjustedDeltaTime, previous.AdjustedDeltaTime);
+            double minTime = Math.Max(1, Math.Min(current.AdjustedDeltaTime, previous.AdjustedDeltaTime));
+            double timingWeight = 1 - relaxSmoothStep(maxTime / minTime, 1.05, 1.22);
+
+            double maxSpacing = Math.Max(jumpDistance, previousJumpDistance);
+            double minSpacing = Math.Max(1, Math.Min(jumpDistance, previousJumpDistance));
+            double spacingConsistencyWeight = 1 - relaxSmoothStep(maxSpacing / minSpacing, 1.10, 1.45);
+
+            double speedWeight = 1 - relaxSmoothStep(current.AdjustedDeltaTime, 92, 125);
+            double spacingWeight = relaxSmoothStep(jumpDistance, 42, 88);
+            double jumpGuard = 1 - relaxSmoothStep(jumpDistance, 150, 215);
+            double angleWeight = current.Angle.HasValue
+                ? relaxSmoothStep(current.Angle.Value, double.DegreesToRadians(80), double.DegreesToRadians(132))
+                : 0;
+
+            relaxExtremeJumpWeightSum +=
+                relaxSmoothStep(jumpDistance, 175, 250) *
+                (1 - relaxSmoothStep(current.AdjustedDeltaTime, 90, 150));
+
+            double noteFlowWeight = timingWeight
+                                    * spacingConsistencyWeight
+                                    * Math.Max(speedWeight, 0.25)
+                                    * spacingWeight
+                                    * jumpGuard
+                                    * angleWeight;
+
+            if (current.AdjustedDeltaTime <= 125 && jumpDistance >= 42 && noteFlowWeight >= 0.14)
+            {
+                relaxFlowRunNotes++;
+
+                if (relaxFlowRunNotes >= 6)
+                {
+                    double contribution = noteFlowWeight * relaxSmoothStep(relaxFlowRunNotes, 6, 8);
+                    relaxFlowWeightSum += contribution;
+                    relaxWideFlowWeightSum += contribution * relaxSmoothStep(jumpDistance, 105, 150);
+                }
+            }
+            else
+            {
+                relaxFlowRunNotes = 0;
+            }
+        }
+
+        private void processRelaxVerticalMetrics(OsuDifficultyHitObject current)
+        {
+            if (current.BaseObject is not HitCircle currentCircle
+                || current.LastObject is not HitCircle previousCircle)
+                return;
+
+            double distance = current.JumpDistance * 52.0 / OsuDifficultyHitObject.NORMALISED_RADIUS;
+            double hardWeight = relaxSmoothStep(distance, 65, 130)
+                                * (1 - relaxSmoothStep(current.DeltaTime, 300, 500));
+
+            if (hardWeight <= 0)
+                return;
+
+            Vector2 vector = currentCircle.StackedPosition - previousCircle.StackedPosition;
+            double rawDistance = vector.Length;
+
+            if (rawDistance <= 0)
+                return;
+
+            double directionWeight = relaxSmoothStep(Math.Abs(vector.Y) / rawDistance, 0.8191520, 0.9659258);
+            relaxHardJumpWeightSum += hardWeight;
+            relaxVerticalHardJumpWeightSum += hardWeight * directionWeight;
+
+            if (hardWeight >= 0.30 && directionWeight >= 0.45)
+                relaxQualifyingVerticalJumps++;
+        }
+
+        public RelaxMetrics CalculateRelaxMetrics(int objectCount)
+        {
+            if (!isRelax || !IncludeSliders || objectCount <= 0)
+                return default;
+
+            double baseMapFlowWeight = relaxSmoothStep(relaxFlowWeightSum / objectCount, 0, 0.035);
+            double jumpPresence = relaxSmoothStep(relaxExtremeJumpWeightSum / objectCount, 0.02, 0.10);
+            double jumpShare = relaxExtremeJumpWeightSum / (relaxExtremeJumpWeightSum + relaxFlowWeightSum + 0.0001);
+            double jumpCompetition = relaxSmoothStep(jumpShare, 0.20, 0.60);
+            double hybridGuard = 1 - 0.68 * jumpPresence * jumpCompetition;
+
+            double wideFlowShare = relaxWideFlowWeightSum / (relaxFlowWeightSum + 0.0001);
+            double wideFlowPressure = relaxSmoothStep(wideFlowShare, 0.25, 0.75);
+            double wideFlowGuard = 1 - 0.80 * wideFlowPressure;
+
+            double flowBonusRatio = 0.17 * baseMapFlowWeight * hybridGuard * wideFlowGuard;
+            double wideFlowPatternWeight = Math.Clamp(baseMapFlowWeight * wideFlowPressure, 0, 1);
+            double patternPenaltyRatio = relaxRawPatternDifficultySum > 0
+                ? Math.Clamp(relaxBalancedPatternDifficultySum / relaxRawPatternDifficultySum, 0.1, 1)
+                : 1;
+            double verticalShare = relaxVerticalHardJumpWeightSum / Math.Max(relaxHardJumpWeightSum, 0.0001);
+            double verticalAimPressure = Math.Clamp(
+                relaxSmoothStep(verticalShare, 0.25, 0.55)
+                * relaxSmoothStep(relaxQualifyingVerticalJumps, 8, 20)
+                * relaxSmoothStep(relaxHardJumpWeightSum, 8, 20),
+                0,
+                1);
+            double[] peaks = GetCurrentStrainPeaks().Select(p => p.Value).ToArray();
+
+            return new RelaxMetrics(
+                flowBonusRatio,
+                calculateSectionSpikeFillerWeight(peaks),
+                wideFlowPatternWeight,
+                peaks.Length,
+                patternPenaltyRatio,
+                verticalAimPressure);
+        }
+
+        private static double calculateSectionSpikeFillerWeight(double[] peaks)
+        {
+            int count = peaks.Length;
+
+            if (count < 150)
+                return 0;
+
+            double[] sorted = peaks.Order().ToArray();
+            int topCount = Math.Min(count, 3);
+            double peakReference = sorted.Skip(count - topCount).Average();
+
+            if (peakReference <= 0.0001)
+                return 0;
+
+            int baselineIndex = (int)Math.Round((count - 1) * 0.60, MidpointRounding.AwayFromZero);
+            double baseline = Math.Max(sorted[Math.Min(baselineIndex, count - 1)], 0.0001);
+            double spikeStrength = relaxSmoothStep(peakReference / baseline, 1.35, 1.90);
+
+            if (spikeStrength <= 0)
+                return 0;
+
+            double hardThreshold = peakReference * 0.72;
+            double hardCoverage = (double)peaks.Count(p => p >= hardThreshold) / count;
+            double sparseWeight = 1 - relaxSmoothStep(hardCoverage, 0.08, 0.24);
+            double longWeight = relaxSmoothStep(count, 150, 300);
+
+            return Math.Clamp(spikeStrength * sparseWeight * longWeight, 0, 1);
+        }
+
+        private static double relaxSmoothStep(double value, double start, double end)
+        {
+            if (end <= start)
+                return value >= end ? 1 : 0;
+
+            double x = Math.Clamp((value - start) / (end - start), 0, 1);
+            return x * x * (3 - 2 * x);
+        }
+
+        public readonly record struct RelaxMetrics(
+            double FlowAimBonusRatio,
+            double JumpSpikeFillerWeight,
+            double WideFlowPatternWeight,
+            int FlowSectionCount,
+            double PatternPenaltyRatio,
+            double VerticalAimPressure);
 
         private double calculateAdjustedDifficulty(DifficultyHitObject current)
         {
@@ -108,13 +286,21 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
                 {
                     int followingTransitions = countFollowingRelaxPatternTransitions(osuCurrent, 16);
                     int evidence = CalculateRelaxPatternEvidence(relaxPatternStreak, followingTransitions, 16);
-                    pointSpamPenalty = CalculateRelaxPointSpamPenalty(evidence);
+                    pointSpamPenalty = blendRelaxPatternPenalty(
+                        CalculateRelaxPointSpamPenalty(evidence),
+                        CalculateRelaxPatternSpeedWeight(rateNeutralAdjustedDeltaTime(osuCurrent)));
                 }
 
                 if (isSpacedStreamTransition)
                 {
                     int evidence = CalculateRelaxPatternEvidence(relaxPatternStreak, countFollowingRelaxPatternTransitions(osuCurrent, 24), 24);
-                    spacedStreamPenalty = CalculateRelaxSpacedStreamPenalty(evidence);
+                    var previous = osuCurrent.Previous(0) as OsuDifficultyHitObject;
+                    double interval = previous == null
+                        ? rateNeutralAdjustedDeltaTime(osuCurrent)
+                        : Math.Max(rateNeutralAdjustedDeltaTime(osuCurrent), rateNeutralAdjustedDeltaTime(previous));
+                    double patternWeight = CalculateRelaxPatternSpeedWeight(interval)
+                                           * CalculateRelaxSpacedStreamGeometryWeight(relaxReferenceNormalisedJumpDistance(osuCurrent));
+                    spacedStreamPenalty = blendRelaxPatternPenalty(CalculateRelaxSpacedStreamPenalty(evidence), patternWeight);
                 }
             }
 
@@ -174,15 +360,32 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             if (Mods.Any(m => m is OsuModRelax or OsuModMosuRelax))
             {
-                // Keep snap difficulty unchanged. Relax-specific jump balancing is applied
-                // directly to aim PP; flow still loses its tapping component.
-                combinedSnapDifficulty *= pointSpamPenalty;
-                flowDifficulty *= 0.5;
+                double rawPatternDifficulty = combinedSnapDifficulty * pSnap + flowDifficulty * pFlow;
+                double balancedPatternDifficulty = (combinedSnapDifficulty * pointSpamPenalty) * pSnap + flowDifficulty * pFlow;
+                balancedPatternDifficulty *= spacedStreamPenalty;
+
+                relaxRawPatternDifficultySum += rawPatternDifficulty;
+                relaxBalancedPatternDifficultySum += balancedPatternDifficulty;
+
+                if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.LazerVanilla)
+                {
+                    // Upstream lazer relax balance: flat reductions, no fork anti-abuse.
+                    combinedSnapDifficulty *= 0.75;
+                    flowDifficulty *= 0.6;
+                }
+                else
+                {
+                    // Keep snap difficulty unchanged. Relax-specific jump balancing is applied
+                    // directly to aim PP; flow still loses its tapping component.
+                    combinedSnapDifficulty *= pointSpamPenalty;
+                    flowDifficulty *= 0.5;
+                }
             }
 
             double totalDifficulty = combinedSnapDifficulty * pSnap + flowDifficulty * pFlow;
 
-            if (Mods.Any(m => m is OsuModRelax or OsuModMosuRelax))
+            if (Mods.Any(m => m is OsuModRelax or OsuModMosuRelax)
+                && RelaxPpSystemSelection.Current != ForkRelaxPpSystem.LazerVanilla)
                 totalDifficulty *= spacedStreamPenalty;
 
             double totalStrain = totalDifficulty * skill_multiplier_total;
@@ -216,7 +419,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             bool isPointSpamTransition = isRelaxPointSpamTransition(current);
             bool isSpacedStreamTransition = isRelaxSpacedStreamTransition(current);
-            bool hasTimingBreak = current.AdjustedDeltaTime > 150;
+            bool hasTimingBreak = rateNeutralAdjustedDeltaTime(current) > 150;
 
             // Point spam and spaced streams share evidence so alternating just below and above
             // the radius boundary cannot reset both detectors. The current transition still
@@ -235,7 +438,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         }
 
         private static bool isRelaxPointSpamTransition(OsuDifficultyHitObject current) =>
-            IsRelaxPointSpamTransition(current.AdjustedDeltaTime, current.LazyJumpDistance);
+            IsRelaxPointSpamTransition(rateNeutralAdjustedDeltaTime(current), relaxReferenceNormalisedJumpDistance(current));
 
         private static bool isRelaxFastPatternTransition(OsuDifficultyHitObject current) =>
             isRelaxPointSpamTransition(current) || isRelaxSpacedStreamTransition(current);
@@ -253,32 +456,43 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             if (previous.Previous(0)?.BaseObject is not HitCircle)
             {
                 return current.BaseObject is HitCircle && previous.BaseObject is HitCircle &&
-                       current.AdjustedDeltaTime <= 100 &&
-                       current.LazyJumpDistance >= OsuDifficultyHitObject.NORMALISED_RADIUS;
+                       rateNeutralAdjustedDeltaTime(current) <= relax_pattern_fade_end_time &&
+                       relaxReferenceNormalisedJumpDistance(current) >= OsuDifficultyHitObject.NORMALISED_RADIUS &&
+                       relaxReferenceNormalisedJumpDistance(current) <= relax_spaced_stream_max_jump_distance;
             }
 
             return IsRelaxSpacedStreamTransition(
-                current.AdjustedDeltaTime,
-                previous.AdjustedDeltaTime,
-                current.LazyJumpDistance);
+                rateNeutralAdjustedDeltaTime(current),
+                rateNeutralAdjustedDeltaTime(previous),
+                relaxReferenceNormalisedJumpDistance(current));
         }
 
+        private static double rateNeutralAdjustedDeltaTime(OsuDifficultyHitObject current) =>
+            Math.Max(current.DeltaTime * current.ClockRate, OsuDifficultyHitObject.MIN_DELTA_TIME);
+
+        /// <summary>
+        /// Converts the preprocessed jump distance back to a CS4 reference space.
+        /// This keeps pattern classification stable when DA changes circle size while
+        /// leaving the actual aim difficulty sensitive to the effective circle size.
+        /// </summary>
+        private static double relaxReferenceNormalisedJumpDistance(OsuDifficultyHitObject current) =>
+            Math.Abs(current.LazyJumpDistance * current.SignedRadius / reference_circle_radius);
+
         internal static bool IsRelaxPointSpamTransition(double deltaTime, double normalisedJumpDistance) =>
-            deltaTime <= 100 && normalisedJumpDistance < OsuDifficultyHitObject.NORMALISED_RADIUS;
+            deltaTime <= relax_pattern_fade_end_time && normalisedJumpDistance < OsuDifficultyHitObject.NORMALISED_RADIUS;
 
         internal static bool IsRelaxSpacedStreamTransition(double deltaTime, double previousDeltaTime,
                                                             double jumpDistance)
         {
-            if (deltaTime > 100 || previousDeltaTime > 100 ||
-                jumpDistance < OsuDifficultyHitObject.NORMALISED_RADIUS)
+            if (deltaTime > relax_pattern_fade_end_time || previousDeltaTime > relax_pattern_fade_end_time ||
+                jumpDistance < OsuDifficultyHitObject.NORMALISED_RADIUS ||
+                jumpDistance > relax_spaced_stream_max_jump_distance)
                 return false;
 
             double rhythmRatio = Math.Min(deltaTime, previousDeltaTime) / Math.Max(deltaTime, previousDeltaTime);
 
-            // Geometry is deliberately not used as an escape condition. Relax removes the
-            // tapping requirement from equally timed streams regardless of whether the cursor
-            // path is straight, curved or changes spacing. Short jump bursts remain protected
-            // by the evidence grace period.
+            // Relax removes the tapping requirement from flowable streams, but wide 1-2 jump
+            // aim still has to be aimed. Keep those patterns out of the stream anti-abuse path.
             return rhythmRatio >= 0.85;
         }
 
@@ -302,7 +516,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             {
                 if (current.Next(i) is not OsuDifficultyHitObject next ||
                     next.BaseObject is not HitCircle || next.Previous(0)?.BaseObject is not HitCircle ||
-                    next.AdjustedDeltaTime > 150 || !isRelaxFastPatternTransition(next))
+                    rateNeutralAdjustedDeltaTime(next) > 150 || !isRelaxFastPatternTransition(next))
                     break;
 
                 count++;
@@ -316,6 +530,15 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
         internal static double CalculateRelaxSpacedStreamPenalty(int streak) =>
             calculateRelaxPatternPenalty(streak, 8, 24, 0.65);
+
+        internal static double CalculateRelaxPatternSpeedWeight(double deltaTime) =>
+            1 - DiffUtils.Smootherstep(deltaTime, relax_pattern_full_speed_time, relax_pattern_fade_end_time);
+
+        internal static double CalculateRelaxSpacedStreamGeometryWeight(double jumpDistance) =>
+            1 - DiffUtils.Smootherstep(jumpDistance, relax_spaced_stream_full_distance, relax_spaced_stream_max_jump_distance);
+
+        private static double blendRelaxPatternPenalty(double penalty, double patternWeight) =>
+            1 - (1 - penalty) * patternWeight;
 
         private static double calculateRelaxPatternPenalty(int streak, int graceStreak, int fullPenaltyStreak, double maximumReduction)
         {
@@ -353,7 +576,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             if (maxSliderStrain == 0)
                 return 0;
 
-            return sliderStrains.Sum(strain => 1.0 / (1.0 + Math.Exp(-(strain / maxSliderStrain * 12.0 - 6.0))));
+            return sliderStrains.Sum(strain => DiffUtils.Logistic(strain / maxSliderStrain, 0.5, 12.0));
         }
 
         public double CountTopWeightedSliders(double difficultyValue)
@@ -414,9 +637,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         /// <returns></returns>
         private IEnumerable<StrainPeak> getReducedStrainPeaks()
         {
+            const int reduced_section_time = 4000;
+            const double reduced_strain_baseline = 0.727;
+
             // Sections with 0 strain are excluded to avoid worst-case time complexity of the following sort (e.g. /b/2351871).
             // These sections will not contribute to the difficulty.
-
             List<StrainPeak> strains = GetCurrentStrainPeaks()
                                        .Where(p => p.Value > 0)
                                        .ToList();
@@ -427,13 +652,13 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             // We are reducing the highest strains first to account for extreme difficulty spikes
             // Strains are split into 20ms chunks to try to mitigate inconsistencies caused by reducing strains
-            while (strains.Count > skipCount && time < reducedSectionTime)
+            while (strains.Count > skipCount && time < reduced_section_time)
             {
                 StrainPeak strain = strains[skipCount];
 
                 for (double addedTime = 0; addedTime < strain.SectionLength; addedTime += chunk_size)
                 {
-                    double scale = Math.Log10(Interpolation.Lerp(1, 10, Math.Clamp((time + addedTime) / reducedSectionTime, 0, 1)));
+                    double scale = Math.Log10(Interpolation.Lerp(1, 10, Math.Clamp((time + addedTime) / reduced_section_time, 0, 1)));
 
                     // intentionally add at end and sort afterwards, should be cheaper.
                     strains.Add(new StrainPeak(

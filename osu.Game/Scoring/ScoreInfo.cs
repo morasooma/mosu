@@ -12,6 +12,7 @@ using osu.Game.Database;
 using osu.Game.Models;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Online.Rooms;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
@@ -97,6 +98,7 @@ namespace osu.Game.Scoring
         /// </summary>
         /// <remarks>
         /// Not populated if <see cref="IsLegacyScore"/> is <c>false</c>.
+        /// Always 0 on scores set in lazer.
         /// </remarks>
         public long? LegacyTotalScore { get; set; }
 
@@ -156,6 +158,30 @@ namespace osu.Game.Scoring
 
         [MapTo("MaximumStatistics")]
         public string MaximumStatisticsJson { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Fork-owned replay extension containing all labelled Tag Co-op cursor tracks.
+        /// Kept outside the main Realm schema so the database remains compatible with upstream osu!.
+        /// The metadata is stored in <c>fork.realm</c> and persisted as part of the replay payload.
+        /// </summary>
+        [Ignored]
+        public string TagCoopReplayJson
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(tagCoopReplayJson) && ID != Guid.Empty)
+                    tagCoopReplayJson = ForkDataStore.Instance?.GetTagCoopReplay(ID) ?? string.Empty;
+
+                return tagCoopReplayJson;
+            }
+            set
+            {
+                tagCoopReplayJson = value;
+                ForkDataStore.Instance?.SetTagCoopReplay(ID, value);
+            }
+        }
+
+        private string tagCoopReplayJson = string.Empty;
 
         public IList<int> Pauses { get; } = null!;
 
@@ -222,6 +248,59 @@ namespace osu.Game.Scoring
         [Ignored]
         public List<HitEvent> HitEvents { get; set; } = new List<HitEvent>();
 
+        /// <summary>
+        /// Aggregated client-side integrity information for this gameplay session.
+        /// This is intentionally not persisted in the local score database.
+        /// </summary>
+        [Ignored]
+        public GameplayIntegrityReport? GameplayIntegrityReport { get; set; }
+
+        private TagCoopReplayMetadata? tagCoopReplay;
+        private bool tagCoopReplayResolved;
+
+        [Ignored]
+        public TagCoopReplayMetadata? TagCoopReplay
+        {
+            get
+            {
+                if (!tagCoopReplayResolved)
+                {
+                    tagCoopReplayResolved = true;
+
+                    if (!string.IsNullOrEmpty(TagCoopReplayJson))
+                    {
+                        try
+                        {
+                            tagCoopReplay = JsonConvert.DeserializeObject<TagCoopReplayMetadata>(TagCoopReplayJson);
+
+                            if (tagCoopReplay != null)
+                            {
+                                tagCoopReplay.Players ??= [];
+                                tagCoopReplay.Frames ??= [];
+                            }
+                        }
+                        catch (JsonException)
+                        {
+                            // This is an optional fork extension. A damaged or foreign value must
+                            // not make the otherwise compatible ordinary replay unplayable.
+                            tagCoopReplay = null;
+                        }
+                    }
+                }
+
+                return tagCoopReplay;
+            }
+            set
+            {
+                tagCoopReplayResolved = true;
+                tagCoopReplay = value;
+                TagCoopReplayJson = value == null ? string.Empty : JsonConvert.SerializeObject(value);
+            }
+        }
+
+        [Ignored]
+        internal Func<GameplayIntegrityReport?>? GameplayIntegrityReportProvider { get; set; }
+
         public ScoreInfo DeepClone()
         {
             var clone = (ScoreInfo)this.Detach().MemberwiseClone();
@@ -229,6 +308,10 @@ namespace osu.Game.Scoring
             clone.Statistics = new Dictionary<HitResult, int>(clone.Statistics);
             clone.MaximumStatistics = new Dictionary<HitResult, int>(clone.MaximumStatistics);
             clone.HitEvents = new List<HitEvent>(clone.HitEvents);
+            clone.GameplayIntegrityReport = GameplayIntegrityReportProvider?.Invoke() ?? GameplayIntegrityReport;
+            clone.GameplayIntegrityReportProvider = null;
+            clone.TagCoopReplay = TagCoopReplay?.DeepClone();
+
             // Ensure we have fresh mods to avoid any references (ie. after gameplay).
             clone.clearAllMods();
             clone.ModsJson = ModsJson;

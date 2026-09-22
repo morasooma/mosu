@@ -44,7 +44,10 @@ namespace osu.Game.Rulesets.Edit.Checks
 
                 try
                 {
-                    using (Stream data = context.CurrentDifficulty.Working.GetStream(storagePath))
+                    using Stream? data = context.CurrentDifficulty.Working.GetStream(storagePath);
+                    if (data == null)
+                        continue;
+
                     using (File tagFile = TagLibUtils.GetTagLibFile(filename, data))
                     {
                         int height = tagFile.Properties.VideoHeight;

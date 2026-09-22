@@ -61,6 +61,11 @@ namespace osu.Game.Online.Leaderboards
         private readonly bool isOnlineScope;
         private readonly bool highlightFriend;
 
+        /// <summary>
+        /// Applies the non-system mods from this score in contexts which do not use the modern song select screen.
+        /// </summary>
+        public Action<IReadOnlyList<Mod>> ApplyModsFromScore { get; init; }
+
         private Box background;
         private IBindable<Colour4> themeColour;
         private Container content;
@@ -470,8 +475,13 @@ namespace osu.Game.Online.Leaderboards
                 // system mods should never be copied across regardless of anything.
                 var copyableMods = Score.Mods.Where(m => m.Type != ModType.System).ToArray();
 
-                if (copyableMods.Length > 0 && songSelect != null)
-                    items.Add(new OsuMenuItem(SongSelectStrings.UseTheseMods, MenuItemType.Highlighted, () => songSelect.Mods.Value = copyableMods));
+                Action<IReadOnlyList<Mod>> applyMods = ApplyModsFromScore;
+
+                if (applyMods == null && songSelect != null)
+                    applyMods = mods => songSelect.Mods.Value = mods;
+
+                if (copyableMods.Length > 0 && applyMods != null)
+                    items.Add(new OsuMenuItem(SongSelectStrings.UseTheseMods, MenuItemType.Highlighted, () => applyMods(copyableMods)));
 
                 if (Score.OnlineID > 0)
                     items.Add(new OsuMenuItem(CommonStrings.CopyLink, MenuItemType.Standard, () => game?.CopyToClipboard($@"{api.Endpoints.WebsiteUrl}/scores/{Score.OnlineID}")));

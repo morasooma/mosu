@@ -5,6 +5,7 @@ using System;
 using MessagePack;
 using osu.Game.Online.Multiplayer.MatchTypes.Matchmaking;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Online.Multiplayer.MatchTypes.TeamVersus;
 
 namespace osu.Game.Online.Multiplayer
@@ -19,6 +20,7 @@ namespace osu.Game.Online.Multiplayer
     [Union(1, typeof(MatchmakingRoomState))]
     [Union(2, typeof(RankedPlayRoomState))]
     [Union(3, typeof(StandardMatchRoomState))]
+    [Union(4, typeof(TagCoopRoomState))]
     public abstract class MatchRoomState
     {
     }

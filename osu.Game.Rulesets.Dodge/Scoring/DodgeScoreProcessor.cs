@@ -13,6 +13,10 @@ namespace osu.Game.Rulesets.Dodge.Scoring
 {
     public partial class DodgeScoreProcessor : ScoreProcessor
     {
+        protected override bool AllowCompletionAtLastJudgementTime => true;
+
+        public int TotalMaxHits => MaxHits;
+
         private bool grazeEnabled;
         private double grazeScore;
 
@@ -36,7 +40,7 @@ namespace osu.Game.Rulesets.Dodge.Scoring
                 {
                     int grazeCount = hitObject is DodgeEmitter emitter
                         ? emitter.EffectiveBulletCount * emitter.EffectiveBurstCount
-                        : hitObject is DodgeBullet ? 1 : 0;
+                        : hitObject is DodgeBullet or DodgeBeam ? 1 : 0;
 
                     for (int i = 0; i < grazeCount; i++)
                     {

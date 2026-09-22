@@ -18,6 +18,7 @@ namespace osu.Game.Online.API.Requests
         /// </summary>
         /// <param name="userId">The user to get.</param>
         /// <param name="ruleset">The ruleset to get the user's info for.</param>
+        /// <param name="variant">An optional ruleset variant.</param>
         public GetUserRequest(long? userId = null, IRulesetInfo? ruleset = null, string? variant = null)
         {
             Lookup = userId.ToString()!;
@@ -31,6 +32,7 @@ namespace osu.Game.Online.API.Requests
         /// </summary>
         /// <param name="username">The user to get.</param>
         /// <param name="ruleset">The ruleset to get the user's info for.</param>
+        /// <param name="variant">An optional ruleset variant.</param>
         public GetUserRequest(string username, IRulesetInfo? ruleset = null, string? variant = null)
         {
             Lookup = username;

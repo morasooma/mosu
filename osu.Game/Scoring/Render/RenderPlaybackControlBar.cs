@@ -25,18 +25,18 @@ namespace osu.Game.Scoring.Render
         public BindableDouble CurrentTime { get; } = new BindableDouble();
         public double TotalDuration { get; set; }
 
-        public Action OnPlayPause;
-        public Action<double> OnSeekRelative;
-        public Action OnResetTrim;
-        public Action OnConfirm;
-        public Action OnSetStartToCurrent;
-        public Action OnSetEndToCurrent;
+        public Action? OnPlayPause;
+        public Action<double>? OnSeekRelative;
+        public Action? OnResetTrim;
+        public Action? OnConfirm;
+        public Action? OnSetStartToCurrent;
+        public Action? OnSetEndToCurrent;
 
         public BindableBool IsPlaying { get; } = new BindableBool();
 
-        private IconButton playPauseButton;
-        private OsuSpriteText timecodeText;
-        private OsuSpriteText periodText;
+        private IconButton playPauseButton = null!;
+        private OsuSpriteText timecodeText = null!;
+        private OsuSpriteText periodText = null!;
 
         public RenderPlaybackControlBar()
         {

@@ -2,12 +2,14 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Input.Bindings;
 using osu.Framework.Input.Events;
+using osu.Framework.Threading;
 using osu.Game.Graphics.Containers;
 using osu.Game.Input.Bindings;
 using osu.Game.Online.Rooms;
@@ -20,6 +22,11 @@ namespace osu.Game.Screens.OnlinePlay
     /// </summary>
     public partial class DrawableRoomPlaylist : OsuRearrangeableListContainer<PlaylistItem>, IKeyBindingHandler<GlobalAction>
     {
+        private const int item_load_batch_size = 50;
+
+        private ScheduledDelegate? pendingItemLoad;
+        private int itemLoadGeneration;
+
         /// <summary>
         /// The currently-selected item. Selection is visually represented with a border.
         /// May be updated by clicking playlist items if <see cref="AllowSelection"/> is <c>true</c>.
@@ -144,6 +151,45 @@ namespace osu.Game.Screens.OnlinePlay
 
                 foreach (var item in ListContainer.OfType<DrawableRoomPlaylistItem>())
                     item.ShowItemOwner = value;
+            }
+        }
+
+        /// <summary>
+        /// Replaces the displayed playlist over multiple update frames.
+        /// This avoids creating and loading every drawable in a large playlist in one frame.
+        /// </summary>
+        public void ReplaceItemsBatched(IEnumerable<PlaylistItem> items, Action? onComplete = null)
+        {
+            PlaylistItem[] snapshot = items.ToArray();
+            int generation = ++itemLoadGeneration;
+            int nextIndex = 0;
+
+            pendingItemLoad?.Cancel();
+            pendingItemLoad = null;
+            Items.Clear();
+
+            addNextBatch();
+
+            void addNextBatch()
+            {
+                if (generation != itemLoadGeneration)
+                    return;
+
+                int count = Math.Min(item_load_batch_size, snapshot.Length - nextIndex);
+
+                if (count > 0)
+                {
+                    Items.AddRange(snapshot.Skip(nextIndex).Take(count));
+                    nextIndex += count;
+                }
+
+                if (nextIndex < snapshot.Length)
+                    pendingItemLoad = Scheduler.Add(addNextBatch);
+                else
+                {
+                    pendingItemLoad = null;
+                    onComplete?.Invoke();
+                }
             }
         }
 

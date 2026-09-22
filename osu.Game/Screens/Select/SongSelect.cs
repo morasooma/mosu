@@ -51,6 +51,7 @@ using osu.Game.Screens.Menu;
 using osu.Game.Screens.Play;
 using osu.Game.Screens.Ranking;
 using osu.Game.Screens.Backgrounds;
+using osu.Game.Screens.Select.Filter;
 using osu.Game.Skinning;
 using osu.Game.Utils;
 using osuTK;
@@ -101,6 +102,12 @@ namespace osu.Game.Screens.Select
         protected bool ShowOsuLogo { get; init; } = true;
 
         /// <summary>
+        /// Whether this screen supports the stable-style chrome and fixed-width carousel.
+        /// Online song selects provide their own header and footer actions, so they opt out.
+        /// </summary>
+        protected virtual bool SupportsStableStyle => false;
+
+        /// <summary>
         /// Additional padding to be added to the title wedge.
         /// Generally set to show external content in this space.
         /// </summary>
@@ -116,17 +123,32 @@ namespace osu.Game.Screens.Select
         private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Blue);
 
         private BeatmapCarousel carousel = null!;
+        private ScheduledDelegate? carouselPresenceRelease;
 
         protected FilterControl FilterControl { get; private set; } = null!;
 
         private BeatmapTitleWedge titleWedge = null!;
         private BeatmapDetailsArea detailsArea = null!;
         private FillFlowContainer wedgesContainer = null!;
+
+        // Fork (ported from torii): stable-style (legacy) song select chrome. When the configured
+        // song select style uses the v1 screen with skinned panels, the modern lazer chrome is
+        // hidden and this chrome (top panel + leaderboard + mods readout) is shown instead.
+        private Bindable<ForkSongSelectStyle> songSelectStyle = null!;
+        private Bindable<GroupMode> legacyGroupCollapseWatcher = null!;
+        private bool rebuildingLegacyChrome;
+        private Drawable legacyTopContainer = null!;
+        private Drawable legacyLeaderboardContainer = null!;
+        private LegacyLeaderboard legacyLeaderboard = null!;
+        private Drawable legacyModsContainer = null!;
         private Box leftGradientBackground = null!;
         private Box rightGradientBackground = null!;
-        private Container carouselHost = null!;
+        private CarouselHost carouselHost = null!;
+        private InfiniteGlassBeatmapCanvas infiniteGlassCanvas = null!;
         private Container mainContent = null!;
         private SkinnableContainer skinnableContent = null!;
+
+        internal bool SkinLayerIsAboveCarousel => skinnableContent.Depth < mainContent.Depth;
 
         private GridContainer mainGridContainer = null!;
 
@@ -160,10 +182,16 @@ namespace osu.Game.Screens.Select
         private DifficultyRecommender? difficultyRecommender { get; set; }
 
         [Resolved]
+        private ISkinSource skinSource { get; set; } = null!;
+
+        [Resolved]
         private IDialogOverlay? dialogOverlay { get; set; }
 
         [Resolved]
         private IOverlayManager? overlayManager { get; set; }
+
+        [Resolved(CanBeNull = true)]
+        private ScreenFooter? screenFooter { get; set; }
 
         private InputManager inputManager = null!;
 
@@ -174,13 +202,14 @@ namespace osu.Game.Screens.Select
         private Bindable<bool> oldCarouselPreviews = null!;
         private Bindable<bool> songSelectStoryboardBackground = null!;
         private Bindable<double> carouselBackgroundDim = null!;
+        private IBindable<ThemeMode>? themeMode;
 
         private IDisposable? modSelectOverlayRegistration;
 
         [BackgroundDependencyLoader]
         private void load(AudioManager audio, OsuConfigManager config)
         {
-            var themeMode = config.GetBindable<ThemeMode>(OsuSetting.ForkThemeMode);
+            themeMode = OverlayColourProvider.CurrentTheme.GetBoundCopy();
 
             errorSample = audio.Samples.Get(@"UI/generic-error");
 
@@ -206,7 +235,15 @@ namespace osu.Game.Screens.Select
                                 {
                                     RelativeSizeAxes = Axes.Both,
                                     Width = 0.6f,
+                                    Depth = 2,
                                     Colour = getThemeGradient(themeMode.Value, left: true),
+                                },
+                                infiniteGlassCanvas = new InfiniteGlassBeatmapCanvas
+                                {
+                                    RelativeSizeAxes = Axes.Both,
+                                    Depth = 1,
+                                    ActivateItem = item => carousel.Activate(item),
+                                    GetCarouselItems = () => carousel.GetCarouselItems(),
                                 },
                                 mainGridContainer = new GridContainer // used for max width implementation
                                 {
@@ -235,7 +272,11 @@ namespace osu.Game.Screens.Select
                                                         // Pad enough to only reset scroll when well into the left wedge areas.
                                                         Padding = new MarginPadding { Right = 40 },
                                                         RelativeSizeAxes = Axes.Both,
-                                                        Child = new LeftSideInteractionContainer(() => carousel.ScrollToSelection())
+                                                        Child = new LeftSideInteractionContainer(
+                                                            () => carousel.ScrollToSelection(),
+                                                            delta => carousel.ScrollFromDelta(delta),
+                                                            () => !songSelectStyle.Value.UsesInfiniteGlass(),
+                                                            () => !songSelectStyle.Value.UsesInfiniteGlass())
                                                         {
                                                             RelativeSizeAxes = Axes.Both,
                                                         },
@@ -251,7 +292,11 @@ namespace osu.Game.Screens.Select
                                                             {
                                                                 TopPadding = TopPadding,
                                                             }),
-                                                            new ShearAligningWrapper(detailsArea = new BeatmapDetailsArea()),
+                                                            new ShearAligningWrapper(detailsArea = new BeatmapDetailsArea
+                                                            {
+                                                                // Empty leaderboard space should never turn into a screen-sized dead zone.
+                                                                UseScorePanelOnlyInput = () => true,
+                                                            }),
                                                         },
                                                     },
                                                 }
@@ -279,9 +324,10 @@ namespace osu.Game.Screens.Select
                                                         },
                                                         Children = new Drawable[]
                                                         {
-                                                            carouselHost = new Container
+                                                            carouselHost = new CarouselHost
                                                             {
                                                                 RelativeSizeAxes = Axes.Both,
+                                                                ReceivePositionalInput = () => !songSelectStyle.Value.UsesInfiniteGlass(),
                                                                 Child = carousel = createCarousel(),
                                                             },
                                                             noResultsPlaceholder = new NoResultsPlaceholder
@@ -311,6 +357,50 @@ namespace osu.Game.Screens.Select
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
                     RelativeSizeAxes = Axes.Both,
+                    // Skin-provided song-select HUD artwork must occlude the carousel, as in stable.
+                    Depth = -1,
+                },
+                // Fork (ported from torii): stable-style song select chrome for the legacy UI mode.
+                // Normalise skin coordinates independently of UIScale. A 1024x768 minimum
+                // supports both 4:3 and widescreen without forcing a 16:9 letterbox.
+                legacyTopContainer = new DrawSizePreservingFillContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    TargetDrawSize = new Vector2(1024, 768),
+                    Alpha = 0,
+                    Child = new LegacySongSelectTop
+                    {
+                        Anchor = Anchor.TopLeft,
+                        Origin = Anchor.TopLeft,
+                        RelativeSizeAxes = Axes.Both,
+                        FilterControl = FilterControl,
+                    },
+                },
+                // Fork: stable-style bottom-left ranking panel (Local Ranking dropdown + scores).
+                legacyLeaderboardContainer = new DrawSizePreservingFillContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    TargetDrawSize = new Vector2(1024, 768),
+                    Alpha = 0,
+                    Child = new OsuContextMenuContainer
+                    {
+                        RelativeSizeAxes = Axes.Both,
+                        Child = legacyLeaderboard = new LegacyLeaderboard
+                        {
+                            Anchor = Anchor.TopLeft,
+                            Origin = Anchor.TopLeft,
+                            RelativeSizeAxes = Axes.Both,
+                            HoverScrollRequested = () => carousel.ScrollToSelection(),
+                        },
+                    },
+                },
+                // Fork: active-mods readout in the stable style, above the footer.
+                legacyModsContainer = new DrawSizePreservingFillContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    TargetDrawSize = new Vector2(1024, 768),
+                    Alpha = 0,
+                    Child = new LegacyModsList { RelativeSizeAxes = Axes.Both },
                 },
                 modSpeedHotkeyHandler = new ModSpeedHotkeyHandler()
             });
@@ -318,6 +408,29 @@ namespace osu.Game.Screens.Select
             LoadComponent(modSelectOverlay = CreateModSelectOverlay());
 
             configBackgroundBlur = config.GetBindable<bool>(OsuSetting.SongSelectBackgroundBlur);
+
+            // Fork (ported from torii): wire up the stable-style chrome visibility + skin rebuild.
+            songSelectStyle = config.GetBindable<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle);
+            songSelectStyle.BindValueChanged(e =>
+            {
+                if (e.NewValue.UsesStableStyle() && this.IsCurrentScreen())
+                    rebuildLegacyChrome();
+                else
+                    updateLegacyChrome();
+
+                updateSongSelectStylePresentation();
+                infiniteGlassCanvas.SetActive(e.NewValue.UsesInfiniteGlass());
+
+                if (ShowOsuLogo && logo != null && this.IsCurrentScreen())
+                    logo.FadeTo(e.NewValue.GetSongSelectLogoAlpha(), 200, Easing.OutQuint);
+            }, true);
+
+            legacyGroupCollapseWatcher = config.GetBindable<GroupMode>(OsuSetting.SongSelectGroupMode);
+            legacyGroupCollapseWatcher.BindValueChanged(_ =>
+            {
+                if (songSelectStyle.Value.UsesStableStyle())
+                    carousel.CollapseGroupsOnNextFilter = true;
+            });
             configBackgroundBlur.BindValueChanged(e =>
             {
                 if (!this.IsCurrentScreen())
@@ -358,7 +471,7 @@ namespace osu.Game.Screens.Select
 
             showConvertedBeatmaps = config.GetBindable<bool>(OsuSetting.ShowConvertedBeatmaps);
 
-            themeMode.BindValueChanged(e => updateThemeGradients(e.NewValue));
+            themeMode.BindValueChanged(e => updateThemeGradients(e.NewValue), true);
         }
 
         protected override BackgroundScreen CreateBackground() => new SongSelectBackgroundScreen(Beatmap.Value);
@@ -380,13 +493,19 @@ namespace osu.Game.Screens.Select
 
         private BeatmapCarousel createCarousel() => new BeatmapCarousel
         {
+            SupportsStableStyle = SupportsStableStyle,
             BleedTop = FilterControl.HEIGHT_FROM_SCREEN_TOP + 5,
             BleedBottom = ScreenFooter.HEIGHT + 5,
             RelativeSizeAxes = Axes.Both,
             RequestPresentBeatmap = b => SelectAndRun(b, OnStart),
             RequestSelection = queueBeatmapSelection,
             RequestRecommendedSelection = requestRecommendedSelection,
-            NewItemsPresented = newItemsPresented,
+            CustomNavigationHandler = action => infiniteGlassCanvas?.HandleNavigation(action) == true,
+            NewItemsPresented = items =>
+            {
+                infiniteGlassCanvas?.SetItems(items);
+                newItemsPresented(items);
+            },
         };
 
         private void recreateCarousel()
@@ -397,6 +516,7 @@ namespace osu.Game.Screens.Select
 
             carouselHost.Child = carousel = createCarousel();
             carousel.VisuallyFocusSelected = visuallyFocusSelected;
+            updateSongSelectStylePresentation();
 
             oldCarousel.Expire();
 
@@ -466,6 +586,8 @@ namespace osu.Game.Screens.Select
         {
             base.LoadComplete();
 
+            skinSource.SourceChanged += onSkinChangedWhileLegacy;
+
             modSelectOverlayRegistration = overlayManager?.RegisterBlockingOverlay(modSelectOverlay);
 
             inputManager = GetContainingInputManager()!;
@@ -488,18 +610,35 @@ namespace osu.Game.Screens.Select
 
             detailsArea.Height = wedgesContainer.ChildSize.Y - titleWedge.LayoutSize.Y - 4;
 
-            float widescreenBonusWidth = Math.Max(0, DrawWidth / DrawHeight - 2f);
-
-            mainGridContainer.ColumnDimensions = new[]
+            if (songSelectStyle.Value.UsesStableStyleOn(SupportsStableStyle))
             {
-                new Dimension(GridSizeMode.Relative, 0.5f, maxSize: 700 + widescreenBonusWidth * 100),
-                new Dimension(),
-                new Dimension(GridSizeMode.Relative, 0.5f, minSize: 500, maxSize: 700 + widescreenBonusWidth * 300),
-            };
+                // Stable's menu-button-background is authored for a roughly 690px-wide panel.
+                // Keep that width at 4:3 instead of shrinking the carousel to half of 1024px.
+                // The remaining space belongs to the leaderboard / beatmap information area.
+                mainGridContainer.ColumnDimensions = new[]
+                {
+                    new Dimension(),
+                    new Dimension(GridSizeMode.Absolute),
+                    new Dimension(GridSizeMode.Absolute, GetLegacyCarouselWidth(DrawWidth)),
+                };
+            }
+            else
+            {
+                float widescreenBonusWidth = Math.Max(0, DrawWidth / DrawHeight - 2f);
+
+                mainGridContainer.ColumnDimensions = new[]
+                {
+                    new Dimension(GridSizeMode.Relative, 0.5f, maxSize: 700 + widescreenBonusWidth * 100),
+                    new Dimension(),
+                    new Dimension(GridSizeMode.Relative, 0.5f, minSize: 500, maxSize: 700 + widescreenBonusWidth * 300),
+                };
+            }
 
             if (this.IsCurrentScreen())
                 updateDebounce();
         }
+
+        internal static float GetLegacyCarouselWidth(float viewportWidth) => Math.Min(690, Math.Max(0, viewportWidth));
 
         #region Selection debounce
 
@@ -541,7 +680,11 @@ namespace osu.Game.Screens.Select
                 if (Beatmap.Value.BeatmapInfo.Equals(debounceQueuedSelection))
                     return;
 
-                Beatmap.Value = beatmaps.GetWorkingBeatmap(debounceQueuedSelection);
+                var workingBeatmap = beatmaps.GetWorkingBeatmap(debounceQueuedSelection);
+                if (!checkBeatmapValidForSelection(workingBeatmap.BeatmapInfo))
+                    return;
+
+                Beatmap.Value = workingBeatmap;
             }
             finally
             {
@@ -614,7 +757,16 @@ namespace osu.Game.Screens.Select
         }
 
         private void ensureTrackLooping(IWorkingBeatmap beatmap, TrackChangeDirection changeDirection)
-            => beatmap.PrepareTrackForPreview(true);
+        {
+            // MusicController normally loads the track before notifying consumers, but a freshly
+            // refetched working beatmap can reach us while resuming from PlayerLoader first.
+            // PrepareTrackForPreview requires an already loaded track and would otherwise abort
+            // OnResuming, leaving song select visible but non-interactive in the screen stack.
+            if (!beatmap.TrackLoaded)
+                beatmap.LoadTrack();
+
+            beatmap.PrepareTrackForPreview(true);
+        }
 
         #endregion
 
@@ -667,7 +819,7 @@ namespace osu.Game.Screens.Select
             debounceQueueSelection(groupedBeatmap.Beatmap);
         }
 
-        private bool ensureGlobalBeatmapValid()
+        private bool ensureGlobalBeatmapValid(bool refetch = false)
         {
             if (!this.IsCurrentScreen())
                 return false;
@@ -679,8 +831,10 @@ namespace osu.Game.Screens.Select
             if (IsFiltering)
                 return false;
 
-            // Refetch to be confident that the current selection is still valid. It may have been deleted or hidden.
-            var currentBeatmap = beatmaps.GetWorkingBeatmap(Beatmap.Value.BeatmapInfo, true);
+            // Normal selection changes already carry current detached data. Forcing a refetch here invalidates
+            // the WorkingBeatmap on every selection, causing audio, beatmap decoding and difficulty calculation
+            // to be recreated continuously while scrolling.
+            var currentBeatmap = beatmaps.GetWorkingBeatmap(Beatmap.Value.BeatmapInfo, refetch);
             bool validSelection = checkBeatmapValidForSelection(currentBeatmap.BeatmapInfo);
 
             if (validSelection)
@@ -762,9 +916,12 @@ namespace osu.Game.Screens.Select
             this.FadeIn(fade_duration, Easing.OutQuint);
             onArrivingAtScreen();
 
-            ensureGlobalBeatmapValid();
+            // A refetch is only required after returning from another screen, where the selected beatmap may
+            // have been edited, hidden or deleted.
+            ensureGlobalBeatmapValid(refetch: true);
 
             detailsArea.Refresh();
+            legacyLeaderboard?.Refresh();
 
             if (ControlGlobalMusic)
             {
@@ -793,8 +950,131 @@ namespace osu.Game.Screens.Select
             return base.OnExiting(e);
         }
 
+        /// <summary>
+        /// Fork (ported from torii): hide/show the modern lazer song-select chrome for the
+        /// stable-style UI mode. Hides the filter/sort bar and the left info + details wedges so
+        /// only the carousel + stable top panel / leaderboard remain, matching osu!stable.
+        /// </summary>
+        private void updateLegacyChrome()
+        {
+            if (FilterControl == null)
+                return;
+
+            bool legacy = songSelectStyle.Value.UsesStableStyleOn(SupportsStableStyle);
+
+            FilterControl.FadeTo(legacy ? 0 : 1, 200, Easing.OutQuint);
+            wedgesContainer.FadeTo(legacy ? 0 : 1, 200, Easing.OutQuint);
+            legacyTopContainer.FadeTo(legacy ? 1 : 0, 200, Easing.OutQuint);
+            legacyLeaderboardContainer.FadeTo(legacy ? 1 : 0, 200, Easing.OutQuint);
+            legacyModsContainer.FadeTo(legacy ? 1 : 0, 200, Easing.OutQuint);
+        }
+
+        private void updateSongSelectStylePresentation()
+        {
+            if (carousel == null)
+                return;
+
+            bool infiniteGlass = songSelectStyle.Value.UsesInfiniteGlass();
+            BeatmapCarousel targetCarousel = carousel;
+
+            carouselPresenceRelease?.Cancel();
+            carouselPresenceRelease = null;
+
+            // The canvas is an adapter over the regular carousel. A zero-alpha drawable is normally
+            // absent from the framework update tree, which would stop the carousel's debounce timer
+            // and filtering pipeline. Keep it present while visually hidden so it can continue to
+            // supply filtered/sorted items and keyboard navigation to the canvas.
+            //
+            // AlwaysPresent must also remain set for the complete fade back from InfiniteGlass.
+            // Clearing it while Alpha is still zero removes the carousel from the update tree, so
+            // the fade can never advance and the regular carousel remains permanently non-interactive.
+            targetCarousel.SuppressPanelPreviews = infiniteGlass;
+            targetCarousel.AlwaysPresent = true;
+            targetCarousel.FadeTo(infiniteGlass ? 0 : 1, 150, Easing.OutQuint);
+
+            if (!infiniteGlass)
+            {
+                carouselPresenceRelease = Scheduler.AddDelayed(() =>
+                {
+                    if (ReferenceEquals(carousel, targetCarousel) && !songSelectStyle.Value.UsesInfiniteGlass())
+                        targetCarousel.AlwaysPresent = false;
+
+                    carouselPresenceRelease = null;
+                }, 150);
+            }
+
+            leftGradientBackground.FadeTo(infiniteGlass ? 0.2f : 1, 150, Easing.OutQuint);
+            rightGradientBackground.FadeTo(infiniteGlass ? 0.2f : 1, 150, Easing.OutQuint);
+        }
+
+        private partial class CarouselHost : Container
+        {
+            public required Func<bool> ReceivePositionalInput { private get; init; }
+
+            public override bool PropagatePositionalInputSubTree => ReceivePositionalInput() && base.PropagatePositionalInputSubTree;
+        }
+
+        // Fork: the skin changed. Only rebuild while the stable mode is active and we are on screen.
+        private void onSkinChangedWhileLegacy()
+        {
+            if (!songSelectStyle.Value.UsesStableStyleOn(SupportsStableStyle) || !this.IsCurrentScreen())
+                return;
+
+            // Defer a frame: SourceChanged is iterating its handler list, which includes the current
+            // legacy components'. Rebuilding now would dispose objects mid-iteration.
+            Schedule(rebuildLegacyChrome);
+        }
+
+        /// <summary>
+        /// Fork (ported from torii): rebuild the stable chrome as if entering fresh. The children resolve
+        /// skin textures one-shot in LoadComplete, so toggling mid-screen (or changing skin) must replace
+        /// them to avoid stale textures. Replaces each container's Child (not the container) to keep z-order.
+        /// </summary>
+        private void rebuildLegacyChrome()
+        {
+            if (rebuildingLegacyChrome || !this.IsCurrentScreen())
+                return;
+
+            if (legacyTopContainer is not Container topContainer || legacyLeaderboardContainer is not Container leaderboardContainer)
+                return;
+
+            rebuildingLegacyChrome = true;
+
+            try
+            {
+                topContainer.Child = new LegacySongSelectTop
+                {
+                    Anchor = Anchor.TopLeft,
+                    Origin = Anchor.TopLeft,
+                    RelativeSizeAxes = Axes.Both,
+                    FilterControl = FilterControl,
+                };
+
+                leaderboardContainer.Child = new OsuContextMenuContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Child = legacyLeaderboard = new LegacyLeaderboard
+                    {
+                        Anchor = Anchor.TopLeft,
+                        Origin = Anchor.TopLeft,
+                        RelativeSizeAxes = Axes.Both,
+                        HoverScrollRequested = () => carousel.ScrollToSelection(),
+                    },
+                };
+            }
+            finally
+            {
+                rebuildingLegacyChrome = false;
+            }
+
+            updateLegacyChrome();
+        }
+
         private void onArrivingAtScreen()
         {
+            // Fork (ported from torii): apply/clear the stable chrome + aspect lock when entering.
+            updateLegacyChrome();
+
             modSelectOverlay.Beatmap.BindTo(Beatmap);
             modSelectOverlay.Ruleset.BindTo(Ruleset);
             // required due to https://github.com/ppy/osu-framework/issues/3218
@@ -868,7 +1148,7 @@ namespace osu.Game.Screens.Select
                 Footer?.StartTrackingLogo(logo);
             }
 
-            logo.FadeIn(240, Easing.OutQuint);
+            logo.FadeTo(songSelectStyle.Value.GetSongSelectLogoAlpha(), 240, Easing.OutQuint);
             logo.ScaleTo(logo_scale, 240, Easing.OutQuint);
 
             logo.Action = () =>
@@ -921,7 +1201,9 @@ namespace osu.Game.Screens.Select
             {
                 titleWedge.Show();
                 detailsArea.Show();
-                FilterControl.Show();
+
+                if (!songSelectStyle.Value.UsesStableStyle())
+                    FilterControl.Show();
             }
         }
 
@@ -1120,6 +1402,29 @@ namespace osu.Game.Screens.Select
 
             var flattenedMods = ModUtils.FlattenMods(game.AvailableMods.Value.SelectMany(kv => kv.Value));
 
+            if (!e.Repeat && screenFooter != null && !screenFooter.DefaultChromeVisible)
+            {
+                switch (e.Action)
+                {
+                    case GlobalAction.ToggleModSelection:
+                        screenFooter.TriggerFooterButton(0);
+                        return true;
+
+                    case GlobalAction.SelectNextRandom:
+                        screenFooter.TriggerFooterButton(1);
+                        return true;
+
+                    case GlobalAction.SelectPreviousRandom:
+                        if (!carousel.PreviousRandom())
+                            errorSample?.Play();
+                        return true;
+
+                    case GlobalAction.ToggleBeatmapOptions:
+                        screenFooter.TriggerFooterButton(2);
+                        return true;
+                }
+            }
+
             switch (e.Action)
             {
                 case GlobalAction.Select:
@@ -1238,7 +1543,7 @@ namespace osu.Game.Screens.Select
 
         #region Implementation of ISongSelect
 
-        void ISongSelect.Search(string query) => FilterControl.Search(query);
+        void ISongSelect.AddToSearch(string query) => FilterControl.AddToSearch(query);
 
         bool ISongSelect.CanPresentScore => true;
 
@@ -1265,6 +1570,7 @@ namespace osu.Game.Screens.Select
 
         void IHandlePresentBeatmap.PresentBeatmap(WorkingBeatmap workingBeatmap, RulesetInfo ruleset)
         {
+            unscopeBeatmapSet(restorePreviousSelection: false);
             cancelDebounceSelection();
 
             var beatmapInfo = workingBeatmap.BeatmapInfo;
@@ -1340,8 +1646,8 @@ namespace osu.Game.Screens.Select
 
         public void RestoreAllHidden(BeatmapSetInfo beatmapSet)
         {
-            foreach (var b in beatmapSet.Beatmaps)
-                beatmaps.Restore(b);
+            foreach (BeatmapInfo beatmap in beatmapSet.Beatmaps)
+                beatmaps.Restore(beatmap);
         }
 
         private GroupedBeatmap? beforeScopedSelection;
@@ -1356,12 +1662,14 @@ namespace osu.Game.Screens.Select
             scopedBeatmapSet.Value = beatmapSet;
         }
 
-        public void UnscopeBeatmapSet()
+        public void UnscopeBeatmapSet() => unscopeBeatmapSet(restorePreviousSelection: true);
+
+        private void unscopeBeatmapSet(bool restorePreviousSelection)
         {
             if (scopedBeatmapSet.Value == null)
                 return;
 
-            if (beforeScopedSelection != null)
+            if (beforeScopedSelection != null && restorePreviousSelection)
                 queueBeatmapSelection(beforeScopedSelection);
 
             scopedBeatmapSet.Value = null;
@@ -1372,6 +1680,9 @@ namespace osu.Game.Screens.Select
 
         protected override void Dispose(bool isDisposing)
         {
+            if (skinSource != null)
+                skinSource.SourceChanged -= onSkinChangedWhileLegacy;
+
             base.Dispose(isDisposing);
             modSelectOverlayRegistration?.Dispose();
         }

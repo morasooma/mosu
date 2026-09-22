@@ -66,6 +66,12 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
             leaderboardProvider = new MultiplayerLeaderboardProvider(users);
         }
 
+        internal static bool SupportsRankedPlayCursor(bool isRankedPlaySession, MatchType matchType, int rulesetId, System.Collections.Generic.IEnumerable<osu.Game.Online.API.APIMod> requiredMods)
+            => isRankedPlaySession
+               && matchType == MatchType.RankedPlay
+               && rulesetId == 0
+               && requiredMods.All(mod => mod.Acronym != "AP");
+
         [BackgroundDependencyLoader]
         private void load()
         {

@@ -7,9 +7,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
@@ -57,7 +59,7 @@ namespace osu.Game.Online.API
 
         public string ProvidedUsername { get; private set; }
 
-        public string ScoreProcessingNoticeUrl { get; private set; }
+        public string ScoreProcessingNoticeUrl { get; private set; } = string.Empty;
 
         public SessionVerificationMethod? SessionVerificationMethod { get; private set; }
 
@@ -89,7 +91,12 @@ namespace osu.Game.Online.API
             this.versionHash = versionHash;
             this.rulesetHashCache = rulesetHashCache;
 
-            if (game.IsDeployedBuild)
+            // Third-party servers may require a client version different from the build
+            // currently running. Server profiles expose that value, so honour it when
+            // producing the x-api-version header instead of always using AssemblyVersion.
+            if (MosuServerEnvironment.IsThirdPartyServer && TryParseClientVersion(game.Version, out int profileApiVersion))
+                APIVersion = profileApiVersion;
+            else if (game.IsDeployedBuild)
                 APIVersion = game.AssemblyVersion.Major * 10000 + game.AssemblyVersion.Minor;
             else
             {
@@ -136,6 +143,33 @@ namespace osu.Game.Online.API
             });
 
             thread.Start();
+        }
+
+        internal static bool TryParseClientVersion(string clientVersion, out int apiVersion)
+        {
+            apiVersion = 0;
+
+            if (string.IsNullOrWhiteSpace(clientVersion))
+                return false;
+
+            // lazer versions use yyyy.Mdd / yyyy.MMdd (for example 2026.816.0),
+            // while stable-compatible profiles use byyyyMMdd.
+            Match match = Regex.Match(clientVersion.Trim(), @"^(?:(?<date>\d{8})|b(?<stableDate>\d{8})|(?<year>\d{4})\.(?<monthDay>\d{3,4})(?:\.|-|$))",
+                RegexOptions.CultureInvariant);
+
+            if (!match.Success)
+                return false;
+
+            string date = match.Groups["date"].Success
+                ? match.Groups["date"].Value
+                : match.Groups["stableDate"].Success
+                    ? match.Groups["stableDate"].Value
+                    : match.Groups["year"].Value + match.Groups["monthDay"].Value.PadLeft(4, '0');
+
+            if (!DateTime.TryParseExact(date, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                return false;
+
+            return int.TryParse(date, NumberStyles.None, CultureInfo.InvariantCulture, out apiVersion);
         }
 
         private WebSocketNotificationsClientConnector setUpNotificationsClient()

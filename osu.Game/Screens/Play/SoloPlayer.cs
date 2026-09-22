@@ -5,9 +5,15 @@
 #nullable disable
 
 using System;
+using System.Diagnostics;
 using JetBrains.Annotations;
 using osu.Framework.Allocation;
+using osu.Game.Beatmaps;
 using osu.Game.Configuration;
+using osu.Game.Extensions;
+using osu.Game.Online;
+using osu.Game.Online.API;
+using osu.Game.Online.Rooms;
 using osu.Game.Rulesets.UI;
 using osu.Game.Scoring;
 using osu.Game.Screens.Play.Leaderboards;
@@ -45,7 +51,6 @@ namespace osu.Game.Screens.Play
                 replayBotPlayback.SetReplayBotScore(getLoadedReplayBotScore());
 #endif
         }
-
 #if DEBUG
         private Score getLoadedReplayBotScore()
         {

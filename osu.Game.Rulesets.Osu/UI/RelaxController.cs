@@ -14,6 +14,7 @@ using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Objects.Types;
 using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.Objects.Drawables;
+using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.UI;
 using osu.Game.Screens.Play;
 using osuTK;
@@ -38,16 +39,8 @@ namespace osu.Game.Rulesets.Osu.UI
         private const double derived_same_action_repress_ratio = 0.7;
         private const double derived_minimum_repress_gap = 18;
         private const double derived_maximum_repress_gap = 40;
-        private const double derived_minimum_cursor_reaction_offset = -8;
+        private const double derived_minimum_cursor_reaction_offset = 1;
         private const double derived_maximum_cursor_reaction_offset = 12;
-        private const double derived_minimum_cursor_early_shift = 14;
-        private const double derived_maximum_cursor_early_shift = 28;
-        private const double derived_assist_cursor_coupling_ratio = 0.42;
-        private const double derived_minimum_assist_cursor_coupling = 0.18;
-        private const double derived_maximum_assist_cursor_coupling = 0.34;
-        private const double derived_assist_cursor_early_shift_ratio = 0.45;
-        private const double derived_minimum_assist_cursor_early_shift = 6;
-        private const double derived_maximum_assist_cursor_early_shift = 14;
         private const double derived_stream_spacing_ratio_threshold = 1.85;
         private const double derived_jump_spacing_ratio_threshold = 1.45;
         private const double derived_jump_spacing_ratio_range = 1.55;
@@ -103,8 +96,6 @@ namespace osu.Game.Rulesets.Osu.UI
         private int rightHeldPlanCount;
         private double leftNextPressAllowedTime;
         private double rightNextPressAllowedTime;
-        private Vector2 lastIdleCursorPosition;
-        private double lastCursorMovementTime = double.NaN;
         private double tapStamina = 1;
         private double lastStaminaSampleTime = double.NaN;
         private double liveTapStamina = 1;
@@ -112,7 +103,6 @@ namespace osu.Game.Rulesets.Osu.UI
         private double smoothedLiveStreamTapWindow = double.NaN;
         private double nextStreamPressAllowedTime;
         private double adaptiveTimingCorrection;
-        private double lastTimingNoise;
         private double lastStreamMissTime = double.NaN;
         private double streamMissRecoveryPenalty;
         private int consecutiveStreamMisses;
@@ -211,6 +201,7 @@ namespace osu.Game.Rulesets.Osu.UI
         }
 
         private bool getConfiguredEnabled() => mosuRelaxMod != null || enabled.Value;
+        private bool usesReliableProfile => mosuRelaxMod?.Preset.Value == osu.Game.Rulesets.Osu.Mods.MosuRelaxPreset.Reliable;
         private double getConfiguredBaseOffset() => mosuRelaxMod?.BaseOffset.Value ?? baseOffset.Value;
         private double getConfiguredTimingVariance() => mosuRelaxMod?.TimingVariance.Value ?? timingVariance.Value;
         private double getConfiguredDynamicDrift() => mosuRelaxMod?.DynamicDrift.Value ?? dynamicDrift.Value;
@@ -268,14 +259,6 @@ namespace osu.Game.Rulesets.Osu.UI
             if (inputManager == null || playfield == null)
                 return;
 
-            Vector2 rawCursorPosition = getRawCursorPosition();
-
-            if (double.IsNaN(lastCursorMovementTime) || (rawCursorPosition - lastIdleCursorPosition).LengthSquared > 4f)
-            {
-                lastIdleCursorPosition = rawCursorPosition;
-                lastCursorMovementTime = Time.Current;
-            }
-
             if (!shouldRun())
             {
                 clearState();
@@ -283,8 +266,6 @@ namespace osu.Game.Rulesets.Osu.UI
             }
 
             ensureGameplayInputsBlocked();
-            updateDynamicFatigueState();
-            decayTimingFeedbackAfterBreak();
             collectTargets();
             syncPlansWithTargets();
             cleanupPlans();
@@ -307,12 +288,7 @@ namespace osu.Game.Rulesets.Osu.UI
             if (!getConfiguredEnabled())
                 return false;
 
-            bool replayBotActive = inputManager?.ReplayBotActive == true;
-
             if (inputManager?.ReplayInputHandler != null)
-                return false;
-
-            if (!replayBotActive && !double.IsNaN(lastCursorMovementTime) && Time.Current - lastCursorMovementTime > 1500)
                 return false;
 
             if (drawableRuleset == null)
@@ -370,7 +346,6 @@ namespace osu.Game.Rulesets.Osu.UI
             lastPlannedActionTargetTime = double.NaN;
             CurrentTapStamina = 1;
             CurrentStreamFatigueOffset = 0;
-            lastTimingNoise = 0;
             clearTimingFeedbackState();
             clearPlayerTimingState();
             releaseAllActions();
@@ -522,6 +497,11 @@ namespace osu.Game.Rulesets.Osu.UI
                 }
 
                 plan.UpdateTarget(target);
+
+                // Наблюдаем и следующие цели: ожидание предыдущей ноты не должно
+                // превращать давно припаркованный курсор в новое наведение.
+                if (!plan.Pressed && !plan.Released)
+                    updateCursorAcquisition(plan);
             }
 
             enforcePendingCadenceAlternation(patternStates);
@@ -598,23 +578,17 @@ namespace osu.Game.Rulesets.Osu.UI
         {
             plansToRemove.Clear();
             double currentTime = Time.Current;
-            double syncDelayLimit = Math.Max(0, getConfiguredMaxSyncDelay());
 
             foreach ((OsuHitObject hitObject, HitPlan plan) in plans)
             {
+                if (!plan.Pressed && !plan.Released && shouldSkipPendingPlan(plan))
+                    skipPlan(plan);
+
                 if (plan.Released)
                 {
-                    if (!plan.SeenThisFrame && currentTime > plan.GetReleaseTime() + plan_cleanup_padding)
+                    if (!plan.SeenThisFrame && (!plan.Pressed || currentTime > plan.GetReleaseTime() + plan_cleanup_padding))
                         plansToRemove.Add(hitObject);
-
-                    continue;
                 }
-
-                if (plan.Pressed || plan.SeenThisFrame)
-                    continue;
-
-                if (currentTime > plan.GetPressDeadline(syncDelayLimit) + plan_cleanup_padding)
-                    plansToRemove.Add(hitObject);
             }
 
             for (int i = 0; i < plansToRemove.Count; i++)
@@ -664,19 +638,20 @@ namespace osu.Game.Rulesets.Osu.UI
 
             double variance = getConfiguredTimingVariance() * varianceScale;
 
-            double rawNoise = nextGaussian(seed, 17) * variance;
-            double noise = rawNoise * 0.45 + lastTimingNoise * 0.55;
-            lastTimingNoise = noise;
-
-            double appliedOffset = getConfiguredBaseOffset()
-                                   + getDynamicDriftOffset(target.StartTime)
-                                   + noise;
+            double gameplayVariance = scaleRealTimeWindow(variance);
+            double sampledNoise = nextGaussian(seed, 17) * gameplayVariance;
+            double maximumSuccessfulOffset = target.HitObject.HitWindows?.WindowFor(HitResult.Meh) ?? double.PositiveInfinity;
+            double appliedOffset = GetBoundedTimingOffset(
+                scaleRealTimeWindow(getConfiguredBaseOffset() + getDynamicDriftOffset(target.StartTime)),
+                sampledNoise,
+                gameplayVariance,
+                maximumSuccessfulOffset);
 
             double plannedPressTime = target.StartTime + appliedOffset;
-            double cursorReactionOffset = getDerivedCursorReactionOffset(seed) + nextGaussian(seed, 42) * 6.0;
 
-            double baseHold = getConfiguredHoldTime() + nextGaussian(seed, 31) * getDerivedHoldVariance();
-            double gapToNext = next?.HitObject != null ? next.Value.StartTime - target.StartTime : 500;
+            double holdVariance = Math.Min(getDerivedHoldVariance() * 2, getConfiguredHoldTime() * 0.4);
+            double baseHold = getConfiguredHoldTime() + Math.Clamp(nextGaussian(seed, 31) * getDerivedHoldVariance(), -holdVariance, holdVariance);
+            double gapToNext = next?.HitObject != null ? toRealTimeWindow(next.Value.StartTime - target.StartTime) : 500;
             if (gapToNext < baseHold + 15)
                 baseHold = Math.Min(baseHold, Math.Max(12, gapToNext * 0.7));
             if (jumpSeverity > 0.05)
@@ -684,31 +659,15 @@ namespace osu.Game.Rulesets.Osu.UI
 
             double holdDuration = Math.Max(0, scaleRealTimeWindow(baseHold));
             
-            double sliderTailVariance = variance * Math.Clamp(1.5 + jumpSeverity * 2.5, 1.5, 4.5);
-            
-            // Human-like slider tail dropping:
-            // When the gap between a slider's end and the next note is short, and the next note is a severe jump,
-            // players naturally "rush" and release the slider early to aim the jump, occasionally dropping the tail.
-            double tailRushPenalty = 0;
-            if (isSlider && next?.HitObject != null)
-            {
-                double sliderGapToNext = next.Value.StartTime - target.EndTime;
-                if (sliderGapToNext < 180)
-                {
-                    double rushProgress = 1.0 - Math.Clamp(sliderGapToNext / 180.0, 0, 1);
-                    // Rushing causes up to 60-80ms early release depending on jump severity
-                    tailRushPenalty = rushProgress * (30.0 + jumpSeverity * 50.0);
-                }
-            }
-
             double fixedReleaseTime = isSlider
                 ? tapOnlySlider
                     ? double.NaN
-                    : target.EndTime + getEffectiveSliderTailOffset() - tailRushPenalty + nextGaussian(seed, 67) * sliderTailVariance
+                    : GetSliderReleaseTime(target.EndTime, scaleRealTimeWindow(getConfiguredSliderTailOffset()), getDerivedSliderTailPadding(),
+                        scaleRealTimeWindow(nextGaussian(seed, 67) * variance * 0.6), next?.HitObject != null ? next.Value.StartTime - target.EndTime : double.PositiveInfinity)
                 : isSpinner
                     ? keepHeldSpinner
                         ? next!.Value.EndTime
-                        : target.EndTime + nextGaussian(seed, 88) * variance
+                        : target.EndTime + scaleRealTimeWindow(Math.Clamp(nextGaussian(seed, 88) * variance, 0, variance * 2))
                     : double.NaN;
 
             return new HitPlan(
@@ -719,7 +678,7 @@ namespace osu.Game.Rulesets.Osu.UI
                 action,
                 appliedOffset,
                 plannedPressTime,
-                cursorReactionOffset,
+                getDerivedCursorReactionOffset(seed),
                 holdDuration,
                 fixedReleaseTime,
                 isSlider,
@@ -742,9 +701,18 @@ namespace osu.Game.Rulesets.Osu.UI
                                 : getModeName(patternState),
                 seed,
                 varianceScale,
-                getAdaptiveTimingFeedbackOffset(isSlider, isStream, jumpSeverity),
+                0,
                 patternInfo,
                 patternState);
+        }
+
+        internal static double GetBoundedTimingOffset(double baseOffset, double sampledNoise, double variance, double maximumSuccessfulOffset)
+        {
+            double maximumNoise = Math.Max(0, variance) * 2;
+            double boundedNoise = Math.Clamp(sampledNoise, -maximumNoise, maximumNoise);
+            double hitWindow = Math.Max(0, maximumSuccessfulOffset);
+
+            return Math.Clamp(baseOffset + boundedNoise, -hitWindow, hitWindow);
         }
 
         private bool overlapsAnySlider(TargetDescriptor target, TargetDescriptor? previous, TargetDescriptor? next)
@@ -1181,10 +1149,7 @@ namespace osu.Game.Rulesets.Osu.UI
                                                     nextSupportsThresholdAlternation,
                                                     singletapFriendlyJump);
 
-            double currentEquivalentBpm = (currentIsStream ? 15000.0 : 30000.0) / (effectiveGap * getGameplayRate());
-            bool forceAlternationByBpm = getConfiguredAlternateThreshold() > 0 && currentEquivalentBpm >= getConfiguredAlternateThreshold();
-
-            if (forceAlternationByBpm || forceAlternationByThreshold || forceAlternationByCadenceCap)
+            if (forceAlternationByThreshold || forceAlternationByCadenceCap)
             {
                 OsuAction nextAction = getOppositeAction(lastPlannedAction);
 
@@ -1215,13 +1180,7 @@ namespace osu.Game.Rulesets.Osu.UI
             {
                 OsuAction nextAction = getOppositeAction(lastPlannedAction);
 
-                double dynamicMisalt = getConfiguredMisaltProbability();
-                if (currentIsBurstLike)
-                {
-                    double depletion = Math.Clamp(1.0 - tapStamina, 0, 1.0);
-                    // Когда стамина падает, шанс "споткнуться" пальцами сильно растет
-                    dynamicMisalt += depletion * 0.08; 
-                }
+                double dynamicMisalt = GetMisaltProbability(getConfiguredMisaltProbability(), currentIsBurstLike ? tapStamina : 1);
 
                 if (nextUniform(seed, 53) < dynamicMisalt)
                     nextAction = lastPlannedAction;
@@ -1863,12 +1822,19 @@ namespace osu.Game.Rulesets.Osu.UI
         {
             while (true)
             {
-                HitPlan? nextPlan = getNextPendingPlan();
+                HitPlan? nextPlan = getNextPressablePlan();
 
                 if (nextPlan == null)
                     return;
 
-                double nextPressTime = getPressEvaluationTime(nextPlan);
+                // Предыдущий клик мог отсудить другую цель в этом же кадре.
+                if (shouldSkipPendingPlan(nextPlan))
+                {
+                    skipPlan(nextPlan);
+                    continue;
+                }
+
+                double nextPressTime = getLinkedPressTime(nextPlan);
 
                 if (Time.Current < nextPressTime)
                     return;
@@ -1879,6 +1845,7 @@ namespace osu.Game.Rulesets.Osu.UI
                     continue;
                 }
 
+                preferAvailableAction(nextPlan);
                 double nextPressAllowedTime = getNextPressAllowedTime(nextPlan);
 
                 if (Time.Current < nextPressAllowedTime)
@@ -1888,20 +1855,108 @@ namespace osu.Game.Rulesets.Osu.UI
                     return;
                 }
 
-                if (shouldDelayForSync(nextPlan))
+                if (shouldDelayForSync(nextPlan) || !canPressPlan(nextPlan))
                     return;
 
                 pressPlan(nextPlan);
             }
         }
 
-        private HitPlan? getNextPendingPlan()
+        private static DrawableHitCircle? getPressTarget(HitPlan plan)
+            => plan.CurrentDrawable switch
+            {
+                DrawableSlider slider => slider.HeadCircle,
+                DrawableHitCircle circle => circle,
+                _ => null,
+            };
+
+        private bool shouldSkipPendingPlan(HitPlan plan)
+        {
+            if (plan.CurrentDrawable == null
+                || !ReferenceEquals(plan.CurrentDrawable.HitObject, plan.HitObject)
+                || plan.CurrentDrawable.AllJudged)
+                return true;
+
+            if (plan.IsSpinner)
+                return Time.Current > plan.TargetEndTime;
+
+            DrawableHitCircle? target = getPressTarget(plan);
+            return target?.IsLoaded == true && (target.AllJudged
+                                              || target.HitObject.HitWindows?.CanBeHit(Time.Current - target.HitObject.StartTime) == false);
+        }
+
+        private bool canPressPlan(HitPlan plan)
+        {
+            if (plan.IsSpinner)
+                return Time.Current >= plan.TargetStartTime;
+
+            DrawableHitCircle? target = getPressTarget(plan);
+            if (target?.IsLoaded != true || target.AllJudged)
+                return false;
+
+            // CanBeHit проверяет только конец окна; ResultFor исключает ранний Miss и None.
+            HitResult result = target.HitObject.HitWindows?.ResultFor(Time.Current - target.HitObject.StartTime) ?? HitResult.None;
+            if (!result.IsHit())
+                return false;
+
+            if (plan.IsJump && !plan.IsStream)
+            {
+                Vector2 targetPosition = getTargetScreenSpacePosition(plan);
+                float radius = Math.Max(1, getTargetRadius(plan));
+                float assistedDistance = (getSyncCursorPosition() - targetPosition).Length;
+                float rawDistance = (getRawCursorPosition() - targetPosition).Length;
+                float normalisedDistance = Math.Min(assistedDistance, rawDistance) / radius;
+                float inwardProgress = 0;
+
+                if (plan.CursorPass.HasSegment)
+                    inwardProgress = plan.CursorPass.From.Length - plan.CursorPass.To.Length;
+
+                if (!HasJumpPressCommitment(normalisedDistance, inwardProgress))
+                    return false;
+            }
+
+            // MRX может нажать по недавнему проходу рядом. Это обычный ввод:
+            // за пределами настоящего хитбокса попадание не присуждается.
+            if (!target.HitArea.IsHovered && !tryGetSweptPressPosition(plan, out _) && !shouldAttemptNearTap(plan) && !shouldBlindTap(plan))
+                return false;
+
+            if (target is DrawableSliderHead head && head.HitObject.ClassicSliderBehaviour)
+                result = HitResult.LargeTickHit;
+
+            return (target.CheckHittable?.Invoke(target, Time.Current, result) ?? ClickAction.Hit) == ClickAction.Hit;
+        }
+
+        private bool shouldBlindTap(HitPlan plan)
+        {
+            Vector2 cursorPosition = getSyncCursorPosition();
+            Vector2 targetPosition = getTargetScreenSpacePosition(plan);
+            float radius = getTargetRadius(plan);
+            float blindTapThreshold = getEffectiveBlindTapThreshold(plan, radius);
+
+            if (getConfiguredBlindTapEnabled() && (cursorPosition - targetPosition).Length > blindTapThreshold)
+                return true;
+
+            if (!getConfiguredStreamBlindMode() || !plan.IsStream)
+                return false;
+
+            Vector2 rawCursorPosition = getRawCursorPosition();
+            bool rawOffTrajectory = (rawCursorPosition - targetPosition).Length > Math.Max(getEffectiveSyncHitRadius(plan, radius) * 0.82f, radius * 0.64f)
+                                    && isCursorOffStreamTrajectory(plan, rawCursorPosition);
+            return isCursorOffStreamTrajectory(plan, cursorPosition) || rawOffTrajectory;
+        }
+
+        private HitPlan? getNextPressablePlan()
         {
             HitPlan? nextPlan = null;
 
             foreach (HitPlan plan in plans.Values)
             {
-                if (plan.Pressed || plan.Released)
+                if (plan.Pressed || plan.Released || !plan.SeenThisFrame)
+                    continue;
+
+                // Промах по старой ноте не должен блокировать всю очередь до конца её окна.
+                // Выбираем самую раннюю из реально доступных сейчас; notelock проверяет игра.
+                if (shouldSkipPendingPlan(plan) || plan.SuppressPress || Time.Current < getLinkedPressTime(plan) || !canPressPlan(plan))
                     continue;
 
                 if (nextPlan == null || plan.CompareQueueOrder(nextPlan) < 0)
@@ -1911,10 +1966,10 @@ namespace osu.Game.Rulesets.Osu.UI
             return nextPlan;
         }
 
-        private double getPressEvaluationTime(HitPlan plan)
+        private void updateCursorAcquisition(HitPlan plan)
         {
             if (plan.IsSpinner)
-                return getLinkedPressTime(plan);
+                return;
 
             Vector2 cursorPosition = getSyncCursorPosition();
             Vector2 rawCursorPosition = getRawCursorPosition();
@@ -1922,19 +1977,12 @@ namespace osu.Game.Rulesets.Osu.UI
             float radius = getTargetRadius(plan);
             float distance = (cursorPosition - targetPosition).Length;
             float acquisitionRadius = Math.Max(radius, getScreenSpaceRadius(plan.BaseLocalPosition, (float)plan.HitObject.Radius)) * getAdaptiveSyncRadiusScale(plan);
-            
-            if (plan.LastDistanceTime > 0 && Time.Current > plan.LastDistanceTime)
-            {
-                float velocityTowardsTarget = (plan.LastDistance - distance) / (float)(Time.Current - plan.LastDistanceTime);
-                if (plan.IsJump && velocityTowardsTarget < -0.8f && distance > radius * 0.85f && distance <= acquisitionRadius)
-                {
-                    if (!plan.EmergencyPressTime.HasValue)
-                        plan.EmergencyPressTime = Time.Current;
-                }
-            }
-            
-            plan.LastDistance = distance;
-            plan.LastDistanceTime = Time.Current;
+
+            updateAimIntent(plan, rawCursorPosition, targetPosition, radius);
+            if (radius > 0)
+                plan.CursorPass.Observe((cursorPosition - targetPosition) / radius, Time.Current, scaleRealTimeWindow(35));
+            else
+                plan.CursorPass = default;
 
             float rawDistance = (rawCursorPosition - targetPosition).Length;
             float trustedRawRadius = getPlayerTimingTrustedRadius(plan, radius);
@@ -1974,8 +2022,6 @@ namespace osu.Game.Rulesets.Osu.UI
                 if (trackedDistance > releaseRadius)
                     plan.ClearCursorAcquisition();
             }
-
-            return getLinkedPressTime(plan);
         }
 
         private bool shouldRegisterPlayerTimingSampleNow(HitPlan plan, double currentTime)
@@ -2001,7 +2047,8 @@ namespace osu.Game.Rulesets.Osu.UI
 
         private bool shouldDelayForSync(HitPlan plan)
         {
-            if (plan.IsSpinner || getConfiguredSyncRadius() <= 0 || getConfiguredMaxSyncDelay() <= 0)
+            if (plan.IsSpinner || getPressTarget(plan)?.HitArea.IsHovered == true || tryGetSweptPressPosition(plan, out _)
+                || shouldAttemptNearTap(plan) || getConfiguredSyncRadius() <= 0 || getConfiguredMaxSyncDelay() <= 0)
             {
                 plan.PendingSyncDelay = 0;
                 plan.SyncDelayStarted = false;
@@ -2024,14 +2071,6 @@ namespace osu.Game.Rulesets.Osu.UI
             float radius = getTargetRadius(plan);
             float distance = (cursorPosition - targetPosition).Length;
             
-            float velocityTowardsTarget = 0;
-            if (plan.LastDistanceTime > 0 && Time.Current > plan.LastDistanceTime)
-            {
-                velocityTowardsTarget = (plan.LastDistance - distance) / (float)(Time.Current - plan.LastDistanceTime);
-            }
-            plan.LastDistance = distance;
-            plan.LastDistanceTime = Time.Current;
-
             float rawDistance = (rawCursorPosition - targetPosition).Length;
             bool isInsideHitbox = isCursorInsideHitbox(plan, distance, radius);
             bool isRawInsideHitbox = rawDistance <= getEffectiveSyncHitRadius(plan, radius);
@@ -2204,6 +2243,24 @@ namespace osu.Game.Rulesets.Osu.UI
             }
         }
 
+        private void preferAvailableAction(HitPlan plan)
+        {
+            if (plan.IsSpinner)
+                return;
+
+            collectHeldPlans(plan.Action);
+            bool protectsHold = sameActionPlans.Any(held => held.IsSlider && !held.IsTapOnlySlider || held.IsSpinner);
+            bool actionBusy = sameActionPlans.Count > 0 || getNextActionPressAllowedTime(plan.Action) > Time.Current;
+            OsuAction otherAction = getOppositeAction(plan.Action);
+
+            // Для доведённой ноты используем свободный палец, сохраняя удержание
+            // слайдера и ритм. Явно включённые misalt для обычных тапов остаются.
+            if ((protectsHold || actionBusy && getConfiguredMisaltProbability() == 0)
+                && getHeldPlanCount(otherAction) == 0
+                && getNextActionPressAllowedTime(otherAction) <= Time.Current)
+                plan.Action = otherAction;
+        }
+
         private void pressPlan(HitPlan plan)
         {
             collectHeldPlans(plan.Action);
@@ -2214,7 +2271,7 @@ namespace osu.Game.Rulesets.Osu.UI
                 for (int i = 0; i < sameActionPlans.Count; i++)
                     releasePlan(sameActionPlans[i]);
 
-                plan.DeferPressUntil(Time.Current + 16);
+                plan.DeferPressUntil(getNextActionPressAllowedTime(plan.Action));
                 return;
             }
 
@@ -2227,6 +2284,11 @@ namespace osu.Game.Rulesets.Osu.UI
                 return;
             }
 
+            bool targetWasHovered = getPressTarget(plan)?.HitArea.IsHovered == true;
+            bool usedSweptCrossing = tryGetSweptPressPosition(plan, out Vector2 passPosition);
+            bool usedNearTap = !targetWasHovered && !usedSweptCrossing && shouldAttemptNearTap(plan);
+            bool usedBlindTap = !targetWasHovered && !usedSweptCrossing && !usedNearTap && shouldBlindTap(plan);
+
             plan.Pressed = true;
             plan.ActualPressTime = Time.Current;
             plan.PendingSyncDelay = Math.Max(0, Time.Current - plan.GetCorrectedPlannedPressTime());
@@ -2236,24 +2298,34 @@ namespace osu.Game.Rulesets.Osu.UI
             if (!reuseHeldSpinnerChain)
             {
                 setActionPressed(plan.Action, true);
-                flushInputState();
+                if (usedSweptCrossing)
+                    inputManager!.ApplyCursorSampleForPress(passPosition, flushInputState);
+                else
+                    flushInputState();
             }
 
-            // Stream miss recovery: detect if press happened while cursor is off the note
-            if (plan.IsStream && !plan.IsSpinner)
-                evaluateStreamMiss(plan);
-
-            if (shouldRegisterPlayerTimingSampleNow(plan, Time.Current))
-                registerPlayerTimingSample(plan, getPlayerTimingSampleTime(plan, Time.Current));
-
-            registerTimingFeedbackSample(plan);
-            applyLiveTapStaminaResult(plan);
             LastPressAction = plan.Action;
             LastPressTime = Time.Current;
 
             if (!reuseHeldSpinnerChain)
                 inputEvents.Add(new RelaxInputEvent(true, plan.Action, Time.Current, plan.TargetStartTime));
+
+            // Отправленный клик и попадание по запланированной ноте — не одно и то же.
+            // При перекрытии ввод мог принять другой объект: не теряем ещё не отсуженную цель.
+            if (ShouldRetryUnjudgedPress(usesReliableProfile, targetWasHovered, usedSweptCrossing, usedNearTap, usedBlindTap)
+                && !plan.IsSpinner && getPressTarget(plan) is { AllJudged: false, IsHit: false })
+            {
+                releasePlan(plan);
+                plan.Pressed = false;
+                plan.Released = false;
+                plan.ActualPressTime = null;
+                plan.DeferPressUntil(Time.Current + scaleRealTimeWindow(1));
+            }
         }
+
+        internal static bool ShouldRetryUnjudgedPress(bool usesReliableProfile, bool targetWasHovered, bool usedSweptCrossing,
+                                                      bool usedNearTap, bool usedBlindTap)
+            => usesReliableProfile && (targetWasHovered || usedSweptCrossing) && !usedNearTap && !usedBlindTap;
 
         private bool canReuseHeldSpinnerChain(HitPlan plan)
         {
@@ -2453,16 +2525,7 @@ namespace osu.Game.Rulesets.Osu.UI
         }
 
         private double getNextPressAllowedTime(HitPlan plan)
-        {
-            recoverLiveTapStamina(Time.Current);
-
-            double actionAllowedTime = getNextActionPressAllowedTime(plan.Action);
-
-            if (!plan.IsStream)
-                return actionAllowedTime;
-
-            return Math.Max(actionAllowedTime, nextStreamPressAllowedTime);
-        }
+            => getNextActionPressAllowedTime(plan.Action);
 
         private void setNextPressAllowedTime(OsuAction action, double time)
         {
@@ -2488,7 +2551,7 @@ namespace osu.Game.Rulesets.Osu.UI
         }
 
         private double getDerivedSameActionRepressGap()
-            => scaleRealTimeWindow(Math.Clamp(getConfiguredHoldTime() * derived_same_action_repress_ratio + getConfiguredTimingVariance() * 0.35, derived_minimum_repress_gap, derived_maximum_repress_gap));
+            => usesReliableProfile ? 0 : scaleRealTimeWindow(Math.Clamp(getConfiguredHoldTime() * derived_same_action_repress_ratio + getConfiguredTimingVariance() * 0.35, derived_minimum_repress_gap, derived_maximum_repress_gap));
 
         private double getDerivedTimingFeedbackWindow()
             => scaleRealTimeWindow(Math.Clamp(2400 + getConfiguredMaxSyncDelay() * 38 + getConfiguredTimingVariance() * 42 + getConfiguredSyncRadius() * 14, 2400, 5600));
@@ -2637,34 +2700,16 @@ namespace osu.Game.Rulesets.Osu.UI
 
         private double getDerivedCursorReactionOffset(int seed)
         {
-            double variance = Math.Clamp(1.5 + getConfiguredTimingVariance() * 0.18, 1.5, 5.5);
-            double bias = Math.Clamp(0.6 + getConfiguredHoldTime() * 0.028 + getConfiguredTimingVariance() * 0.05, 0.6, 4.2);
-            return scaleRealTimeWindow(Math.Clamp(bias + nextGaussian(seed, 71) * variance, derived_minimum_cursor_reaction_offset, derived_maximum_cursor_reaction_offset));
+            // Небольшой разрыв между доведением и нажатием; выборка одна на ноту.
+            double variance = Math.Min(getConfiguredTimingVariance() * 0.25, 5.5);
+            return scaleRealTimeWindow(Math.Clamp(3 + nextGaussian(seed, 71) * variance,
+                derived_minimum_cursor_reaction_offset, derived_maximum_cursor_reaction_offset));
         }
-
-        private double getDerivedCursorTimingCoupling()
-            => Math.Clamp(0.55 + getConfiguredTimingVariance() / 120.0 + getConfiguredSyncRadius() / 400.0, 0.55, 0.72);
-
-        private double getDerivedAssistCursorTimingCoupling()
-            => Math.Clamp(getDerivedCursorTimingCoupling() * derived_assist_cursor_coupling_ratio,
-                derived_minimum_assist_cursor_coupling, derived_maximum_assist_cursor_coupling);
-
-        private double getDerivedCursorEarlyShiftCap()
-            => scaleRealTimeWindow(Math.Clamp(14 + getConfiguredTimingVariance() * 0.7, derived_minimum_cursor_early_shift, derived_maximum_cursor_early_shift));
-
-        private double getDerivedAssistCursorEarlyShiftCap()
-            => scaleRealTimeWindow(Math.Clamp(toRealTimeWindow(getDerivedCursorEarlyShiftCap()) * derived_assist_cursor_early_shift_ratio,
-                derived_minimum_assist_cursor_early_shift, derived_maximum_assist_cursor_early_shift));
 
         private double getDerivedSliderTailPadding()
             // Default tail release should linger a bit after the slider ends instead of snapping off at the tail.
             => scaleRealTimeWindow(Math.Clamp(Math.Max(getConfiguredHoldTime() * 0.85, 22 + getConfiguredTimingVariance() * 0.65),
                 derived_minimum_slider_tail_padding, derived_maximum_slider_tail_padding));
-
-        private double getEffectiveSliderTailOffset()
-            => getConfiguredSliderTailOffset() == 0
-                ? getDerivedSliderTailPadding()
-                : scaleRealTimeWindow(getConfiguredSliderTailOffset());
 
         private float getDerivedBlindTapThreshold(float radius)
         {
@@ -2779,9 +2824,9 @@ namespace osu.Game.Rulesets.Osu.UI
             if (getConfiguredSyncRadius() <= 0)
                 return radius;
 
+            float maximumPadding = Math.Min(derived_sync_inner_maximum_padding, radius * 0.38f);
             float padding = Math.Clamp(getConfiguredSyncRadius() * 0.3f + radius * 0.1f,
-                derived_sync_inner_minimum_padding,
-                Math.Min(derived_sync_inner_maximum_padding, radius * 0.38f));
+                Math.Min(derived_sync_inner_minimum_padding, maximumPadding), maximumPadding);
 
             if (plan.IsJump)
                 return radius;
@@ -2927,6 +2972,9 @@ namespace osu.Game.Rulesets.Osu.UI
             if (inputManager.ReplayBotActive && inputManager.HasReplayCursorPosition)
                 return inputManager.ReplayCursorPosition;
 
+            if (inputManager.HasOriginalUserCursorPosition)
+                return inputManager.OriginalUserCursorPosition;
+
             return getSyncCursorPosition();
         }
 
@@ -2972,14 +3020,6 @@ namespace osu.Game.Rulesets.Osu.UI
                     break;
             }
         }
-
-        private double getLinkedPressTime(HitPlan plan)
-            => plan.GetLinkedPressTime(
-                getDerivedCursorTimingCoupling(),
-                plan.IsJump ? 0 : getDerivedAssistCursorTimingCoupling(),
-                getDerivedCursorEarlyShiftCap(),
-                plan.IsJump ? 0 : getDerivedAssistCursorEarlyShiftCap(),
-                allowEarlyPull: !plan.IsSpinner && !plan.IsJump);
 
         private float getTargetRadius(HitPlan plan)
         {
@@ -3142,11 +3182,10 @@ namespace osu.Game.Rulesets.Osu.UI
             public double? GameplayCursorAcquiredTime;
             public double? RawCursorAcquiredTime;
             public double? RawCursorTrustedTime;
-            public float LastDistance = float.MaxValue;
-            public double LastDistanceTime;
+            public AimIntentState AimIntent;
+            public CursorPassState CursorPass;
             public double PendingSyncDelay;
             public double DeferredPressTime;
-            public double? EmergencyPressTime;
             public double TimingFeedbackOffset;
             public double SpinnerAngle;
             public double SpinnerLastUpdateTime;
@@ -3156,8 +3195,7 @@ namespace osu.Game.Rulesets.Osu.UI
             public bool HasRawCursorAcquisition => RawCursorAcquiredTime.HasValue;
 
             public HitPlan(int sequence, TargetDescriptor target, TargetDescriptor? previous, TargetDescriptor? next, OsuAction action, double appliedOffset, double plannedPressTime,
-                           double cursorReactionOffset,
-                           double holdDuration, double fixedReleaseTime, bool isSlider, bool isSpinner, bool isSingleTapJump, bool isTapOnlySlider, bool suppressPress, bool keepHeldSpinnerChain,
+                           double cursorReactionOffset, double holdDuration, double fixedReleaseTime, bool isSlider, bool isSpinner, bool isSingleTapJump, bool isTapOnlySlider, bool suppressPress, bool keepHeldSpinnerChain,
                            bool isStacked, bool isStream, double jumpSeverity, string modeName, int seed, double timingVarianceScale,
                            double timingFeedbackOffset, OsuPatternInfo patternInfo = default, OsuPatternState patternState = default)
             {
@@ -3238,39 +3276,10 @@ namespace osu.Game.Rulesets.Osu.UI
                 => GetFeedbackReferencePressTime();
 
             public double GetCorrectedPlannedPressTime()
-                => PlannedPressTime + TimingFeedbackOffset;
+                => PlannedPressTime;
 
             public double GetScheduledPressTime()
-            {
-                double scheduled = Math.Max(GetCorrectedPlannedPressTime(), DeferredPressTime);
-                if (EmergencyPressTime.HasValue)
-                    return Math.Min(scheduled, EmergencyPressTime.Value);
-                return scheduled;
-            }
-
-            public double GetLinkedPressTime(double rawCoupling, double gameplayCoupling, double rawEarlyShiftCap, double gameplayEarlyShiftCap, bool allowEarlyPull)
-            {
-                double scheduledPressTime = GetScheduledPressTime();
-                double? cursorAcquiredTime = RawCursorAcquiredTime ?? GameplayCursorAcquiredTime;
-
-                if (!cursorAcquiredTime.HasValue)
-                    return scheduledPressTime;
-
-                bool rawCursorTiming = RawCursorAcquiredTime.HasValue;
-                double coupling = rawCursorTiming ? rawCoupling : gameplayCoupling;
-                double earlyShiftCap = rawCursorTiming ? rawEarlyShiftCap : gameplayEarlyShiftCap;
-                double cursorDrivenPressTime = cursorAcquiredTime.Value + CursorReactionOffset;
-
-                if (cursorDrivenPressTime <= scheduledPressTime)
-                {
-                    if (!allowEarlyPull)
-                        return scheduledPressTime;
-
-                    return scheduledPressTime + Math.Max(-earlyShiftCap, (cursorDrivenPressTime - scheduledPressTime) * coupling);
-                }
-
-                return cursorDrivenPressTime;
-            }
+                => Math.Max(GetCorrectedPlannedPressTime(), DeferredPressTime);
 
             public void DeferPressUntil(double time)
                 => DeferredPressTime = Math.Max(DeferredPressTime, time);

@@ -21,6 +21,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         public Bindable<BeatmapSetFavouriteState> FavouriteState = new Bindable<BeatmapSetFavouriteState>();
 
         private readonly BeatmapDownloadTracker downloadTracker;
+        private IBindable<Colour4> themeColour = null!;
 
         private float buttonsExpandedWidth;
 
@@ -157,6 +158,9 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Background3);
+            themeColour.BindValueChanged(_ => updateState());
 
             downloadTracker.State.BindValueChanged(_ => updateState());
             ShowDetails.BindValueChanged(_ => updateState(), true);

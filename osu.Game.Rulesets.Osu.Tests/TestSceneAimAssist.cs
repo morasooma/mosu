@@ -346,7 +346,7 @@ namespace osu.Game.Rulesets.Osu.Tests
         }
 
         [Test]
-        public void TestAimAssistReleasesOffsetWithoutFurtherInput()
+        public void TestAimAssistKeepsOffsetWithoutFurtherInput()
         {
             Vector2 targetPosition = Vector2.Zero;
             Vector2 rawPosition = Vector2.Zero;
@@ -372,11 +372,11 @@ namespace osu.Game.Rulesets.Osu.Tests
             {
                 releaseDistance = (osuInputManager.CurrentState.Mouse.Position - rawPosition).Length;
             });
-            AddAssert("offset remains briefly after leaving fov", () => releaseDistance, () => Is.GreaterThan(0.5f));
+            AddAssert("offset remains after leaving fov", () => releaseDistance, () => Is.GreaterThan(0.5f));
             AddWaitStep("wait without further raw movement", 8);
-            AddAssert("offset decays without further input", () =>
+            AddAssert("stationary release does not move cursor", () =>
                 (osuInputManager.CurrentState.Mouse.Position - rawPosition).Length,
-                () => Is.LessThan(releaseDistance));
+                () => Is.EqualTo(releaseDistance).Within(0.25f));
         }
 
         [Test]
@@ -412,12 +412,45 @@ namespace osu.Game.Rulesets.Osu.Tests
                 InputManager.MoveMouseTo(previousRaw + movement);
             });
             AddWaitStep("allow release follow frame", 1);
-            AddAssert("virtual cursor does not fully collapse to raw", () =>
-                (osuInputManager.CurrentState.Mouse.Position - osuInputManager.OriginalUserCursorPosition).Length,
-                () => Is.GreaterThan(0.5f));
-            AddAssert("virtual cursor follows less than full raw step", () =>
+            AddAssert("release never moves opposite to player", () =>
+                Vector2.Dot(osuInputManager.CurrentState.Mouse.Position - previousOutput, movement),
+                () => Is.GreaterThanOrEqualTo(-0.1f));
+            AddAssert("release consumes no more than the player step", () =>
                 (osuInputManager.CurrentState.Mouse.Position - previousOutput).Length,
-                () => Is.LessThan(movement.Length * 0.9f));
+                () => Is.LessThanOrEqualTo(movement.Length + 0.5f));
+            AddAssert("player movement converges raw and assisted positions", () =>
+                (osuInputManager.CurrentState.Mouse.Position - osuInputManager.OriginalUserCursorPosition).Length,
+                () => Is.LessThan((previousOutput - previousRaw).Length));
+        }
+
+        [Test]
+        public void TestAimAssistPreservesOneToOneMovementInsideHitbox()
+        {
+            Vector2 targetPosition = Vector2.Zero;
+            Vector2 rawBefore = Vector2.Zero;
+            Vector2 outputBefore = Vector2.Zero;
+            Vector2 insideStep = new Vector2(7, 5);
+
+            configureAimAssist(strength: 1, fovRadius: 220, intentThreshold: -1, dynamicFriction: 0, antiJitterMs: 0, overshootAllowance: 0);
+            AddUntilStep("aim assist enabled", () => aimAssistController.IsEnabled);
+            AddStep("approach note from outside", () =>
+            {
+                targetPosition = hitCircle.ScreenSpaceDrawQuad.Centre;
+                InputManager.MoveMouseTo(targetPosition + new Vector2(90, 0));
+                InputManager.MoveMouseTo(targetPosition + new Vector2(24, 0));
+            });
+            AddUntilStep("assisted cursor enters hitbox", () =>
+                (osuInputManager.CurrentState.Mouse.Position - targetPosition).Length < aimAssistController.CurrentBaseTargetRadius - insideStep.Length - 2);
+            AddStep("store positions inside hitbox", () =>
+            {
+                rawBefore = osuInputManager.OriginalUserCursorPosition;
+                outputBefore = osuInputManager.CurrentState.Mouse.Position;
+            });
+            AddStep("move freely inside hitbox", () => InputManager.MoveMouseTo(rawBefore + insideStep));
+            AddWaitStep("allow inside movement", 1);
+            AddAssert("inside movement remains one to one", () =>
+                (osuInputManager.CurrentState.Mouse.Position - outputBefore - insideStep).Length,
+                () => Is.LessThan(0.25f));
         }
 
         [Test]

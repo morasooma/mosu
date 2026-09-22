@@ -54,6 +54,8 @@ namespace osu.Game.Screens.Select
     {
         public const float SPACING_BETWEEN_SCORES = 4;
 
+        public Func<bool> UseScorePanelOnlyInput { get; init; } = () => false;
+
         public IBindable<BeatmapLeaderboardScope> Scope { get; } = new Bindable<BeatmapLeaderboardScope>();
 
         public IBindable<LeaderboardSortMode> Sorting { get; } = new Bindable<LeaderboardSortMode>();
@@ -99,9 +101,9 @@ namespace osu.Game.Screens.Select
         private Container<Placeholder> placeholderContainer = null!;
         private Placeholder? placeholder;
 
-        private Container scoresContainer = null!;
+        private Container<BeatmapLeaderboardScore> scoresContainer = null!;
 
-        private OsuScrollContainer scoresScroll = null!;
+        private ScoreOnlyScrollContainer scoresScroll = null!;
         private Container personalBestDisplay = null!;
 
         private Container<BeatmapLeaderboardScore> personalBestScoreContainer = null!;
@@ -124,7 +126,8 @@ namespace osu.Game.Screens.Select
         // Blocking mouse down is required to avoid song select's background reveal logic happening while hovering scores.
         // Our horizontal alignment doesn't really align with the rest of the sheared components (protrudes a touch to the right) which makes
         // it complicated to handle this at a higher level.
-        public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => scoresScroll.ReceivePositionalInputAt(screenSpacePos);
+        public override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
+            => UseScorePanelOnlyInput() ? receivesInputAtScore(screenSpacePos) : scoresScroll.ReceivePositionalInputAt(screenSpacePos);
 
         protected override bool OnMouseDown(MouseDownEvent e) => true;
 
@@ -142,12 +145,13 @@ namespace osu.Game.Screens.Select
                 RelativeSizeAxes = Axes.Both,
                 Children = new Drawable[]
                 {
-                    scoresScroll = new OsuScrollContainer
+                    scoresScroll = new ScoreOnlyScrollContainer
                     {
+                        ReceiveInputAt = screenSpacePos => !UseScorePanelOnlyInput() || receivesInputAtScore(screenSpacePos),
                         RelativeSizeAxes = Axes.Both,
                         ScrollbarVisible = false,
                         Shear = OsuGame.SHEAR,
-                        Child = scoresContainer = new Container
+                        Child = scoresContainer = new Container<BeatmapLeaderboardScore>
                         {
                             RelativeSizeAxes = Axes.X,
                             AutoSizeAxes = Axes.Y,
@@ -162,8 +166,9 @@ namespace osu.Game.Screens.Select
                             },
                         },
                     },
-                    personalBestDisplay = new Container
+                    personalBestDisplay = new ScoreOnlyInputContainer
                     {
+                        ReceiveInputAt = screenSpacePos => !UseScorePanelOnlyInput() || receivesInputAtPersonalBest(screenSpacePos),
                         Anchor = Anchor.BottomLeft,
                         Origin = Anchor.BottomLeft,
                         RelativeSizeAxes = Axes.X,
@@ -224,6 +229,31 @@ namespace osu.Game.Screens.Select
             swishSample = audio.Samples.Get(@"SongSelect/leaderboard-score");
         }
 
+        private bool receivesInputAtScore(Vector2 screenSpacePos)
+            => scoresScroll.Contains(screenSpacePos)
+               && scoresContainer.Any(score => score.IsPresent && score.ReceivePositionalInputAt(screenSpacePos))
+               || receivesInputAtPersonalBest(screenSpacePos);
+
+        private bool receivesInputAtPersonalBest(Vector2 screenSpacePos)
+            => personalBestDisplay.Contains(screenSpacePos)
+               && personalBestScoreContainer.Any(score => score.IsPresent && score.ReceivePositionalInputAt(screenSpacePos));
+
+        private partial class ScoreOnlyScrollContainer : OsuScrollContainer
+        {
+            public required Func<Vector2, bool> ReceiveInputAt { private get; init; }
+
+            public override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
+                => base.ReceivePositionalInputAt(screenSpacePos) && ReceiveInputAt(screenSpacePos);
+        }
+
+        private partial class ScoreOnlyInputContainer : Container
+        {
+            public required Func<Vector2, bool> ReceiveInputAt { private get; init; }
+
+            public override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
+                => base.ReceivePositionalInputAt(screenSpacePos) && ReceiveInputAt(screenSpacePos);
+        }
+
         protected override void LoadComplete()
         {
             base.LoadComplete();
@@ -249,12 +279,17 @@ namespace osu.Game.Screens.Select
                 RefetchScores();
             });
             ruleset.BindValueChanged(_ => RefetchScores());
-            mods.BindValueChanged(_ =>
+            mods.BindValueChanged(change =>
             {
                 modSettingChangeTracker?.Dispose();
                 modSettingChangeTracker = new ModSettingChangeTracker(mods.Value);
                 modSettingChangeTracker.SettingChanged += _ => Scheduler.AddOnce(refetchScoresFromMods);
-                refetchScoresFromMods();
+
+                // RX/AP select a different online leaderboard even when the explicit
+                // "filter by selected mods" option is disabled. Other mod changes only
+                // affect the request when that option is enabled.
+                if (FilterBySelectedMods.Value || specialLeaderboardMode(change.OldValue) != specialLeaderboardMode(change.NewValue))
+                    RefetchScores();
             });
 
             RefetchScores();
@@ -274,6 +309,17 @@ namespace osu.Game.Screens.Select
         {
             if (FilterBySelectedMods.Value)
                 RefetchScores();
+        }
+
+        private static int specialLeaderboardMode(IReadOnlyList<Mod> selectedMods)
+        {
+            if (selectedMods.Any(m => m.Acronym is "RX" or "MRX"))
+                return RulesetInfo.OSU_RELAX_ONLINE_ID;
+
+            if (selectedMods.Any(m => m.Acronym == "AP"))
+                return RulesetInfo.OSU_AUTOPILOT_ONLINE_ID;
+
+            return -1;
         }
 
         private bool initialFetchComplete;

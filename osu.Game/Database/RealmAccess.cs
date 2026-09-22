@@ -37,6 +37,7 @@ using osu.Game.Utils;
 using osuTK.Input;
 using Realms;
 using Realms.Exceptions;
+using Realms.Schema;
 
 namespace osu.Game.Database
 {
@@ -51,6 +52,22 @@ namespace osu.Game.Database
         /// The filename of this realm.
         /// </summary>
         public readonly string Filename;
+
+        /// <summary>
+        /// The schema version of a foreign database which was moved aside at startup because it was created by a
+        /// newer version of osu! (e.g. osu!lazer tachyon). <c>null</c> when no such database was detected this run.
+        /// </summary>
+        public ulong? NewerVersionDatabaseSchemaVersion { get; private set; }
+
+        /// <summary>
+        /// The main database schema version supported by this client.
+        /// </summary>
+        public ulong SupportedSchemaVersion => schema_version;
+
+        /// <summary>
+        /// The filename holding the moved-aside database described by <see cref="NewerVersionDatabaseSchemaVersion"/>.
+        /// </summary>
+        public string? NewerVersionDatabaseFilename { get; private set; }
 
         private readonly SynchronizationContext? updateThreadSyncContext;
 
@@ -101,13 +118,28 @@ namespace osu.Game.Database
         /// 49   2025-06-10    Reset the LegacyOnlineID to -1 for all scores that have it set to 0 (which is semantically the same) for consistency of handling with OnlineID.
         /// 50   2025-07-11    Add UserTags to BeatmapMetadata.
         /// 51   2025-07-22    Add ScoreInfo.Pauses.
+        /// 52   2026-07-28    Add RealmOnlineAsset.
         /// </summary>
-        private const int schema_version = 51;
+        // ⚠️⚠️⚠️ FORK MAINTAINERS: DO NOT CHANGE THIS NUMBER FOR FORK-ONLY DATA. ⚠️⚠️⚠️
+        // It MUST remain byte-for-byte aligned with the schema version used by the corresponding upstream osu! client.
+        // Changing it is FORBIDDEN unless upstream changed its main Realm schema in the version we are based on.
+        // Put every fork-only field in ForkDataStore / fork.realm. Never persist it in client.realm.
+        // If you raise this number without an upstream migration, you WILL destroy compatibility, strand user databases,
+        // and YOU are volunteering to recover every lost score and every editor project personally. The review must reject it.
+        // ЕСЛИ В ОРИГИНАЛЬНОМ КЛИЕНТЕ ВЕРСИЯ REALM НЕ ИЗМЕНИЛАСЬ — ТРОГАТЬ ЭТО ЧИСЛО ЗАПРЕЩЕНО.
+        private const int schema_version = 52;
 
         /// <summary>
         /// Lock object which is held during <see cref="BlockAllOperations"/> sections, blocking realm retrieval during blocking periods.
         /// </summary>
         private readonly SemaphoreSlim realmRetrievalLock = new SemaphoreSlim(1);
+
+        /// <summary>
+        /// This <see cref="CancellationTokenSource"/> is cancelled on disposal
+        /// so that all callers of <see cref="getRealmInstance"/> who are blocked on <see cref="realmRetrievalLock"/>
+        /// can hard-fail the retrieval rather than spin on the semaphore forever.
+        /// </summary>
+        private readonly CancellationTokenSource realmRetrievalCancellation = new CancellationTokenSource();
 
         private readonly CountdownEvent pendingAsyncOperations = new CountdownEvent(0);
 
@@ -270,9 +302,9 @@ namespace osu.Game.Database
             {
                 using (var realm = Realm.GetInstance(getConfiguration()))
                 {
-                    if (realm.All<ScoreInfo>().Any())
+                    if (realm.All<ScoreInfo>().Any() || realm.All<BeatmapSetInfo>().Any())
                     {
-                        Logger.Log(@"Recovery aborted as the existing database has scores set already.", LoggingTarget.Database);
+                        Logger.Log(@"Recovery aborted as the existing database already contains user data.", LoggingTarget.Database);
                         Logger.Log($@"To perform recovery, delete {OsuGameBase.CLIENT_DATABASE_FILENAME} while osu! is not running.", LoggingTarget.Database);
                         return;
                     }
@@ -314,11 +346,51 @@ namespace osu.Game.Database
         {
             string newerVersionFilename = $"{Filename.Replace(realm_extension, string.Empty)}_newer_version{realm_extension}";
 
+            // Install a database converted in a previous run (see TryConvertNewerVersionedDatabase) before anything
+            // else opens the current file, so the underlying files can be moved freely.
+            installConvertedDatabaseIfSafe();
+
+            // A current fork database is always newer than an older recovery file left behind by a previous downgrade.
+            // Migrate it first so a stale client_newer_version.realm can never replace recent scores or editor changes.
+            // Fork schema versions 52/53 collide with upstream osu! (tachyon) schema 52 (RealmOnlineAsset), so legacy
+            // fork databases are identified by their fork-only columns rather than by version number alone.
+            ulong? currentSchemaVersion = storage.Exists(Filename) ? getStoredSchemaVersion(Filename) : null;
+            ulong? currentForkSchemaVersion = currentSchemaVersion != null ? getLegacyForkSchemaVersion(Filename, currentSchemaVersion.Value) : null;
+
+            if (currentForkSchemaVersion != null)
+                tryMigrateForkSchema(Filename, newerVersionFilename, currentForkSchemaVersion.Value);
+
             // Attempt to recover a newer database version if available.
-            if (storage.Exists(newerVersionFilename))
+            if (currentForkSchemaVersion == null && storage.Exists(newerVersionFilename))
             {
-                Logger.Log(@"A newer realm database has been found, attempting recovery...", LoggingTarget.Database);
-                attemptRecoverFromFile(newerVersionFilename);
+                ulong? storedSchemaVersion = getStoredSchemaVersion(newerVersionFilename);
+                ulong? recoveryForkSchemaVersion = storedSchemaVersion != null ? getLegacyForkSchemaVersion(newerVersionFilename, storedSchemaVersion.Value) : null;
+
+                if (recoveryForkSchemaVersion != null)
+                {
+                    if (!tryMigrateForkSchema(newerVersionFilename, newerVersionFilename, recoveryForkSchemaVersion.Value))
+                    {
+                        Logger.Log(@"A newer realm database has been found, attempting recovery...", LoggingTarget.Database);
+                        attemptRecoverFromFile(newerVersionFilename);
+                    }
+                }
+                else if (storedSchemaVersion is null || storedSchemaVersion <= schema_version)
+                {
+                    Logger.Log(@"A newer realm database has been found, attempting recovery...", LoggingTarget.Database);
+                    attemptRecoverFromFile(newerVersionFilename);
+                }
+                else if (!databaseHasScores(Filename))
+                {
+                    // A foreign database created by a newer osu! version (e.g. osu!lazer tachyon), which this client
+                    // cannot open. Surface it to the UI so the user can opt into a lossy conversion.
+                    Logger.Log($"A newer realm database (schema version {storedSchemaVersion}) created by a newer version of osu! has been found. Offering conversion to the user.", LoggingTarget.Database);
+                    NewerVersionDatabaseSchemaVersion = storedSchemaVersion;
+                    NewerVersionDatabaseFilename = newerVersionFilename;
+                }
+                else
+                {
+                    Logger.Log($"Ignoring newer realm database (schema version {storedSchemaVersion}) as the current database already contains scores.", LoggingTarget.Database);
+                }
             }
 
             try
@@ -345,17 +417,34 @@ namespace osu.Game.Database
                     // Fork: open the database at its current schema version to avoid data loss.
                     var match = System.Text.RegularExpressions.Regex.Match(e.Message, @"last set version (\d+)");
 
+                    ulong? foreignSchemaVersion = null;
+
                     if (match.Success && ulong.TryParse(match.Groups[1].Value, out ulong fileSchemaVersion))
                     {
-                        Logger.Log($"Opening database at file schema version {fileSchemaVersion} (code is {schema_version}).");
-                        return getRealmInstance(fileSchemaVersion);
+                        ulong? forkSchemaVersion = getLegacyForkSchemaVersion(Filename, fileSchemaVersion);
+
+                        if (forkSchemaVersion != null && tryMigrateForkSchema(Filename, newerVersionFilename, forkSchemaVersion.Value))
+                            return getRealmInstance();
+
+                        foreignSchemaVersion = fileSchemaVersion;
                     }
 
-                    Logger.Error(e, "Your local database is too new to work with this version of osu!. Please close osu! and install the latest release to recover your data.");
+                    Logger.Error(e, "Your local database was created by a newer version of osu! and cannot be opened by this client. It has been moved aside and can be converted from the main menu.");
 
-                    // If a newer version database already exists, don't create another backup. We can presume that the first backup is the one we care about.
-                    if (!storage.Exists(newerVersionFilename))
-                        createBackup(newerVersionFilename);
+                    // Never discard the current database just because an older downgrade backup already exists.
+                    // Multiple backups cost disk space, but are preferable to losing changes made since the first one.
+                    string backupFilename = storage.Exists(newerVersionFilename)
+                        ? $"{Filename.Replace(realm_extension, string.Empty)}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{Guid.NewGuid():N}_newer_version{realm_extension}"
+                        : newerVersionFilename;
+
+                    createBackup(backupFilename);
+
+                    // Surface the foreign database to the UI so the user can opt into a lossy conversion.
+                    if (foreignSchemaVersion != null)
+                    {
+                        NewerVersionDatabaseSchemaVersion = foreignSchemaVersion;
+                        NewerVersionDatabaseFilename = backupFilename;
+                    }
                 }
                 else
                 {
@@ -385,6 +474,515 @@ namespace osu.Game.Database
 
                 storage.Delete(Filename);
                 return getRealmInstance();
+            }
+        }
+
+        /// <summary>
+        /// Identifies databases written by older builds of this fork, which used schema versions 52/53 for
+        /// fork-only fields (<c>Score.TagCoopReplayJson</c> / <c>Beatmap.MaxPerformancePoints</c>). Schema 52
+        /// collides with upstream schema 52 (<c>RealmOnlineAsset</c>), so legacy fork databases are identified
+        /// by their fork-only columns rather than by the version number alone.
+        /// </summary>
+        /// <returns>The legacy fork schema version, or <c>null</c> if the database is not a legacy fork database.</returns>
+        private ulong? getLegacyForkSchemaVersion(string filename, ulong storedSchemaVersion)
+        {
+            if (storedSchemaVersion is not (52 or 53))
+                return null;
+
+            try
+            {
+                using var realm = Realm.GetInstance(getInspectionConfiguration(filename));
+
+                bool hasColumn(string objectName, string propertyName) =>
+                    realm.Schema.FirstOrDefault(s => s.Name == objectName)?.Any(p => p.Name == propertyName) == true;
+
+                // Note: object names here are the mapped Realm schema names ([MapTo]), e.g. "Score" for ScoreInfo.
+                if (storedSchemaVersion == 52)
+                    return hasColumn(@"Score", @"TagCoopReplayJson") ? 52 : null;
+
+                return hasColumn(@"Beatmap", nameof(BeatmapInfo.MaxPerformancePoints)) ? 53 : null;
+            }
+            catch (Exception e)
+            {
+                Logger.Log($"Could not inspect the schema of {filename}: {e.Message}", LoggingTarget.Database);
+                return null;
+            }
+        }
+
+        private RealmConfiguration getInspectionConfiguration(string filename)
+        {
+            string tempPathLocation = Path.Combine(Path.GetTempPath(), @"lazer");
+            if (!Directory.Exists(tempPathLocation))
+                Directory.CreateDirectory(tempPathLocation);
+
+            // A dynamic realm with an empty schema skips schema-version validation, allowing inspection of
+            // databases created by any osu! version without triggering a migration or any write.
+            return new RealmConfiguration(storage.GetFullPath(filename, true))
+            {
+                IsDynamic = true,
+                IsReadOnly = true,
+                FallbackPipePath = tempPathLocation,
+            };
+        }
+
+        private bool databaseHasScores(string filename)
+        {
+            try
+            {
+                using var realm = Realm.GetInstance(getConfiguration(filename));
+                // A fallback database created after moving a foreign database aside imports the bundled intro
+                // beatmap during normal startup. Beatmap presence therefore cannot be used to decide whether the
+                // fallback is safe to replace; doing so prevents both re-offering conversion and installing the
+                // converted database on the next restart. Scores are not created automatically and are the actual
+                // conflict we must protect here. The replaced fallback database is retained as a backup either way.
+                return realm.All<ScoreInfo>().Any();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private string convertedDatabaseFilename => $"{Filename.Replace(realm_extension, string.Empty)}_converted{realm_extension}";
+
+        private string forcedConvertedDatabaseInstallMarkerFilename => $"{Filename.Replace(realm_extension, string.Empty)}_forced_conversion.pending";
+
+        /// <summary>
+        /// Replaces the current database with one converted in a previous run (see <see cref="TryConvertNewerVersionedDatabase"/>).
+        /// Runs before any realm instance is opened, so the underlying files can be moved freely. The previous database is
+        /// retained as a timestamped backup. The install is refused if it already contains scores unless the
+        /// conversion was explicitly forced from the debug settings.
+        /// </summary>
+        private void installConvertedDatabaseIfSafe()
+        {
+            if (!storage.Exists(convertedDatabaseFilename))
+                return;
+
+            bool forceInstall = storage.Exists(forcedConvertedDatabaseInstallMarkerFilename);
+
+            try
+            {
+                using (Realm.GetInstance(getConfiguration(convertedDatabaseFilename)))
+                {
+                    // Don't need to do anything, just check that the converted database can be opened.
+                }
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e, "The converted database could not be opened and has been set aside.");
+                storage.Move(convertedDatabaseFilename, $"{Filename.Replace(realm_extension, string.Empty)}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_failed_conversion{realm_extension}");
+
+                if (forceInstall)
+                    storage.Delete(forcedConvertedDatabaseInstallMarkerFilename);
+
+                return;
+            }
+
+            if (!forceInstall && storage.Exists(Filename) && databaseHasScores(Filename))
+            {
+                Logger.Log(@"Not installing the converted database as the current database already contains scores.", LoggingTarget.Database);
+                return;
+            }
+
+            string backupFilename = $"{Filename.Replace(realm_extension, string.Empty)}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_before_converted_install{realm_extension}";
+
+            if (storage.Exists(Filename))
+                storage.Move(Filename, backupFilename);
+
+            storage.Move(convertedDatabaseFilename, Filename);
+
+            if (forceInstall)
+                storage.Delete(forcedConvertedDatabaseInstallMarkerFilename);
+
+            Logger.Log($"Installed{(forceInstall ? " forcibly" : string.Empty)} converted database, retaining the previous database as {backupFilename}.", LoggingTarget.Database);
+        }
+
+        /// <summary>
+        /// Converts a foreign database created by a newer osu! version (e.g. osu!lazer tachyon) to the current schema
+        /// version as a separate file, which is installed on the next startup by <see cref="installConvertedDatabaseIfSafe"/>.
+        /// Data stored in unknown tables or columns of the newer schema is dropped; the source database is left untouched.
+        /// </summary>
+        /// <returns>Whether the conversion succeeded and a converted database is awaiting install.</returns>
+        public bool TryConvertNewerVersionedDatabase() => tryConvertNewerVersionedDatabase(NewerVersionDatabaseFilename, false);
+
+        /// <summary>
+        /// Finds the newest foreign <c>*_newer_version.realm</c> backup and converts it even when automatic recovery
+        /// refused to surface it because the fallback database contains scores. The fallback is still retained as a
+        /// timestamped backup when the converted database is installed on the next startup.
+        /// </summary>
+        /// <returns>Whether a suitable backup was found and converted.</returns>
+        public bool TryForceConvertNewerVersionedDatabase()
+        {
+            string? sourceFilename = NewerVersionDatabaseFilename;
+
+            if (!isForeignNewerDatabase(sourceFilename))
+            {
+                string filenameWithoutExtension = Filename.Replace(realm_extension, string.Empty);
+
+                sourceFilename = storage.GetFiles(string.Empty, $"{filenameWithoutExtension}*_newer_version{realm_extension}")
+                                        .Where(isForeignNewerDatabase)
+                                        .OrderByDescending(filename => File.GetLastWriteTimeUtc(storage.GetFullPath(filename, true)))
+                                        .FirstOrDefault();
+            }
+
+            if (sourceFilename == null)
+            {
+                Logger.Log(@"Forced newer-version database conversion found no suitable backup.", LoggingTarget.Database);
+                return false;
+            }
+
+            NewerVersionDatabaseFilename = sourceFilename;
+            NewerVersionDatabaseSchemaVersion = getStoredSchemaVersion(sourceFilename);
+
+            Logger.Log($"Forcing conversion of newer-version database {sourceFilename} (schema version {NewerVersionDatabaseSchemaVersion}).", LoggingTarget.Database);
+            return tryConvertNewerVersionedDatabase(sourceFilename, true);
+        }
+
+        private bool isForeignNewerDatabase(string? filename)
+        {
+            if (filename == null || !storage.Exists(filename))
+                return false;
+
+            ulong? storedSchemaVersion = getStoredSchemaVersion(filename);
+            return storedSchemaVersion > schema_version
+                   && getLegacyForkSchemaVersion(filename, storedSchemaVersion.Value) == null;
+        }
+
+        private bool tryConvertNewerVersionedDatabase(string? sourceFilename, bool forceInstall)
+        {
+            if (sourceFilename == null || !storage.Exists(sourceFilename))
+                return false;
+
+            ulong? storedSchemaVersion = getStoredSchemaVersion(sourceFilename);
+
+            if (storedSchemaVersion is null || storedSchemaVersion <= schema_version)
+                return false;
+
+            // Legacy fork databases are migrated automatically at startup; converting them here would be lossy.
+            if (getLegacyForkSchemaVersion(sourceFilename, storedSchemaVersion.Value) != null)
+                return false;
+
+            string temporaryFilename = $"{Filename.Replace(realm_extension, string.Empty)}_foreign_conversion_{Guid.NewGuid():N}{realm_extension}";
+
+            try
+            {
+                if (storage.Exists(forcedConvertedDatabaseInstallMarkerFilename))
+                    storage.Delete(forcedConvertedDatabaseInstallMarkerFilename);
+
+                RealmConfiguration destinationConfiguration = getConfiguration(temporaryFilename);
+                RealmSchema destinationSchema = destinationConfiguration.Schema;
+
+                // Open the foreign database at its own schema version using the known object schema. Realm's
+                // additive schema mode ignores unknown tables and columns of the newer version.
+                var sourceConfiguration = getConfiguration(sourceFilename, storedSchemaVersion.Value);
+                sourceConfiguration.Schema = destinationSchema;
+
+                using (var source = Realm.GetInstance(sourceConfiguration))
+                using (var destination = Realm.GetInstance(destinationConfiguration))
+                    copyRealm(source, destination, destinationSchema);
+
+                if (storage.Exists(convertedDatabaseFilename))
+                    storage.Delete(convertedDatabaseFilename);
+
+                storage.Move(temporaryFilename, convertedDatabaseFilename);
+
+                if (forceInstall)
+                {
+                    using (storage.CreateFileSafely(forcedConvertedDatabaseInstallMarkerFilename))
+                    {
+                    }
+                }
+
+                Logger.Log($"Converted {sourceFilename} from schema version {storedSchemaVersion} to {schema_version}. It will be installed on the next startup.", LoggingTarget.Database);
+                return true;
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e, "Failed to convert the newer version database to the current schema. The original database was not modified.");
+
+                try
+                {
+                    if (storage.Exists(temporaryFilename))
+                        storage.Delete(temporaryFilename);
+                }
+                catch { }
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Recreates a fork-upgraded main database at the current upstream-compatible schema version.
+        /// Legacy fork schema 52 contained the fork-only Tag Co-op replay field, while schema 53 stored a
+        /// fork-only beatmap PP field. Both are copied into <see cref="ForkDataStore"/> before replacement.
+        /// </summary>
+        private bool tryMigrateForkSchema(string sourceFilename, string newerVersionFilename, ulong sourceSchemaVersion)
+        {
+            string temporaryFilename = $"{Filename.Replace(realm_extension, string.Empty)}_fork_schema_migration_{Guid.NewGuid():N}{realm_extension}";
+            string backupFilename = $"{Filename.Replace(realm_extension, string.Empty)}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{Guid.NewGuid():N}_fork_schema_backup{realm_extension}";
+            bool mainDatabaseDisplaced = false;
+            bool migrationInstalled = false;
+
+            try
+            {
+                // Match upstream recovery behaviour: never replace a database the user has already recorded scores in.
+                // A fresh database imports the bundled welcome beatmap during startup, so treating any beatmap as
+                // user data would permanently block recovery after a failed downgrade. The current database is moved
+                // to a backup below before replacement, so even beatmaps imported during the broken run are retained.
+                if (sourceFilename != Filename && storage.Exists(Filename))
+                {
+                    using var current = Realm.GetInstance(getConfiguration());
+
+                    if (current.All<ScoreInfo>().Any())
+                        return false;
+                }
+
+                RealmConfiguration destinationConfiguration = getConfiguration(temporaryFilename);
+                RealmSchema destinationSchema = destinationConfiguration.Schema;
+                RealmSchema sourceSchema = createForkSourceSchema(destinationSchema, sourceSchemaVersion);
+                var replayMetadata = new List<KeyValuePair<Guid, string>>();
+                var performancePoints = new List<KeyValuePair<Guid, double>>();
+
+                var sourceConfiguration = getConfiguration(sourceFilename, sourceSchemaVersion);
+                sourceConfiguration.Schema = sourceSchema;
+
+                using (var source = Realm.GetInstance(sourceConfiguration))
+                using (var destination = Realm.GetInstance(destinationConfiguration))
+                {
+                    if (sourceSchemaVersion == 52)
+                    {
+                        foreach (IRealmObjectBase score in source.DynamicApi.All("Score"))
+                        {
+                            string json = score.DynamicApi.Get<string>(nameof(ScoreInfo.TagCoopReplayJson));
+
+                            if (!string.IsNullOrEmpty(json))
+                                replayMetadata.Add(new KeyValuePair<Guid, string>(score.DynamicApi.Get<Guid>(nameof(ScoreInfo.ID)), json));
+                        }
+                    }
+
+                    if (sourceSchemaVersion == 53)
+                    {
+                        foreach (IRealmObjectBase beatmap in source.DynamicApi.All("Beatmap"))
+                        {
+                            double pp = beatmap.DynamicApi.Get<double>(nameof(BeatmapInfo.MaxPerformancePoints));
+
+                            if (pp >= 0)
+                                performancePoints.Add(new KeyValuePair<Guid, double>(beatmap.DynamicApi.Get<Guid>(nameof(BeatmapInfo.ID)), pp));
+                        }
+                    }
+
+                    copyRealm(source, destination, destinationSchema);
+                }
+
+                // Commit the fork-owned data before replacing the only main-database copy that contains it.
+                if (replayMetadata.Count > 0 || performancePoints.Count > 0)
+                {
+                    var forkDataStore = ForkDataStore.Instance
+                                        ?? throw new InvalidOperationException("ForkDataStore must be initialised before migrating fork-owned database fields.");
+
+                    forkDataStore.ImportTagCoopReplays(replayMetadata);
+                    forkDataStore.ImportPerformancePoints(performancePoints);
+                }
+
+                if (storage.Exists(Filename))
+                {
+                    storage.Move(Filename, backupFilename);
+                    mainDatabaseDisplaced = true;
+                }
+                else if (sourceFilename == Filename)
+                    throw new InvalidOperationException("The source Realm database disappeared during migration.");
+
+                storage.Move(temporaryFilename, Filename);
+                migrationInstalled = true;
+
+                // If upstream already moved the database aside, retain it as a fork-schema backup under a clearer name.
+                if (sourceFilename == newerVersionFilename && storage.Exists(sourceFilename))
+                {
+                    string schema52BackupFilename = backupFilename;
+
+                    try
+                    {
+                        storage.Move(sourceFilename, schema52BackupFilename);
+                        backupFilename = schema52BackupFilename;
+                    }
+                    catch (Exception e)
+                    {
+                        // The migration itself is complete. Leaving the upstream recovery filename in place is safe;
+                        // the next launch can retry archiving it.
+                        Logger.Error(e, $"Database migration completed, but {sourceFilename} could not be archived.");
+                    }
+                }
+
+                Logger.Log($"Migrated fork schema {sourceSchemaVersion} back to upstream-compatible schema {schema_version}; retained the original as {backupFilename}.", LoggingTarget.Database);
+                return true;
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e, $"Failed to migrate fork schema {sourceSchemaVersion} to the upstream-compatible database. The original database was not modified.");
+
+                if (storage.Exists(temporaryFilename))
+                    storage.Delete(temporaryFilename);
+
+                if (!migrationInstalled && mainDatabaseDisplaced && !storage.Exists(Filename) && storage.Exists(backupFilename))
+                    storage.Move(backupFilename, Filename);
+
+                return false;
+            }
+        }
+
+        private ulong? getStoredSchemaVersion(string filename)
+        {
+            try
+            {
+                // Open dynamically and read-only so merely inspecting a database never migrates it to the
+                // current schema version. SharedRealmHandle is internal to Realm, hence the narrow reflection.
+                using var realm = Realm.GetInstance(getInspectionConfiguration(filename));
+                object? handle = typeof(Realm).GetField("SharedRealmHandle", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(realm);
+                MethodInfo? getter = handle?.GetType().GetMethod("GetSchemaVersion", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                return getter?.Invoke(handle, null) is ulong version ? version : null;
+            }
+            catch (Exception e)
+            {
+                Logger.Log($"Could not read the schema version of {filename}: {e.Message}", LoggingTarget.Database);
+                return null;
+            }
+        }
+
+        private static RealmSchema createForkSourceSchema(RealmSchema destinationSchema, ulong sourceSchemaVersion)
+        {
+            if (sourceSchemaVersion is not (52 or 53))
+                throw new ArgumentOutOfRangeException(nameof(sourceSchemaVersion), sourceSchemaVersion, "Unsupported fork database schema version.");
+
+            var sourceSchema = new RealmSchema.Builder();
+
+            foreach (ObjectSchema objectSchema in destinationSchema)
+            {
+                if (sourceSchemaVersion == 52 && objectSchema.Name == "Score")
+                {
+                    ObjectSchema.Builder scoreSchema = objectSchema.GetBuilder();
+                    scoreSchema.Add(Property.Primitive(nameof(ScoreInfo.TagCoopReplayJson), RealmValueType.String, isNullable: true));
+                    sourceSchema.Add(scoreSchema);
+                }
+                else if (sourceSchemaVersion == 53 && objectSchema.Name == "Beatmap")
+                {
+                    ObjectSchema.Builder beatmapSchema = objectSchema.GetBuilder();
+                    beatmapSchema.Add(Property.Primitive(nameof(BeatmapInfo.MaxPerformancePoints), RealmValueType.Double));
+                    sourceSchema.Add(beatmapSchema);
+                }
+                else
+                    sourceSchema.Add(objectSchema);
+            }
+
+            return sourceSchema.Build();
+        }
+
+        private static void copyRealm(Realm source, Realm destination, RealmSchema destinationSchema)
+        {
+            var copiedObjects = new Dictionary<RealmValue, IRealmObjectBase>();
+
+            destination.Write(() =>
+            {
+                foreach (ObjectSchema objectSchema in destinationSchema.Where(s => s.BaseType == ObjectSchema.ObjectType.RealmObject))
+                {
+                    Property[] primaryKeys = objectSchema.Where(p => p.IsPrimaryKey).ToArray();
+
+                    foreach (IRealmObjectBase sourceObject in source.DynamicApi.All(objectSchema.Name))
+                    {
+                        IRealmObjectBase destinationObject = primaryKeys.Length == 0
+                            ? destination.DynamicApi.CreateObject(objectSchema.Name)
+                            : createObjectWithPrimaryKey(destination, objectSchema.Name, sourceObject.DynamicApi.Get<RealmValue>(primaryKeys[0].Name));
+
+                        copiedObjects.Add((RealmObjectBase)sourceObject, destinationObject);
+                    }
+                }
+
+                foreach ((RealmValue sourceValue, IRealmObjectBase destinationObject) in copiedObjects)
+                {
+                    IRealmObjectBase sourceObject = sourceValue.AsIRealmObject()
+                                                    ?? throw new InvalidOperationException("A copied Realm object unexpectedly resolved to null.");
+                    string sourceSchemaName = sourceObject.ObjectSchema?.Name
+                                              ?? throw new InvalidOperationException("A copied Realm object has no schema.");
+                    ObjectSchema objectSchema = destinationSchema.Single(s => s.Name == sourceSchemaName);
+                    copyObjectProperties(sourceObject, destinationObject, objectSchema, destination, destinationSchema, copiedObjects);
+                }
+            });
+        }
+
+        private static IRealmObjectBase createObjectWithPrimaryKey(Realm realm, string objectType, RealmValue primaryKey) => primaryKey.Type switch
+        {
+            RealmValueType.Int => realm.DynamicApi.CreateObject(objectType, (long?)primaryKey.AsInt64()),
+            RealmValueType.String => realm.DynamicApi.CreateObject(objectType, primaryKey.AsString()),
+            RealmValueType.Guid => realm.DynamicApi.CreateObject(objectType, (Guid?)primaryKey.AsGuid()),
+            _ => throw new NotSupportedException($"Unsupported primary key type {primaryKey.Type} on {objectType}."),
+        };
+
+        private static void copyObjectProperties(IRealmObjectBase source, IRealmObjectBase destination, ObjectSchema objectSchema, Realm realm, RealmSchema realmSchema,
+                                                 IReadOnlyDictionary<RealmValue, IRealmObjectBase> copiedObjects)
+        {
+            foreach (Property property in objectSchema.Where(p => !p.IsPrimaryKey && (p.Type & PropertyType.LinkingObjects) == 0))
+            {
+                PropertyType baseType = property.Type & ~PropertyType.Flags;
+
+                if ((property.Type & PropertyType.Array) != 0)
+                {
+                    if (baseType == PropertyType.Object)
+                        copyObjectList(source, destination, property, realm, realmSchema, copiedObjects);
+                    else
+                    {
+                        IList<RealmValue> destinationList = destination.DynamicApi.GetList<RealmValue>(property.Name);
+
+                        foreach (RealmValue value in source.DynamicApi.GetList<RealmValue>(property.Name))
+                            destinationList.Add(value);
+                    }
+                }
+                else if (baseType == PropertyType.Object)
+                    copyObjectProperty(source, destination, property, realm, realmSchema, copiedObjects);
+                else
+                    destination.DynamicApi.Set(property.Name, source.DynamicApi.Get<RealmValue>(property.Name));
+            }
+        }
+
+        private static void copyObjectProperty(IRealmObjectBase source, IRealmObjectBase destination, Property property, Realm realm, RealmSchema realmSchema,
+                                               IReadOnlyDictionary<RealmValue, IRealmObjectBase> copiedObjects)
+        {
+            IRealmObjectBase? sourceValue = source.DynamicApi.Get<IRealmObjectBase?>(property.Name);
+
+            if (sourceValue == null)
+            {
+                destination.DynamicApi.Set(property.Name, RealmValue.Null);
+                return;
+            }
+
+            ObjectSchema linkedSchema = realmSchema.Single(s => s.Name == property.ObjectType);
+            IRealmObjectBase destinationValue;
+
+            if (linkedSchema.BaseType == ObjectSchema.ObjectType.EmbeddedObject)
+            {
+                destinationValue = realm.DynamicApi.CreateEmbeddedObjectForProperty(destination, property.Name);
+                copyObjectProperties(sourceValue, destinationValue, linkedSchema, realm, realmSchema, copiedObjects);
+            }
+            else
+                destinationValue = copiedObjects[(RealmObjectBase)sourceValue];
+
+            destination.DynamicApi.Set(property.Name, (RealmObjectBase)destinationValue);
+        }
+
+        private static void copyObjectList(IRealmObjectBase source, IRealmObjectBase destination, Property property, Realm realm, RealmSchema realmSchema,
+                                           IReadOnlyDictionary<RealmValue, IRealmObjectBase> copiedObjects)
+        {
+            IList<IRealmObjectBase> sourceList = source.DynamicApi.GetList<IRealmObjectBase>(property.Name);
+            IList<IRealmObjectBase> destinationList = destination.DynamicApi.GetList<IRealmObjectBase>(property.Name);
+            ObjectSchema linkedSchema = realmSchema.Single(s => s.Name == property.ObjectType);
+
+            foreach (IRealmObjectBase sourceValue in sourceList)
+            {
+                if (linkedSchema.BaseType == ObjectSchema.ObjectType.EmbeddedObject)
+                {
+                    IRealmObjectBase destinationValue = realm.DynamicApi.AddEmbeddedObjectToList(destinationList);
+                    copyObjectProperties(sourceValue, destinationValue, linkedSchema, realm, realmSchema, copiedObjects);
+                }
+                else
+                    destinationList.Add(copiedObjects[(RealmObjectBase)sourceValue]);
             }
         }
 
@@ -421,6 +1019,12 @@ namespace osu.Game.Database
 
                     foreach (var s in pendingDeletePresets)
                         realm.Remove(s);
+
+                    var onlineAssetAccessCutoff = DateTimeOffset.Now.AddMonths(-1);
+                    var pendingDeleteOnlineAssets = realm.All<RealmOnlineAsset>().Where(a => a.LastAccessed < onlineAssetAccessCutoff);
+
+                    foreach (var a in pendingDeleteOnlineAssets)
+                        realm.Remove(a);
 
                     transaction.Commit();
                 }
@@ -780,7 +1384,7 @@ namespace osu.Game.Database
                 // Ensure that the thread that currently has the `realmRetrievalLock` can retrieve nested contexts and not deadlock on itself.
                 if (!currentThreadHasRealmRetrievalLock.Value)
                 {
-                    realmRetrievalLock.Wait();
+                    realmRetrievalLock.Wait(realmRetrievalCancellation.Token);
                     currentThreadHasRealmRetrievalLock.Value = true;
                     tookSemaphoreLock = true;
                 }
@@ -1518,6 +2122,8 @@ namespace osu.Game.Database
                 // intentionally block realm retrieval indefinitely. this ensures that nothing can start consuming a new instance after disposal.
                 realmRetrievalLock.Wait();
                 realmRetrievalLock.Dispose();
+                // also unblock all readers who may be spinning on realm retrieval.
+                realmRetrievalCancellation.Cancel();
 
                 isDisposed = true;
             }

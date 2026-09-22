@@ -27,6 +27,7 @@ using osu.Game.Rulesets.Taiko;
 using osu.Game.Rulesets.Taiko.Mods;
 using osu.Game.Screens.OnlinePlay;
 using osu.Game.Screens.OnlinePlay.Multiplayer;
+using osu.Game.Screens.Select;
 using osu.Game.Tests.Resources;
 using osuTK.Input;
 
@@ -96,6 +97,17 @@ namespace osu.Game.Tests.Visual.Multiplayer
             AddStep("set some freemods", () => songSelect.FreeMods.Value = new OsuRuleset().GetModsFor(ModType.Fun).ToArray());
             AddStep("set all freemods", () => songSelect.FreeMods.Value = new OsuRuleset().CreateAllMods().ToArray());
             AddStep("set no freemods", () => songSelect.FreeMods.Value = Array.Empty<Mod>());
+        }
+
+        [Test]
+        public void TestLegacySkinStyleDoesNotChangeOnlinePanels()
+        {
+            AddStep("enable stable style", () => configManager.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.LegacySkinned));
+            setUp();
+
+            AddUntilStep("beatmap panel loaded", () => songSelect.ChildrenOfType<PanelBeatmapSet>().FirstOrDefault(), () => Is.Not.Null);
+            AddAssert("online panel keeps modern height", () => songSelect.ChildrenOfType<PanelBeatmapSet>().First().Item?.DrawHeight, () => Is.EqualTo(PanelBeatmapSet.HEIGHT));
+            AddAssert("online panel has no selected difficulty header", () => songSelect.ChildrenOfType<PanelBeatmapSet>().First().ShowsSelectedDifficulty, () => Is.False);
         }
 
         [Test]

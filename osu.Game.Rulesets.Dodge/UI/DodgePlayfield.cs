@@ -10,9 +10,12 @@ using System.Linq;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
+using osu.Game.Audio;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Configuration;
 using osu.Game.Graphics.Containers;
+using osu.Framework.Input.Bindings;
+using osu.Framework.Input.Events;
 using osu.Game.Rulesets.Dodge.Configuration;
 using osu.Game.Rulesets.Dodge.Skinning;
 using osu.Game.Rulesets.Dodge.Objects;
@@ -21,6 +24,7 @@ using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Judgements;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.UI;
+using osu.Game.Screens.Play;
 using osu.Game.Skinning;
 using osuTK;
 using osuTK.Graphics;
@@ -28,7 +32,7 @@ using osuTK.Graphics;
 namespace osu.Game.Rulesets.Dodge.UI
 {
     [Cached]
-    public partial class DodgePlayfield : Playfield
+    public partial class DodgePlayfield : Playfield, IKeyBindingHandler<DodgeAction>
     {
         public const float WIDTH = 512;
         public const float HEIGHT = 384;
@@ -39,7 +43,7 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         public DodgePlayer Player { get; private set; } = null!;
 
-        public bool CollisionEnabled { get; }
+        public bool CollisionEnabled { get; internal set; }
 
         public bool ShowFullProjectilePaths { get; }
 
@@ -47,20 +51,25 @@ namespace osu.Game.Rulesets.Dodge.UI
         private readonly List<DodgeHitObject> hitObjects;
                 private readonly List<DodgeArenaChange> arenaChanges;
         private readonly List<DodgeCameraChange> cameraChanges;
+        private readonly List<DodgeTrigger> triggers;
         private readonly HashSet<DodgeHitObject> trackedHitObjects = new HashSet<DodgeHitObject>();
-        private readonly List<IDodgeCollisionSource> collisionSources = new List<IDodgeCollisionSource>();
+        private readonly HashSet<IDodgeCollisionSource> collisionSources = new HashSet<IDodgeCollisionSource>();
         private readonly List<IDodgeCollisionSource> scheduledCollisionSources = new List<IDodgeCollisionSource>();
         private readonly List<IDodgeCollisionSource> activeCollisionSources = new List<IDodgeCollisionSource>();
-        private bool collisionScheduleDirty = true;
+        private bool collisionScheduleDirty;
         private int nextCollisionSourceIndex;
         private DodgeArenaStateEvaluator arenaStateEvaluator;
         private DodgeCameraStateEvaluator cameraStateEvaluator;
+        private DodgeTriggerStateEvaluator? triggerStateEvaluator;
+        private bool triggerStateDirty;
         private bool cameraStateDirty;
         private bool arenaStateDirty;
         private bool gameplayEndTimeDirty;
         private Container arena = null!;
         private Container arenaOutline = null!;
         private Container kiaiWrapper = null!;
+        private Container screenShakeWrapper = null!;
+        private Box flashOverlay = null!;
         private SkinnableDrawable arenaSkin = null!;
         private ArenaBackgroundBox arenaBackground = null!;
         private CircularContainer grazeIndicator = null!;
@@ -90,6 +99,9 @@ namespace osu.Game.Rulesets.Dodge.UI
         /// <summary>Current kiai shake amplitude (degrees) as authored in the active arena keyframe.</summary>
         public float KiaiShakeAngle { get; private set; }
 
+        /// <summary>Current visual kiai rotation, shared with gameplay geometry.</summary>
+        public float KiaiRotation { get; private set; }
+
         public float GrazeIndicatorBrightness { get; }
 
         [Resolved(canBeNull: true)]
@@ -101,7 +113,7 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         public double GameplayEndTime { get; private set; }
 
-        public double ContinuedBulletEndTime => GameplayEndTime + CONTINUED_BULLET_GRACE_PERIOD;
+        public double ContinuedBulletEndTime { get; private set; }
 
         internal int GameplayEndTimeRefreshCount { get; private set; }
 
@@ -157,6 +169,7 @@ namespace osu.Game.Rulesets.Dodge.UI
 
                         arenaChanges = this.hitObjects.OfType<DodgeArenaChange>().ToList();
             cameraChanges = this.hitObjects.OfType<DodgeCameraChange>().ToList();
+            triggers = this.hitObjects.OfType<DodgeTrigger>().ToList();
             arenaStateEvaluator = null!;
             cameraStateEvaluator = null!;
 
@@ -165,6 +178,7 @@ namespace osu.Game.Rulesets.Dodge.UI
 
             refreshArenaStateEvaluator();
             refreshCameraStateEvaluator();
+            refreshTriggerStateEvaluator();
             refreshGameplayEndTime();
             CollisionEnabled = showPlayer;
             Anchor = Anchor.Centre;
@@ -179,93 +193,110 @@ namespace osu.Game.Rulesets.Dodge.UI
 
             var children = new List<Drawable>
             {
-                (kiaiWrapper = new Container
+                (screenShakeWrapper = new Container
                 {
+                    Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
+                    RelativeSizeAxes = Axes.Both,
                     Children = new Drawable[]
                     {
-                        (arena = new Container
+                        (kiaiWrapper = new Container
                         {
                             Origin = Anchor.Centre,
-                            Size = BASE_SIZE,
-                            Masking = true,
-                            BorderThickness = 2,
-                            BorderColour = Color4.White,
                             Children = new Drawable[]
                             {
-                                arenaSkin = new SkinnableDrawable(
-                                    new DodgeSkinComponentLookup(DodgeSkinComponents.Arena),
-                                    _ => new DefaultArenaBackground
+                                (arena = new Container
+                                {
+                                    Origin = Anchor.Centre,
+                                    Size = BASE_SIZE,
+                                    Masking = true,
+                                    BorderThickness = 2,
+                                    BorderColour = Color4.White,
+                                    Children = new Drawable[]
                                     {
-                                        RelativeSizeAxes = Axes.Both,
-                                        Colour = Color4.Black,
+                                        arenaSkin = new SkinnableDrawable(
+                                            new DodgeSkinComponentLookup(DodgeSkinComponents.Arena),
+                                            _ => new DefaultArenaBackground
+                                            {
+                                                RelativeSizeAxes = Axes.Both,
+                                                Colour = Color4.Black,
+                                            },
+                                            ConfineMode.ScaleToFit)
+                                        {
+                                            RelativeSizeAxes = Axes.Both,
+                                        },
+                                        arenaBackground = new ArenaBackgroundBox
+                                        {
+                                            RelativeSizeAxes = Axes.Both,
+                                            Colour = Color4.Black,
+                                            Alpha = this.playfieldDim,
+                                        },
+                                        new SkinnableDrawable(
+                                            new DodgeSkinComponentLookup(DodgeSkinComponents.ArenaBorder),
+                                            _ => Drawable.Empty(),
+                                            ConfineMode.ScaleToFit)
+                                        {
+                                            RelativeSizeAxes = Axes.Both,
+                                        },
                                     },
-                                    ConfineMode.ScaleToFit)
+                                }),
+                                (arenaOutline = new Container
                                 {
-                                    RelativeSizeAxes = Axes.Both,
-                                },
-                                arenaBackground = new ArenaBackgroundBox
-                                {
-                                    RelativeSizeAxes = Axes.Both,
-                                    Colour = Color4.Black,
-                                    Alpha = this.playfieldDim,
-                                },
-                                new SkinnableDrawable(
-                                    new DodgeSkinComponentLookup(DodgeSkinComponents.ArenaBorder),
-                                    _ => Drawable.Empty(),
-                                    ConfineMode.ScaleToFit)
-                                {
-                                    RelativeSizeAxes = Axes.Both,
-                                },
-                            },
-                        }),
-                        (arenaOutline = new Container
-                        {
-                            Origin = Anchor.Centre,
-                            Size = BASE_SIZE,
-                            Alpha = 0,
-                            Children = new Drawable[]
-                            {
-                                new Box
-                                {
-                                    RelativeSizeAxes = Axes.X,
-                                    Height = 2,
-                                },
-                                new Box
-                                {
-                                    Anchor = Anchor.BottomLeft,
-                                    Origin = Anchor.BottomLeft,
-                                    RelativeSizeAxes = Axes.X,
-                                    Height = 2,
-                                },
-                                new Box
-                                {
-                                    RelativeSizeAxes = Axes.Y,
-                                    Width = 2,
-                                },
-                                new Box
-                                {
-                                    Anchor = Anchor.TopRight,
-                                    Origin = Anchor.TopRight,
-                                    RelativeSizeAxes = Axes.Y,
-                                    Width = 2,
-                                },
+                                    Origin = Anchor.Centre,
+                                    Size = BASE_SIZE,
+                                    Alpha = 0,
+                                    Children = new Drawable[]
+                                    {
+                                        new Box
+                                        {
+                                            RelativeSizeAxes = Axes.X,
+                                            Height = 2,
+                                        },
+                                        new Box
+                                        {
+                                            Anchor = Anchor.BottomLeft,
+                                            Origin = Anchor.BottomLeft,
+                                            RelativeSizeAxes = Axes.X,
+                                            Height = 2,
+                                        },
+                                        new Box
+                                        {
+                                            RelativeSizeAxes = Axes.Y,
+                                            Width = 2,
+                                        },
+                                        new Box
+                                        {
+                                            Anchor = Anchor.TopRight,
+                                            Origin = Anchor.TopRight,
+                                            RelativeSizeAxes = Axes.Y,
+                                            Width = 2,
+                                        },
+                                    },
+                                }),
                             },
                         }),
                     },
+                }),
+                (flashOverlay = new Box
+                {
+                    Origin = Anchor.Centre,
+                    Anchor = Anchor.Centre,
+                    Size = BASE_SIZE,
+                    Alpha = 0,
+                    Colour = Color4.White,
                 }),
                 new KiaiArenaShakeEffect(this, kiaiWrapper),
             };
 
             if (backgroundOverlay != null)
-                children.Add(backgroundOverlay);
+                screenShakeWrapper.Add(backgroundOverlay);
 
             // Scroll is applied per-object inside each drawable (anchored at the object's
             // own spawn time), not by moving a shared container. The arena frame, the
             // player and freshly-spawned objects therefore always stay where they were
             // placed, while live objects drift with the scroll.
-            children.Add(HitObjectContainer);
-            children.Add(grazeIndicator = new CircularContainer
+            screenShakeWrapper.Add(HitObjectContainer);
+            screenShakeWrapper.Add(grazeIndicator = new CircularContainer
             {
                 Anchor = Anchor.TopLeft,
                 Origin = Anchor.Centre,
@@ -281,7 +312,7 @@ namespace osu.Game.Rulesets.Dodge.UI
                     AlwaysPresent = true,
                 },
             });
-            children.Add(Player = new DodgePlayer
+            screenShakeWrapper.Add(Player = new DodgePlayer
             {
                 Alpha = showPlayer ? 1 : 0,
                 MovementSpeed = playerSpeed,
@@ -302,11 +333,24 @@ namespace osu.Game.Rulesets.Dodge.UI
 
             RefreshCachedState();
 
+            updateTriggerEffects(Time.Current);
+
+            // Re-evaluate the combined HUD visibility whenever the map's trigger-driven
+            // state may have changed (a HideHud/ShowHud trigger fired this frame).
+            bool? mapHudState = triggerStateEvaluator?.HudVisibleAt(Time.Current);
+
+            if (mapHudState != lastMapHudState)
+            {
+                lastMapHudState = mapHudState;
+                applyHudVisibility();
+            }
+
             DodgeArenaState state = arenaStateEvaluator.Evaluate(Time.Current);
             Vector2 arenaCenter = state.Position + state.Size / 2;
             kiaiWrapper.Position = arenaCenter;
             arena.Position = Vector2.Zero;
             arena.Size = state.Size;
+            float totalArenaRotation = state.Rotation + KiaiRotation;
             arena.Rotation = state.Rotation;
             arena.BorderColour = state.BorderColour.Opacity(state.BorderOpacity);
             arenaOutline.Position = Vector2.Zero;
@@ -348,7 +392,7 @@ namespace osu.Game.Rulesets.Dodge.UI
             arenaOutline.Alpha = useLightweightOutline ? 1 : 0;
             Player.ArenaPosition = state.Position;
             Player.ArenaSize = state.Size;
-            Player.ArenaRotation = state.Rotation;
+            Player.ArenaRotation = totalArenaRotation;
         }
 
         protected override void UpdateAfterChildren()
@@ -370,9 +414,9 @@ namespace osu.Game.Rulesets.Dodge.UI
             {
                 // Rewind every registered source once so results and graze state
                 // after the target time are reverted, including future objects.
-                for (int i = 0; i < collisionSources.Count; i++)
+                for (int i = 0; i < scheduledCollisionSources.Count; i++)
                 {
-                    collisionSources[i].ProcessCollisions(
+                    scheduledCollisionSources[i].ProcessCollisions(
                         currentTime,
                         collisionStartPlayerPosition,
                         Player.Position,
@@ -380,8 +424,8 @@ namespace osu.Game.Rulesets.Dodge.UI
                         true);
                 }
 
-                LastFrameProcessedCollisionSourceCount = collisionSources.Count;
-                LastRewindProcessedCollisionSourceCount = collisionSources.Count;
+                LastFrameProcessedCollisionSourceCount = scheduledCollisionSources.Count;
+                LastRewindProcessedCollisionSourceCount = scheduledCollisionSources.Count;
                 rebuildCollisionSchedule(currentTime, false);
             }
             else
@@ -423,7 +467,9 @@ namespace osu.Game.Rulesets.Dodge.UI
             {
                 hitObjects.Add(dodgeHitObject);
                 trackHitObject(dodgeHitObject);
-                refreshGameplayEndTime();
+                // defer the end-time rescan: on dense maps the load burst adds
+                // thousands of objects, and a full scan per add is quadratic.
+                gameplayEndTimeDirty = true;
             }
 
             if (hitObject is DodgeArenaChange arenaChange && !arenaChanges.Contains(arenaChange))
@@ -437,6 +483,12 @@ namespace osu.Game.Rulesets.Dodge.UI
                 cameraChanges.Add(cameraChange);
                 cameraStateDirty = true;
             }
+
+            if (hitObject is DodgeTrigger trigger && !triggers.Contains(trigger))
+            {
+                triggers.Add(trigger);
+                triggerStateDirty = true;
+            }
         }
 
         protected override void OnHitObjectRemoved(HitObject hitObject)
@@ -446,7 +498,7 @@ namespace osu.Game.Rulesets.Dodge.UI
             if (hitObject is DodgeHitObject dodgeHitObject && hitObjects.Remove(dodgeHitObject))
             {
                 untrackHitObject(dodgeHitObject);
-                refreshGameplayEndTime();
+                gameplayEndTimeDirty = true;
             }
 
             if (hitObject is DodgeArenaChange arenaChange)
@@ -459,6 +511,12 @@ namespace osu.Game.Rulesets.Dodge.UI
             {
                 cameraChanges.Remove(cameraChange);
                 cameraStateDirty = true;
+            }
+
+            if (hitObject is DodgeTrigger trigger)
+            {
+                triggers.Remove(trigger);
+                triggerStateDirty = true;
             }
         }
 
@@ -528,37 +586,60 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         internal void RegisterCollisionSource(IDodgeCollisionSource source)
         {
-            if (!collisionSources.Contains(source))
+            if (!collisionSources.Add(source))
+                return;
+
+            int insertIndex = scheduledCollisionSources.BinarySearch(source, CollisionSourceComparer.Instance);
+            if (insertIndex < 0)
+                insertIndex = ~insertIndex;
+
+            scheduledCollisionSources.Insert(insertIndex, source);
+
+            if (insertIndex < nextCollisionSourceIndex)
             {
-                collisionSources.Add(source);
-                collisionScheduleDirty = true;
+                nextCollisionSourceIndex++;
+                if (source.CollisionEndTime >= Time.Current)
+                    activeCollisionSources.Add(source);
             }
         }
 
         internal void UnregisterCollisionSource(IDodgeCollisionSource source)
         {
-            collisionSources.Remove(source);
+            if (!collisionSources.Remove(source))
+                return;
+
+            int index = scheduledCollisionSources.IndexOf(source);
+            if (index >= 0)
+            {
+                scheduledCollisionSources.RemoveAt(index);
+                if (index < nextCollisionSourceIndex)
+                    nextCollisionSourceIndex--;
+            }
+
             activeCollisionSources.Remove(source);
-            collisionScheduleDirty = true;
         }
 
         private void refreshCollisionSchedule(double currentTime)
         {
             if (collisionScheduleDirty)
+            {
+                scheduledCollisionSources.Sort(CollisionSourceComparer.Instance);
                 rebuildCollisionSchedule(currentTime, true);
+                collisionScheduleDirty = false;
+            }
 
             while (nextCollisionSourceIndex < scheduledCollisionSources.Count
                    && scheduledCollisionSources[nextCollisionSourceIndex].CollisionStartTime <= currentTime)
             {
-                activeCollisionSources.Add(scheduledCollisionSources[nextCollisionSourceIndex++]);
+                IDodgeCollisionSource source = scheduledCollisionSources[nextCollisionSourceIndex++];
+
+                if (source.CollisionEndTime >= currentTime)
+                    activeCollisionSources.Add(source);
             }
         }
 
         private void rebuildCollisionSchedule(double currentTime, bool includeExpired)
         {
-            scheduledCollisionSources.Clear();
-            scheduledCollisionSources.AddRange(collisionSources);
-            scheduledCollisionSources.Sort(compareCollisionSourceStartTime);
             activeCollisionSources.Clear();
             nextCollisionSourceIndex = 0;
 
@@ -570,8 +651,6 @@ namespace osu.Game.Rulesets.Dodge.UI
                 if (includeExpired || source.CollisionEndTime >= currentTime)
                     activeCollisionSources.Add(source);
             }
-
-            collisionScheduleDirty = false;
         }
 
         private void removeExpiredCollisionSources(double currentTime)
@@ -588,12 +667,24 @@ namespace osu.Game.Rulesets.Dodge.UI
             }
         }
 
-        private static int compareCollisionSourceStartTime(IDodgeCollisionSource first, IDodgeCollisionSource second)
-            => first.CollisionStartTime.CompareTo(second.CollisionStartTime);
+        private class CollisionSourceComparer : IComparer<IDodgeCollisionSource>
+        {
+            public static readonly CollisionSourceComparer Instance = new CollisionSourceComparer();
+
+            public int Compare(IDodgeCollisionSource? first, IDodgeCollisionSource? second)
+            {
+                if (ReferenceEquals(first, second)) return 0;
+                if (first == null) return -1;
+                if (second == null) return 1;
+
+                return first.CollisionStartTime.CompareTo(second.CollisionStartTime);
+            }
+        }
 
         private void refreshGameplayEndTime()
         {
             GameplayEndTime = DodgeGameplayTiming.GetGameplayEndTime(hitObjects);
+            ContinuedBulletEndTime = DodgeGameplayTiming.GetContinuedProjectileEndTime(hitObjects, CONTINUED_BULLET_GRACE_PERIOD);
             gameplayEndTimeDirty = false;
             GameplayEndTimeRefreshCount++;
         }
@@ -612,6 +703,130 @@ namespace osu.Game.Rulesets.Dodge.UI
             CameraStateVersion++;
         }
 
+        private void refreshTriggerStateEvaluator()
+        {
+            triggerStateEvaluator = triggers.Count > 0 ? new DodgeTriggerStateEvaluator(triggers) : null;
+            triggerStateDirty = false;
+        }
+
+        /// <summary>
+        /// Applies map-trigger driven visual effects at the given time.
+        /// Deterministic: a seek backwards re-evaluates the same pure function of time,
+        /// so shake/flash states recover without lingering transforms.
+        /// </summary>
+        private void updateTriggerEffects(double currentTime)
+        {
+            if (triggerStateDirty)
+                refreshTriggerStateEvaluator();
+
+            var evaluator = triggerStateEvaluator;
+            float shakeOffsetX = 0;
+            float shakeOffsetY = 0;
+            float flashAlpha = 0;
+
+            if (evaluator != null && EffectsEnabled)
+            {
+                DodgeTrigger? shake = evaluator.ScreenShakeAt(currentTime);
+
+                if (shake != null)
+                {
+                    // Deterministic per-frame jitter derived from the clock, not transforms:
+                    // seeking to any time reproduces the exact same visual state.
+                    double phase = currentTime * 0.09;
+                    float amplitude = shake.Strength * TRIGGER_SHAKE_MAX_PIXELS;
+                    shakeOffsetX = MathF.Sin((float)(phase * 2.1)) * amplitude;
+                    shakeOffsetY = MathF.Cos((float)(phase * 2.7)) * amplitude * 0.6f;
+                }
+
+                DodgeTrigger? flash = evaluator.FlashEffectAt(currentTime);
+
+                if (flash != null)
+                {
+                    // Fade out over the effect's duration from full strength.
+                    double progress = flash.Duration > 0
+                        ? Math.Clamp((currentTime - flash.StartTime) / flash.Duration, 0, 1)
+                        : 0;
+                    flashAlpha = flash.Strength * (1 - (float)progress);
+                    flashOverlay.Colour = flash.Colour;
+                }
+            }
+
+            screenShakeWrapper.Position = new Vector2(shakeOffsetX, shakeOffsetY);
+
+            if (flashOverlay.Alpha != flashAlpha)
+                flashOverlay.Alpha = flashAlpha;
+        }
+
+        public DodgeTriggerStateEvaluator? TriggerEvaluator => triggerStateEvaluator;
+
+        /// <summary>Master switch for all map-trigger visual effects (shake/flash).</summary>
+        public bool EffectsEnabled { get; set; } = true;
+
+        private const float TRIGGER_SHAKE_MAX_PIXELS = 14;
+
+        [Resolved(canBeNull: true)]
+        private HUDOverlay? hudOverlay { get; set; }
+
+        private bool? lastMapHudState;
+        /// <summary>
+        /// Local user override: null follows the map, true/false force the trail off/on for this player.
+        /// </summary>
+        public bool? UserTrailEnabled { get; set; }
+
+        /// <summary>
+        /// Local user toggle pressed with the ToggleHud key. Combined with map triggers in
+        /// <see cref="Update"/>; never affects gameplay or judging.
+        /// </summary>
+        public bool UserHudHidden { get; private set; }
+
+        public bool OnPressed(KeyBindingPressEvent<DodgeAction> e)
+        {
+            if (e.Repeat)
+                return false;
+
+            if (e.Action == DodgeAction.ToggleHud)
+            {
+                UserHudHidden = !UserHudHidden;
+                applyHudVisibility();
+                return true;
+            }
+
+            return false;
+        }
+
+        public void OnReleased(KeyBindingReleaseEvent<DodgeAction> e)
+        {
+        }
+
+        private void applyHudVisibility()
+        {
+            bool? mapState = triggerStateEvaluator?.HudVisibleAt(Time.Current);
+            bool visible = !(UserHudHidden || mapState == false);
+
+            // The osu! HUD overlay drives score/combo/accuracy/key overlay fade as one unit.
+            if (hudOverlay != null)
+                hudOverlay.ShowHud.Value = visible;
+
+            // Dodge's own in-arena indicator follows the same visibility.
+            float targetGrazeAlpha = visible ? GrazeIndicatorBrightness : 0;
+            grazeIndicator.FadeTo(targetGrazeAlpha, 160);
+            grazeIndicatorVisible = targetGrazeAlpha > 0;
+        }
+
+        /// <summary>
+        /// Whether the player trail should currently be drawn, combining the user's
+        /// global choice with the map's TrailEnable/TrailDisable triggers.
+        /// </summary>
+        public bool TrailVisible => UserTrailEnabled != false
+                                    && triggerStateEvaluator?.TrailEnabledAt(Time.Current) != false;
+
+        /// <summary>
+        /// Whether the projectile with the given movement start time still exists on the
+        /// field at <paramref name="currentTime"/> under the map's ClearBullets triggers.
+        /// </summary>
+        public bool ProjectileExists(double projectileStartTime, double currentTime)
+            => triggerStateEvaluator?.ProjectileExists(projectileStartTime, currentTime) ?? true;
+
         /// <summary>
         /// Bumped whenever the camera scroll evaluator is rebuilt, so drawables
         /// can invalidate their cached spawn anchors.
@@ -624,6 +839,8 @@ namespace osu.Game.Rulesets.Dodge.UI
         /// time to their authored positions, so live objects drift with the
         /// scroll while freshly-spawned objects stay where they were placed.
         /// </summary>
+        public bool HasCameraChanges => cameraChanges.Count > 0;
+
         public Vector2 CameraOffsetAt(double time) => cameraStateEvaluator?.Evaluate(time) ?? Vector2.Zero;
 
         internal void RefreshCachedState()
@@ -678,6 +895,9 @@ namespace osu.Game.Rulesets.Dodge.UI
 
             if (hitObject is DodgeCameraChange)
                 cameraStateDirty = true;
+
+            if (hitObject is DodgeTrigger)
+                triggerStateDirty = true;
         }
 
         protected override void Dispose(bool isDisposing)
@@ -764,7 +984,7 @@ namespace osu.Game.Rulesets.Dodge.UI
 
                 if (kiaiIntensity < 0.001f)
                 {
-                    target.Rotation = 0;
+                    playfield.KiaiRotation = target.Rotation = 0;
                     return;
                 }
 
@@ -775,10 +995,11 @@ namespace osu.Game.Rulesets.Dodge.UI
                 float direction = lastBeatIndex % 2 == 0 ? 1f : -1f;
 
                 // sin(0→π) rises from 0 → 1 → 0 over one beat — zero-crossing at each beat boundary.
-                target.Rotation = (float)(Math.Sin(phaseWithinBeat * Math.PI)
-                                         * amplitude
-                                         * kiaiIntensity
-                                         * direction);
+                playfield.KiaiRotation = (float)(Math.Sin(phaseWithinBeat * Math.PI)
+                                                 * amplitude
+                                                 * kiaiIntensity
+                                                 * direction);
+                target.Rotation = playfield.KiaiRotation;
             }
         }
     }

@@ -9,7 +9,7 @@ namespace osu.Game.Configuration
     {
         Lazer,
 
-        [Description("Tachyon (Unstable)")]
-        Tachyon
+        [Description("Dev Build")]
+        DevBuild
     }
 }

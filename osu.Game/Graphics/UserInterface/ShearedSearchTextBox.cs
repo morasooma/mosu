@@ -23,6 +23,7 @@ namespace osu.Game.Graphics.UserInterface
         private readonly Box background;
         private readonly SpriteIcon searchIcon;
         private IBindable<Colour4> themeColour = null!;
+        private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
         private OverlayColourProvider colourProvider = null!;
         protected readonly InnerSearchTextBox TextBox;
 
@@ -102,6 +103,12 @@ namespace osu.Game.Graphics.UserInterface
                 background.Colour = this.colourProvider.Background3;
                 searchIcon.Colour = this.colourProvider.Content1;
             }, true);
+
+            disableShear.BindValueChanged(_ =>
+            {
+                Shear = OsuGame.SHEAR;
+                searchIcon.Shear = -Shear;
+            }, true);
         }
 
         public override bool HandleNonPositionalInput => TextBox.HandleNonPositionalInput;
@@ -112,6 +119,7 @@ namespace osu.Game.Graphics.UserInterface
         {
             private OverlayColourProvider colourProvider = null!;
             private IBindable<Colour4> themeColour = null!;
+            private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
             public InnerSearchTextBox()
             {
                 Anchor = Anchor.CentreLeft;
@@ -132,6 +140,7 @@ namespace osu.Game.Graphics.UserInterface
 
                 CornerRadius = corner_radius;
                 TextContainer.Shear = -OsuGame.SHEAR;
+                disableShear.BindValueChanged(_ => TextContainer.Shear = -OsuGame.SHEAR, true);
             }
 
             private void updateThemeColours()

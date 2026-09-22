@@ -25,6 +25,7 @@ using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Dialog;
+using osu.Game.Overlays.Profile;
 using osu.Game.Overlays.Volume;
 using osu.Game.Rulesets;
 using osu.Game.Screens.OnlinePlay.Components;
@@ -155,6 +156,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                                     new HamburgerMenu
                                     {
                                         Size = new Vector2(56),
+                                        ReportRequested = () => dialogOverlay.Push(new ReportUserDialog(opponentUser)),
                                     }
                                 }
                             }
@@ -352,6 +354,16 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         private void onLoadRequested() => Scheduler.Add(() =>
         {
             serverAbortedGameplay = false;
+
+            if (Beatmap.IsDefault ||
+                Beatmap.Value.BeatmapInfo.OnlineID <= 0 ||
+                Beatmap.Value.BeatmapInfo.Status == BeatmapOnlineStatus.LocallyModified)
+            {
+                Logger.Log("Aborting ranked gameplay start because a valid beatmap was not resolved.", LoggingTarget.Runtime, LogLevel.Important);
+                client.AbortGameplay().FireAndForget();
+                return;
+            }
+
             sampleStart?.Play();
             this.Push(new MultiplayerPlayerLoader(() => new ScreenGameplay(new Room(room), new PlaylistItem(client.Room!.CurrentPlaylistItem), room.Users.ToArray())));
         });

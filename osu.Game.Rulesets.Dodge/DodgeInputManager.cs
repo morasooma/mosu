@@ -33,5 +33,26 @@ namespace osu.Game.Rulesets.Dodge
 
         [Description("Slow movement")]
         Slow,
+
+        [Description("Toggle interface")]
+        ToggleHud,
+
+        [Description("Editor: bullet tool")]
+        EditorBulletTool = 10000,
+
+        [Description("Editor: arena change tool")]
+        EditorArenaChangeTool,
+
+        [Description("Editor: emitter tool")]
+        EditorEmitterTool,
+
+        [Description("Editor: beam tool")]
+        EditorBeamTool,
+
+        [Description("Editor: camera change tool")]
+        EditorCameraChangeTool,
+
+        [Description("Editor: trigger tool")]
+        EditorTriggerTool,
     }
 }

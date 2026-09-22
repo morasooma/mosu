@@ -10,6 +10,7 @@ using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Graphics.Containers;
+using osu.Game.Online.Legacy;
 using osu.Game.Online.Multiplayer;
 
 namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
@@ -22,6 +23,9 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
 
         [Resolved]
         private MultiplayerClient client { get; set; } = null!;
+
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
 
         public ParticipantsList()
             : base(ParticipantPanel.HEIGHT + 1, initialPoolSize: 20)
@@ -48,6 +52,33 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
             if (client.Room == null)
             {
                 slots.Clear();
+                return;
+            }
+
+            if (stableBanchoSession?.CurrentMatch.Value is StableBanchoMatch stableMatch)
+            {
+                currentHost = null;
+
+                if (slots.Count > stableMatch.SlotStatuses.Length)
+                    slots.RemoveRange(stableMatch.SlotStatuses.Length, slots.Count - stableMatch.SlotStatuses.Length);
+
+                for (byte i = 0; i < stableMatch.SlotStatuses.Length; ++i)
+                {
+                    Slot participant;
+
+                    if (stableMatch.SlotStatuses[i] == StableMatchSlotStatus.Locked)
+                        participant = Slot.Locked(i);
+                    else if (stableMatch.SlotUserIds[i] is int userId && client.Room.Users.SingleOrDefault(u => u.UserID == userId) is MultiplayerRoomUser user)
+                        participant = Slot.FromUser(user);
+                    else
+                        participant = Slot.Empty(i);
+
+                    if (i >= slots.Count)
+                        slots.Add(participant);
+                    else if (!participant.Equals(slots[i]))
+                        slots[i] = participant;
+                }
+
                 return;
             }
 

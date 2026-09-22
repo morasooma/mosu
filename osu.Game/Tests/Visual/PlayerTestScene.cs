@@ -10,6 +10,8 @@ using osu.Framework.Allocation;
 using osu.Framework.Logging;
 using osu.Framework.Testing;
 using osu.Game.Configuration;
+using osu.Game.Overlays;
+using osu.Game.Overlays.Notifications;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Screens.Play;
@@ -26,6 +28,9 @@ namespace osu.Game.Tests.Visual
         protected TestPlayer Player;
 
         protected OsuConfigManager LocalConfig;
+
+        [Cached(typeof(INotificationOverlay))]
+        private readonly NotificationOverlay notificationOverlay = new NotificationOverlay();
 
         private double lastReportedTime;
 

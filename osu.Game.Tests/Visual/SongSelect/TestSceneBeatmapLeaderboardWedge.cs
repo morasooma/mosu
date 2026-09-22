@@ -29,6 +29,7 @@ using osu.Game.Screens.Play.Leaderboards;
 using osu.Game.Screens.Select;
 using osu.Game.Tests.Resources;
 using osu.Game.Users;
+using osuTK;
 using osuTK.Input;
 
 namespace osu.Game.Tests.Visual.SongSelect
@@ -110,6 +111,12 @@ namespace osu.Game.Tests.Visual.SongSelect
         public void TestPersonalBest()
         {
             AddStep(@"Show personal best", showPersonalBest);
+        }
+
+        [Test]
+        public void TestDoesNotReceiveInputOutsideBounds()
+        {
+            AddAssert("outside input is rejected", () => !leaderboard.ReceivePositionalInputAt(new Vector2(-100, -100)));
         }
 
         [Test]
@@ -243,6 +250,25 @@ namespace osu.Game.Tests.Visual.SongSelect
             });
 
             checkDisplayedCount(1);
+        }
+
+        [Test]
+        public void TestRelaxSelectionRefetchesWithoutSelectedModFilter()
+        {
+            BeatmapInfo beatmapInfo = null!;
+
+            setScope(BeatmapLeaderboardScope.Local);
+
+            AddStep(@"Set beatmap", () =>
+            {
+                beatmapManager.Import(TestResources.GetQuickTestBeatmapForImport()).WaitSafely();
+                beatmapInfo = beatmapManager.GetAllUsableBeatmapSets().First().Beatmaps.First();
+                Beatmap.Value = beatmapManager.GetWorkingBeatmap(beatmapInfo);
+            });
+
+            AddUntilStep("normal leaderboard requested", () => leaderboardManager.CurrentCriteria?.Ruleset?.ShortName, () => Is.EqualTo(RulesetInfo.OSU_MODE_SHORTNAME));
+            AddStep("select relax without mod filter", () => SelectedMods.Value = new Mod[] { new OsuModRelax() });
+            AddUntilStep("relax leaderboard requested", () => leaderboardManager.CurrentCriteria?.Ruleset?.ShortName, () => Is.EqualTo(RulesetInfo.OSU_RELAX_MODE_SHORTNAME));
         }
 
         [Test]

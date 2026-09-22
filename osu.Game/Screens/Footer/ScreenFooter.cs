@@ -51,9 +51,42 @@ namespace osu.Game.Screens.Footer
 
         private Box background = null!;
         private IBindable<Colour4> themeColour = null!;
+        private GridContainer buttonsGrid = null!;
         private FillFlowContainer<ScreenFooterButton> buttonsFlow = null!;
         private Container overlayContentContainer = null!;
         private Container<ScreenFooterButton> hiddenButtonsContainer = null!;
+
+        /// <summary>
+        /// Whether a footer overlay (mod select, etc.) currently owns the footer.
+        /// </summary>
+        public bool HasActiveOverlay => ActiveOverlay != null;
+
+        /// <summary>
+        /// Fired when an overlay starts or stops owning the footer.
+        /// </summary>
+        public event Action? OverlayStateChanged;
+
+        /// <summary>
+        /// Whether the default lazer footer chrome is visible.
+        /// </summary>
+        public bool DefaultChromeVisible { get; private set; } = true;
+
+        /// <summary>
+        /// Hands the footer presentation between the default lazer chrome and the legacy chrome.
+        /// </summary>
+        public void SetDefaultChromeVisible(bool visible)
+        {
+            DefaultChromeVisible = visible;
+
+            background.FadeTo(visible ? 1 : 0, 120, Easing.OutQuint);
+            buttonsGrid.FadeTo(visible ? 1 : 0, 120, Easing.OutQuint);
+            BackButton.FadeTo(visible ? 1 : 0, 120, Easing.OutQuint);
+        }
+
+        /// <summary>
+        /// Triggers a footer button by its display index. Used by the legacy footer.
+        /// </summary>
+        public void TriggerFooterButton(int index) => buttonsFlow.ElementAtOrDefault(index)?.TriggerClick();
 
         private LogoTrackingContainer logoTrackingContainer = null!;
         private IDisposable? logoTracking;
@@ -89,7 +122,7 @@ namespace osu.Game.Screens.Footer
                     RelativeSizeAxes = Axes.Both,
                     Colour = colourProvider.Background5
                 },
-                new GridContainer
+                buttonsGrid = new GridContainer
                 {
                     RelativeSizeAxes = Axes.Both,
                     Padding = new MarginPadding { Left = OsuGame.SCREEN_EDGE_MARGIN + ScreenBackButton.BUTTON_WIDTH + padding },
@@ -255,6 +288,7 @@ namespace osu.Game.Screens.Footer
             }
 
             ActiveOverlay = overlay;
+            OverlayStateChanged?.Invoke();
 
             Debug.Assert(temporarilyHiddenButtons.Count == 0);
 
@@ -331,6 +365,7 @@ namespace osu.Game.Screens.Footer
 
             activeOverlayContent = null;
             ActiveOverlay = null;
+            OverlayStateChanged?.Invoke();
         }
 
         private void updateColourScheme(int hue)

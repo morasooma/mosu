@@ -9,6 +9,7 @@ using osu.Framework.Logging;
 using osu.Framework.Screens;
 using osu.Game.Graphics.Containers;
 using osu.Game.Online.API;
+using osu.Game.Online.Legacy;
 using osu.Game.Overlays;
 using osu.Game.Screens.Backgrounds;
 using osu.Game.Screens.Menu;
@@ -46,6 +47,9 @@ namespace osu.Game.Screens.OnlinePlay
         [Resolved]
         protected IAPIProvider API { get; private set; } = null!;
 
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
+
         protected OnlinePlayScreen()
         {
             Anchor = Anchor.Centre;
@@ -55,6 +59,8 @@ namespace osu.Game.Screens.OnlinePlay
         }
 
         private readonly IBindable<APIState> apiState = new Bindable<APIState>();
+        private readonly IBindable<bool> stableBanchoConnected = new BindableBool();
+
         [BackgroundDependencyLoader]
         private void load()
         {
@@ -76,6 +82,12 @@ namespace osu.Game.Screens.OnlinePlay
                 Schedule(forcefullyExit);
         });
 
+        private void stableBanchoStateChanged(ValueChangedEvent<bool> state) => Schedule(() =>
+        {
+            if (!state.NewValue)
+                Schedule(forcefullyExit);
+        });
+
         protected override void LoadComplete()
         {
             base.LoadComplete();
@@ -85,8 +97,16 @@ namespace osu.Game.Screens.OnlinePlay
 
             screenStack.Push(Lounge = CreateLounge());
 
-            apiState.BindTo(API.State);
-            apiState.BindValueChanged(onlineStateChanged, true);
+            if (stableBanchoSession != null)
+            {
+                stableBanchoConnected.BindTo(stableBanchoSession.IsConnected);
+                stableBanchoConnected.BindValueChanged(stableBanchoStateChanged, true);
+            }
+            else
+            {
+                apiState.BindTo(API.State);
+                apiState.BindValueChanged(onlineStateChanged, true);
+            }
         }
 
         private void forcefullyExit()

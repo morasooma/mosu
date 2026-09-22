@@ -12,6 +12,7 @@ using osu.Framework.Screens;
 using osu.Framework.Timing;
 using osu.Framework.Utils;
 using osu.Game.Beatmaps.ControlPoints;
+using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
@@ -159,13 +160,13 @@ namespace osu.Game.Seasonal
                 using (BeginAbsoluteSequence(0))
                 {
                     using (BeginDelayedSequence(getTimeForBeat(-16)))
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome to osu!");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome to Morasooma");
 
                     using (BeginDelayedSequence(getTimeForBeat(-15)))
                         welcomeText.FadeIn().OnComplete(t => t.Text = "");
 
                     using (BeginDelayedSequence(getTimeForBeat(-14)))
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome to osu!");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome to Morasooma");
 
                     using (BeginDelayedSequence(getTimeForBeat(-13)))
                         welcomeText.FadeIn().OnComplete(t => t.Text = "");
@@ -265,20 +266,22 @@ namespace osu.Game.Seasonal
                 }
 
                 [BackgroundDependencyLoader]
-                private void load(LargeTextureStore textures)
+                private void load(LargeTextureStore textures, OsuConfigManager config)
                 {
+                    string logoTexture = config.Get<ForkMenuLogo>(OsuSetting.ForkMenuLogo).GetTextureName();
+
                     InternalChildren = new Drawable[]
                     {
                         highlight = new LogoAnimation
                         {
                             RelativeSizeAxes = Axes.Both,
-                            Texture = textures.Get(@"Intro/Triangles/logo-highlight"),
+                            Texture = textures.Get(logoTexture),
                             Colour = Color4.White,
                         },
                         background = new LogoAnimation
                         {
                             RelativeSizeAxes = Axes.Both,
-                            Texture = textures.Get(@"Intro/Triangles/logo-background"),
+                            Texture = textures.Get(logoTexture),
                             Colour = OsuColour.Gray(0.6f),
                         },
                     };

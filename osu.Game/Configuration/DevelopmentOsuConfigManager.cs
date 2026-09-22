@@ -8,7 +8,6 @@ namespace osu.Game.Configuration
     public class DevelopmentOsuConfigManager : OsuConfigManager
     {
         protected override string Filename => base.Filename.Replace(".ini", ".dev.ini");
-        protected override string CustomFilename => base.CustomFilename.Replace(".ini", ".dev.ini");
 
         public DevelopmentOsuConfigManager(Storage storage)
             : base(storage)

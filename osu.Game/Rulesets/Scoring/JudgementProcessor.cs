@@ -46,6 +46,18 @@ namespace osu.Game.Rulesets.Scoring
         private readonly BindableBool hasCompleted = new BindableBool();
 
         /// <summary>
+        /// Whether completion may be reported while the gameplay clock is exactly
+        /// at the timestamp of the final judgement.
+        /// </summary>
+        /// <remarks>
+        /// Some rulesets can automatically judge their final object at the exact
+        /// end of an audio track. In that case the clock cannot advance beyond the
+        /// result timestamp, so requiring a strictly later timestamp would leave
+        /// the score incomplete forever.
+        /// </remarks>
+        protected virtual bool AllowCompletionAtLastJudgementTime => false;
+
+        /// <summary>
         /// Whether all <see cref="Judgement"/>s have been processed.
         /// </summary>
         public IBindable<bool> HasCompleted => hasCompleted;
@@ -207,7 +219,8 @@ namespace osu.Game.Rulesets.Scoring
                 JudgedHits == MaxHits
                 && (JudgedHits == 0
                     // Last applied result is guaranteed to be non-null when JudgedHits > 0.
-                    || lastAppliedResult.AsNonNull().TimeAbsolute < Clock.CurrentTime);
+                    || lastAppliedResult.AsNonNull().TimeAbsolute < Clock.CurrentTime
+                    || (AllowCompletionAtLastJudgementTime && lastAppliedResult.AsNonNull().TimeAbsolute <= Clock.CurrentTime));
         }
     }
 }

@@ -26,6 +26,8 @@ namespace osu.Game.Rulesets.Dodge.Configuration
             SetDefault(DodgeRulesetSetting.MissSoundVolume, DEFAULT_MISS_SOUND_VOLUME, 0, 100, 1);
             SetDefault(DodgeRulesetSetting.PlayfieldDim, DEFAULT_PLAYFIELD_DIM, 0, 1, 0.01);
             SetDefault(DodgeRulesetSetting.GrazeIndicatorBrightness, DEFAULT_GRAZE_INDICATOR_BRIGHTNESS, 0, 1, 0.01);
+            SetDefault(DodgeRulesetSetting.EffectsEnabled, true);
+            SetDefault(DodgeRulesetSetting.PlayerTrailEnabled, true);
         }
     }
 
@@ -35,5 +37,7 @@ namespace osu.Game.Rulesets.Dodge.Configuration
         MissSoundVolume,
         PlayfieldDim,
         GrazeIndicatorBrightness,
+        EffectsEnabled,
+        PlayerTrailEnabled,
     }
 }

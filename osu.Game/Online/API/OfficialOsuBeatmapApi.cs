@@ -389,10 +389,29 @@ namespace osu.Game.Online.API
 
         private sealed class NoOpChatClient : IChatClient
         {
-            public event Action<Channel>? ChannelJoined;
-            public event Action<Channel>? ChannelParted;
-            public event Action<List<Message>>? NewMessages;
-            public event Action? PresenceReceived;
+            public event Action<Channel>? ChannelJoined
+            {
+                add { }
+                remove { }
+            }
+
+            public event Action<Channel>? ChannelParted
+            {
+                add { }
+                remove { }
+            }
+
+            public event Action<List<Message>>? NewMessages
+            {
+                add { }
+                remove { }
+            }
+
+            public event Action? PresenceReceived
+            {
+                add { }
+                remove { }
+            }
 
             public void RequestPresence()
             {

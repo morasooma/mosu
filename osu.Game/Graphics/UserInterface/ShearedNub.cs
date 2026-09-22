@@ -28,6 +28,8 @@ namespace osu.Game.Graphics.UserInterface
         private readonly Box fill;
         private readonly Container main;
         private readonly Container shadow;
+        private IBindable<Colour4>? themeColour;
+        private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
         public ShearedNub()
         {
@@ -75,22 +77,39 @@ namespace osu.Game.Graphics.UserInterface
         [BackgroundDependencyLoader(true)]
         private void load(OverlayColourProvider? colourProvider, OsuColour colours)
         {
-            AccentColour = colourProvider?.Highlight1 ?? colours.Pink;
-            GlowingAccentColour = colourProvider?.Highlight1.Lighten(0.4f) ?? colours.PinkLighter;
-            GlowColour = colourProvider?.Highlight1 ?? colours.PinkLighter;
-
-            main.EdgeEffect = new EdgeEffectParameters
+            void updateColours()
             {
-                Colour = GlowColour.Opacity(0),
-                Type = EdgeEffectType.Glow,
-                Radius = 8,
-                Roundness = 4,
-            };
+                AccentColour = colourProvider?.Highlight1 ?? colours.Pink;
+                GlowingAccentColour = colourProvider?.Highlight1.Lighten(0.4f) ?? colours.PinkLighter;
+                GlowColour = colourProvider?.Highlight1 ?? colours.PinkLighter;
+
+                main.EdgeEffect = new EdgeEffectParameters
+                {
+                    Colour = GlowColour.Opacity(0),
+                    Type = EdgeEffectType.Glow,
+                    Radius = 8,
+                    Roundness = 4,
+                };
+            }
+
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Highlight1);
+                themeColour.BindValueChanged(_ => updateColours(), true);
+            }
+            else
+                updateColours();
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            disableShear.BindValueChanged(_ =>
+            {
+                shadow.Shear = OsuGame.SHEAR;
+                main.Shear = OsuGame.SHEAR;
+            }, true);
 
             Current.BindValueChanged(onCurrentValueChanged, true);
             FinishTransforms(true);

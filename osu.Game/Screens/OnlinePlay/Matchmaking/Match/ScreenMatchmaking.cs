@@ -269,7 +269,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match
 
             // Update global gameplay state to correspond to the new selection.
             // Retrieve the corresponding local beatmap, since we can't directly use the playlist's beatmap info
-            var localBeatmap = beatmapManager.QueryOnlineBeatmapId(item.BeatmapID);
+            var localBeatmap = beatmapManager.QueryOnlineBeatmapId(item.BeatmapID, item.BeatmapChecksum);
 
             if (localBeatmap != null)
             {

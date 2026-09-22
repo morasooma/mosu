@@ -37,6 +37,14 @@ namespace osu.Game.Overlays.Settings.Sections
     public partial class SkinSection : SettingsSection
     {
         private SkinDropdown skinDropdown;
+        private readonly BindableNumber<int> maniaNoteScale = new BindableNumber<int>(100)
+        {
+            MinValue = 20,
+            MaxValue = 100,
+            Precision = 1,
+            Default = 100,
+        };
+        private BindableNumber<int> boundManiaNoteScale;
 
         public override LocalisableString Header => SkinSettingsStrings.SkinSectionHeader;
 
@@ -62,6 +70,17 @@ namespace osu.Game.Overlays.Settings.Sections
         private void load([CanBeNull] SkinEditorOverlay skinEditor, OsuConfigManager config)
         {
             var separateSkinsPerRuleset = config.GetBindable<bool>(OsuSetting.ForkSeparateSkinsPerRuleset);
+
+            var maniaNoteScaleItem = new SettingsItemV2(new FormSliderBar<int>
+            {
+                Caption = "Mania playfield scale",
+                HintText = "Scales the mania notefield around the receptor line, including notes, receptors, judgements and column spacing.",
+                Current = maniaNoteScale,
+                KeyboardStep = 1,
+                LabelFormat = value => $"{value}%",
+            });
+
+            maniaNoteScaleItem.SettingChanged += saveManiaNoteScale;
 
             SettingsItemV2 createRulesetSkinItem(LocalisableString caption, OsuSetting setting)
             {
@@ -131,6 +150,8 @@ namespace osu.Game.Overlays.Settings.Sections
                     Text = SkinSettingsStrings.SkinLayoutEditor,
                     Action = () => skinEditor?.ToggleVisibility(),
                 },
+                new SkinPinButton(),
+                maniaNoteScaleItem,
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.SeparateSkinsPerRulesetCaption,
@@ -153,6 +174,8 @@ namespace osu.Game.Overlays.Settings.Sections
                                                                          .Where(s => !s.DeletePending)
                                                                          .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase), skinsChanged);
 
+            skins.PinnedSkins.Changed += refreshSkinList;
+
             skinDropdown.Current.BindValueChanged(skin =>
             {
                 if (skin.NewValue.ID == SkinInfo.RANDOM_SKIN)
@@ -164,6 +187,27 @@ namespace osu.Game.Overlays.Settings.Sections
                     skins.SelectRandomSkin();
                 }
             });
+
+            skins.CurrentSkin.BindValueChanged(_ => updateManiaNoteScaleSource(), true);
+        }
+
+        private void updateManiaNoteScaleSource()
+        {
+            if (boundManiaNoteScale != null)
+                maniaNoteScale.UnbindFrom(boundManiaNoteScale);
+
+            boundManiaNoteScale = skins.CurrentSkin.Value.MosuSettings.ManiaNoteScalePercent;
+            maniaNoteScale.BindTo(boundManiaNoteScale);
+        }
+
+        private void saveManiaNoteScale()
+        {
+            int value = maniaNoteScale.Value;
+
+            if (skins.EnsureMutableSkin())
+                skins.CurrentSkin.Value.MosuSettings.SetManiaNoteScalePercent(value);
+
+            skins.Save(skins.CurrentSkin.Value);
         }
 
         private void skinsChanged(IRealmCollection<SkinInfo> sender, ChangeSet changes)
@@ -185,16 +229,85 @@ namespace osu.Game.Overlays.Settings.Sections
             });
         }
 
+        private void refreshSkinList() => Schedule(() =>
+        {
+            dropdownItems.Clear();
+            dropdownItems.AddRange(skins.GetAllUsableSkins());
+            skinDropdown.Items = dropdownItems;
+
+            foreach (var dropdown in rulesetSkinDropdowns)
+                dropdown.SetItems(dropdownItems);
+        });
+
         protected override void Dispose(bool isDisposing)
         {
             base.Dispose(isDisposing);
 
             realmSubscription?.Dispose();
+
+            if (skins != null)
+                skins.PinnedSkins.Changed -= refreshSkinList;
         }
 
         private partial class SkinDropdown : FormDropdown<Live<SkinInfo>>
         {
-            protected override LocalisableString GenerateItemText(Live<SkinInfo> item) => item.ToString();
+            [Resolved]
+            private SkinManager skinManager { get; set; }
+
+            protected override LocalisableString GenerateItemText(Live<SkinInfo> item)
+                => item.PerformRead(s => skinManager.PinnedSkins.IsPinned(item.ID) ? $"♥ {s}" : s.ToString());
+        }
+
+        public partial class SkinPinButton : SettingsButtonV2
+        {
+            [Resolved]
+            private SkinManager skins { get; set; }
+
+            private Bindable<Skin> currentSkin;
+            private SpriteIcon icon;
+
+            [BackgroundDependencyLoader]
+            private void load()
+            {
+                Action = togglePinned;
+                Content.Add(icon = new SpriteIcon
+                {
+                    Anchor = Anchor.CentreLeft,
+                    Origin = Anchor.CentreLeft,
+                    X = 16,
+                    Size = new Vector2(16),
+                });
+            }
+
+            protected override void LoadComplete()
+            {
+                base.LoadComplete();
+
+                currentSkin = skins.CurrentSkin.GetBoundCopy();
+                currentSkin.BindValueChanged(_ => updateState());
+                currentSkin.BindDisabledChanged(_ => updateState(), true);
+                skins.PinnedSkins.Changed += onPinnedChanged;
+            }
+
+            private void onPinnedChanged() => Schedule(updateState);
+
+            private void updateState()
+            {
+                bool pinned = skins.PinnedSkins.IsPinned(currentSkin.Value.SkinInfo.ID);
+                Text = pinned ? SkinSettingsStrings.UnpinSkin : SkinSettingsStrings.PinSkin;
+                icon.Icon = pinned ? FontAwesome.Solid.Heart : FontAwesome.Regular.Heart;
+                Enabled.Value = !currentSkin.Disabled;
+            }
+
+            private void togglePinned() => skins.TogglePinned(skins.CurrentSkinInfo.Value);
+
+            protected override void Dispose(bool isDisposing)
+            {
+                if (skins != null)
+                    skins.PinnedSkins.Changed -= onPinnedChanged;
+
+                base.Dispose(isDisposing);
+            }
         }
 
         private partial class RulesetSkinDropdown : SkinDropdown

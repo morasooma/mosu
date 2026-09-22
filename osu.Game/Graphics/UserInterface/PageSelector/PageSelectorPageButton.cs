@@ -68,5 +68,15 @@ namespace osu.Game.Graphics.UserInterface.PageSelector
 
             text.FadeColour(IsHovered ? ColourProvider.Light2 : ColourProvider.Light1, DURATION, Easing.OutQuint);
         }
+
+        protected override void UpdateColours()
+        {
+            base.UpdateColours();
+            Background.Colour = ColourProvider.Highlight1;
+            if (selected.Value)
+                text.FadeColour(ColourProvider.Dark4, DURATION, Easing.OutQuint);
+            else
+                text.FadeColour(IsHovered ? ColourProvider.Light2 : ColourProvider.Light3, DURATION, Easing.OutQuint);
+        }
     }
 }

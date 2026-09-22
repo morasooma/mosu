@@ -194,5 +194,27 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 Assert.That(emitter.EmissionTimeAt(2), Is.EqualTo(1300));
             });
         }
+
+        [Test]
+        public void TestRepeatedBurstsCreateSeparateJudgements()
+        {
+            var emitter = new DodgeEmitter
+            {
+                StartTime = 1000,
+                BurstCount = 3,
+                BurstInterval = 250,
+                BurstBeatDivisor = 0,
+            };
+
+            emitter.ApplyDefaults(new ControlPointInfo(), new BeatmapDifficulty());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(emitter.NestedHitObjects, Has.Count.EqualTo(2));
+                Assert.That(emitter.NestedHitObjects, Has.All.TypeOf<DodgeEmitterBurst>());
+                Assert.That(emitter.NestedHitObjects[0].StartTime, Is.EqualTo(1000));
+                Assert.That(emitter.NestedHitObjects[1].StartTime, Is.EqualTo(1250));
+            });
+        }
     }
 }

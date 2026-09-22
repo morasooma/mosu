@@ -30,6 +30,11 @@ namespace osu.Game.Graphics.UserInterface
             }
         }
 
+        /// <summary>
+        /// Standalone compatibility property for tab control dropdown menu width sizing.
+        /// </summary>
+        public float MinimumMenuWidth { get; set; }
+
         public OsuTabDropdown()
         {
             RelativeSizeAxes = Axes.X;

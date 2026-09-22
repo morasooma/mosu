@@ -45,6 +45,12 @@ namespace osu.Game.Rulesets.Dodge.Objects
         /// </summary>
         public bool Continuous { get; set; }
 
+        /// <summary>
+        /// Controls how progress is distributed over <see cref="Duration"/> for a bounded change.
+        /// This is ignored while <see cref="Continuous"/> is enabled.
+        /// </summary>
+        public DodgeCameraEasing Easing { get; set; }
+
         public float X
         {
             get => Position.X;

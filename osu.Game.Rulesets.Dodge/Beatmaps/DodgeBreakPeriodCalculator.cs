@@ -29,8 +29,9 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
             if (objects.Length == 0)
                 return breaks.ToArray();
 
-            double gameplayEndTime = DodgeGameplayTiming.GetGameplayEndTime(objects);
-            double continuedBulletEndTime = gameplayEndTime + DodgePlayfield.CONTINUED_BULLET_GRACE_PERIOD;
+            double continuedBulletEndTime = DodgeGameplayTiming.GetContinuedProjectileEndTime(
+                objects,
+                DodgePlayfield.CONTINUED_BULLET_GRACE_PERIOD);
             var movementPeriods = new List<MovementPeriod>();
 
             foreach (DodgeBullet bullet in objects.OfType<DodgeBullet>())
@@ -45,7 +46,8 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
                         bullet.MovementType,
                         bullet.WaveAmplitude,
                         bullet.WaveCycles,
-                        bullet.WavePhase)
+                        bullet.WavePhase,
+                        bullet.MovementEasing)
                     : bullet.EndTime;
 
                 addMovementPeriod(bullet.StartTime, Math.Min(movementEndTime, continuedBulletEndTime) + PROJECTILE_CLEARANCE);
@@ -68,7 +70,8 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
                                                                                    emitter.MovementType,
                                                                                    emitter.WaveAmplitude,
                                                                                    emitter.WaveCycles,
-                                                                                   emitter.WavePhase)))
+                                                                                   emitter.WavePhase,
+                                                                                   emitter.MovementEasing)))
                                                 .Max();
                 }
 

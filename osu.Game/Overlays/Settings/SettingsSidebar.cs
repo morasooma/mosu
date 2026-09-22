@@ -7,7 +7,6 @@ using osu.Framework.Bindables;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
@@ -20,7 +19,7 @@ namespace osu.Game.Overlays.Settings
 {
     public partial class SettingsSidebar : ExpandingContainer
     {
-        public const float CONTRACTED_WIDTH = 70;
+        public const float CONTRACTED_WIDTH = 60;
         public const int EXPANDED_WIDTH = 170;
 
         public Action? BackButtonAction;
@@ -40,17 +39,17 @@ namespace osu.Game.Overlays.Settings
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
-            Box backgroundBox;
+            BackdropBlurSurface background;
 
-            AddInternal(backgroundBox = new Box
+            AddInternal(background = new BackdropBlurSurface
             {
-                Colour = colourProvider.Background5,
+                SurfaceColour = colourProvider.Background5,
                 RelativeSizeAxes = Axes.Both,
                 Depth = float.MaxValue
             });
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background5);
-            themeColour.BindValueChanged(colour => backgroundBox.Colour = colour.NewValue, true);
+            themeColour.BindValueChanged(colour => background.SurfaceColour = colour.NewValue, true);
 
             if (showBackButton)
             {

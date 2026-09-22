@@ -35,6 +35,16 @@ namespace osu.Game.Localisation
         public static LocalisableString EditSkinIni => new TranslatableString(getKey(@"edit_skin_ini"), @"Edit skin.ini");
 
         /// <summary>
+        /// "Pin skin"
+        /// </summary>
+        public static LocalisableString PinSkin => new TranslatableString(getKey(@"pin_skin"), @"Pin skin");
+
+        /// <summary>
+        /// "Unpin skin"
+        /// </summary>
+        public static LocalisableString UnpinSkin => new TranslatableString(getKey(@"unpin_skin"), @"Unpin skin");
+
+        /// <summary>
         /// "Open skin.ini"
         /// </summary>
         public static LocalisableString OpenSkinIni => new TranslatableString(getKey(@"open_skin_ini"), @"Open skin.ini");

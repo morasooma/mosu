@@ -118,7 +118,7 @@ namespace osu.Game.Overlays.Profile.Header.Components
                 if (Online.MosuServerEnvironment.SupportsSpecialRulesets)
                 {
                     Current.Value = getItemsWithSpecialRulesets().SingleOrDefault(ruleset => user?.Ruleset.MatchesOnlineID(ruleset) == true);
-                    string defaultMode = user?.User.ServerPlayMode ?? user?.User.PlayMode ?? @"osu";
+                    string defaultMode = user?.User.G0v0PlayMode ?? user?.User.PlayMode ?? @"osu";
                     if (defaultMode.StartsWith("mania", System.StringComparison.OrdinalIgnoreCase))
                         defaultMode = "mania";
                     else if (defaultMode.Equals(RulesetInfo.OSU_RELAX_MODE_SHORTNAME, System.StringComparison.OrdinalIgnoreCase))

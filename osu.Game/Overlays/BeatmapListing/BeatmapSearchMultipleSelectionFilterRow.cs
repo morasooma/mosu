@@ -105,6 +105,7 @@ namespace osu.Game.Overlays.BeatmapListing
         {
             private Container activeContent = null!;
             private Circle background = null!;
+            private SpriteIcon closeIcon = null!;
 
             public MultipleSelectionFilterTabItem(T value)
                 : base(value)
@@ -137,7 +138,7 @@ namespace osu.Game.Overlays.BeatmapListing
                             Colour = Color4.White,
                             RelativeSizeAxes = Axes.Both,
                         },
-                        new SpriteIcon
+                        closeIcon = new SpriteIcon
                         {
                             Icon = FontAwesome.Solid.TimesCircle,
                             Size = new Vector2(10),
@@ -178,6 +179,7 @@ namespace osu.Game.Overlays.BeatmapListing
 
                     // flipping colours
                     Text.FadeColour(ColourProvider.Background4, 200, Easing.OutQuint);
+                    closeIcon.FadeColour(ColourProvider.Background4, 200, Easing.OutQuint);
                     Text.Font = Text.Font.With(weight: FontWeight.SemiBold);
                 }
                 else

@@ -109,6 +109,21 @@ namespace osu.Game.Tests.Visual.SongSelect
         }
 
         [Test]
+        public void TestChangingSetCollapsesPreviousSet()
+        {
+            AddBeatmaps(3, splitApart: false);
+            WaitForDrawablePanels();
+
+            SelectNextSet();
+            WaitForSetSelection(set: 0, diff: 0);
+            assertSingleExpandedSet(0);
+
+            SelectNextSet();
+            WaitForSetSelection(set: 1, diff: 0);
+            assertSingleExpandedSet(1);
+        }
+
+        [Test]
         public void TestRandomStaysInGroup()
         {
             AddBeatmaps(2, splitApart: false);
@@ -143,6 +158,16 @@ namespace osu.Game.Tests.Visual.SongSelect
             }
 
             BeatmapSets.AddRange(beatmapSets);
+        });
+
+        private void assertSingleExpandedSet(int selectedSet) => AddAssert("only selected set is expanded", () =>
+        {
+            var expandedSets = Carousel.GetCarouselItems()!
+                                       .Where(item => item.Model is GroupedBeatmapSet && item.IsExpanded && item.IsVisible)
+                                       .Select(item => ((GroupedBeatmapSet)item.Model).BeatmapSet)
+                                       .ToArray();
+
+            return expandedSets.Length == 1 && expandedSets[0].Equals(BeatmapSets[selectedSet]);
         });
     }
 }

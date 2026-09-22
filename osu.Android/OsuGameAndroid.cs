@@ -11,6 +11,7 @@ using osu.Framework.Development;
 using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Platform;
 using osu.Game;
+using osu.Game.Configuration;
 using osu.Game.Screens;
 using osu.Game.Updater;
 using osu.Game.Utils;
@@ -46,6 +47,14 @@ namespace osu.Android
         }
 
         public override Version AssemblyVersion => new Version(packageInfo.VersionName.AsNonNull().Split('-').First());
+
+        public override void SetupLogging(Storage gameStorage, Storage cacheStorage)
+        {
+            // This is the earliest point at which Android game storage is available,
+            // before configuration managers read the files being restored.
+            ConfigurationBackupManager.ApplyPendingRestore(gameStorage, restoreInputConfiguration: false);
+            base.SetupLogging(gameStorage, cacheStorage);
+        }
 
         protected override void LoadComplete()
         {

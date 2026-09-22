@@ -8,7 +8,7 @@ using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
-using osu.Game.Configuration;
+using osu.Game.Graphics;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 
@@ -34,7 +34,7 @@ namespace osu.Game.Users.Drawables
         }
 
         [BackgroundDependencyLoader]
-        private void load(LargeTextureStore textures, IAPIProvider api)
+        private void load(LargeTextureStore textures, OnlineAssetCachingStore onlineTextures, IAPIProvider api)
         {
             if (user != null && user.OnlineID > 1)
             {
@@ -42,26 +42,24 @@ namespace osu.Game.Users.Drawables
 
                 if (user is APIUser apiUser)
                 {
+                    string connectedAvatar = $"{api.Endpoints.APIUrl.TrimEnd('/')}/users/{apiUser.OnlineID}/avatar";
+
                     if (Online.MosuServerEnvironment.IsThirdPartyServer)
                     {
-                        avatarLookup = !string.IsNullOrEmpty(apiUser.AvatarUrl) ? apiUser.AvatarUrl : $"{api.Endpoints.APIUrl.TrimEnd('/')}/users/{apiUser.OnlineID}/avatar";
+                        avatarLookup = !string.IsNullOrEmpty(apiUser.AvatarUrl) ? apiUser.AvatarUrl : connectedAvatar;
                     }
                     else
                     {
-                        // Always prefer the currently connected API host for avatar lookups.
-                        // This keeps avatars working even if the backend stored an old absolute URL.
-                        avatarLookup = $"{api.Endpoints.APIUrl.TrimEnd('/')}/users/{apiUser.OnlineID}/avatar";
+                        avatarLookup = connectedAvatar;
 
-                        if (Uri.TryCreate(apiUser.AvatarUrl, UriKind.Absolute, out var avatarUri) &&
-                            Uri.TryCreate(api.Endpoints.APIUrl, UriKind.Absolute, out var apiUri) &&
-                            string.Equals(avatarUri.Host, apiUri.Host, StringComparison.OrdinalIgnoreCase))
-                        {
+                        if (Uri.TryCreate(apiUser.AvatarUrl, UriKind.Absolute, out var avatarUri)
+                            && Uri.TryCreate(api.Endpoints.APIUrl, UriKind.Absolute, out var apiUri)
+                            && string.Equals(avatarUri.Host, apiUri.Host, StringComparison.OrdinalIgnoreCase))
                             avatarLookup = apiUser.AvatarUrl;
-                        }
                     }
                 }
 
-                Texture = textures.Get(avatarLookup);
+                Texture = onlineTextures.Get(avatarLookup);
             }
 
             Texture ??= textures.Get(@"Online/avatar-guest");

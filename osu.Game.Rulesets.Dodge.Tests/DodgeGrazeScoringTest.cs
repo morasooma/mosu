@@ -98,6 +98,18 @@ namespace osu.Game.Rulesets.Dodge.Tests
             Assert.That(processor.MaximumStatistics[HitResult.SmallBonus], Is.EqualTo(20));
         }
 
+        [Test]
+        public void TestBeamReservesSingleGraze()
+        {
+            var beatmap = new Beatmap<DodgeHitObject>();
+            beatmap.Difficulty.SliderMultiplier = DodgeBeatmapSettings.GetSliderMultiplier(16);
+            beatmap.HitObjects.Add(new DodgeBeam());
+            var processor = new DodgeScoreProcessor(new DodgeRuleset());
+            processor.ApplyBeatmap(beatmap);
+
+            Assert.That(processor.MaximumStatistics[HitResult.SmallBonus], Is.EqualTo(1));
+        }
+
         [TestCase(HitResult.SmallBonus, true)]
         [TestCase(HitResult.Perfect, false)]
         [TestCase(HitResult.Miss, false)]

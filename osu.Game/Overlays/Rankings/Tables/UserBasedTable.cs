@@ -20,11 +20,14 @@ using osu.Game.Resources.Localisation.Web;
 using osu.Game.Users.Drawables;
 using osuTK;
 using osuTK.Graphics;
+using osu.Game.Online.API.Requests.Responses;
 
 namespace osu.Game.Overlays.Rankings.Tables
 {
     public abstract partial class UserBasedTable : RankingsTable<UserStatistics>
     {
+        protected override bool SupportsEnhancedRows => true;
+
         protected UserBasedTable(int page, IReadOnlyList<UserStatistics> rankings)
             : base(page, rankings)
         {
@@ -60,7 +63,7 @@ namespace osu.Game.Overlays.Rankings.Tables
         protected override Drawable CreateIndexDrawable(int index, UserStatistics item)
         {
             if (item is WeeklyRankingEntry weeklyEntry)
-                return new WeeklyRankIndex(weeklyEntry);
+                return new WeeklyRankIndex(weeklyEntry, TextSize);
 
             return base.CreateIndexDrawable(index, item);
         }
@@ -75,9 +78,11 @@ namespace osu.Game.Overlays.Rankings.Tables
 
         protected sealed override CountryCode GetCountryCode(UserStatistics item) => item.User.CountryCode;
 
+        protected sealed override APIUser GetAvatarUser(UserStatistics item) => item.User;
+
         protected sealed override Drawable[] CreateFlagContent(UserStatistics item)
         {
-            var username = new LinkFlowContainer(t => t.Font = OsuFont.GetFont(size: TEXT_SIZE, italics: true))
+            var username = new LinkFlowContainer(t => t.Font = OsuFont.GetFont(size: TextSize, italics: true))
             {
                 AutoSizeAxes = Axes.X,
                 RelativeSizeAxes = Axes.Y,
@@ -89,13 +94,13 @@ namespace osu.Game.Overlays.Rankings.Tables
 
         protected sealed override Drawable[] CreateAdditionalContent(UserStatistics item) => new[]
         {
-            new ColouredRowText { Text = item.DisplayAccuracy, },
-            new ColouredRowText { Text = item.PlayCount.ToLocalisableString(@"N0") },
+            new ColouredRowText(TextSize) { Text = item.DisplayAccuracy, },
+            new ColouredRowText(TextSize) { Text = item.PlayCount.ToLocalisableString(@"N0") },
         }.Concat(CreateUniqueContent(item)).Concat(new[]
         {
-            new ColouredRowText { Text = (item.GradesCount[ScoreRank.XH] + item.GradesCount[ScoreRank.X]).ToLocalisableString(@"N0"), },
-            new ColouredRowText { Text = (item.GradesCount[ScoreRank.SH] + item.GradesCount[ScoreRank.S]).ToLocalisableString(@"N0"), },
-            new ColouredRowText { Text = item.GradesCount[ScoreRank.A].ToLocalisableString(@"N0"), }
+            new ColouredRowText(TextSize) { Text = (item.GradesCount[ScoreRank.XH] + item.GradesCount[ScoreRank.X]).ToLocalisableString(@"N0"), },
+            new ColouredRowText(TextSize) { Text = (item.GradesCount[ScoreRank.SH] + item.GradesCount[ScoreRank.S]).ToLocalisableString(@"N0"), },
+            new ColouredRowText(TextSize) { Text = item.GradesCount[ScoreRank.A].ToLocalisableString(@"N0"), }
         }).ToArray();
 
         protected abstract RankingsTableColumn[] CreateUniqueHeaders();
@@ -105,10 +110,12 @@ namespace osu.Game.Overlays.Rankings.Tables
         private partial class WeeklyRankIndex : FillFlowContainer
         {
             private readonly WeeklyRankingEntry entry;
+            private readonly float textSize;
 
-            public WeeklyRankIndex(WeeklyRankingEntry entry)
+            public WeeklyRankIndex(WeeklyRankingEntry entry, float textSize)
             {
                 this.entry = entry;
+                this.textSize = textSize;
 
                 Anchor = Anchor.Centre;
                 Origin = Anchor.Centre;
@@ -138,10 +145,10 @@ namespace osu.Game.Overlays.Rankings.Tables
                         Font = OsuFont.GetFont(size: 9, weight: FontWeight.SemiBold),
                         Colour = colour,
                     },
-                    new RowText
+                    new RowText(textSize)
                     {
                         Text = entry.GlobalRank?.ToLocalisableString(@"N0") ?? default,
-                        Font = OsuFont.GetFont(size: TEXT_SIZE, weight: FontWeight.SemiBold),
+                        Font = OsuFont.GetFont(size: textSize, weight: FontWeight.SemiBold),
                         Margin = new MarginPadding { Left = 2, Bottom = 3 },
                     }
                 });

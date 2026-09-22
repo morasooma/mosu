@@ -3,14 +3,83 @@
 
 using NUnit.Framework;
 using osu.Game.Beatmaps;
+using osu.Game.Online;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Mods;
 
 namespace osu.Game.Rulesets.Osu.Tests.Mods
 {
     [TestFixture]
+    [NonParallelizable]
     public class OsuModPerformancePointHelperTest
     {
+        private bool previousStableProtocol;
+        private bool previousThirdPartyServer;
+
+        [SetUp]
+        public void SetUp()
+        {
+            previousStableProtocol = MosuServerEnvironment.UsesStableProtocol;
+            previousThirdPartyServer = MosuServerEnvironment.IsThirdPartyServer;
+            MosuServerEnvironment.UsesStableProtocol = false;
+            MosuServerEnvironment.IsThirdPartyServer = false;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            MosuServerEnvironment.UsesStableProtocol = previousStableProtocol;
+            MosuServerEnvironment.IsThirdPartyServer = previousThirdPartyServer;
+        }
+
+        [Test]
+        public void TestMosuUsesServerRankedModPolicy()
+        {
+            var beatmapInfo = new BeatmapInfo(new OsuRuleset().RulesetInfo, new BeatmapDifficulty());
+
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo, new Mod[] { new OsuModClassic() }), Is.True);
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo, new Mod[] { new OsuModApproachDifferent() }), Is.True);
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo, new Mod[]
+            {
+                new OsuModAudioEffects
+                {
+                    Preset = { Value = AudioEffectPreset.Radio },
+                    Intensity = { Value = 0.8 },
+                    Pitch = { Value = -3 },
+                    AffectHitSounds = { Value = true },
+                },
+            }), Is.True);
+        }
+
+        [Test]
+        public void TestThirdPartyServerStillUsesModRankedFlag()
+        {
+            MosuServerEnvironment.IsThirdPartyServer = true;
+            var beatmapInfo = new BeatmapInfo(new OsuRuleset().RulesetInfo, new BeatmapDifficulty());
+
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo, new Mod[] { new OsuModClassic() }), Is.False);
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo, new Mod[]
+            {
+                new OsuModAudioEffects
+                {
+                    Preset = { Value = AudioEffectPreset.Rotation },
+                    Intensity = { Value = 1 },
+                    Pitch = { Value = 12 },
+                    AffectHitSounds = { Value = true },
+                },
+            }), Is.True);
+        }
+
+        [Test]
+        public void TestClassicIsRankedForStableProtocol()
+        {
+            MosuServerEnvironment.UsesStableProtocol = true;
+            var beatmapInfo = new BeatmapInfo(new OsuRuleset().RulesetInfo, new BeatmapDifficulty());
+
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo, new Mod[] { new OsuModClassic() }), Is.True);
+            Assert.That(ModPerformancePointHelper.ModsAwardPerformancePoints(beatmapInfo, new Mod[] { new OsuModClassic(), new OsuModDifficultyAdjust() }), Is.False);
+        }
+
         [Test]
         public void TestFlashlightSettingsMakeScoreUnranked()
         {

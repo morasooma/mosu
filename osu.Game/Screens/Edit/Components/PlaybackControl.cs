@@ -21,7 +21,6 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
 using osu.Game.Overlays;
-using osuTK.Input;
 
 namespace osu.Game.Screens.Edit.Components
 {
@@ -29,6 +28,13 @@ namespace osu.Game.Screens.Edit.Components
     {
         private IconButton playButton = null!;
         private PlaybackSpeedControl playbackSpeedControl = null!;
+        private OsuSpriteText playbackSpeedText = null!;
+        private IBindable<Colour4>? themeBackgroundColour;
+        private IBindable<Colour4>? themeLabelColour;
+
+        internal Color4 BackgroundColour => Background.Colour;
+        internal Color4 LabelColour => playbackSpeedText.Colour;
+        internal Color4 PlayButtonIconColour => playButton.IconColour;
 
         [Resolved]
         private EditorClock editorClock { get; set; } = null!;
@@ -40,6 +46,12 @@ namespace osu.Game.Screens.Edit.Components
         private void load(OverlayColourProvider colourProvider, Editor? editor)
         {
             Background.Colour = colourProvider.Background4;
+            themeBackgroundColour = colourProvider.GetColourBindable(OverlayColour.Background4);
+            themeBackgroundColour.BindValueChanged(c =>
+            {
+                Background.Colour = c.NewValue;
+                updatePlayButtonColours(colourProvider);
+            });
 
             Children = new Drawable[]
             {
@@ -62,9 +74,10 @@ namespace osu.Game.Screens.Edit.Components
                     Direction = FillDirection.Vertical,
                     Children = new Drawable[]
                     {
-                        new OsuSpriteText
+                        playbackSpeedText = new OsuSpriteText
                         {
                             Text = EditorStrings.PlaybackSpeed,
+                            Colour = colourProvider.Content2,
                         },
                         new PlaybackTabControl
                         {
@@ -76,10 +89,21 @@ namespace osu.Game.Screens.Edit.Components
                 }
             };
 
+            updatePlayButtonColours(colourProvider);
+
+            themeLabelColour = colourProvider.GetColourBindable(OverlayColour.Content2);
+            themeLabelColour.BindValueChanged(c => playbackSpeedText.Colour = c.NewValue);
+
             editorClock.AudioAdjustments.AddAdjustment(AdjustableProperty.Tempo, tempoAdjustment);
 
             if (editor != null)
                 currentScreenMode.BindTo(editor.Mode);
+        }
+
+        private void updatePlayButtonColours(OverlayColourProvider colourProvider)
+        {
+            playButton.IconColour = colourProvider.Light3;
+            playButton.IconHoverColour = colourProvider.Content1;
         }
 
         protected override void LoadComplete()
@@ -110,21 +134,6 @@ namespace osu.Game.Screens.Edit.Components
                 editorClock.AudioAdjustments.RemoveAdjustment(AdjustableProperty.Tempo, tempoAdjustment);
 
             base.Dispose(isDisposing);
-        }
-
-        protected override bool OnKeyDown(KeyDownEvent e)
-        {
-            if (e.Repeat)
-                return false;
-
-            switch (e.Key)
-            {
-                case Key.Space:
-                    togglePause();
-                    return true;
-            }
-
-            return base.OnKeyDown(e);
         }
 
         private void togglePause()
@@ -204,12 +213,22 @@ namespace osu.Game.Screens.Edit.Components
 
                 private Color4 hoveredColour;
                 private Color4 normalColour;
+                private IBindable<Colour4>? themeColour;
 
                 [BackgroundDependencyLoader]
                 private void load(OverlayColourProvider colourProvider)
                 {
                     text.Colour = normalColour = colourProvider.Light3;
                     textBold.Colour = hoveredColour = colourProvider.Content1;
+
+                    themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                    themeColour.BindValueChanged(_ =>
+                    {
+                        normalColour = colourProvider.Light3;
+                        hoveredColour = colourProvider.Content1;
+                        textBold.Colour = hoveredColour;
+                        updateState();
+                    });
                 }
 
                 protected override bool OnHover(HoverEvent e)

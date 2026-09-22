@@ -49,6 +49,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         private BeatmapCardDownloadProgressBar downloadProgressBar = null!;
         private TruncatingSpriteText titleText = null!;
         private TruncatingSpriteText artistText = null!;
+        private OsuSpriteText? mappedByText;
         private IBindable<Colour4> themeColour = null!;
 
         [Resolved]
@@ -130,7 +131,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                                                 {
                                                     d.AutoSizeAxes = Axes.Both;
                                                     d.Margin = new MarginPadding { Top = 2 };
-                                                    d.AddText("mapped by ", t => t.Colour = colourProvider.Content2);
+                                                    d.AddText("mapped by ", t => { t.Colour = colourProvider.Content2; mappedByText = (OsuSpriteText)t; });
                                                     d.AddUserLink(BeatmapSet.Author);
                                                 }),
                                             }
@@ -165,6 +166,8 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             {
                 titleText.Colour = colourProvider.Content1;
                 artistText.Colour = colourProvider.Content2;
+                if (mappedByText != null)
+                    mappedByText.Colour = colourProvider.Content2;
             }, true);
         }
 

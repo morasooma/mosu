@@ -359,6 +359,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                         hash.Add(bullet.EndPosition);
                         hash.Add(bullet.ContinueUntilExit);
                         hash.Add(bullet.MovementType);
+                        hash.Add(bullet.MovementEasing);
                         hash.Add(bullet.WaveAmplitude);
                         hash.Add(bullet.WaveCycles);
                         hash.Add(bullet.WavePhase);
@@ -373,9 +374,11 @@ namespace osu.Game.Rulesets.Dodge.Edit
                         hash.Add(emitter.BurstCount);
                         hash.Add(emitter.BurstInterval);
                         hash.Add(emitter.BurstBeatDivisor);
+                        hash.Add(emitter.BurstRotation);
                         hash.Add(emitter.MoveSource);
                         hash.Add(emitter.ContinueUntilExit);
                         hash.Add(emitter.MovementType);
+                        hash.Add(emitter.MovementEasing);
                         hash.Add(emitter.WaveAmplitude);
                         hash.Add(emitter.WaveCycles);
                         hash.Add(emitter.WavePhase);
@@ -384,6 +387,21 @@ namespace osu.Game.Rulesets.Dodge.Edit
                     case DodgeArenaChange arena:
                         hash.Add(arena.TargetPosition);
                         hash.Add(arena.TargetSize);
+                        hash.Add(arena.TargetRotation);
+                        hash.Add(arena.Easing);
+                        break;
+
+                    case DodgeBeam beam:
+                        hash.Add(beam.Position);
+                        hash.Add(beam.EndPosition);
+                        hash.Add(beam.BeamWidth);
+                        break;
+
+                    case DodgeCameraChange camera:
+                        hash.Add(camera.Position);
+                        hash.Add(camera.EndPosition);
+                        hash.Add(camera.Continuous);
+                        hash.Add(camera.Easing);
                         break;
                 }
             }

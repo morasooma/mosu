@@ -9,6 +9,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Game.Audio;
 using osu.Game.Rulesets.Dodge.UI;
+using osu.Game.Rulesets.Judgements;
 using osu.Game.Rulesets.Objects.Drawables;
 using osuTK;
 
@@ -26,8 +27,10 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
         private DodgePlayfield playfield { get; set; } = null!;
 
         private bool hasProcessedHit;
-        private bool grazeActive;
-        private double lastGrazeTime = double.NegativeInfinity;
+        private double collisionTime = double.NegativeInfinity;
+        private bool grazeJudged;
+        private double grazeTime = double.NegativeInfinity;
+        private JudgementResult? grazeResult;
         private Vector2 spawnCameraAnchor;
         private int cameraAnchorVersion = -1;
 
@@ -148,8 +151,16 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
 
         protected override void CheckForResult(bool userTriggered, double timeOffset)
         {
-            if (timeOffset >= 0 && !hasProcessedHit && !AllJudged && !Result.HasResult)
+            if (DodgeGameplayTiming.HasReachedJudgementTime(Time.Current, Beam.EndTime, playfield.GameplayEndTime)
+                && !hasProcessedHit
+                && !AllJudged
+                && !Result.HasResult)
+            {
+                if (!grazeJudged)
+                    judgeGraze(Time.Current, false);
+
                 ApplyMaxResult();
+            }
         }
 
         protected override void UpdateHitStateTransforms(ArmedState state)
@@ -191,7 +202,10 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             if (hasProcessedHit || AllJudged || Result.HasResult || currentTime < Beam.StartTime || currentTime > Beam.EndTime)
                 return;
 
-            Vector2 center = Beam.BeamCenter + driftOffset(currentTime);
+            Vector2 currentCenter = Beam.BeamCenter + driftOffset(currentTime);
+            Vector2 previousCenter = allowSweptCollision
+                ? Beam.BeamCenter + driftOffset(Math.Max(Beam.StartTime, currentTime - Math.Max(0, Clock.ElapsedFrameTime)))
+                : currentCenter;
             Vector2 beamDir = Beam.BeamDirection;
             Vector2 perpDir = Beam.PerpendicularDirection;
             float beamLength = Beam.BeamLength;
@@ -199,73 +213,80 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             float playerSize = playfield.PlayerSize;
             float grazeDistance = playfield.GrazeDistance;
 
-            // Check graze first
             bool withinGraze;
 
             if (allowSweptCollision)
             {
                 withinGraze = DodgeBeam.IsWithinGrazeDistanceSwept(
-                    center, beamDir, perpDir, beamLength, beamWidth,
+                    previousCenter, currentCenter, beamDir, perpDir, beamLength, beamWidth,
                     previousPlayerPosition, currentPlayerPosition,
                     playerSize, grazeDistance);
             }
             else
             {
                 withinGraze = DodgeBeam.IsWithinGrazeDistance(
-                    center, beamDir, perpDir, beamLength, beamWidth,
+                    currentCenter, beamDir, perpDir, beamLength, beamWidth,
                     currentPlayerPosition, playerSize, grazeDistance);
             }
 
-            if (withinGraze && !grazeActive)
-            {
-                grazeActive = true;
-                lastGrazeTime = currentTime;
-                playfield.RegisterGraze(currentTime, true);
-            }
-            else if (!withinGraze && grazeActive)
-            {
-                grazeActive = false;
-            }
-
-            // Check collision
             bool intersects;
 
             if (allowSweptCollision)
             {
                 intersects = DodgeBeam.IntersectsPlayerSwept(
-                    center, beamDir, perpDir, beamLength, beamWidth,
+                    previousCenter, currentCenter, beamDir, perpDir, beamLength, beamWidth,
                     previousPlayerPosition, currentPlayerPosition,
                     playerSize);
             }
             else
             {
                 intersects = DodgeBeam.IntersectsPlayer(
-                    center, beamDir, perpDir, beamLength, beamWidth,
+                    currentCenter, beamDir, perpDir, beamLength, beamWidth,
                     currentPlayerPosition, playerSize);
             }
 
             if (intersects && !AllJudged && !Result.HasResult)
             {
                 hasProcessedHit = true;
+                collisionTime = currentTime;
 
-                if (grazeActive)
-                {
-                    playfield.RegisterGraze(currentTime, false);
-                    grazeActive = false;
-                }
+                if (!grazeJudged)
+                    judgeGraze(currentTime, false);
 
                 playfield.TriggerMissFeedback();
                 ApplyMinResult();
+            }
+            else if (withinGraze)
+            {
+                playfield.ReportGrazeProximity();
+
+                if (!grazeJudged)
+                    judgeGraze(currentTime, true);
             }
         }
 
         private void rewindState(double currentTime)
         {
-            if (currentTime < Beam.StartTime)
+            if (grazeJudged && grazeTime > currentTime)
+            {
+                playfield.RevertGraze(grazeResult);
+                grazeJudged = false;
+                grazeTime = double.NegativeInfinity;
+                grazeResult = null;
+            }
+
+            if (hasProcessedHit && collisionTime > currentTime)
             {
                 hasProcessedHit = false;
-                grazeActive = false;
+                collisionTime = double.NegativeInfinity;
             }
+        }
+
+        private void judgeGraze(double time, bool successful)
+        {
+            grazeJudged = true;
+            grazeTime = time;
+            grazeResult = playfield.RegisterGraze(time, successful);
         }
 
         #endregion

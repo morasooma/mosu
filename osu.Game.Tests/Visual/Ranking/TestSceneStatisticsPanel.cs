@@ -27,6 +27,7 @@ using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Overlays;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Difficulty;
@@ -92,6 +93,25 @@ namespace osu.Game.Tests.Visual.Ranking
         public void TestScoreWithoutStatistics()
         {
             loadPanel(TestResources.CreateTestScoreInfo());
+        }
+
+        [Test]
+        public void TestTagCoopScoreShowsParticipants()
+        {
+            var score = TestResources.CreateTestScoreInfo();
+            score.TagCoopReplay = new TagCoopReplayMetadata
+            {
+                Players =
+                [
+                    new TagCoopReplayPlayer { UserID = 1, Username = "first" },
+                    new TagCoopReplayPlayer { UserID = 2, Username = "second" },
+                ]
+            };
+
+            loadPanel(score);
+            AddUntilStep("co-op score label shown", () => this.ChildrenOfType<OsuSpriteText>().Any(text => text.Text.ToString() == "Tag Co-op score"));
+            AddUntilStep("first player shown", () => this.ChildrenOfType<OsuSpriteText>().Any(text => text.Text.ToString().Contains("first")));
+            AddUntilStep("second player shown", () => this.ChildrenOfType<OsuSpriteText>().Any(text => text.Text.ToString().Contains("second")));
         }
 
         [Test]

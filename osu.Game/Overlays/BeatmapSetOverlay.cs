@@ -56,7 +56,8 @@ namespace osu.Game.Overlays
                     },
                     new ScoresContainer
                     {
-                        Beatmap = { BindTarget = Header.HeaderContent.Picker.Beatmap }
+                        Beatmap = { BindTarget = Header.HeaderContent.Picker.Beatmap },
+                        LeaderboardRuleset = { BindTarget = Header.RulesetSelector.LeaderboardRuleset }
                     },
                     comments = new CommentsSection()
                 }

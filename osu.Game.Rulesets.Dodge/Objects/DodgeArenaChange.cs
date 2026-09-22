@@ -64,6 +64,11 @@ namespace osu.Game.Rulesets.Dodge.Objects
         /// </summary>
         public float KiaiShakeAngle { get; set; }
 
+        /// <summary>
+        /// Controls how progress is distributed over the arena transition.
+        /// </summary>
+        public DodgeCameraEasing Easing { get; set; }
+
         public double Duration { get; set; } = 500;
 
         [JsonIgnore]

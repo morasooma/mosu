@@ -75,12 +75,13 @@ namespace osu.Game.Online.Spectator
 
         protected override async Task<bool> BeginPlayingInternal(long? scoreToken, SpectatorState state)
         {
-            if (activeConnection == null)
+            var conn = activeConnection;
+            if (conn == null)
                 return false;
 
             try
             {
-                await connection.InvokeAsync(nameof(ISpectatorServer.BeginPlaySession), scoreToken, state).ConfigureAwait(false);
+                await conn.InvokeAsync(nameof(ISpectatorServer.BeginPlaySession), scoreToken, state).ConfigureAwait(false);
                 return true;
             }
             catch (Exception exception)
@@ -101,20 +102,10 @@ namespace osu.Game.Online.Spectator
             }
         }
 
-        protected override async Task SendFramesInternal(FrameDataBundle bundle)
+        protected override Task SendFramesInternal(FrameDataBundle bundle)
         {
-            var conn = activeConnection;
-            if (conn == null)
-                return;
-
-            try
-            {
-                await conn.SendAsync(nameof(ISpectatorServer.SendFrameData), bundle).ConfigureAwait(false);
-            }
-            catch (InvalidOperationException ex)
-            {
-                Logger.Log($"{nameof(OnlineSpectatorClient)} send of '{nameof(ISpectatorServer.SendFrameData)}' failed: {ex.Message}", LoggingTarget.Network);
-            }
+            // Frame streaming to spectator hubs is disabled in the public build.
+            return Task.CompletedTask;
         }
 
         protected override async Task EndPlayingInternal(SpectatorState state)

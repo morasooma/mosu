@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Primitives;
@@ -14,6 +15,7 @@ using osu.Framework.Utils;
 using osu.Game.Beatmaps;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Overlays;
 using osu.Game.Resources.Localisation.Web;
 using osuTK;
 
@@ -25,6 +27,8 @@ namespace osu.Game.Screens.Select
         {
             private readonly GraphDrawable retriesGraph;
             private readonly GraphDrawable failsGraph;
+            private OsuSpriteText headerText = null!;
+            private IBindable<Colour4>? themeColour;
 
             public APIFailTimes Data
             {
@@ -54,7 +58,7 @@ namespace osu.Game.Screens.Select
                     Spacing = new Vector2(0f, 4f),
                     Children = new Drawable[]
                     {
-                        new OsuSpriteText
+                        headerText = new OsuSpriteText
                         {
                             Text = BeatmapsetsStrings.ShowInfoPointsOfFailure,
                             Font = OsuFont.Style.Caption1.With(weight: FontWeight.SemiBold),
@@ -74,11 +78,17 @@ namespace osu.Game.Screens.Select
                 };
             }
 
-            [BackgroundDependencyLoader]
-            private void load(OsuColour colours)
+            [BackgroundDependencyLoader(permitNulls: true)]
+            private void load(OsuColour colours, OverlayColourProvider? colourProvider = null)
             {
                 retriesGraph.Colour = colours.Orange1;
                 failsGraph.Colour = colours.DarkOrange2;
+
+                if (colourProvider != null)
+                {
+                    themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                    themeColour.BindValueChanged(_ => headerText.Colour = colourProvider.Content1, true);
+                }
             }
 
             private partial class GraphDrawable : Drawable

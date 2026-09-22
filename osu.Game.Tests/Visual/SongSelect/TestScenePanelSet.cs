@@ -72,6 +72,16 @@ namespace osu.Game.Tests.Visual.SongSelect
             AddStep("disable old previews", () => config.SetValue(OsuSetting.ForkSongSelectOldCarouselPreviews, false));
         }
 
+        [Test]
+        public void TestStableCollapsedMapCardComposition()
+        {
+            AddStep("enable stable style", () => config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.LegacySkinned));
+            AddStep("display", () => CreateThemedContent(OverlayColourScheme.Aquamarine));
+            AddUntilStep("map cards loaded", () => this.ChildrenOfType<PanelBeatmapSet>().Any());
+            AddAssert("inactive map card uses stable pink tint", () => this.ChildrenOfType<PanelBeatmapSet>().Where(panel => !panel.Expanded.Value).All(panel => panel.LegacyInactiveFullCardTintIsStablePink));
+            AddAssert("map card uses skinned button background", () => this.ChildrenOfType<PanelBeatmapSet>().Where(panel => !panel.Expanded.Value).All(panel => panel.LegacySkinnedButtonBackgroundVisible));
+        }
+
         protected override Drawable CreateContent()
         {
             return new OsuContextMenuContainer

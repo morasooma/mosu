@@ -16,11 +16,13 @@ using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input.Events;
+using osu.Framework.Localisation;
 using osu.Framework.Logging;
 using osu.Framework.Screens;
 using osu.Framework.Threading;
 using osu.Game.Configuration;
 using osu.Game.Graphics.UserInterface;
+using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Input;
 using osu.Game.Online.API;
 using osu.Game.Online.Rooms;
@@ -30,6 +32,7 @@ using osu.Game.Screens.OnlinePlay.Lounge.Components;
 using osu.Game.Users;
 using osuTK;
 using osuTK.Graphics;
+using osu.Game.Localisation;
 
 namespace osu.Game.Screens.OnlinePlay.Lounge
 {
@@ -45,13 +48,6 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
         };
 
         protected override UserActivity InitialActivity => new UserActivity.SearchingForLobby();
-
-        protected Container<OsuButton> Buttons { get; } = new Container<OsuButton>
-        {
-            Anchor = Anchor.BottomLeft,
-            Origin = Anchor.BottomLeft,
-            AutoSizeAxes = Axes.Both
-        };
 
         [Resolved]
         private MusicController music { get; set; } = null!;
@@ -90,7 +86,7 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
         {
             Masking = true;
 
-            const float controls_area_height = 25f;
+            const float controls_area_height = 34f;
 
             if (idleTracker != null)
                 isIdle.BindTo(idleTracker.IsIdle);
@@ -117,6 +113,7 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
                     {
                         RelativeSizeAxes = Axes.Both,
                         Filter = { BindTarget = filter },
+                        EmptyStateText = EmptyStateText,
                     }
                 },
                 loadingLayer = new LoadingLayer(true),
@@ -163,34 +160,54 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
                                         Width = 0.6f,
                                     },
                                 },
-                                new Container
+                                new GridContainer
                                 {
                                     RelativeSizeAxes = Axes.X,
-                                    Height = controls_area_height,
-                                    Children = new Drawable[]
+                                    AutoSizeAxes = Axes.Y,
+                                    ColumnDimensions = new[]
                                     {
-                                        Buttons.WithChild(CreateNewRoomButton().With(d =>
+                                        new Dimension(GridSizeMode.AutoSize),
+                                        new Dimension(),
+                                    },
+                                    RowDimensions = new[]
+                                    {
+                                        new Dimension(GridSizeMode.AutoSize),
+                                    },
+                                    Content = new[]
+                                    {
+                                        new Drawable[]
                                         {
-                                            d.Anchor = Anchor.BottomLeft;
-                                            d.Origin = Anchor.BottomLeft;
-                                            d.Size = new Vector2(150, 30f);
-                                            d.Action = () => Open();
-                                        })),
-                                        new FillFlowContainer
-                                        {
-                                            Anchor = Anchor.TopRight,
-                                            Origin = Anchor.TopRight,
-                                            AutoSizeAxes = Axes.Both,
-                                            Direction = FillDirection.Horizontal,
-                                            Spacing = new Vector2(10),
-                                            ChildrenEnumerable = CreateFilterControls().Select(f => f.With(d =>
+                                            new Container
                                             {
-                                                d.Anchor = Anchor.TopRight;
-                                                d.Origin = Anchor.TopRight;
-                                            }))
-                                        }
+                                                AutoSizeAxes = Axes.X,
+                                                Margin = new MarginPadding { Right = 20 },
+                                                Children = new Drawable[]
+                                                {
+                                                    CreateNewRoomButton().With(d =>
+                                                    {
+                                                        // Ballpark alignment with filter controls to right.
+                                                        // Done this way to ensure it still looks correct when UI scale causes multi-line flow.
+                                                        d.Y = -6;
+                                                        d.Size = new Vector2(180, 48 + 6);
+                                                        d.Action = () => Open();
+                                                    }),
+                                                }
+                                            },
+                                            new FillFlowContainer
+                                            {
+                                                RelativeSizeAxes = Axes.X,
+                                                AutoSizeAxes = Axes.Y,
+                                                Direction = FillDirection.Full,
+                                                Spacing = new Vector2(10, 8),
+                                                ChildrenEnumerable = CreateFilterControls().Select(f => f.With(d =>
+                                                {
+                                                    d.Anchor = Anchor.TopRight;
+                                                    d.Origin = Anchor.TopRight;
+                                                }))
+                                            }
+                                        },
                                     }
-                                }
+                                },
                             },
                         },
                     }
@@ -246,6 +263,8 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
 
         #region Filtering
 
+        protected virtual LocalisableString EmptyStateText => "No rooms match the selected filters.";
+
         public void UpdateFilter() => Scheduler.AddOnce(updateFilter);
 
         private ScheduledDelegate? scheduledFilterUpdate;
@@ -266,20 +285,22 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
         {
             SearchString = searchTextBox.Current.Value,
             Ruleset = ruleset.Value,
-            Mode = StatusDropdown.Current.Value
+            Mode = StatusDropdown.Current.Value,
         };
 
         protected virtual IEnumerable<Drawable> CreateFilterControls()
         {
-            StatusDropdown = new SlimEnumDropdown<RoomModeFilter>
+            yield return new Container
             {
-                RelativeSizeAxes = Axes.None,
                 Width = 160,
+                AutoSizeAxes = Axes.Y,
+                Child = StatusDropdown = new FormEnumDropdown<RoomModeFilter>
+                {
+                    Caption = LoungeSubScreenStrings.RoomFilterState,
+                }
             };
 
             StatusDropdown.Current.BindValueChanged(_ => UpdateFilter());
-
-            yield return StatusDropdown;
         }
 
         #endregion
@@ -354,7 +375,7 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
 
                 if (onFailure != null)
                     onFailure(message, exception);
-                else
+                else if (exception is not OperationCanceledException)
                     Logger.Error(exception, message);
             });
         });

@@ -141,7 +141,7 @@ namespace osu.Game.Rulesets.Osu.UI
 
             float motionScale = getRailMotionScale(previous, current, next, railTargets);
             Vector2 outputPosition = rawPosition + assistOffset;
-            ProjectionResult projection = projectOntoPolyline(projectionPointBuffer, getRailProjectionQuery(rawPosition, motionScale));
+            ProjectionResult projection = projectOntoCurrentRail(getRailProjectionQuery(rawPosition, motionScale), current.StartTime);
             float railDistance = (projection.Point - outputPosition).Length;
             float onRailThreshold = Math.Max(current.Radius * 0.95f, 12f);
             bool alreadyOnRail = railDistance <= onRailThreshold;
@@ -291,7 +291,7 @@ namespace osu.Game.Rulesets.Osu.UI
                 return interpolate(impactPoint, directionalPoint, 0.84f);
 
             float projectionLead = Math.Min(Math.Max(current.Radius * 0.34f, 8f), Math.Max(14f, neighbourDistance * 0.12f));
-            ProjectionResult projection = projectOntoPolyline(projectionPointBuffer, rawPosition + assistOffset + flowDirection * projectionLead);
+            ProjectionResult projection = projectOntoCurrentRail(rawPosition + assistOffset + flowDirection * projectionLead, current.StartTime);
             Vector2 flowVector = projection.Point - currentCentre;
 
             if (flowVector.LengthSquared > 0.0001f && flowDirection.LengthSquared > 0.0001f)
@@ -492,7 +492,7 @@ namespace osu.Game.Rulesets.Osu.UI
                 adaptiveRadius *= 1.08f;
 
             ProjectionResult corridorProjection = projectionPointBuffer.Count >= 2
-                ? projectOntoPolyline(projectionPointBuffer, rawPosition)
+                ? projectOntoCurrentRail(rawPosition, current.StartTime)
                 : projection;
             float corridorDistance = (corridorProjection.Point - rawPosition).Length;
 

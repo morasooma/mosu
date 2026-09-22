@@ -13,8 +13,9 @@ namespace osu.Game.Online
         {
             WebsiteUrl = APIUrl = @"https://osu.ppy.sh";
 
-            APIClientID = string.Empty;
-            APIClientSecret = string.Empty;
+            // Public credentials used by the open-source official lazer client.
+            APIClientID = @"5";
+            APIClientSecret = @"FGc9GAtyHzeQDshWP5Ah7dega8hJACAJpQtw6OXk";
 
             SpectatorUrl = string.Empty;
             MultiplayerUrl = string.Empty;

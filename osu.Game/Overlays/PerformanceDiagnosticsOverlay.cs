@@ -79,9 +79,9 @@ namespace osu.Game.Overlays
 
             Children = new Drawable[]
             {
-                new Box
+                new BackdropBlurSurface
                 {
-                    Colour = colours.GreySeaFoamDark,
+                    SurfaceColour = colours.GreySeaFoamDark,
                     RelativeSizeAxes = Axes.Both,
                 },
                 new GridContainer
@@ -981,6 +981,7 @@ namespace osu.Game.Overlays
             MosuDiagnosticsProfile.DeferredDirectUniformUpload => ForkSettingsStrings.DeferredDirectUniformUploadCaption,
             MosuDiagnosticsProfile.VeldridPipelineLookupCache => ForkSettingsStrings.VeldridPipelineLookupCacheCaption,
             MosuDiagnosticsProfile.StaticChildLifetimeCache => ForkSettingsStrings.StaticChildLifetimeCacheCaption,
+            MosuDiagnosticsProfile.AtlasRegionAllocator => ForkSettingsStrings.AtlasRegionAllocatorCaption,
             MosuDiagnosticsProfile.AllowTearing => ForkSettingsStrings.AllowTearingCaption,
             MosuDiagnosticsProfile.UpdateThreadSpinWait => ForkSettingsStrings.UpdateSpinWaitCaption,
             MosuDiagnosticsProfile.SkinPerformanceMode => ForkSettingsStrings.DiagnosticsProfileSkinPackage,

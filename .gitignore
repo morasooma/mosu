@@ -13,6 +13,8 @@
 
 # Build results
 [Dd]ebug/
+!osu.Game/Performance/Debug/
+!osu.Game/Performance/Debug/*.cs
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
@@ -264,6 +266,7 @@ __pycache__/
 # Local runtime data and generated web bundles
 /data/
 /web-dist/
+/dodge-web-player/
 
 # Local experiments and generated sealing material
 /tmp/
@@ -279,21 +282,28 @@ __pycache__/
 /test_compile.cs
 /*.dxvk-cache
 
+# Local agent workspaces and publish outputs
+/.freebuff/
+/.hermes/
+/.zcode/
+/publish-osx-arm64/
+/publish-osx-arm64.zip
+
+# Generated obfuscation reports
+/mapping.xml
+
 # Local secrets
 .env
 .env.*
 !.env.example
 !.env.production.example
-# The public snapshot contains a deliberately empty authentication stub.
-# Real release credentials remain excluded from the private source repository.
+osu.Game/Online/MosuClientAuthentication.cs
+!osu.Game/Online/MosuClientAuthentication.cs.example
 
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio and WebStorm
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
 
 # User-specific stuff
-/.idea/
-/.run/
-/.vscode/
 .idea/**/workspace.xml
 .idea/**/tasks.xml
 .idea/**/usage.statistics.xml
@@ -378,3 +388,14 @@ FodyWeavers.xsd
 
 .idea/.idea.osu.Desktop/.idea/misc.xml
 .idea/.idea.osu.Android/.idea/deploymentTargetDropDown.xml
+
+# Temporary workspace used to prepare the public source snapshot.
+/.public/
+/.public-source-stage/
+
+# Local build output, profiling captures, extracted packages, and agent state.
+/.artifacts/
+/.profiles/
+/recovered/
+/squashfs-root/
+/.claude/

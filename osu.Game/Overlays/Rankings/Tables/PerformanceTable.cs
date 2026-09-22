@@ -24,7 +24,7 @@ namespace osu.Game.Overlays.Rankings.Tables
 
         protected override Drawable[] CreateUniqueContent(UserStatistics item) => new Drawable[]
         {
-            new RowText { Text = item.PP?.ToLocalisableString(@"N0") ?? default, }
+            new RowText(TextSize) { Text = item.PP?.ToLocalisableString(@"N0") ?? default, }
         };
     }
 }

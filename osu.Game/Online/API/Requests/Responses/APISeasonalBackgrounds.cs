@@ -22,5 +22,8 @@ namespace osu.Game.Online.API.Requests.Responses
     {
         [JsonProperty("url")]
         public string Url { get; set; }
+
+        [JsonProperty("hash")]
+        public string Hash { get; set; }
     }
 }

@@ -26,10 +26,11 @@ namespace osu.Game.Tests.Online.Chat
             var message = JsonConvert.DeserializeObject<Message>(json);
 
             ClassicAssert.NotNull(message);
-            ClassicAssert.NotNull(message.Sender);
+            var sender = message!.Sender;
+            ClassicAssert.NotNull(sender);
             ClassicAssert.AreEqual(123, message.SenderId);
-            ClassicAssert.AreEqual(123, message.Sender.Id);
-            ClassicAssert.AreEqual("test_user", message.Sender.Username);
+            ClassicAssert.AreEqual(123, sender!.Id);
+            ClassicAssert.AreEqual("test_user", sender.Username);
         }
 
         [Test]
@@ -47,10 +48,11 @@ namespace osu.Game.Tests.Online.Chat
             var message = JsonConvert.DeserializeObject<Message>(json);
 
             ClassicAssert.NotNull(message);
-            ClassicAssert.NotNull(message.Sender);
+            var sender = message!.Sender;
+            ClassicAssert.NotNull(sender);
             ClassicAssert.AreEqual(123, message.SenderId);
-            ClassicAssert.AreEqual(123, message.Sender.Id);
-            ClassicAssert.AreEqual("test_user", message.Sender.Username);
+            ClassicAssert.AreEqual(123, sender!.Id);
+            ClassicAssert.AreEqual("test_user", sender.Username);
         }
     }
 }

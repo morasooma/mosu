@@ -68,7 +68,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
         }
 
         [Test]
-        public void TestContinuedEmitterBlocksBreakUntilGameplayCap()
+        public void TestContinuedEmitterBlocksBreakUntilNaturalExit()
         {
             var emitter = new DodgeEmitter
             {
@@ -85,7 +85,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 new DodgeHitObject[] { emitter },
                 DodgeBullet.SIZE);
 
-            Assert.That(result, Is.EqualTo(new[] { new BreakPeriod(4200, 5000) }));
+            Assert.That(result, Is.Empty);
         }
 
         [Test]

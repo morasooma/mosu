@@ -7,5 +7,6 @@ namespace osu.Game.Rulesets.Dodge.Mods
 {
     public class DodgeModMosuStaticBpm : ModMosuStaticBpm
     {
+        public override bool Ranked => false;
     }
 }

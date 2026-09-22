@@ -34,16 +34,19 @@ namespace osu.Game.Online.Matchmaking
                 switch (RulesetId)
                 {
                     case 0:
-                        return $"osu! ({Name})";
+                        return $"Standard ({Name})";
 
                     case 1:
-                        return $"osu!taiko ({Name})";
+                        return $"Taiko ({Name})";
 
                     case 2:
-                        return $"osu!catch ({Name})";
+                        return $"Catch ({Name})";
 
                     case 3:
-                        return $"osu!mania {Variant}K ({Name})";
+                        return $"Mania {Variant}K ({Name})";
+
+                    case 4:
+                        return $"osu!relax ({Name})";
 
                     default:
                         return Name;

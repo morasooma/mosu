@@ -73,6 +73,7 @@ namespace osu.Game.Graphics.UserInterface
         private readonly Container backgroundLayer;
         private readonly Box flashLayer;
         private IBindable<Colour4> themeColour = null!;
+        private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
         protected readonly Container ButtonContent;
 
@@ -142,8 +143,17 @@ namespace osu.Game.Graphics.UserInterface
             // click (and so ThemeTransitionDuration can suppress the fade).
             themeColour.BindValueChanged(_ => updateState(), true);
 
+            disableShear.BindValueChanged(_ => UpdateShear(), true);
+
             updateState();
             FinishTransforms(true);
+        }
+
+        protected virtual void UpdateShear()
+        {
+            Shear = OsuGame.SHEAR;
+            if (ButtonContent != null)
+                ButtonContent.Shear = -OsuGame.SHEAR;
         }
 
         protected override bool OnClick(ClickEvent e)

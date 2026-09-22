@@ -16,6 +16,7 @@ using osu.Framework.Testing;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Database;
+using osu.Game.Online;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Toolbar;
@@ -49,6 +50,9 @@ namespace osu.Game.Tests.Visual.SongSelect
 
         [Cached(typeof(INotificationOverlay))]
         private readonly INotificationOverlay notificationOverlay = new NotificationOverlay();
+
+        [Cached]
+        private readonly LocalUserStatisticsProvider localUserStatisticsProvider = new LocalUserStatisticsProvider();
 
         [Cached]
         protected readonly LeaderboardManager LeaderboardManager = new LeaderboardManager();

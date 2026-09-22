@@ -24,21 +24,25 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 {
     public partial class HamburgerMenu : IconButton, IHasPopover
     {
+        public required Action ReportRequested { get; init; }
+
         public HamburgerMenu()
         {
             Icon = FontAwesome.Solid.Bars;
             Action = this.ShowPopover;
         }
 
-        public Framework.Graphics.UserInterface.Popover GetPopover() => new Popover();
+        public Framework.Graphics.UserInterface.Popover GetPopover() => new Popover { ReportRequested = ReportRequested };
 
         private partial class Popover : OsuPopover
         {
             [Resolved]
-            private RankedPlayScreen? rankedPlayScreen { get; set; }
+            private RankedPlayScreen rankedPlayScreen { get; set; } = null!;
 
-            [Resolved]
+            [Resolved(canBeNull: true)]
             private MultiplayerClient? multiplayerClient { get; set; }
+
+            public required Action ReportRequested { get; init; }
 
             private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Pink);
             private FillFlowContainer buttonFlow = null!;
@@ -55,34 +59,23 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                     Spacing = new Vector2(3),
                 };
 
-                bool matchEnded = rankedPlayScreen?.ActiveSubScreen is EndedScreen;
+                bool matchEnded = rankedPlayScreen.ActiveSubScreen is EndedScreen;
                 addButton(matchEnded ? CommonStrings.Exit : "Give up", FontAwesome.Solid.SignOutAlt, () =>
                 {
-                    if (matchEnded)
+                    if (matchEnded || multiplayerClient == null)
                     {
-                        rankedPlayScreen?.Exit();
+                        rankedPlayScreen.Exit();
+                        return;
                     }
-                    else
+
+                    multiplayerClient.Surrender().ContinueWith(_ => Schedule(() =>
                     {
-                        if (multiplayerClient != null)
-                        {
-                            multiplayerClient.Surrender().ContinueWith(_ =>
-                            {
-                                Schedule(() =>
-                                {
-                                    if (rankedPlayScreen.IsCurrentScreen() && (multiplayerClient.Room == null || !multiplayerClient.IsConnected.Value))
-                                    {
-                                        rankedPlayScreen.Exit();
-                                    }
-                                });
-                            });
-                        }
-                        else
-                        {
-                            rankedPlayScreen?.Exit();
-                        }
-                    }
+                        if (rankedPlayScreen.IsCurrentScreen() && (multiplayerClient.Room == null || !multiplayerClient.IsConnected.Value))
+                            rankedPlayScreen.Exit();
+                    }));
                 });
+
+                addButton("Report opponent", FontAwesome.Solid.ExclamationTriangle, () => ReportRequested.Invoke());
             }
 
             protected override void LoadComplete()
@@ -129,8 +122,6 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                 [BackgroundDependencyLoader]
                 private void load()
                 {
-                    themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-                    themeColour.BindValueChanged(_ => updateColours(), true);
                     Content.CornerRadius = 10;
 
                     Add(icon = new SpriteIcon
@@ -141,14 +132,16 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                         X = 15,
                         Icon = Icon,
                     });
+
+                    themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                    themeColour.BindValueChanged(_ => updateColours(), true);
                 }
 
                 private void updateColours()
                 {
-                    var textColour = TextColour ?? (OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : DefaultTextColour);
+                    Color4 textColour = TextColour ?? (OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : DefaultTextColour);
                     SpriteText.Colour = textColour;
-                    if (icon != null)
-                        icon.Colour = textColour;
+                    icon.Colour = textColour;
                 }
 
                 protected override SpriteText CreateText() => new OsuSpriteText

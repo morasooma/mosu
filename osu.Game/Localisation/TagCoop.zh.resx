@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="all_players" xml:space="preserve"><value>所有玩家</value></data>
+  <data name="spin_now" xml:space="preserve"><value>转动转盘</value></data>
+  <data name="your_turn" xml:space="preserve"><value>轮到你</value></data>
+  <data name="hit_this_combo" xml:space="preserve"><value>完成这个连段</value></data>
+  <data name="all_get_ready" xml:space="preserve"><value>全员准备</value></data>
+  <data name="get_ready" xml:space="preserve"><value>准备</value></data>
+  <data name="playing_now" xml:space="preserve"><value>正在游玩</value></data>
+  <data name="waiting_for_turn" xml:space="preserve"><value>等待回合</value></data>
+  <data name="tag_coop" xml:space="preserve"><value>Tag Co-op</value></data>
+  <data name="spinner_in" xml:space="preserve"><value>转盘将在 {0:0.0} 秒后出现</value></data>
+  <data name="your_turn_in" xml:space="preserve"><value>你的回合将在 {0:0.0} 秒后开始</value></data>
+  <data name="status_with_ping" xml:space="preserve"><value>{0} · {1} 毫秒</value></data>
+  <data name="remote_miss" xml:space="preserve"><value>{0}：未命中</value></data>
+</root>

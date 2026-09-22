@@ -4,6 +4,7 @@
 using osuTK;
 using osuTK.Graphics;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -12,6 +13,8 @@ using osu.Framework.Graphics.Effects;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Localisation;
 using osu.Framework.Utils;
+using osu.Game.Graphics.Containers;
+using osu.Game.Overlays;
 
 namespace osu.Game.Graphics.Cursor
 {
@@ -24,6 +27,9 @@ namespace osu.Game.Graphics.Cursor
         {
         }
 
+        // Standalone public build note: Upstream ppy.osu.Framework TooltipContainer does not define
+        // a virtual CreateContentContainer() hook. Custom lifetime container override is bypassed here.
+
         protected override double AppearDelay => (1 - CurrentTooltip.Alpha) * base.AppearDelay; // reduce appear delay if the tooltip is already partly visible.
 
         public partial class OsuTooltip : Tooltip
@@ -33,6 +39,8 @@ namespace osu.Game.Graphics.Cursor
             private readonly Box background;
             private readonly TextFlowContainer text;
             private bool instantMovement = true;
+            private IBindable<ThemeMode>? themeMode;
+            private IBindable<Colour4>? themeColour;
 
             private LocalisableString lastContent;
 
@@ -85,10 +93,43 @@ namespace osu.Game.Graphics.Cursor
                 };
             }
 
-            [BackgroundDependencyLoader]
-            private void load(OsuColour colour)
+            [BackgroundDependencyLoader(true)]
+            private void load(OsuColour colour, OverlayColourProvider? colourProvider)
             {
-                background.Colour = colour.Gray3;
+                if (colourProvider != null)
+                {
+                    themeColour = colourProvider.GetColourBindable(OverlayColour.Background5);
+                    themeColour.BindValueChanged(_ =>
+                    {
+                        if (OverlayColourProvider.IsLightTheme)
+                        {
+                            background.Colour = colourProvider.Background5;
+                            text.Colour = colourProvider.Content1;
+                        }
+                        else
+                        {
+                            background.Colour = colour.Gray3;
+                            text.Colour = Color4.White;
+                        }
+                    }, true);
+                }
+                else
+                {
+                    themeMode = OverlayColourProvider.CurrentTheme.GetBoundCopy();
+                    themeMode.BindValueChanged(_ =>
+                    {
+                        if (OverlayColourProvider.IsLightTheme)
+                        {
+                            background.Colour = Color4Extensions.FromHex(@"f5f5f5");
+                            text.Colour = Color4Extensions.FromHex(@"1a1a1a");
+                        }
+                        else
+                        {
+                            background.Colour = colour.Gray3;
+                            text.Colour = Color4.White;
+                        }
+                    }, true);
+                }
             }
 
             protected override void PopIn()

@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
@@ -25,12 +26,19 @@ namespace osu.Game.Screens.Select
     {
         private const float legacy_preview_aspect_ratio = 16f / 9f;
         private const float classic_preview_aspect_ratio = 4f / 3f;
+        private const double normal_distance_time_before_load = 100;
+        private const double torii_minimum_time_before_load = 200;
+        private const double torii_distance_time_before_load = 200;
 
         [Resolved]
         private BeatmapCarousel? beatmapCarousel { get; set; }
 
         private readonly BindableBool useLegacyPreviewLayout = new BindableBool();
         private readonly BindableBool useSkinnedLegacyCarousel = new BindableBool();
+        private readonly BindableBool carouselPerformanceMode = new BindableBool();
+        private readonly BindableBool carouselPreviews = new BindableBool(true);
+        private readonly BindableBool carouselLazyLoading = new BindableBool();
+        private readonly BindableInt carouselPreviewResolution = new BindableInt(100);
 
         private Box fallbackBackground = null!;
         private Box legacyBlackBackground = null!;
@@ -43,6 +51,7 @@ namespace osu.Game.Screens.Select
         private Drawable? background;
 
         private WorkingBeatmap? working;
+        private WeakReference<WorkingBeatmap>? loadedWorking;
 
         private CancellationTokenSource? loadCancellation;
 
@@ -70,26 +79,53 @@ namespace osu.Game.Screens.Select
 
         internal int BackgroundLoadCount { get; private set; }
 
+        internal bool RetainsWorkingBeatmap => working != null;
+
         internal static float GetLegacyPreviewWidth(float width, float height, bool classicLayout = false)
             => width <= 0 ? 0 : Math.Min(width, height * (classicLayout ? classic_preview_aspect_ratio : legacy_preview_aspect_ratio));
 
         public WorkingBeatmap? Beatmap
         {
-            get => working;
+            get
+            {
+                if (working != null)
+                    return working;
+
+                return loadedWorking?.TryGetTarget(out var loaded) == true ? loaded : null;
+            }
             set
             {
-                if (working == null && value == null)
+                WorkingBeatmap? current = Beatmap;
+
+                if (current == null && value == null)
                     return;
 
                 // This guard papers over excessive refreshes of the background asset which occur if
                 // `working == value` type guards are used.
-                string? currentBackgroundHash = getBackgroundIdentity(working);
+                string? currentBackgroundHash = getBackgroundIdentity(current);
                 string? newBackgroundHash = getBackgroundIdentity(value);
 
                 if (working != null && value != null && currentBackgroundHash != null && currentBackgroundHash == newBackgroundHash)
+                {
+                    // Keep the already-loaded texture, but never retain the first WorkingBeatmap for
+                    // the lifetime of a pooled panel. It may have decoded its complete beatmap while
+                    // selected, which can otherwise keep thousands of hit objects alive after scroll.
+                    if (background != null)
+                    {
+                        loadedWorking = new WeakReference<WorkingBeatmap>(value);
+                        working = null;
+                    }
+                    else
+                    {
+                        working = value;
+                        loadedWorking = null;
+                    }
+
                     return;
+                }
 
                 working = value;
+                loadedWorking = null;
                 resetLoadedBackground();
             }
         }
@@ -132,7 +168,11 @@ namespace osu.Game.Screens.Select
         {
             this.colourProvider = colourProvider;
             config.BindWith(OsuSetting.ForkSongSelectOldCarouselPreviews, useLegacyPreviewLayout);
-            config.BindWith(OsuSetting.ForkSongSelectSkinnedLegacyCarousel, useSkinnedLegacyCarousel);
+            ForkSongSelectStyleBinding.BindSkinnedLegacyCarousel(config, useSkinnedLegacyCarousel, () => beatmapCarousel?.SupportsStableStyle ?? true);
+            config.BindWith(OsuSetting.ForkSongSelectCarouselPerformanceMode, carouselPerformanceMode);
+            config.BindWith(OsuSetting.ForkSongSelectCarouselPreviews, carouselPreviews);
+            config.BindWith(OsuSetting.ForkSongSelectCarouselLazyLoading, carouselLazyLoading);
+            config.BindWith(OsuSetting.ForkSongSelectCarouselPreviewResolution, carouselPreviewResolution);
 
             InternalChildren = new Drawable[]
             {
@@ -204,6 +244,9 @@ namespace osu.Game.Screens.Select
             updateLayerVisibility();
             useLegacyPreviewLayout.BindValueChanged(_ => previewLayoutChanged());
             useSkinnedLegacyCarousel.BindValueChanged(_ => previewLayoutChanged());
+            carouselPerformanceMode.BindValueChanged(_ => previewLayoutChanged());
+            carouselPreviews.BindValueChanged(_ => previewLayoutChanged());
+            carouselPreviewResolution.BindValueChanged(_ => previewLayoutChanged());
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ => fallbackBackground.Colour = ColourInfo.GradientHorizontal(colourProvider.Background3, colourProvider.Background4), true);
@@ -212,8 +255,20 @@ namespace osu.Game.Screens.Select
 
         private void loadContentIfRequired()
         {
+            // InfiniteGlass keeps the regular carousel present to drive its filtering pipeline,
+            // but rendering previews for that fully transparent carousel duplicates every texture
+            // load. Release existing previews as well so they cannot accumulate across maps.
+            if (beatmapCarousel?.SuppressPanelPreviews == true)
+            {
+                if (background != null || loadCancellation != null)
+                    resetLoadedBackground();
+
+                timeSinceUnpool = 0;
+                return;
+            }
+
             // A load is already in progress if the cancellation token is non-null.
-            if (background != null || loadCancellation != null || working == null)
+            if (!carouselPreviews.Value || background != null || loadCancellation != null || working == null)
                 return;
 
             if (beatmapCarousel != null)
@@ -222,7 +277,8 @@ namespace osu.Game.Screens.Select
 
                 // We want to preload backgrounds while panels are off-screen, prioritising panels closest
                 // to the visual centre so the currently browsed area fills in first.
-                float timeUpdatingBeforeLoad = Math.Abs(panelY - beatmapCarousel.DrawHeight / 2) / beatmapCarousel.DrawHeight * 100;
+                double relativeDistanceFromCentre = Math.Abs(panelY - beatmapCarousel.DrawHeight / 2) / beatmapCarousel.DrawHeight;
+                double timeUpdatingBeforeLoad = GetBackgroundLoadDelay(relativeDistanceFromCentre, carouselLazyLoading.Value);
 
                 timeSinceUnpool += Time.Elapsed;
 
@@ -233,31 +289,57 @@ namespace osu.Game.Screens.Select
             var cancellation = loadCancellation = new CancellationTokenSource();
             bool legacyLayout = useLegacyPreviewLayout.Value || useSkinnedLegacyCarousel.Value;
             bool classicLayout = useSkinnedLegacyCarousel.Value;
+            int previewResolution = carouselPreviewResolution.Value;
+            Drawable backgroundToLoad = createBackgroundDrawable(working, legacyLayout, classicLayout, previewResolution);
+            bool callbackInvoked = false;
 
-            LoadComponentAsync(createBackgroundDrawable(working, legacyLayout, classicLayout), loadedBackground =>
+            LoadComponentAsync(backgroundToLoad, loadedBackground =>
             {
+                callbackInvoked = true;
+
                 if (loadCancellation != cancellation || cancellation.IsCancellationRequested
+                    || !carouselPreviews.Value
+                    || beatmapCarousel?.SuppressPanelPreviews == true
                     || legacyLayout != (useLegacyPreviewLayout.Value || useSkinnedLegacyCarousel.Value)
-                    || classicLayout != useSkinnedLegacyCarousel.Value)
+                    || classicLayout != useSkinnedLegacyCarousel.Value
+                    || previewResolution != carouselPreviewResolution.Value)
                 {
                     loadedBackground.Dispose();
                     return;
                 }
 
                 AddInternal(background = loadedBackground);
+                loadedWorking = new WeakReference<WorkingBeatmap>(working!);
+                working = null;
                 BackgroundLoadCount++;
 
                 bool spriteOnScreen = beatmapCarousel?.ScreenSpaceDrawQuad.Intersects(loadedBackground.ScreenSpaceDrawQuad) != false;
                 loadedBackground.FadeInFromZero(spriteOnScreen ? 400 : 0, Easing.OutQuint);
-            }, cancellation.Token);
+            }, cancellation.Token).ContinueWith(_ =>
+            {
+                // CompositeDrawable omits the callback when cancellation wins during loading. Queue
+                // cleanup after its already-queued callback, releasing any texture held by a loaded but
+                // unattached drawable rather than leaving it to finalization during rapid scrolling.
+                Schedule(() =>
+                {
+                    if (!callbackInvoked)
+                        backgroundToLoad.Dispose();
+                });
+            }, TaskScheduler.Default);
         }
 
-        private static Drawable createBackgroundDrawable(WorkingBeatmap beatmap, bool legacyLayout, bool classicLayout)
+        internal static double GetBackgroundLoadDelay(double relativeDistanceFromCentre, bool useToriiStyleLazyLoading)
+        {
+            double distanceDelay = relativeDistanceFromCentre * (useToriiStyleLazyLoading ? torii_distance_time_before_load : normal_distance_time_before_load);
+            return (useToriiStyleLazyLoading ? torii_minimum_time_before_load : 0) + distanceDelay;
+        }
+
+        private static Drawable createBackgroundDrawable(WorkingBeatmap beatmap, bool legacyLayout, bool classicLayout, int previewResolution)
         {
             if (legacyLayout)
-                return new LegacyPreviewBackground(beatmap, classicLayout);
+                return new LegacyPreviewBackground(beatmap, classicLayout, previewResolution);
 
-            return new PanelBeatmapBackground(beatmap)
+            return new PanelBeatmapBackground(beatmap, false, previewResolution)
             {
                 RelativeSizeAxes = Axes.Both,
                 Anchor = Anchor.Centre,
@@ -269,19 +351,38 @@ namespace osu.Game.Screens.Select
         private void previewLayoutChanged()
         {
             updateLayerVisibility();
+
+            // Keep the weakly-held source alive only while a replacement drawable is loading.
+            // The currently attached background still owns it at this point.
+            working ??= Beatmap;
+            loadedWorking = null;
             resetLoadedBackground();
         }
 
         private void updateLayerVisibility()
         {
+            if (carouselPerformanceMode.Value)
+            {
+                Masking = false;
+                CornerRadius = 0;
+                fallbackBackground.Alpha = 1;
+                legacyBlackBackground.Alpha = 0;
+                legacyMenuButtonBackground.Alpha = 0;
+                modernEffects.Alpha = 0;
+                legacyEffects.Alpha = 0;
+                return;
+            }
+
             bool legacyLayout = useLegacyPreviewLayout.Value || useSkinnedLegacyCarousel.Value;
+
+            Masking = true;
+            CornerRadius = useSkinnedLegacyCarousel.Value ? 0 : Panel.CORNER_RADIUS;
 
             fallbackBackground.Alpha = legacyLayout ? 0.62f : 1;
             legacyBlackBackground.Alpha = useSkinnedLegacyCarousel.Value ? 1 : 0;
             legacyMenuButtonBackground.Alpha = useSkinnedLegacyCarousel.Value ? 1 : 0;
             modernEffects.Alpha = legacyLayout ? 0 : 1;
             legacyEffects.Alpha = legacyLayout ? 1 : 0;
-            CornerRadius = useSkinnedLegacyCarousel.Value ? 0 : Panel.CORNER_RADIUS;
         }
 
         private void resetLoadedBackground()
@@ -297,14 +398,16 @@ namespace osu.Game.Screens.Select
 
         private partial class LegacyPreviewBackground : CompositeDrawable
         {
-            private readonly WorkingBeatmap working;
+            private WorkingBeatmap? working;
             private readonly bool classicLayout;
+            private readonly int previewResolution;
             private Container previewFrame = null!;
 
-            public LegacyPreviewBackground(WorkingBeatmap working, bool classicLayout)
+            public LegacyPreviewBackground(WorkingBeatmap working, bool classicLayout, int previewResolution)
             {
                 this.working = working;
                 this.classicLayout = classicLayout;
+                this.previewResolution = previewResolution;
 
                 RelativeSizeAxes = Axes.Both;
             }
@@ -312,6 +415,9 @@ namespace osu.Game.Screens.Select
             [BackgroundDependencyLoader]
             private void load()
             {
+                var workingBeatmap = working!;
+                working = null;
+
                 InternalChild = previewFrame = new Container
                 {
                     Depth = 0,
@@ -321,7 +427,7 @@ namespace osu.Game.Screens.Select
                     Masking = true,
                     CornerRadius = classicLayout ? 0 : Panel.CORNER_RADIUS,
                     MaskingSmoothness = 2f,
-                    Child = new PanelBeatmapBackground(working, true)
+                    Child = new PanelBeatmapBackground(workingBeatmap, true, previewResolution)
                     {
                         RelativeSizeAxes = Axes.Both,
                         Anchor = Anchor.Centre,
@@ -348,28 +454,38 @@ namespace osu.Game.Screens.Select
 
         public partial class PanelBeatmapBackground : Sprite
         {
-            private readonly IWorkingBeatmap working;
+            private IWorkingBeatmap? working;
             private readonly bool useLegacyTexture;
+            private readonly int previewResolution;
 
             public PanelBeatmapBackground(IWorkingBeatmap working)
-                : this(working, false)
+                : this(working, false, 100)
             {
             }
 
             public PanelBeatmapBackground(IWorkingBeatmap working, bool useLegacyTexture)
+                : this(working, useLegacyTexture, 100)
+            {
+            }
+
+            public PanelBeatmapBackground(IWorkingBeatmap working, bool useLegacyTexture, int previewResolution)
             {
                 ArgumentNullException.ThrowIfNull(working);
 
                 this.working = working;
                 this.useLegacyTexture = useLegacyTexture;
+                this.previewResolution = previewResolution;
             }
 
             [BackgroundDependencyLoader]
             private void load()
             {
+                var workingBeatmap = working!;
+                working = null;
+
                 Texture = useLegacyTexture
-                    ? working.GetLegacyPreviewBackground() ?? working.GetPanelBackground()
-                    : working.GetPanelBackground();
+                    ? workingBeatmap.GetLegacyPreviewBackground(previewResolution) ?? workingBeatmap.GetPanelBackground(previewResolution)
+                    : workingBeatmap.GetPanelBackground(previewResolution);
             }
         }
     }

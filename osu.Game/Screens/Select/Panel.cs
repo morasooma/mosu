@@ -43,6 +43,8 @@ namespace osu.Game.Screens.Select
         private Drawable activationFlash = null!;
         private Drawable hoverLayer = null!;
 
+        internal Color4 HoverLayerColour => hoverLayer.Colour;
+
         private Drawable keyboardSelectionLayer = null!;
 
         private PulsatingBox selectionLayer = null!;
@@ -57,6 +59,9 @@ namespace osu.Game.Screens.Select
         private float lastIconDrawWidth = float.NaN;
 
         private readonly BindableBool useSkinnedLegacyCarousel = new BindableBool();
+
+        protected readonly BindableBool CarouselPerformanceMode = new BindableBool();
+        protected readonly BindableBool CarouselPreviews = new BindableBool(true);
 
         public Drawable Background
         {
@@ -107,7 +112,9 @@ namespace osu.Game.Screens.Select
         private void load(OverlayColourProvider colourProvider, OsuColour colours, OsuConfigManager config)
         {
             this.colourProvider = colourProvider;
-            config.BindWith(OsuSetting.ForkSongSelectSkinnedLegacyCarousel, useSkinnedLegacyCarousel);
+            ForkSongSelectStyleBinding.BindSkinnedLegacyCarousel(config, useSkinnedLegacyCarousel, () => carousel?.SupportsStableStyle ?? true);
+            config.BindWith(OsuSetting.ForkSongSelectCarouselPerformanceMode, CarouselPerformanceMode);
+            config.BindWith(OsuSetting.ForkSongSelectCarouselPreviews, CarouselPreviews);
 
             Anchor = Anchor.TopRight;
             Origin = Anchor.TopRight;
@@ -146,7 +153,7 @@ namespace osu.Game.Screens.Select
                     hoverLayer = new Box
                     {
                         Alpha = 0,
-                        Colour = colours.Blue.Opacity(0.1f),
+                        Colour = colourProvider.Highlight1.Opacity(0.1f),
                         Blending = BlendingParameters.Additive,
                         RelativeSizeAxes = Axes.Both,
                     },
@@ -190,6 +197,23 @@ namespace osu.Game.Screens.Select
                 }
 
                 updateSelectedState(animated: false);
+            }, true);
+
+            CarouselPerformanceMode.BindValueChanged(enabled =>
+            {
+                TopLevelContent.Masking = !enabled.NewValue;
+                Content.Masking = !enabled.NewValue;
+
+                if (enabled.NewValue)
+                {
+                    TopLevelContent.EdgeEffect = new EdgeEffectParameters();
+                    selectionLayer.Hide();
+                    activationFlash.Hide();
+                }
+                else
+                    updateSelectedState(animated: false);
+
+                updateXOffset(animated: false);
             }, true);
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
@@ -259,6 +283,8 @@ namespace osu.Game.Screens.Select
             {
                 if (useSkinnedLegacyCarousel.Value)
                     keyboardSelectionLayer.Hide();
+                else if (CarouselPerformanceMode.Value)
+                    keyboardSelectionLayer.Alpha = selected.NewValue ? 0.5f : 0;
                 else if (selected.NewValue)
                 {
                     keyboardSelectionLayer.FadeIn(80, Easing.Out)
@@ -276,21 +302,30 @@ namespace osu.Game.Screens.Select
         {
             base.PrepareForUse();
 
+            hoverLayer.Colour = colourProvider.Highlight1.Opacity(0.1f);
+            keyboardSelectionLayer.Colour = ColourInfo.GradientHorizontal(colourProvider.Highlight1.Opacity(0.1f), colourProvider.Highlight1.Opacity(0.4f));
+
+            if (!IsHovered)
+                hoverLayer.Alpha = 0;
+
             // Slightly offset the flash animation based on the panel depth.
             // This assumes a minimum depth of -2 (groups).
-            selectionLayer.FlashOffset = -Item!.DepthLayer;
+            selectionLayer.FlashOffset = -(Item?.DepthLayer ?? 0);
 
             updateAccentColour();
 
             updateXOffset(animated: false);
             updateSelectedState(animated: false);
 
-            this.FadeIn(DURATION, Easing.OutQuint);
+            this.FadeIn(CarouselPerformanceMode.Value ? 0 : DURATION, Easing.OutQuint);
         }
 
         protected override void FreeAfterUse()
         {
             base.FreeAfterUse();
+
+            hoverLayer.ClearTransforms();
+            hoverLayer.Alpha = 0;
 
             Hide();
 
@@ -321,6 +356,13 @@ namespace osu.Game.Screens.Select
         private void updateSelectedState(bool animated = true)
         {
             bool selectedOrExpanded = Expanded.Value || Selected.Value;
+
+            if (CarouselPerformanceMode.Value)
+            {
+                TopLevelContent.EdgeEffect = new EdgeEffectParameters();
+                selectionLayer.Hide();
+                return;
+            }
 
             if (useSkinnedLegacyCarousel.Value)
             {
@@ -363,6 +405,17 @@ namespace osu.Game.Screens.Select
         {
             float x = PanelXOffset + CORNER_RADIUS;
 
+            if (useSkinnedLegacyCarousel.Value)
+            {
+                // osu!stable keeps every expanded difficulty as a full row. The selected
+                // difficulty protrudes slightly while its siblings remain subtly indented.
+                if (!Selected.Value)
+                    x += 8;
+
+                TopLevelContent.MoveToX(x, animated && !CarouselPerformanceMode.Value ? DURATION : 0, Easing.OutQuint);
+                return;
+            }
+
             if (!Expanded.Value && !Selected.Value)
             {
                 if (this is PanelBeatmap || this is PanelBeatmapStandalone)
@@ -374,20 +427,28 @@ namespace osu.Game.Screens.Select
             if (!KeyboardSelected.Value)
                 x += active_x_offset;
 
-            TopLevelContent.MoveToX(x, animated ? DURATION : 0, Easing.OutQuint);
+            TopLevelContent.MoveToX(x, animated && !CarouselPerformanceMode.Value ? DURATION : 0, Easing.OutQuint);
         }
 
         protected override bool OnHover(HoverEvent e)
         {
             if (!useSkinnedLegacyCarousel.Value)
-                hoverLayer.FadeIn(100, Easing.OutQuint);
+            {
+                if (CarouselPerformanceMode.Value)
+                    hoverLayer.Show();
+                else
+                    hoverLayer.FadeIn(100, Easing.OutQuint);
+            }
 
             return true;
         }
 
         protected override void OnHoverLost(HoverLostEvent e)
         {
-            hoverLayer.FadeOut(1000, Easing.OutQuint);
+            if (CarouselPerformanceMode.Value)
+                hoverLayer.Hide();
+            else
+                hoverLayer.FadeOut(1000, Easing.OutQuint);
             base.OnHoverLost(e);
         }
 
@@ -439,7 +500,7 @@ namespace osu.Game.Screens.Select
 
         public virtual void Activated()
         {
-            if (!useSkinnedLegacyCarousel.Value)
+            if (!useSkinnedLegacyCarousel.Value && !CarouselPerformanceMode.Value)
                 activationFlash.FadeOutFromOne(1000, Easing.OutQuint);
         }
 

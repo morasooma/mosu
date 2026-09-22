@@ -26,6 +26,7 @@ using osu.Game.Localisation;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Online.Legacy;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Chat.Listing;
@@ -99,6 +100,13 @@ namespace osu.Game.Online.Chat
         private ScheduledDelegate scheduledAck;
 
         private IChatClient chatClient = null!;
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession stableBanchoSession { get; set; }
+
+        private readonly Dictionary<string, long> stableChannelIds = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        private long nextStableChannelId = 1_000_000_000;
+        private long nextStableMessageId;
+        private bool stableDefaultsJoined;
         private long? lastSilenceMessageId;
         private uint? lastSilenceId;
 
@@ -112,12 +120,31 @@ namespace osu.Game.Online.Chat
         [BackgroundDependencyLoader]
         private void load()
         {
-            chatClient = api.GetChatClient();
-            chatClient.ChannelJoined += ch => Schedule(() => joinChannel(ch));
-            chatClient.ChannelParted += ch => Schedule(() => leaveChannel(getChannel(ch), false));
-            chatClient.NewMessages += msgs => Schedule(() => addMessages(msgs));
-            chatClient.PresenceReceived += () => Schedule(initializeChannels);
-            chatClient.RequestPresence();
+            if (stableBanchoSession != null)
+            {
+                stableBanchoSession.ChannelInfoReceived += onStableChannelInfoReceived;
+                stableBanchoSession.ChannelListReceived += onStableChannelListReceived;
+                stableBanchoSession.ChannelJoined += onStableChannelJoined;
+                stableBanchoSession.ChannelParted += onStableChannelParted;
+                stableBanchoSession.ChatMessageReceived += onStableChatMessageReceived;
+                stableBanchoSession.IsConnected.ValueChanged += onStableConnectionChanged;
+                if (!stableBanchoSession.IsConnected.Value)
+                    resetStableChannels();
+
+                foreach (StableBanchoChannel channel in stableBanchoSession.Channels)
+                    addStableChannel(channel);
+                foreach (StableBanchoMessage message in stableBanchoSession.ChatMessages)
+                    addStableMessage(message);
+            }
+            else
+            {
+                chatClient = api.GetChatClient();
+                chatClient.ChannelJoined += ch => Schedule(() => joinChannel(ch));
+                chatClient.ChannelParted += ch => Schedule(() => leaveChannel(getChannel(ch), false));
+                chatClient.NewMessages += msgs => Schedule(() => addMessages(msgs));
+                chatClient.PresenceReceived += () => Schedule(initializeChannels);
+                chatClient.RequestPresence();
+            }
 
             localUser.BindTo(api.LocalUser);
             localUser.BindValueChanged(userChanged);
@@ -143,6 +170,12 @@ namespace osu.Game.Online.Chat
             // additionally clear the history of last joined channels so that the new user can't reopen the old user's channels
             // (would likely fail web-side on perms anyway, but why even get that far)
             closedChannels.Clear();
+
+            if (stableBanchoSession?.IsConnected.Value == true)
+            {
+                stableDefaultsJoined = false;
+                Schedule(initializeStableChannels);
+            }
         }
 
         /// <summary>
@@ -199,6 +232,12 @@ namespace osu.Game.Online.Chat
 
             if (target == null)
                 return;
+
+            if (stableBanchoSession != null)
+            {
+                postStableMessage(target, text, isAction);
+                return;
+            }
 
             void dequeueAndRun()
             {
@@ -291,6 +330,16 @@ namespace osu.Game.Online.Chat
                     AddInternal(new NowPlayingCommand(target));
                     break;
 
+                case @"watch":
+                    if (string.IsNullOrWhiteSpace(content))
+                    {
+                        target.AddNewMessages(new ErrorMessage("Usage: /watch [user]"));
+                        break;
+                    }
+
+                    AddInternal(new WatchCommand(target, content));
+                    break;
+
                 case @"me":
                     if (string.IsNullOrWhiteSpace(content))
                     {
@@ -335,6 +384,18 @@ namespace osu.Game.Online.Chat
                     if (privateChannel != null)
                     {
                         CurrentChannel.Value = privateChannel;
+                        break;
+                    }
+
+                    if (stableBanchoSession != null)
+                    {
+                        StableBanchoUserPresence presence = stableBanchoSession.Users.Values.FirstOrDefault(user => user.Username.Equals(content, StringComparison.OrdinalIgnoreCase));
+                        OpenPrivateChannel(new APIUser
+                        {
+                            Id = presence?.UserId ?? 0,
+                            Username = presence?.Username ?? content,
+                            AvatarUrl = presence == null ? null : stableBanchoSession.GetAvatarUrl(presence.UserId),
+                        });
                         break;
                     }
 
@@ -418,6 +479,7 @@ namespace osu.Game.Online.Chat
                         /me [action]     - Perform a third-person action.
                         /join [channel]  - Joins the specified channel.
                         /chat [user]     - Opens a new chat tab with the specified user.
+                        /watch [user]    - Spectates the specified user.
                         /np              - Print to chat the current song you are listening to or playing.
                         /savelog         - Saves the current chat tab to a text file.
                         /roll [2-100]    - Rolls a random number (multiplayer only).
@@ -430,6 +492,249 @@ namespace osu.Game.Online.Chat
                     break;
             }
         }
+
+        private void onStableConnectionChanged(ValueChangedEvent<bool> connected)
+        {
+            Schedule(connected.NewValue ? initializeStableChannels : resetStableChannels);
+        }
+
+        private void onStableChannelInfoReceived(StableBanchoChannel channel) => Schedule(() => addStableChannel(channel));
+
+        private void onStableChannelListReceived() => Schedule(initializeStableChannels);
+
+        private void onStableChannelJoined(string channelName) => Schedule(() => markStableChannelJoined(channelName));
+
+        private void onStableChannelParted(string channelName) => Schedule(() =>
+        {
+            Channel channel = JoinedChannels.FirstOrDefault(candidate => candidate.Name.Equals(channelName, StringComparison.OrdinalIgnoreCase));
+            if (channel != null)
+                leaveChannel(channel, false);
+        });
+
+        private void onStableChatMessageReceived(StableBanchoMessage message) => Schedule(() => addStableMessage(message));
+
+        private void resetStableChannels()
+        {
+            CurrentChannel.Value = null;
+            foreach (Channel channel in joinedChannels)
+                channel.Joined.Value = false;
+            joinedChannels.Clear();
+            availableChannels.Clear();
+            stableDefaultsJoined = false;
+        }
+
+        private void initializeStableChannels()
+        {
+            if (stableBanchoSession == null)
+                return;
+
+            foreach (StableBanchoChannel channel in stableBanchoSession.Channels)
+                addStableChannel(channel);
+
+            if (!stableBanchoSession.IsConnected.Value || stableDefaultsJoined)
+                return;
+
+            stableDefaultsJoined = true;
+            foreach (Channel channel in AvailableChannels.Where(channel => defaultChannels.Any(name => name.Equals(channel.Name, StringComparison.OrdinalIgnoreCase))).ToArray())
+                JoinChannel(channel);
+        }
+
+        private void addStableChannel(StableBanchoChannel stableChannel)
+        {
+            if (string.IsNullOrWhiteSpace(stableChannel.Name))
+                return;
+
+            var lookup = new Channel
+            {
+                Id = getStableChannelId(stableChannel.Name),
+                Name = stableChannel.Name,
+                Topic = stableChannel.Topic,
+                Type = getStableChannelType(stableChannel.Name),
+                MessageLengthLimit = 2000,
+                MessagesLoaded = true,
+            };
+
+            Channel channel = getChannel(lookup, addToAvailable: lookup.Type != ChannelType.Multiplayer);
+            channel.Topic = stableChannel.Topic;
+            channel.Type = lookup.Type;
+            channel.MessageLengthLimit = 2000;
+            channel.MessagesLoaded = true;
+
+            if (stableChannel.IsJoined)
+                markStableChannelJoined(stableChannel.Name);
+        }
+
+        private void markStableChannelJoined(string channelName)
+        {
+            Channel channel = AvailableChannels.FirstOrDefault(candidate => candidate.Name.Equals(channelName, StringComparison.OrdinalIgnoreCase))
+                              ?? getChannel(new Channel
+                              {
+                                  Id = getStableChannelId(channelName),
+                                  Name = channelName,
+                                  Type = getStableChannelType(channelName),
+                                  MessageLengthLimit = 2000,
+                                  MessagesLoaded = true,
+                              }, addToAvailable: !channelName.Equals("#multiplayer", StringComparison.OrdinalIgnoreCase));
+
+            channel.Joined.Value = true;
+            if (!joinedChannels.Contains(channel))
+                joinedChannels.Add(channel);
+            CurrentChannel.Value ??= channel;
+        }
+
+        private void addStableMessage(StableBanchoMessage stableMessage)
+        {
+            if (stableMessage.Target.Equals("#multiplayer", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            Channel channel;
+
+            if (stableMessage.Target.StartsWith('#'))
+            {
+                channel = AvailableChannels.FirstOrDefault(candidate => candidate.Name.Equals(stableMessage.Target, StringComparison.OrdinalIgnoreCase))
+                          ?? getChannel(new Channel
+                          {
+                              Id = getStableChannelId(stableMessage.Target),
+                              Name = stableMessage.Target,
+                              Type = getStableChannelType(stableMessage.Target),
+                              MessageLengthLimit = 2000,
+                              MessagesLoaded = true,
+                          }, addToAvailable: true);
+            }
+            else
+            {
+                var sender = new APIUser
+                {
+                    Id = stableMessage.SenderId,
+                    Username = stableMessage.Sender,
+                    AvatarUrl = stableBanchoSession?.GetAvatarUrl(stableMessage.SenderId),
+                };
+                channel = getChannel(new Channel(sender)
+                {
+                    Id = getStableChannelId($"pm:{stableMessage.Sender}"),
+                    MessageLengthLimit = 2000,
+                    MessagesLoaded = true,
+                }, addToJoined: true);
+            }
+
+            channel.Joined.Value = true;
+            if (!joinedChannels.Contains(channel))
+                joinedChannels.Add(channel);
+            CurrentChannel.Value ??= channel;
+
+            bool isAction = stableMessage.Content.StartsWith("/me ", StringComparison.OrdinalIgnoreCase);
+            string content = isAction ? stableMessage.Content.Substring(4) : stableMessage.Content;
+            channel.AddNewMessages(new Message(++nextStableMessageId)
+            {
+                ChannelId = channel.Id,
+                Timestamp = DateTimeOffset.Now,
+                Content = content,
+                DisplayContent = content,
+                IsAction = isAction,
+                Sender = new APIUser
+                {
+                    Id = stableMessage.SenderId,
+                    Username = stableMessage.Sender,
+                    AvatarUrl = stableBanchoSession?.GetAvatarUrl(stableMessage.SenderId),
+                },
+            });
+        }
+
+        private void postStableMessage(Channel target, string text, bool isAction)
+        {
+            if (stableBanchoSession?.IsConnected.Value != true)
+            {
+                target.AddNewMessages(new ErrorMessage("Stable Bancho is not connected."));
+                return;
+            }
+
+            var echo = new LocalEchoMessage
+            {
+                Sender = api.LocalUser.Value,
+                ChannelId = target.Id,
+                IsAction = isAction,
+                Content = text,
+                DisplayContent = text,
+                Uuid = Guid.NewGuid().ToString(),
+            };
+            target.AddLocalEcho(echo);
+
+            string wireText = isAction ? $"/me {text}" : text;
+            Task sendTask = target.Type == ChannelType.PM
+                ? stableBanchoSession.SendPrivateMessageAsync(target.Name, wireText)
+                : stableBanchoSession.SendChannelMessageAsync(target.Name, wireText);
+            completeStablePost(sendTask, target, echo);
+        }
+
+        private async void completeStablePost(Task sendTask, Channel target, LocalEchoMessage echo)
+        {
+            try
+            {
+                await sendTask.ConfigureAwait(false);
+                Schedule(() => target.ReplaceMessage(echo, new Message(++nextStableMessageId)
+                {
+                    ChannelId = target.Id,
+                    Timestamp = DateTimeOffset.Now,
+                    Content = echo.Content,
+                    DisplayContent = echo.Content,
+                    IsAction = echo.IsAction,
+                    Sender = echo.Sender,
+                    Uuid = echo.Uuid,
+                }));
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(exception, "Posting Stable Bancho chat message failed.");
+                Schedule(() =>
+                {
+                    target.ReplaceMessage(echo, null);
+                    target.AddNewMessages(new ErrorMessage($"Message was not sent: {exception.Message}"));
+                });
+            }
+        }
+
+        private async void joinStableChannel(Channel channel)
+        {
+            try
+            {
+                await stableBanchoSession!.JoinChannelAsync(channel.Name).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(exception, $"Failed to join Stable Bancho channel {channel.Name}.");
+                Schedule(() =>
+                {
+                    channel.Joined.Value = false;
+                    channel.AddNewMessages(new ErrorMessage($"Could not join {channel.Name}: {exception.Message}"));
+                });
+            }
+        }
+
+        private async void leaveStableChannel(Channel channel)
+        {
+            try
+            {
+                await stableBanchoSession!.LeaveChannelAsync(channel.Name).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                Logger.Error(exception, $"Failed to leave Stable Bancho channel {channel.Name}.");
+            }
+        }
+
+        private long getStableChannelId(string name)
+        {
+            if (!stableChannelIds.TryGetValue(name, out long id))
+                stableChannelIds[name] = id = ++nextStableChannelId;
+            return id;
+        }
+
+        private static ChannelType getStableChannelType(string name) => name switch
+        {
+            "#multiplayer" => ChannelType.Multiplayer,
+            "#spectator" => ChannelType.Spectator,
+            _ => ChannelType.Public,
+        };
 
         private void addMessages(List<Message> messages)
         {
@@ -444,6 +749,12 @@ namespace osu.Game.Online.Chat
 
         private void initializeChannels()
         {
+            if (stableBanchoSession != null)
+            {
+                initializeStableChannels();
+                return;
+            }
+
             // This request is self-retrying until it succeeds.
             // To avoid requests piling up when not logged in (ie. API is unavailable) exit early.
             if (!api.IsLoggedIn)
@@ -485,6 +796,12 @@ namespace osu.Game.Online.Chat
         {
             if (channel.Id <= 0 || channel.MessagesLoaded) return;
 
+            if (stableBanchoSession != null)
+            {
+                channel.MessagesLoaded = true;
+                return;
+            }
+
             var fetchInitialMsgReq = new GetMessagesRequest(channel);
             fetchInitialMsgReq.Success += messages =>
             {
@@ -502,6 +819,9 @@ namespace osu.Game.Online.Chat
         /// </summary>
         public void SendAck()
         {
+            if (stableBanchoSession != null)
+                return;
+
             if (apiState.Value != APIState.Online)
                 return;
 
@@ -602,6 +922,19 @@ namespace osu.Game.Online.Chat
             {
                 channel.Joined.Value = true;
 
+                if (stableBanchoSession != null)
+                {
+                    channel.Id = getStableChannelId(channel.Type == ChannelType.PM ? $"pm:{channel.Name}" : channel.Name);
+                    channel.MessageLengthLimit = 2000;
+                    channel.MessagesLoaded = true;
+
+                    if (channel.Type != ChannelType.PM && channel.Type != ChannelType.Multiplayer)
+                        joinStableChannel(channel);
+
+                    CurrentChannel.Value ??= channel;
+                    return channel;
+                }
+
                 switch (channel.Type)
                 {
                     case ChannelType.Multiplayer:
@@ -658,7 +991,7 @@ namespace osu.Game.Online.Chat
             }
             else
             {
-                if (fetchInitialMessages)
+                if (fetchInitialMessages && stableBanchoSession == null)
                     this.fetchInitialMessages(channel);
             }
 
@@ -697,7 +1030,12 @@ namespace osu.Game.Online.Chat
             if (channel.Joined.Value)
             {
                 if (sendLeaveRequest)
-                    api.Queue(new LeaveChannelRequest(channel));
+                {
+                    if (stableBanchoSession != null && channel.Type != ChannelType.PM && channel.Type != ChannelType.Multiplayer)
+                        leaveStableChannel(channel);
+                    else if (stableBanchoSession == null)
+                        api.Queue(new LeaveChannelRequest(channel));
+                }
                 channel.Joined.Value = false;
             }
         }
@@ -757,6 +1095,12 @@ namespace osu.Game.Online.Chat
             if (message == null)
                 return;
 
+            if (stableBanchoSession != null)
+            {
+                channel.LastReadId = message.Id;
+                return;
+            }
+
             var req = new MarkChannelAsReadRequest(channel, message);
 
             req.Success += () => channel.LastReadId = message.Id;
@@ -800,6 +1144,16 @@ namespace osu.Game.Online.Chat
         protected override void Dispose(bool isDisposing)
         {
             base.Dispose(isDisposing);
+
+            if (stableBanchoSession != null)
+            {
+                stableBanchoSession.ChannelInfoReceived -= onStableChannelInfoReceived;
+                stableBanchoSession.ChannelListReceived -= onStableChannelListReceived;
+                stableBanchoSession.ChannelJoined -= onStableChannelJoined;
+                stableBanchoSession.ChannelParted -= onStableChannelParted;
+                stableBanchoSession.ChatMessageReceived -= onStableChatMessageReceived;
+                stableBanchoSession.IsConnected.ValueChanged -= onStableConnectionChanged;
+            }
 
             if (chatClient.IsNotNull())
                 chatClient.Dispose();

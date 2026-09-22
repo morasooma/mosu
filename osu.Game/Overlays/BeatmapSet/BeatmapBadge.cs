@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -32,6 +33,7 @@ namespace osu.Game.Overlays.BeatmapSet
 
         private readonly Box background;
         private readonly OsuSpriteText badgeLabel;
+        private IBindable<Colour4>? themeColour;
 
         protected BeatmapBadge()
         {
@@ -59,7 +61,15 @@ namespace osu.Game.Overlays.BeatmapSet
         [BackgroundDependencyLoader(true)]
         private void load(OsuColour colours, OverlayColourProvider? colourProvider)
         {
-            background.Colour = colourProvider?.Background5 ?? colours.Gray2;
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Background5);
+                themeColour.BindValueChanged(c => background.Colour = c.NewValue, true);
+            }
+            else
+            {
+                background.Colour = colours.Gray2;
+            }
         }
     }
 }

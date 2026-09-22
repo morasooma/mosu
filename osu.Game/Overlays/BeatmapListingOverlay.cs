@@ -272,6 +272,9 @@ namespace osu.Game.Overlays
 
         public partial class NotFoundDrawable : CompositeDrawable
         {
+            private OsuSpriteText notFoundText = null!;
+            private IBindable<Colour4> themeColour = null!;
+
             public NotFoundDrawable()
             {
                 RelativeSizeAxes = Axes.X;
@@ -281,7 +284,7 @@ namespace osu.Game.Overlays
             }
 
             [BackgroundDependencyLoader]
-            private void load(LargeTextureStore textures)
+            private void load(LargeTextureStore textures, OverlayColourProvider colourProvider)
             {
                 AddInternal(new FillFlowContainer
                 {
@@ -301,7 +304,7 @@ namespace osu.Game.Overlays
                             FillMode = FillMode.Fit,
                             Texture = textures.Get(@"Online/not-found")
                         },
-                        new OsuSpriteText
+                        notFoundText = new OsuSpriteText
                         {
                             Anchor = Anchor.Centre,
                             Origin = Anchor.Centre,
@@ -309,6 +312,9 @@ namespace osu.Game.Overlays
                         }
                     }
                 });
+
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(c => notFoundText.Colour = c.NewValue, true);
             }
         }
 

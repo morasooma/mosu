@@ -16,14 +16,38 @@ namespace osu.Game.Rulesets.Dodge.Difficulty
         [JsonProperty("pressure_difficulty")]
         public double PressureDifficulty { get; set; }
 
+        [JsonProperty("path_difficulty")]
+        public double PathDifficulty { get; set; }
+
+        [JsonProperty("reading_difficulty")]
+        public double ReadingDifficulty { get; set; }
+
+        [JsonProperty("difficult_section_count")]
+        public double DifficultSectionCount { get; set; }
+
+        [JsonProperty("relevant_pattern_count")]
+        public int RelevantPatternCount { get; set; }
+
+        [JsonProperty("effective_reading_pattern_count")]
+        public double EffectiveReadingPatternCount { get; set; }
+
         [JsonProperty("projectile_rate")]
         public double ProjectileRate { get; set; }
 
         [JsonProperty("peak_active_projectiles")]
         public int PeakActiveProjectiles { get; set; }
 
+        [JsonProperty("peak_concurrent_patterns")]
+        public int PeakConcurrentPatterns { get; set; }
+
         [JsonProperty("autoplay_teleports")]
         public int AutoplayTeleports { get; set; }
+
+        [JsonProperty("autoplay_collisions")]
+        public int AutoplayCollisions { get; set; }
+
+        [JsonProperty("is_unclearable")]
+        public bool IsUnclearable { get; set; }
 
         public override IEnumerable<(int attributeId, object value)> ToDatabaseAttributes()
         {

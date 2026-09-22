@@ -3,7 +3,6 @@
 
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
-using osu.Framework.Localisation;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Overlays.Settings;
 using osu.Game.Rulesets.Dodge.Configuration;
@@ -13,8 +12,6 @@ namespace osu.Game.Rulesets.Dodge.UI
 {
     public partial class DodgeSettingsSubsection : RulesetSettingsSubsection
     {
-        protected override LocalisableString Header => "Dodge";
-
         public DodgeSettingsSubsection(DodgeRuleset ruleset)
             : base(ruleset)
         {
@@ -56,6 +53,18 @@ namespace osu.Game.Rulesets.Dodge.UI
                     Current = config.GetBindable<double>(DodgeRulesetSetting.MissSoundVolume),
                     KeyboardStep = 5,
                     LabelFormat = value => $"{value:N0}%",
+                }),
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = DodgeEditorStrings.EffectsEnabled,
+                    HintText = DodgeEditorStrings.EffectsEnabledHint,
+                    Current = config.GetBindable<bool>(DodgeRulesetSetting.EffectsEnabled),
+                }),
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = DodgeEditorStrings.PlayerTrailEnabled,
+                    HintText = DodgeEditorStrings.PlayerTrailEnabledHint,
+                    Current = config.GetBindable<bool>(DodgeRulesetSetting.PlayerTrailEnabled),
                 }),
             };
         }

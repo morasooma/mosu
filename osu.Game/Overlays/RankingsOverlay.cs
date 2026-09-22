@@ -160,19 +160,40 @@ namespace osu.Game.Overlays
             if (currentRuleset == null)
                 return null;
 
-            switch (Header.Current.Value)
+            // Morasooma exposes weekly movement and best-score PP through private API
+            // routes. Other lazer servers expose the standard v2 rankings API instead.
+            // Trying the private route on those servers results in an empty rankings
+            // screen (usually after a 404), even though their v2 rankings are available.
+            bool useStandardLazerRankings = Online.MosuServerEnvironment.IsThirdPartyServer
+                                             && !Online.MosuServerEnvironment.UsesStableProtocol;
+
+            return CreateScopedRequest(Header.Current.Value, currentRuleset, Country.Value, variant.Value, useStandardLazerRankings);
+        }
+
+        internal static APIRequest CreateScopedRequest(RankingsScope scope, RulesetInfo currentRuleset, CountryCode country, string variant,
+                                                       bool useStandardLazerRankings)
+        {
+            switch (scope)
             {
                 case RankingsScope.Performance:
-                    return new GetWeeklyRankingsRequest(currentRuleset, WeeklyRankingsType.Performance, countryCode: Country.Value, variant: variant.Value);
+                    return useStandardLazerRankings
+                        ? new GetUserRankingsRequest(currentRuleset, UserRankingsType.Performance, countryCode: country, variant: variant)
+                        : new GetWeeklyRankingsRequest(currentRuleset, WeeklyRankingsType.Performance, countryCode: country, variant: variant);
 
                 case RankingsScope.TopScorePp:
-                    return new GetWeeklyRankingsRequest(currentRuleset, WeeklyRankingsType.BestScorePp, countryCode: Country.Value, variant: variant.Value);
+                    // This is a Morasooma extension and is not part of the standard lazer API.
+                    if (useStandardLazerRankings)
+                        return null;
+
+                    return new GetWeeklyRankingsRequest(currentRuleset, WeeklyRankingsType.BestScorePp, countryCode: country, variant: variant);
 
                 case RankingsScope.Country:
                     return new GetCountryRankingsRequest(currentRuleset);
 
                 case RankingsScope.Score:
-                    return new GetWeeklyRankingsRequest(currentRuleset, WeeklyRankingsType.Score, countryCode: Country.Value, variant: variant.Value);
+                    return useStandardLazerRankings
+                        ? new GetUserRankingsRequest(currentRuleset, UserRankingsType.Score, countryCode: country, variant: variant)
+                        : new GetWeeklyRankingsRequest(currentRuleset, WeeklyRankingsType.Score, countryCode: country, variant: variant);
 
                 case RankingsScope.Kudosu:
                     return new GetKudosuRankingsRequest();

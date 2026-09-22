@@ -1,14 +1,17 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
+#nullable enable
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Overlays;
 using osuTK;
+using osuTK.Graphics;
 
 namespace osu.Game.Screens.Edit
 {
@@ -18,10 +21,15 @@ namespace osu.Game.Screens.Edit
 
         protected abstract string HeaderText { get; }
 
-        protected FillFlowContainer Flow { get; private set; }
+        protected FillFlowContainer Flow { get; private set; } = null!;
 
-        [BackgroundDependencyLoader]
-        private void load()
+        private OsuSpriteText headerText = null!;
+        private IBindable<Colour4>? themeColour;
+
+        internal Color4 HeaderTextColour => headerText.Colour;
+
+        [BackgroundDependencyLoader(true)]
+        private void load(OverlayColourProvider? colourProvider)
         {
             RelativeSizeAxes = Axes.X;
             AutoSizeAxes = Axes.Y;
@@ -34,12 +42,13 @@ namespace osu.Game.Screens.Edit
                     RelativeSizeAxes = Axes.X,
                     Height = header_height,
                     Padding = new MarginPadding { Horizontal = 20 },
-                    Child = new OsuSpriteText
+                    Child = headerText = new OsuSpriteText
                     {
                         Anchor = Anchor.CentreLeft,
                         Origin = Anchor.CentreLeft,
                         Text = HeaderText,
-                        Font = new FontUsage(size: 25, weight: "bold")
+                        Font = new FontUsage(size: 25, weight: "bold"),
+                        Colour = colourProvider?.Content1 ?? Color4.White,
                     }
                 },
                 new Container
@@ -57,6 +66,12 @@ namespace osu.Game.Screens.Edit
                     }
                 }
             };
+
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(c => headerText.Colour = c.NewValue, true);
+            }
         }
     }
 }

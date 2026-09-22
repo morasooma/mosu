@@ -57,11 +57,10 @@ namespace osu.Game.Overlays
                     CornerRadius = 10,
                     Children = new Drawable[]
                     {
-                        new Box
+                        new BackdropBlurSurface
                         {
                             RelativeSizeAxes = Axes.Both,
-                            Colour = Color4.Black,
-                            Alpha = 0.6f,
+                            SurfaceColour = Color4.Black,
                         },
                         new DelayedLoadWrapper(new AccountCreationBackground(), 0),
                         new Container
@@ -72,11 +71,10 @@ namespace osu.Game.Overlays
                             AutoSizeEasing = Easing.OutQuint,
                             Children = new Drawable[]
                             {
-                                new Box
+                                new BackdropBlurSurface
                                 {
                                     RelativeSizeAxes = Axes.Both,
-                                    Colour = Color4.Black,
-                                    Alpha = 0.9f,
+                                    SurfaceColour = Color4.Black,
                                 },
                                 new ScreenStack(welcomeScreen = new ScreenWelcome())
                                 {

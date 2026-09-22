@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
+using osu.Framework.Input.Events;
 using osu.Game.Rulesets.Osu.Replays;
 using osu.Game.Rulesets.Replays;
 using osu.Game.Rulesets.UI;
@@ -15,6 +16,14 @@ namespace osu.Game.Rulesets.Osu.UI
         public OsuReplayRecorder(Score score)
             : base(score)
         {
+        }
+
+        protected override bool OnMouseMove(MouseMoveEvent e)
+        {
+            if (GetContainingInputManager() is OsuInputManager inputManager && inputManager.ShouldSuppressPhysicalCursorMove)
+                return false;
+
+            return base.OnMouseMove(e);
         }
 
         protected override ReplayFrame HandleFrame(Vector2 mousePosition, List<OsuAction> actions, ReplayFrame previousFrame)

@@ -23,13 +23,8 @@ namespace osu.Game.Rulesets.Osu.UI
 {
     public partial class AimAssistController : Drawable
     {
-        private const double movement_history_window = 60;
         private const double intent_grace_window = 55;
-        private const float stationary_release_speed = 55f;
-        private const float engaged_base_offset_speed = 90f;
-        private const float engaged_boost_offset_speed = 300f;
         private const float stationary_hold_speed_threshold = 35f;
-        private const float stationary_hold_radius_padding = 20f;
 
         private Bindable<bool> enabled = null!;
         private Bindable<double> strength = null!;
@@ -41,12 +36,13 @@ namespace osu.Game.Rulesets.Osu.UI
         private Bindable<float> overshootAllowance = null!;
         private Bindable<bool> showFlowDebug = null!;
 
-        private readonly Queue<MovementSample> recentMovement = new Queue<MovementSample>();
         private readonly List<TargetDescriptor> targetBuffer = new List<TargetDescriptor>();
         private readonly List<OsuPatternNode> patternNodeBuffer = new List<OsuPatternNode>(32);
         private readonly List<TargetDescriptor> railTargetBuffer = new List<TargetDescriptor>(6);
         private readonly List<Vector2> projectionPointBuffer = new List<Vector2>(72);
         private readonly List<float> projectionArcLengthBuffer = new List<float>(72);
+        private readonly List<int> railSourcePathIndices = new List<int>(24);
+        private readonly List<Vector2> debugPreviewPointBuffer = new List<Vector2>(24);
         private readonly List<Vector2> railSourcePointBuffer = new List<Vector2>(8);
         private readonly List<double> railSourceTimeBuffer = new List<double>(8);
         private readonly List<TargetDescriptor> railDescriptorBuffer = new List<TargetDescriptor>(12);
@@ -70,19 +66,15 @@ namespace osu.Game.Rulesets.Osu.UI
         private bool drivingCursor;
         private bool hitResultsHooked;
         private double antiJitterRemaining;
-        private Vector2 antiJitterOutputAnchor;
         private double lastIntentPassTime = double.NegativeInfinity;
-        private float lastPositiveIntentScore = -1;
-        private DrawableOsuHitObject? lastContextDrawable;
-        private Vector2 targetSwitchAnchorOffset;
-        private double lastTargetSwitchTime = double.NegativeInfinity;
-        private float lastTargetSwitchCarryWeight;
         private Vector2? lastReleasedTargetPosition;
         private double lastReleasedTargetTime = double.NegativeInfinity;
         private bool hasLastResolvedTarget;
         private TargetDescriptor lastResolvedTarget;
-        private bool wasSpinnerActiveLastFrame;
         private bool hasActiveSpinnerThisFrame;
+        private bool hasInsideFreedomLatch;
+        private Vector2 insideFreedomCentre;
+        private float insideFreedomRadius;
         private bool hasStreamSmoothingState;
         private Vector2 streamSmoothedPoint;
         private Vector2 streamSmoothedTangent;
@@ -99,13 +91,12 @@ namespace osu.Game.Rulesets.Osu.UI
         private readonly List<Vector2> committedStreamPathBuffer = new List<Vector2>(128);
         private readonly List<Vector2> committedStreamSourceBuffer = new List<Vector2>(24);
         private readonly List<double> committedStreamSourceTimeBuffer = new List<double>(24);
+        private readonly List<int> committedStreamSourcePathIndices = new List<int>(24);
         private bool hasAdaptiveRadiusState;
         private float smoothedAdaptiveRadius;
         private DrawableOsuHitObject? adaptiveRadiusTarget;
         private Vector2[] debugFlowPathPoints = Array.Empty<Vector2>();
         private Vector2[] debugFlowSourcePoints = Array.Empty<Vector2>();
-        private Vector2 previousOffsetVelocity;
-        private bool hasPreviousOffsetVelocity;
 
         private Vector2 antiAssistDrift;
         private Vector2 antiAssistVelocity;
@@ -141,11 +132,13 @@ namespace osu.Game.Rulesets.Osu.UI
         public Vector2? CurrentTargetPosition { get; private set; }
         public float CurrentBaseTargetRadius { get; private set; }
         public float CurrentTargetRadius { get; private set; }
+        public float CurrentAssistRadius { get; private set; }
         public float CurrentAdaptiveRadiusScale { get; private set; } = 1;
         public Vector2? CurrentAssistPointPosition { get; private set; }
         public Vector2? CurrentNextTargetPosition { get; private set; }
         public float CurrentNextTargetRadius { get; private set; }
         public float CurrentOffsetMagnitude => assistOffset.Length;
+        public float CurrentAssistAuthority { get; private set; }
         public bool IsAimAssistEnabled => getMosuAimAssistProfile().HasValue || enabled.Value;
         public bool IsAimAssistDeclaredMod => mosuAimAssistMod != null;
         public long AdjustedFrameCount { get; private set; }
@@ -153,6 +146,7 @@ namespace osu.Game.Rulesets.Osu.UI
         public float CurrentIntentScore { get; private set; }
         public bool IsAntiJitterActive => antiJitterRemaining > 0;
         public string CurrentModeName { get; private set; } = @"idle";
+        public string CurrentAssistStateName { get; private set; } = @"idle";
         public string CurrentFlowDebugModeName { get; private set; } = @"idle";
         public bool IsAntiAimActive => mosuAntiAimAssistMod != null;
         public double? CurrentFocusTime { get; private set; }
@@ -244,7 +238,14 @@ namespace osu.Game.Rulesets.Osu.UI
                 return;
             }
 
-            double elapsed = Math.Abs(Clock.ElapsedFrameTime);
+            double elapsed = Clock.ElapsedFrameTime;
+
+            if (elapsed < 0 || toRealTimeWindow(elapsed) > 60)
+            {
+                clearState(rawPosition);
+                hasLastRawPosition = false;
+                return;
+            }
 
             if (elapsed <= 0)
                 return;
@@ -273,61 +274,50 @@ namespace osu.Game.Rulesets.Osu.UI
             if (hasActiveSpinner())
             {
                 clearTargetState();
-                Vector2 releaseOffset = updateAssistOffset(Vector2.Zero, false, rawPosition, rawDelta, elapsed, 0, 0, false, false, false, getStrengthFactor());
-                float spinnerReleaseSpeed = Math.Max(420f, releaseOffset.Length * 38f);
-                assistOffset = moveTowards(releaseOffset, Vector2.Zero, spinnerReleaseSpeed * (float)elapsed / 1000f);
+                CurrentAssistStateName = @"spinner-release";
+                assistOffset = updateAssistOffset(Vector2.Zero, false, rawDelta, elapsed, 0, false, false, false, getStrengthFactor());
 
-                if (!wasSpinnerActiveLastFrame && releaseOffset.Length > 0.001f)
-                {
-                    float spinnerReleaseFloor = Math.Min(26f, Math.Max(14f, releaseOffset.Length * 0.24f));
-
-                    if (assistOffset.Length < spinnerReleaseFloor)
-                        assistOffset = normaliseOrZero(releaseOffset) * spinnerReleaseFloor;
-                }
-
-                applyJerkLimiter(elapsed);
                 applyOutput(rawPosition);
-                wasSpinnerActiveLastFrame = true;
                 return;
             }
-
-            wasSpinnerActiveLastFrame = false;
 
             if (currentTarget == null)
             {
                 PassedActivationFilters = false;
+                CurrentAssistAuthority = 0;
                 CurrentIntentScore = 0;
                 CurrentModeName = @"idle";
+                CurrentAssistStateName = assistOffset.LengthSquared > 0.01f ? @"release" : @"idle";
                 CurrentFlowDebugModeName = @"idle";
                 updateDisplayState(null, nextTarget, targets, Array.Empty<OsuPatternState>(), currentTargetIndex, previousTarget);
 
-                assistOffset = updateAssistOffset(Vector2.Zero, false, rawPosition, rawDelta, elapsed, 0, 0, false, false, false, getStrengthFactor());
-                applyModeTransition(@"idle", elapsed);
-                applyJerkLimiter(elapsed);
+                assistOffset = updateAssistOffset(Vector2.Zero, false, rawDelta, elapsed, 0, false, false, false, getStrengthFactor());
                 applyOutput(rawPosition);
                 return;
             }
 
             OsuPatternState[] patternStates = analyzePatternStates(targets, currentTargetIndex, previousTarget);
             AimAssistContext context = createContext(currentTarget.Value, previousTarget, nextTarget, targets, patternStates, currentTargetIndex, rawPosition);
-            context = applyAdaptiveRadiusSmoothing(context, elapsed);
-            context = applyContinuousStreamSmoothing(context, rawPosition, elapsed);
-            registerTargetContext(context);
+            context = applyAdaptiveRadiusSmoothing(context, toRealTimeWindow(elapsed));
+            context = applyContinuousStreamSmoothing(context, rawPosition, toRealTimeWindow(elapsed));
+            updateTargetMotion(context, rawPosition, rawDelta);
+            updateAssistState(context, rawPosition);
             updateDisplayState(context, nextTarget, targets, patternStates, currentTargetIndex, previousTarget);
 
             float contextStrengthFactor = getStrengthFactor(context);
             ActivationState activation = evaluateActivation(context, rawPosition, contextStrengthFactor);
 
             PassedActivationFilters = activation.Passed;
+            CurrentAssistAuthority = activation.EngageAmount;
             CurrentIntentScore = activation.IntentScore;
             CurrentModeName = context.ModeName;
-            float radialFrictionAmount = activation.Passed
-                ? getDynamicFrictionAmount(context, rawPosition)
-                : 0;
 
             Vector2 targetOffset = activation.Passed
                 ? computeEngagedOffset(context, activation, rawPosition, contextStrengthFactor)
                 : Vector2.Zero;
+
+            if (CurrentAssistStateName == @"inside")
+                targetOffset = assistOffset;
 
             bool pointMode = context.ModeName == @"point";
             bool streamMode = context.ModeName == @"stream";
@@ -339,11 +329,11 @@ namespace osu.Game.Rulesets.Osu.UI
             }
             else
             {
-                assistOffset = updateAssistOffset(targetOffset, activation.Passed, rawPosition, rawDelta, elapsed, activation.EngageAmount, radialFrictionAmount, pointMode, shortRepeatSliderMode, streamMode, contextStrengthFactor);
+                bool preserveInsideFreedom = CurrentAssistStateName == @"inside";
+                assistOffset = updateAssistOffset(targetOffset, activation.Passed || preserveInsideFreedom, rawDelta, elapsed,
+                    preserveInsideFreedom ? 1 : activation.EngageAmount, pointMode, shortRepeatSliderMode, streamMode, contextStrengthFactor);
             }
 
-            applyModeTransition(context.ModeName, elapsed);
-            applyJerkLimiter(elapsed);
             applyOutput(rawPosition);
         }
 
@@ -389,12 +379,9 @@ namespace osu.Game.Rulesets.Osu.UI
         {
             clearTargetState();
             assistOffset = Vector2.Zero;
-            previousOffsetVelocity = Vector2.Zero;
-            hasPreviousOffsetVelocity = false;
+            fastRawVelocity = slowRawVelocity = averagedVelocity = Vector2.Zero;
             antiAssistVelocity = Vector2.Zero;
             antiAssistDrift = Vector2.Zero;
-            wasSpinnerActiveLastFrame = false;
-
             releaseVirtualCursor(restoreOriginalPosition);
             CurrentOutputPosition = restoreOriginalPosition
                 ? rawPosition
@@ -405,21 +392,22 @@ namespace osu.Game.Rulesets.Osu.UI
         private void clearTargetState()
         {
             lockedTarget = null;
+            clearPredictiveMotion();
             PassedActivationFilters = false;
+            CurrentAssistAuthority = 0;
             CurrentIntentScore = 0;
             CurrentModeName = @"idle";
+            CurrentAssistStateName = @"idle";
             CurrentFlowDebugModeName = @"idle";
             antiJitterRemaining = 0;
-            lastPositiveIntentScore = -1;
             lastIntentPassTime = double.NegativeInfinity;
-            lastContextDrawable = null;
-            targetSwitchAnchorOffset = Vector2.Zero;
-            lastTargetSwitchTime = double.NegativeInfinity;
-            lastTargetSwitchCarryWeight = 0;
             lastReleasedTargetPosition = null;
             lastReleasedTargetTime = double.NegativeInfinity;
             hasLastResolvedTarget = false;
             lastResolvedTarget = default;
+            hasInsideFreedomLatch = false;
+            insideFreedomCentre = Vector2.Zero;
+            insideFreedomRadius = 0;
             resolvedFlowHistory.Clear();
             flowHistoryBuffer.Clear();
             clearStreamSmoothingState();
@@ -433,7 +421,6 @@ namespace osu.Game.Rulesets.Osu.UI
             hasStreamSmoothingState = false;
             streamSmoothedPoint = Vector2.Zero;
             streamSmoothedTangent = Vector2.Zero;
-            clearStreamOutputMotionState();
             clearStreamPathTimingState();
         }
 
@@ -456,12 +443,8 @@ namespace osu.Game.Rulesets.Osu.UI
             committedStreamPathBuffer.Clear();
             committedStreamSourceBuffer.Clear();
             committedStreamSourceTimeBuffer.Clear();
+            committedStreamSourcePathIndices.Clear();
             clearStreamPathTimingState();
-        }
-
-        private void clearStreamOutputMotionState()
-        {
-            // Stream output motion state was removed when the spring-based offset model became authoritative.
         }
 
         private void clearAdaptiveRadiusState()
@@ -469,45 +452,6 @@ namespace osu.Game.Rulesets.Osu.UI
             hasAdaptiveRadiusState = false;
             smoothedAdaptiveRadius = 0;
             adaptiveRadiusTarget = null;
-        }
-
-        private void registerTargetContext(AimAssistContext context)
-        {
-            if (ReferenceEquals(lastContextDrawable, context.Drawable))
-                return;
-
-            if (lastContextDrawable != null)
-            {
-                lastTargetSwitchTime = Time.Current;
-                targetSwitchAnchorOffset = assistOffset;
-                lastTargetSwitchCarryWeight = getTargetSwitchCarryWeight(context);
-            }
-
-            lastContextDrawable = context.Drawable;
-        }
-
-        private static float getTargetSwitchCarryWeight(AimAssistContext context)
-        {
-            float carryWeight = context.ModeName switch
-            {
-                @"stream" => 0.52f,
-                @"rail" => 0.44f,
-                @"point" => Math.Max(0.36f, Math.Max(context.PointFlowBias, context.PatternInfo.ContinuityWeight * 0.72f)),
-                _ => 0
-            };
-
-            if (context.ModeName == @"point")
-            {
-                if (context.PreviewPoint.HasValue)
-                    carryWeight = Math.Max(carryWeight, 0.34f);
-
-                if (context.PatternInfo.Kind == OsuPatternKind.Burst)
-                    carryWeight = Math.Max(carryWeight, 0.42f + context.PatternInfo.ContinuityWeight * 0.28f);
-                else if (context.PatternState.Candidate == OsuPatternSegmentKind.Jump)
-                    carryWeight = Math.Max(carryWeight, 0.24f + context.PatternState.JumpSeverity * 0.26f);
-            }
-
-            return Math.Clamp(carryWeight, 0, 1);
         }
 
         private double getGameplayRate()
@@ -539,16 +483,6 @@ namespace osu.Game.Rulesets.Osu.UI
         private static Vector2 interpolate(Vector2 start, Vector2 end, float amount)
             => start + (end - start) * Math.Clamp(amount, 0, 1);
 
-        private static Vector2 moveTowards(Vector2 current, Vector2 target, float maxDistanceDelta)
-        {
-            Vector2 change = target - current;
-            float distance = change.Length;
-
-            if (distance <= maxDistanceDelta || distance <= 0.0001f)
-                return target;
-
-            return current + change / distance * maxDistanceDelta;
-        }
 
         private static Vector2 dampVector(Vector2 current, Vector2 target, float duration, double elapsed)
         {
@@ -586,7 +520,7 @@ namespace osu.Game.Rulesets.Osu.UI
         private ProjectionResult getStreamCorridorProjection(Vector2 query, AimAssistContext context)
         {
             if (context.ModeName == @"stream" && projectionPointBuffer.Count >= 2)
-                return projectOntoPolyline(projectionPointBuffer, query);
+                return projectOntoCurrentRail(query, context.Drawable.HitObject.StartTime);
 
             Vector2 tangentDirection = normaliseOrZero(context.Tangent);
 
@@ -907,111 +841,16 @@ namespace osu.Game.Rulesets.Osu.UI
         private bool shouldShowFlowDebug() => showFlowDebug.Value;
 
         private float getStrengthFactor()
-            => Math.Clamp((float)Math.Pow(Math.Clamp((float)getConfiguredStrength(), 0, 1), 0.55f), 0, 1);
+            => GetConfiguredStrengthFactor((float)getConfiguredStrength());
+
+        internal static float GetConfiguredStrengthFactor(float configuredStrength)
+        {
+            float normalisedStrength = Math.Clamp(configuredStrength / 0.92f, 0, 1);
+            return Math.Clamp((float)Math.Pow(normalisedStrength, 0.55f), 0, 1);
+        }
 
         private float getStrengthFactor(AimAssistContext context)
-        {
-            float configuredStrengthFactor = getStrengthFactor();
-            return configuredStrengthFactor * getAdaptiveStrengthMultiplier(context, configuredStrengthFactor);
-        }
-
-        private float getAdaptiveStrengthMultiplier(AimAssistContext context, float configuredStrengthFactor)
-        {
-            float radiusScale = getSmallNoteStrengthScale(context.Radius);
-
-            // Sliders and slider-repeats should be attenuated — they're easy to track naturally
-            if (context.ModeName is @"slider" or @"slider-repeat")
-            {
-                float sliderAttenuation = context.ModeName == @"slider-repeat" ? 0.72f : 0.58f;
-                sliderAttenuation = (float)Interpolation.Lerp(sliderAttenuation, sliderAttenuation + 0.12f, configuredStrengthFactor);
-                return Math.Clamp(sliderAttenuation * radiusScale, 0.3f, 0.85f);
-            }
-
-            // Streams use full strength — handled by stream corridor logic
-            if (context.ModeName != @"point")
-                return Math.Clamp(1f * radiusScale, 0.4f, 1f);
-
-            float isolatedWeight = !context.PreviewPoint.HasValue && context.PointFlowBias <= 0 ? 1 : 0;
-            float singleWeight = context.PatternInfo.Kind == OsuPatternKind.Single ? 1 : 0;
-            float lowDensityWeight = Math.Clamp((0.28f - context.PatternInfo.DensityWeight) / 0.28f, 0, 1);
-            float lowContinuityWeight = Math.Clamp((0.42f - context.PatternInfo.ContinuityWeight) / 0.42f, 0, 1);
-            float jumpSeverity = context.PatternState.JumpSeverity;
-            float lowJumpWeight = 1 - Math.Clamp(jumpSeverity / 0.52f, 0, 1);
-            float flowWeight = Math.Max(context.PointFlowBias, context.PatternState.SupportsFlowPath ? 0.82f : context.PatternInfo.ContinuityWeight * 0.74f);
-
-            double delta = context.FocusTime - Time.Current;
-            double leadWindow = scaleRealTimeWindow(Math.Clamp(Interpolation.Lerp(120, 190, configuredStrengthFactor), 90, 190));
-            float preFocusWeight = delta <= 0 ? 0 : (float)Math.Clamp(delta / Math.Max(1, leadWindow), 0, 1);
-            float timingEaseWeight = (float)Interpolation.Lerp(0.58f, 1f, preFocusWeight);
-
-            float easyPatternWeight = Math.Max(singleWeight * 0.92f, lowDensityWeight * (0.45f + 0.55f * lowContinuityWeight));
-            easyPatternWeight = Math.Max(easyPatternWeight, isolatedWeight * 0.86f);
-
-            float attenuationWeight = easyPatternWeight * lowJumpWeight * (1 - flowWeight * 0.9f) * timingEaseWeight;
-            // Moderate attenuation scaling — enough to differentiate presets, but easy patterns stay quiet
-            attenuationWeight *= (float)Interpolation.Lerp(1f, 0.7f, configuredStrengthFactor);
-
-            // Jumps should bypass attenuation — they're hard and need the help
-            float jumpProtection = Math.Clamp(jumpSeverity / 0.35f, 0, 1);
-
-            float minimumMultiplier = isolatedWeight > 0.5f
-                ? (float)Interpolation.Lerp(0.46f, 0.65f, configuredStrengthFactor)
-                : (float)Interpolation.Lerp(0.62f, 0.78f, configuredStrengthFactor);
-
-            // Jumps get a higher floor — never attenuate jump assist
-            if (jumpProtection > 0)
-                minimumMultiplier = (float)Interpolation.Lerp(minimumMultiplier, 1f, jumpProtection * 0.85f);
-
-            if (context.PatternInfo.Kind == OsuPatternKind.Stack)
-                minimumMultiplier = Math.Max(minimumMultiplier, 0.7f);
-
-            float baseMultiplier = Math.Clamp((float)Interpolation.Lerp(1f, minimumMultiplier, attenuationWeight), 0.4f, 1f);
-            return Math.Clamp(baseMultiplier * radiusScale, 0.25f, 1f);
-        }
-
-        /// <summary>
-        /// Reduces assist strength on small notes (high CS / small on-screen radius).
-        /// Small notes are harder to "cheat" with large pulls and players report over-assist.
-        /// </summary>
-        private static float getSmallNoteStrengthScale(float radius)
-        {
-            if (radius <= 0)
-                return 1f;
-
-            // Reference radius ~30px roughly corresponds to normal ~CS5-6 on typical playfield scale.
-            // Below this we progressively weaken the assist (down to ~30% at very small notes).
-            const float refRadius = 30f;
-            const float minScale = 0.30f;
-            float scale = radius / refRadius;
-            return Math.Clamp(scale, minScale, 1f);
-        }
-
-        private void applyJerkLimiter(double elapsed)
-        {
-            if (elapsed <= 0)
-                return;
-
-            // The SmoothDamp spring explicitly controls previousOffsetVelocity and provides acceleration smoothing natively.
-            // Hardcoded frame-based jerk limits are no longer needed and would conflict with the spring.
-            hasPreviousOffsetVelocity = true;
-        }
-
-        private void applyModeTransition(string currentModeName, double elapsed)
-        {
-            // Spring physics fluidly bridges mode targets, so legacy manual cross-fade state is no longer required.
-        }
-
-        private readonly struct MovementSample
-        {
-            public readonly double Time;
-            public readonly Vector2 Velocity;
-
-            public MovementSample(double time, Vector2 velocity)
-            {
-                Time = time;
-                Velocity = velocity;
-            }
-        }
+            => getStrengthFactor() * (context.ModeName is @"slider" or @"slider-repeat" ? 0.85f : 1f);
 
         private bool tryGetRawPosition(out Vector2 rawPosition)
         {
@@ -1105,16 +944,12 @@ namespace osu.Game.Rulesets.Osu.UI
             public readonly bool Passed;
             public readonly float IntentScore;
             public readonly float EngageAmount;
-            public readonly float PointEarlySettleWeight;
-            public readonly float PointCaptureReleaseWeight;
 
-            public ActivationState(bool passed, float intentScore, float engageAmount, float pointEarlySettleWeight, float pointCaptureReleaseWeight)
+            public ActivationState(bool passed, float intentScore, float engageAmount)
             {
                 Passed = passed;
                 IntentScore = intentScore;
                 EngageAmount = engageAmount;
-                PointEarlySettleWeight = pointEarlySettleWeight;
-                PointCaptureReleaseWeight = pointCaptureReleaseWeight;
             }
         }
 

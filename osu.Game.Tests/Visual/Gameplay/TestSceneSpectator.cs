@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Linq;
 using NUnit.Framework;
 using osu.Framework.Allocation;
@@ -13,8 +14,12 @@ using osu.Game.Database;
 using osu.Game.Localisation;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Spectator;
+using osu.Game.Overlays;
+using osu.Game.Overlays.Notifications;
+using osu.Game.Replays.Legacy;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Replays;
+using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.UI;
 using osu.Game.Scoring;
 using osu.Game.Screens;
@@ -299,6 +304,18 @@ namespace osu.Game.Tests.Visual.Gameplay
         }
 
         [Test]
+        public void TestExtensionOnlyBundleIsNotForwardedToLegacyHandlers()
+        {
+            int receivedBundles = 0;
+
+            AddStep("bind to client", () => spectatorClient.OnNewFrames += (_, _) => receivedBundles++);
+            AddStep("receive empty legacy bundle", () => ((ISpectatorClient)spectatorClient).UserSentFrames(streamingUser.Id, new FrameDataBundle(
+                new FrameHeader(new ScoreInfo(), new ScoreProcessorStatistics()),
+                Array.Empty<LegacyReplayFrame>())).WaitSafely());
+            AddAssert("bundle ignored", () => receivedBundles == 0);
+        }
+
+        [Test]
         public void TestPlayingState()
         {
             loadSpectatingScreen();
@@ -424,6 +441,9 @@ namespace osu.Game.Tests.Visual.Gameplay
         /// </summary>
         private partial class DependenciesScreen : OsuScreen
         {
+            [Cached(typeof(INotificationOverlay))]
+            public readonly NotificationOverlay NotificationOverlay = new NotificationOverlay();
+
             [Cached(typeof(SpectatorClient))]
             public readonly TestSpectatorClient SpectatorClient = new TestSpectatorClient();
 

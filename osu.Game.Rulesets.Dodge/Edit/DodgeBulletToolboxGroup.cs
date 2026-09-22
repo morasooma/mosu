@@ -70,6 +70,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 },
                 createEnumControl(DodgeEditorStrings.TrajectoryGuide, settings.BulletTrajectoryGuideStyle),
                 createEnumControl(DodgeEditorStrings.MovementType, settings.BulletMovementType),
+                createEnumControl(DodgeEditorStrings.MovementEasing, settings.BulletMovementEasing),
                 waveControls = new FillFlowContainer
                 {
                     RelativeSizeAxes = Axes.X,
@@ -174,6 +175,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 waveControls.Alpha = type.NewValue == DodgeMovementType.Sine ? 1 : 0;
                 applyToSelection();
             }, true);
+            settings.BulletMovementEasing.BindValueChanged(_ => applyToSelection());
             settings.BulletWaveAmplitude.BindValueChanged(_ => applyToSelection());
             settings.BulletWaveCycles.BindValueChanged(_ => applyToSelection());
             settings.BulletWavePhase.BindValueChanged(_ => applyToSelection());
@@ -197,6 +199,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             settings.BulletContinueUntilExit.Value = bullet.ContinueUntilExit;
             settings.BulletTrajectoryGuideStyle.Value = bullet.TrajectoryGuideStyle;
             settings.BulletMovementType.Value = bullet.MovementType;
+            settings.BulletMovementEasing.Value = bullet.MovementEasing;
             settings.BulletWaveAmplitude.Value = bullet.WaveAmplitude;
             settings.BulletWaveCycles.Value = Math.Max(1, bullet.WaveCycles);
             settings.BulletWavePhase.Value = bullet.WavePhase;
@@ -225,6 +228,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 bullet.ContinueUntilExit = settings.BulletContinueUntilExit.Value;
                 bullet.TrajectoryGuideStyle = settings.BulletTrajectoryGuideStyle.Value;
                 bullet.MovementType = settings.BulletMovementType.Value;
+                bullet.MovementEasing = settings.BulletMovementEasing.Value;
                 bullet.WaveAmplitude = settings.BulletWaveAmplitude.Value;
                 bullet.WaveCycles = settings.BulletWaveCycles.Value;
                 bullet.WavePhase = settings.BulletWavePhase.Value;

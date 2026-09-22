@@ -3,11 +3,14 @@
 
 #nullable disable
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Screens;
+using osu.Game.Online.API;
+using osu.Game.Online.Rooms;
 using osu.Game.Online.Spectator;
 using osu.Game.Rulesets.Judgements;
 using osu.Game.Rulesets.Mods;
@@ -36,6 +39,10 @@ namespace osu.Game.Tests.Visual
         public new ScoreProcessor ScoreProcessor => base.ScoreProcessor;
 
         public new HealthProcessor HealthProcessor => base.HealthProcessor;
+
+        public bool TokenCreationRequested { get; private set; }
+
+        public Score SubmittedScore { get; private set; }
 
         public new bool PauseCooldownActive => base.PauseCooldownActive;
 

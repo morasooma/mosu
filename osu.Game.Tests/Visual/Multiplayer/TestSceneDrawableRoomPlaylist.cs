@@ -29,6 +29,8 @@ using osu.Game.Rulesets;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Screens.OnlinePlay;
+using osu.Game.Screens.OnlinePlay.Components;
+using osu.Game.Screens.OnlinePlay.Playlists;
 using osu.Game.Tests.Beatmaps;
 using osu.Game.Users.Drawables;
 using osuTK;
@@ -118,6 +120,83 @@ namespace osu.Game.Tests.Visual.Multiplayer
                 playlist.Items[3].MarkCompleted();
                 playlist.Items[5].MarkCompleted();
             });
+        }
+
+        [Test]
+        public void TestBatchedReplacement()
+        {
+            createPlaylist(p => p.Items.Clear());
+
+            bool completed = false;
+            int synchronousCount = 0;
+
+            AddStep("replace with 1000 items", () =>
+            {
+                var items = Enumerable.Range(0, 1000).Select(i => new PlaylistItem(CreateAPIBeatmap())
+                {
+                    ID = i,
+                    RulesetID = new OsuRuleset().RulesetInfo.OnlineID,
+                });
+
+                playlist.ReplaceItemsBatched(items, () => completed = true);
+                synchronousCount = playlist.Items.Count;
+            });
+
+            AddAssert("only first batch added synchronously", () => synchronousCount, () => Is.EqualTo(50));
+            AddUntilStep("all items added", () => completed && playlist.Items.Count == 1000);
+        }
+
+        [Test]
+        public void TestLargePlaylistHeader()
+        {
+            PlaylistHeader header = null!;
+            Room room = null!;
+
+            AddStep("create room with 1000 items", () =>
+            {
+                room = new Room
+                {
+                    Playlist = Enumerable.Range(0, 1000).Select(i =>
+                    {
+                        var beatmap = CreateAPIBeatmap();
+                        beatmap.OnlineID = i + 1;
+
+                        Debug.Assert(beatmap.BeatmapSet != null);
+                        beatmap.BeatmapSet.OnlineID = i + 1;
+
+                        return new PlaylistItem(beatmap)
+                        {
+                            ID = i,
+                            RulesetID = new OsuRuleset().RulesetInfo.OnlineID,
+                        };
+                    }).ToArray()
+                };
+            });
+
+            AddStep("create large playlist header", () => Child = header = new PlaylistHeader(room));
+
+            AddUntilStep("header loaded", () => header.IsLoaded);
+        }
+
+        [Test]
+        public void TestLargePlaylistCollectionButton()
+        {
+            AddStep("load collection button for 1000 items", () =>
+            {
+                var room = new Room
+                {
+                    Playlist = Enumerable.Range(0, 1000).Select(i =>
+                    {
+                        var beatmap = CreateAPIBeatmap();
+                        beatmap.OnlineID = i + 1;
+                        return new PlaylistItem(beatmap) { ID = i };
+                    }).ToArray()
+                };
+
+                Child = new AddPlaylistToCollectionButton(room);
+            });
+
+            AddUntilStep("button loaded", () => Child.IsLoaded);
         }
 
         [Test]

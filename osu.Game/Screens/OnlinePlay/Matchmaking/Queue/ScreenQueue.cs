@@ -25,6 +25,7 @@ using osu.Framework.Logging;
 using osu.Framework.Screens;
 using osu.Framework.Threading;
 using osu.Game.Database;
+using osu.Game.Extensions;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
@@ -32,6 +33,7 @@ using osu.Game.Graphics.UserInterface;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Input.Bindings;
 using osu.Game.Online.API;
+using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Chat;
 using osu.Game.Online.Matchmaking;
@@ -39,6 +41,7 @@ using osu.Game.Online.Matchmaking.Requests;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
 using osu.Game.Overlays;
+using osu.Game.Overlays.Notifications;
 using osu.Game.Overlays.Volume;
 using osu.Game.Rulesets;
 using osu.Game.Screens.Footer;
@@ -73,6 +76,9 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         private QueueController queue { get; set; } = null!;
 
         [Resolved]
+        private INotificationOverlay notifications { get; set; } = null!;
+
+        [Resolved]
         private UserLookupCache userLookupCache { get; set; } = null!;
 
         [Resolved]
@@ -89,8 +95,13 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         private readonly Bindable<MatchmakingPool[]?> availablePools = new Bindable<MatchmakingPool[]?>();
         private readonly Bindable<MatchmakingPool?> selectedPool = new Bindable<MatchmakingPool?>();
         private readonly BindableBool randomMods = new BindableBool();
-
         private readonly MatchmakingPoolType poolType;
+        private IAPIProvider api = null!;
+        private RelaxRankedPoolResponse? relaxPool;
+        private ScreenFooterButton? manageRelaxPoolButton;
+        private OsuSpriteText queueCountsText = null!;
+        private OsuSpriteText relaxPoolOwnerText = null!;
+        private bool lobbyStatusSubscribed;
 
         private CancellationTokenSource userLookupCancellation = new CancellationTokenSource();
         private CancellationTokenSource poolFetchCancellation = new CancellationTokenSource();
@@ -107,10 +118,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         private int? userRating;
         private int recentMatchesLoadVersion;
         private string? lastRecentMatchesRenderKey;
-        private bool lobbyStatusSubscribed;
 
         private GridContainer mainGrid = null!;
-        private OsuSpriteText queueCountsText = null!;
 
         private IBindable<bool> isConnected = null!;
 
@@ -119,13 +128,46 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             this.poolType = poolType;
         }
 
+        public override IReadOnlyList<ScreenFooterButton> CreateFooterButtons()
+        {
+            var buttons = base.CreateFooterButtons().ToList();
+            if (poolType == MatchmakingPoolType.RankedPlay)
+            {
+                manageRelaxPoolButton = new ScreenFooterButton
+                {
+                    Text = "Manage Relax pool",
+                    Icon = FontAwesome.Solid.List,
+                    Action = () =>
+                    {
+                        if (relaxPool?.CanManage == true)
+                        {
+                            this.Push(new RelaxPoolEditorScreen(relaxPool));
+                            return;
+                        }
+
+                        if (relaxPool == null)
+                        {
+                            notifications.Post(new SimpleNotification { Text = "Could not load Relax pool access. Retrying…" });
+                            fetchRelaxPool();
+                            return;
+                        }
+
+                        notifications.Post(new SimpleNotification { Text = "You need the Relax pool creator role to manage a pool." });
+                    }
+                };
+                buttons.Add(manageRelaxPoolButton);
+            }
+            return buttons;
+        }
+
         [BackgroundDependencyLoader]
         private void load(AudioManager audio, IAPIProvider api)
         {
+            this.api = api;
             enqueueSample = audio.Samples.Get(@"Multiplayer/Matchmaking/enqueue");
             matchFoundSample = audio.Samples.Get(@"Multiplayer/Matchmaking/match-found");
 
-            LinkFlowContainer experimentalText;
+            LinkFlowContainer? experimentalText = null;
 
             InternalChild = new InverseScalingDrawSizePreservingFillContainer
             {
@@ -210,6 +252,11 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                                 {
                                                                     Font = OsuFont.Style.Caption1,
                                                                     Text = "Standard: 0  •  Random mods: 0"
+                                                                },
+                                                                relaxPoolOwnerText = new OsuSpriteText
+                                                                {
+                                                                    Font = OsuFont.Style.Caption2,
+                                                                    Text = "Relax pool selected: automatic fallback"
                                                                 }
                                                             }
                                                         }
@@ -370,6 +417,17 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                 }
             };
 
+            if (experimentalText != null)
+            {
+                experimentalText.AddIcon(FontAwesome.Solid.Lightbulb);
+                experimentalText.AddText(@" ");
+                experimentalText.AddText("This system is under continuous and rapid development.\n", sp => sp.Font = sp.Font.With(weight: FontWeight.SemiBold));
+                experimentalText.AddText("Follow the ");
+                experimentalText.AddLink("changelog", @"https://osu.ppy.sh/community/forums/topics/2202736", sp => sp.Font = sp.Font.With(weight: FontWeight.SemiBold));
+                experimentalText.AddText(" and provide any ");
+                experimentalText.AddLink("feedback", @"https://osu.ppy.sh/community/forums/topics/2198397", sp => sp.Font = sp.Font.With(weight: FontWeight.SemiBold));
+                experimentalText.AddText(" on the osu! forums!");
+            }
         }
 
         protected override void LoadComplete()
@@ -396,17 +454,20 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             currentState.BindValueChanged(s => SetState(s.NewValue));
 
             selectedPool.BindTo(queue.SelectedPool);
-            selectedPool.BindValueChanged(e => refreshLobbyData());
+            selectedPool.BindValueChanged(e =>
+            {
+                refreshLobbyData();
+                updateRelaxPoolOwnerText();
+            }, true);
 
             isConnected = client.IsConnected.GetBoundCopy();
             isConnected.BindValueChanged(connected => Schedule(() =>
             {
                 if (connected.NewValue)
                 {
-                    poolFetchCancellation.Cancel();
-                    poolFetchCancellation = new CancellationTokenSource();
-
+                    cancelAndReplace(ref poolFetchCancellation);
                     populateAvailablePools(poolFetchCancellation.Token).FireAndForget();
+                    fetchRelaxPool();
                     refreshLobbyData();
                 }
                 else
@@ -418,6 +479,33 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             }), true);
         }
 
+        private void fetchRelaxPool()
+        {
+            if (poolType != MatchmakingPoolType.RankedPlay)
+                return;
+
+            var request = new GetRelaxRankedPoolRequest();
+            request.Success += response =>
+            {
+                relaxPool = response;
+                updateRelaxPoolOwnerText();
+            };
+            request.Failure += _ =>
+            {
+                relaxPool = null;
+                updateRelaxPoolOwnerText();
+            };
+            api.Queue(request);
+        }
+
+        private void updateRelaxPoolOwnerText()
+        {
+            relaxPoolOwnerText.Alpha = selectedPool.Value?.RulesetId == 4 ? 1 : 0;
+            relaxPoolOwnerText.Text = relaxPool?.SelectedOwner is { } owner
+                ? $"Relax pool selected: {owner.Username}"
+                : "Relax pool selected: automatic fallback";
+        }
+
         private async Task populateAvailablePools(CancellationToken cancellationToken)
         {
             const int max_attempts = 5;
@@ -426,7 +514,6 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             for (int attempt = 1; attempt <= max_attempts; attempt++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
                 pools = await client.GetMatchmakingPoolsOfType(poolType).ConfigureAwait(false);
 
                 if (pools.Length > 0 || !client.IsConnected.Value)
@@ -453,15 +540,17 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
         private void onMatchmakingLobbyStatusChanged(MatchmakingLobbyStatus status) => Scheduler.Add(() =>
         {
-            userLookupCancellation.Cancel();
-            var cancellation = userLookupCancellation = new CancellationTokenSource();
+            cancelAndReplace(ref userLookupCancellation);
+            var cancellation = userLookupCancellation;
 
             userLookupCache.GetUsersAsync(status.UsersInQueue, cancellation.Token)
                            .ContinueWith(result => Schedule(() =>
                            {
+                               if (cancellation.IsCancellationRequested || !result.IsCompletedSuccessfully)
+                                   return;
+
                                APIUser?[] users = result.GetResultSafely();
-                               if (!cancellation.IsCancellationRequested)
-                                   cloud.Users = users.OfType<APIUser>().ToArray();
+                               cloud.Users = users.OfType<APIUser>().ToArray();
                            }), cancellation.Token);
 
             // Global (incremental) updates will not contain the user rating, so keep the one we already received from initial status data.
@@ -478,20 +567,21 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         {
             const int max_panels = 50;
             RankedPlayRecentMatch[] distinctMatches = matches
+                                                    .Where(match => match.State.Users.Count >= 2)
                                                     .GroupBy(match => match.RoomId)
-                                                    .Select(g => g.First())
+                                                    .Select(group => group.First())
                                                     .OrderByDescending(match => match.CompletedAtUnixMilliseconds)
+                                                    .Take(max_panels)
                                                     .ToArray();
-            string renderKey = string.Join("||", distinctMatches.Select(match => $"{match.RoomId}:{buildRecentMatchKey(match.State)}"));
+            string renderKey = string.Join("||", distinctMatches.Select(match => $"{match.RoomId}:{buildRecentMatchKey(match)}"));
 
             await userLookupCache.GetUsersAsync(distinctMatches.SelectMany(m => m.State.Users.Keys).ToArray()).ConfigureAwait(false);
 
             Scheduler.Add(() =>
             {
-                if (loadVersion != recentMatchesLoadVersion)
-                    return;
-
-                if (renderKey == lastRecentMatchesRenderKey)
+                // Lobby status is a complete snapshot. Ignore stale async loads and do not append
+                // the same matches again on every periodic status update.
+                if (loadVersion != recentMatchesLoadVersion || renderKey == lastRecentMatchesRenderKey)
                     return;
 
                 lastRecentMatchesRenderKey = renderKey;
@@ -499,7 +589,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
                 foreach (var match in distinctMatches)
                 {
-                    resultPanelContainer.Add(new RankedPlayMatchPanel(match.State)
+                    resultPanelContainer.Add(new RankedPlayMatchPanel(match)
                     {
                         RelativeSizeAxes = Axes.X,
                         Width = 0.48f
@@ -511,15 +601,13 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                     resultPanelContainer.LayoutDuration = 400;
                     resultPanelContainer.LayoutEasing = Easing.OutQuint;
                 }
-
-                while (resultPanelContainer.Count > max_panels)
-                    resultPanelContainer.Children.First().RemoveAndDisposeImmediately();
             });
         }
 
-        private static string buildRecentMatchKey(RankedPlayRoomState match)
+        private static string buildRecentMatchKey(RankedPlayRecentMatch recentMatch)
         {
-            return $"{match.WinningUserId}:{string.Join("|", match.Users.OrderBy(u => u.Key).Select(u => $"{u.Key}:{u.Value.Rating}:{u.Value.RatingAfter}:{u.Value.Life}:{u.Value.RoundsWon}"))}";
+            RankedPlayRoomState match = recentMatch.State;
+            return $"{recentMatch.HasFinalState}:{match.WinningUserId}:{string.Join("|", match.Users.OrderBy(u => u.Key).Select(u => $"{u.Key}:{u.Value.Rating}:{u.Value.RatingAfter}:{u.Value.Life}:{u.Value.RoundsWon}"))}";
         }
 
         private void refreshLobbyData()
@@ -527,7 +615,10 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             clearLobbyData();
 
             if (selectedPool.Value == null)
+            {
+                client.MatchmakingLeaveLobby().FireAndForget();
                 return;
+            }
 
             client.MatchmakingJoinLobbyWithParams(new MatchmakingJoinLobbyRequest
             {
@@ -543,6 +634,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             resultPanelContainer.LayoutDuration = 0;
             userRating = null;
             ratingGraph.SetData([], null);
+            queueCountsText.Text = "Standard: 0  •  Random mods: 0";
 
             cloud.Users = Array.Empty<APIUser>();
         }
@@ -563,6 +655,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             base.OnResuming(e);
 
             subscribeToLobbyStatus();
+            queue.SearchInForeground();
+            fetchRelaxPool();
             // Rejoin the lobby.
             selectedPool.TriggerChange();
         }
@@ -572,6 +666,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             base.OnSuspending(e);
 
             unsubscribeFromLobbyStatus();
+            cancelPendingScreenPush();
             stopWaitingLoopPlayback();
             client.MatchmakingLeaveLobby().FireAndForget();
         }
@@ -582,6 +677,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                 return true;
 
             stopWaitingLoopPlayback();
+            cancelPendingScreenPush();
+            userLookupCancellation.Cancel();
 
             switch (currentState.Value)
             {
@@ -596,13 +693,14 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                     return true;
 
                 case MatchmakingScreenState.InRoom:
-                    // Block exit until it's initiated from inside the matchmaking screen.
-                    // But allow exit if the room failed to join (Room is null).
+                    // Block exit until it's initiated from inside the matchmaking screen, but don't
+                    // trap the user if joining the room failed before the delayed screen push.
                     if (client.Room == null)
                     {
                         queue.CurrentState.Value = MatchmakingScreenState.Idle;
                         return false;
                     }
+
                     return true;
             }
         }
@@ -617,7 +715,6 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
             pushScreenDelegate?.Cancel();
             pushScreenDelegate = null;
-
             acceptedWaitingTimeoutDelegate?.Cancel();
             acceptedWaitingTimeoutDelegate = null;
 
@@ -751,7 +848,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
                 case MatchmakingScreenState.PendingAccept:
                     client.MatchmakingAcceptInvitation().FireAndForget();
-                    SetState(MatchmakingScreenState.AcceptedWaitingForRoom);
+                    queue.CurrentState.Value = MatchmakingScreenState.AcceptedWaitingForRoom;
 
                     matchFoundSample?.Play();
                     music.DuckMomentarily(1250);
@@ -782,8 +879,6 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                     };
 
                     startWaitingLoopPlayback();
-
-                    // Timeout: if room is not ready within 30 seconds, return to idle.
                     acceptedWaitingTimeoutDelegate = Scheduler.AddDelayed(() =>
                     {
                         if (currentState.Value == MatchmakingScreenState.AcceptedWaitingForRoom)
@@ -793,7 +888,6 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                             queue.CurrentState.Value = MatchmakingScreenState.Idle;
                         }
                     }, 30000);
-
                     break;
 
                 case MatchmakingScreenState.InRoom:
@@ -823,7 +917,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                         {
                             if (client.Room == null)
                             {
-                                Logger.Log($"{nameof(ScreenQueue)}: Room is null, cannot push matchmaking screen. Returning to idle.", LoggingTarget.Runtime, LogLevel.Important);
+                                Logger.Log("Room became null, returning to idle");
                                 queue.CurrentState.Value = MatchmakingScreenState.Idle;
                                 return;
                             }
@@ -851,10 +945,33 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         protected override void Dispose(bool isDisposing)
         {
             unsubscribeFromLobbyStatus();
-            base.Dispose(isDisposing);
+            cancelAndDispose(ref userLookupCancellation);
+            cancelAndDispose(ref poolFetchCancellation);
 
             stopWaitingLoopPlayback();
+            cancelPendingScreenPush();
             acceptedWaitingTimeoutDelegate?.Cancel();
+
+            base.Dispose(isDisposing);
+        }
+
+        private void cancelPendingScreenPush()
+        {
+            pushScreenDelegate?.Cancel();
+            pushScreenDelegate = null;
+        }
+
+        private static void cancelAndReplace(ref CancellationTokenSource cancellationSource)
+        {
+            cancellationSource.Cancel();
+            cancellationSource.Dispose();
+            cancellationSource = new CancellationTokenSource();
+        }
+
+        private static void cancelAndDispose(ref CancellationTokenSource cancellationSource)
+        {
+            cancellationSource.Cancel();
+            cancellationSource.Dispose();
         }
 
         private void subscribeToLobbyStatus()
@@ -1011,7 +1128,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             {
                 base.Update();
 
-                Text = queue.QueueTimer.Elapsed.ToString(@"mm\:ss");
+                Text = queue.QueueTimer.Elapsed.ToFormattedDuration();
             }
         }
     }

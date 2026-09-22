@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Primitives;
@@ -18,6 +19,7 @@ namespace osu.Game.Graphics.Containers
     public partial class ShearAligningWrapper : CompositeDrawable
     {
         private readonly LayoutValue layout = new LayoutValue(Invalidation.MiscGeometry);
+        private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
         // Sheared components regularly end up off the side of the screen due to padding considerations.
         // If we use this class in places where performance is important, we should reconsider the handling of this.
@@ -33,6 +35,12 @@ namespace osu.Game.Graphics.Containers
             AddLayout(layout);
         }
 
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+            disableShear.BindValueChanged(_ => layout.Invalidate(), true);
+        }
+
         protected override void Update()
         {
             base.Update();
@@ -46,6 +54,12 @@ namespace osu.Game.Graphics.Containers
 
         private void updateLayout()
         {
+            if (disableShear.Value)
+            {
+                Padding = new MarginPadding();
+                return;
+            }
+
             float shearWidth = OsuGame.SHEAR.X * Parent!.DrawHeight;
             float relativeY = Parent!.DrawHeight == 0 ? 0 : InternalChild.ToSpaceOfOtherDrawable(Vector2.Zero, Parent).Y / Parent!.DrawHeight;
             Padding = new MarginPadding { Left = shearWidth * relativeY };

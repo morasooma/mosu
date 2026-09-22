@@ -48,6 +48,7 @@ namespace osu.Game.Graphics.UserInterface
 
         private Colour4 backgroundColour;
         private IBindable<Colour4>? themeColour;
+        private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
         public Color4 BackgroundColour
         {
@@ -151,6 +152,12 @@ namespace osu.Game.Graphics.UserInterface
             {
                 Alpha = disabled ? 0.3f : 1;
                 hoverClickSounds.Enabled.Value = !disabled;
+            }, true);
+
+            disableShear.BindValueChanged(_ =>
+            {
+                Shear = OsuGame.SHEAR;
+                nubContainer.Shear = -OsuGame.SHEAR;
             }, true);
         }
 

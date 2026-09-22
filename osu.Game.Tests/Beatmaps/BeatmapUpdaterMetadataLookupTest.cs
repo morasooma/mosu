@@ -5,6 +5,8 @@ using Moq;
 using NUnit.Framework;
 using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Game.Beatmaps;
+using osu.Game.Online;
+using osu.Game.Online.API;
 
 namespace osu.Game.Tests.Beatmaps
 {
@@ -300,6 +302,56 @@ namespace osu.Game.Tests.Beatmaps
 
             Assert.That(beatmap.Status, Is.EqualTo(BeatmapOnlineStatus.None));
             Assert.That(beatmap.OnlineID, Is.EqualTo(654321));
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void TestServerExclusiveRevisionIsTrackedOnThirdPartyServer()
+        {
+            bool previousThirdPartyState = MosuServerEnvironment.IsThirdPartyServer;
+
+            try
+            {
+                MosuServerEnvironment.IsThirdPartyServer = true;
+                var updatedAt = new System.DateTimeOffset(2026, 8, 11, 12, 0, 0, System.TimeSpan.Zero);
+                var lookupResult = new OnlineBeatmapMetadata
+                {
+                    BeatmapID = BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD + 2,
+                    BeatmapSetID = BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD + 10,
+                    BeatmapStatus = BeatmapOnlineStatus.WIP,
+                    MD5Hash = "new-revision",
+                    LastUpdated = updatedAt,
+                };
+
+                apiMetadataSourceMock.Setup(src => src.Available).Returns(true);
+                apiMetadataSourceMock.Setup(src => src.TryLookup(It.IsAny<BeatmapInfo>(), out lookupResult))
+                                     .Returns(true);
+
+                var beatmap = new BeatmapInfo
+                {
+                    OnlineID = BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD + 1,
+                    MD5Hash = "old-revision",
+                    OnlineMD5Hash = "old-revision",
+                    LastOnlineUpdate = updatedAt.AddDays(-1),
+                };
+                var beatmapSet = new BeatmapSetInfo(beatmap.Yield())
+                {
+                    OnlineID = BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD + 10,
+                };
+                beatmap.BeatmapSet = beatmapSet;
+
+                metadataLookup.Update(beatmapSet, preferOnlineFetch: true);
+
+                Assert.That(beatmap.OnlineID, Is.EqualTo(lookupResult.BeatmapID));
+                Assert.That(beatmap.OnlineMD5Hash, Is.EqualTo("new-revision"));
+                Assert.That(beatmap.LastOnlineUpdate, Is.EqualTo(updatedAt));
+                Assert.That(beatmap.MatchesOnlineVersion, Is.False);
+                Assert.That(beatmapSet.AllBeatmapsUpToDate, Is.False);
+            }
+            finally
+            {
+                MosuServerEnvironment.IsThirdPartyServer = previousThirdPartyState;
+            }
         }
 
         [Test]

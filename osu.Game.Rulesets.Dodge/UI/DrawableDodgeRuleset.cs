@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using osu.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Input;
 using osu.Game.Beatmaps;
@@ -35,17 +36,32 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         public override double GameplayStartTime => DodgeGameplayTiming.GetGameplayStartTime(Beatmap.HitObjects);
 
-        protected override Playfield CreatePlayfield() => new DodgePlayfield(
-            Beatmap.HitObjects,
-            playerSpeed: (float)(DodgeBeatmapSettings.GetPlayerSpeed(Beatmap.Difficulty) / 1000),
-            playerSize: DodgeBeatmapSettings.GetPlayerSize(Beatmap.Difficulty),
-            grazeDistance: (float)DodgeBeatmapSettings.GetGrazeDistance(Beatmap.Difficulty),
-            grazeScore: DodgeBeatmapSettings.GetGrazeScore(Beatmap.Difficulty),
-            showFullProjectilePaths: Mods.Any(mod => mod is DodgeModFullPaths),
-            playfieldDim: Config.Get<double>(DodgeRulesetSetting.PlayfieldDim),
-            grazeIndicatorBrightness: Config.Get<double>(DodgeRulesetSetting.GrazeIndicatorBrightness),
-            missSoundEnabled: Config.Get<bool>(DodgeRulesetSetting.MissSoundEnabled),
-            missSoundVolume: Config.Get<double>(DodgeRulesetSetting.MissSoundVolume));
+        [BackgroundDependencyLoader]
+        private void load()
+        {
+            if (RuntimeInfo.IsMobile)
+                KeyBindingInputManager.Add(new DodgeTouchInputOverlay());
+        }
+
+        protected override Playfield CreatePlayfield()
+        {
+            var playfield = new DodgePlayfield(
+                Beatmap.HitObjects,
+                playerSpeed: (float)(DodgeBeatmapSettings.GetPlayerSpeed(Beatmap.Difficulty) / 1000),
+                playerSize: DodgeBeatmapSettings.GetPlayerSize(Beatmap.Difficulty),
+                grazeDistance: (float)DodgeBeatmapSettings.GetGrazeDistance(Beatmap.Difficulty),
+                grazeScore: DodgeBeatmapSettings.GetGrazeScore(Beatmap.Difficulty),
+                showFullProjectilePaths: Mods.Any(mod => mod is DodgeModFullPaths),
+                playfieldDim: Config.Get<double>(DodgeRulesetSetting.PlayfieldDim),
+                grazeIndicatorBrightness: Config.Get<double>(DodgeRulesetSetting.GrazeIndicatorBrightness),
+                missSoundEnabled: Config.Get<bool>(DodgeRulesetSetting.MissSoundEnabled),
+                missSoundVolume: Config.Get<double>(DodgeRulesetSetting.MissSoundVolume));
+
+            playfield.EffectsEnabled = Config.Get<bool>(DodgeRulesetSetting.EffectsEnabled);
+            playfield.UserTrailEnabled = Config.Get<bool>(DodgeRulesetSetting.PlayerTrailEnabled) ? null : false;
+
+            return playfield;
+        }
 
         public override PlayfieldAdjustmentContainer CreatePlayfieldAdjustmentContainer() => new DodgePlayfieldAdjustmentContainer();
 
@@ -57,6 +73,7 @@ namespace osu.Game.Rulesets.Dodge.UI
                 DodgeArenaChange arenaChange => new DrawableDodgeArenaChange(arenaChange),
                 DodgeCameraChange cameraChange => new DrawableDodgeCameraChange(cameraChange),
                 DodgeBeam beam => new DrawableDodgeBeam(beam),
+                DodgeTrigger trigger => new DrawableDodgeTrigger(trigger),
                 _ => throw new System.ArgumentException($"Unsupported Dodge object type: {h.GetType().Name}", nameof(h)),
             };
 

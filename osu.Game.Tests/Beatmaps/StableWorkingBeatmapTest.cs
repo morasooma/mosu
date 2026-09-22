@@ -8,6 +8,7 @@ using System.Linq;
 using NUnit.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
+using osu.Framework.Extensions;
 using osu.Framework.Platform;
 using osu.Framework.Testing;
 using osu.Game.Beatmaps;
@@ -136,6 +137,92 @@ namespace osu.Game.Tests.Beatmaps
                 using Stream? stream = lookup.GetStream("video.mp4");
                 return stream?.Length;
             }, () => Is.EqualTo(3));
+        }
+
+        [Test]
+        public void TestStableChecksumIsValidatedBeforeRankedPlay()
+        {
+            StableWorkingBeatmap? matchingWorking = null;
+            StableWorkingBeatmap? modifiedWorking = null;
+            string actualMD5 = string.Empty;
+
+            AddStep("create ranked stable beatmaps", () =>
+            {
+                stableStorage = new TemporaryNativeStorage("stable-working-beatmap-checksum");
+                string beatmapPath = stableStorage.GetFullPath("ranked.osu");
+                File.WriteAllText(beatmapPath,
+                    """
+                    osu file format v14
+
+                    [General]
+                    AudioFilename: audio.mp3
+                    Mode:0
+
+                    [Metadata]
+                    Title:Ranked map
+                    Artist:Test artist
+                    Creator:Test creator
+                    Version:Normal
+                    BeatmapID:123
+                    BeatmapSetID:456
+
+                    [Difficulty]
+                    HPDrainRate:5
+                    CircleSize:4
+                    OverallDifficulty:5
+                    ApproachRate:5
+                    SliderMultiplier:1.4
+                    SliderTickRate:1
+
+                    [TimingPoints]
+                    0,500,4,2,1,100,1,0
+
+                    [HitObjects]
+                    256,192,1000,1,0,0:0:0:0:
+                    """);
+
+                using (var stream = File.OpenRead(beatmapPath))
+                    actualMD5 = stream.ComputeMD5Hash();
+
+                var matchingInfo = createBeatmapInfo(actualMD5);
+                var modifiedInfo = createBeatmapInfo(new string('0', 32));
+                StablePathManager.Replace(
+                    new Dictionary<Guid, string>
+                    {
+                        [matchingInfo.ID] = beatmapPath,
+                        [modifiedInfo.ID] = beatmapPath,
+                    },
+                    new Dictionary<Guid, string>());
+
+                matchingWorking = new StableWorkingBeatmap(matchingInfo, audio, host);
+                modifiedWorking = new StableWorkingBeatmap(modifiedInfo, audio, host);
+            });
+
+            AddAssert("matching checksum remains ranked", () => matchingWorking!.Beatmap.BeatmapInfo.Status, () => Is.EqualTo(BeatmapOnlineStatus.Ranked));
+            AddAssert("matching checksum propagated", () => matchingWorking!.Beatmap.BeatmapInfo.MD5Hash, () => Is.EqualTo(actualMD5));
+            AddAssert("changed checksum becomes locally modified", () => modifiedWorking!.Beatmap.BeatmapInfo.Status, () => Is.EqualTo(BeatmapOnlineStatus.LocallyModified));
+            AddAssert("actual changed checksum propagated", () => modifiedWorking!.Beatmap.BeatmapInfo.MD5Hash, () => Is.EqualTo(actualMD5));
+
+            static BeatmapInfo createBeatmapInfo(string md5)
+            {
+                var set = new BeatmapSetInfo { OnlineID = 456 };
+                var info = new BeatmapInfo
+                {
+                    BeatmapSet = set,
+                    OnlineID = 123,
+                    MD5Hash = md5,
+                    Status = BeatmapOnlineStatus.Ranked,
+                    Metadata = new BeatmapMetadata
+                    {
+                        Artist = "Test artist",
+                        Title = "Ranked map",
+                        Author = new RealmUser { Username = "Test creator" },
+                        AudioFile = "audio.mp3",
+                    },
+                };
+                set.Beatmaps.Add(info);
+                return info;
+            }
         }
     }
 }

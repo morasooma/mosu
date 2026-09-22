@@ -12,6 +12,7 @@ using osu.Game.Extensions;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Online.Legacy;
 using osu.Game.Rulesets;
 using osu.Game.Scoring;
 using osu.Game.Users;
@@ -39,6 +40,9 @@ namespace osu.Game.Online
         [Resolved]
         private IAPIProvider api { get; set; } = null!;
 
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
+
         private readonly IBindable<APIUser> localUser = new Bindable<APIUser>();
 
         private readonly Dictionary<string, UserStatistics> statisticsCache = new Dictionary<string, UserStatistics>();
@@ -53,6 +57,9 @@ namespace osu.Game.Online
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            if (stableBanchoSession != null)
+                stableBanchoSession.UserStatisticsUpdated += onStableUserStatisticsUpdated;
 
             localUser.BindTo(api.LocalUser);
             localUser.BindValueChanged(_ =>
@@ -69,6 +76,21 @@ namespace osu.Game.Online
 
             if (api.LocalUser.Value == null || api.LocalUser.Value.Id <= 1)
                 return;
+
+            if (MosuServerEnvironment.UsesStableProtocol)
+            {
+                if (stableBanchoSession == null)
+                    return;
+
+                foreach (var ruleset in rulesets.AvailableRulesets.Where(r => r.IsLegacyRuleset()))
+                {
+                    StableBanchoUserStatistics? statistics = stableBanchoSession.GetUserStatistics(api.LocalUser.Value.Id, ruleset.OnlineID);
+                    if (statistics != null)
+                        UpdateStatistics(toUserStatistics(statistics), ruleset);
+                }
+
+                return;
+            }
 
             foreach (var ruleset in rulesets.AvailableRulesets.Where(r => r.IsLegacyRuleset() || MosuServerEnvironment.IsThirdPartyServer))
             {
@@ -132,6 +154,36 @@ namespace osu.Game.Online
             var update = new UserStatisticsUpdate(ruleset, oldStatistics, newStatistics);
             callback?.Invoke(update);
             StatisticsUpdated?.Invoke(update);
+        }
+
+        private void onStableUserStatisticsUpdated(StableBanchoUserStatistics statistics)
+        {
+            if (statistics.UserId != api.LocalUser.Value.Id)
+                return;
+
+            RulesetInfo? ruleset = rulesets.AvailableRulesets.FirstOrDefault(r => r.OnlineID == statistics.RulesetId);
+            if (ruleset != null)
+                UpdateStatistics(toUserStatistics(statistics), ruleset);
+        }
+
+        private UserStatistics toUserStatistics(StableBanchoUserStatistics statistics) => new UserStatistics
+        {
+            User = api.LocalUser.Value,
+            IsRanked = statistics.GlobalRank > 0,
+            GlobalRank = statistics.GlobalRank > 0 ? statistics.GlobalRank : null,
+            PP = statistics.PerformancePoints >= 0 ? statistics.PerformancePoints : null,
+            RankedScore = statistics.RankedScore,
+            Accuracy = statistics.Accuracy <= 1 ? statistics.Accuracy * 100 : statistics.Accuracy,
+            PlayCount = statistics.PlayCount,
+            TotalScore = statistics.TotalScore,
+        };
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (stableBanchoSession != null)
+                stableBanchoSession.UserStatisticsUpdated -= onStableUserStatisticsUpdated;
+
+            base.Dispose(isDisposing);
         }
     }
 

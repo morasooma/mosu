@@ -2,16 +2,16 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osuTK;
-using osu.Framework.Graphics;
 using osu.Framework.Bindables;
+using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using System.Collections.Generic;
 using osu.Framework.Allocation;
 using osu.Framework.Localisation;
 using osu.Game.Graphics;
-using osuTK.Graphics;
 using osu.Game.Overlays;
+using osuTK.Graphics;
 
 namespace osu.Game.Overlays.Settings
 {
@@ -22,8 +22,10 @@ namespace osu.Game.Overlays.Settings
         protected override Container<Drawable> Content => FlowContent;
 
         protected readonly FillFlowContainer FlowContent;
-        private OsuSpriteText headerText = null!;
+        private OsuSpriteText? headerText;
         private IBindable<Colour4> themeColour = null!;
+
+        protected OverlayColourProvider? SubsectionColourProvider { get; private set; }
 
         protected abstract LocalisableString Header { get; }
 
@@ -68,15 +70,10 @@ namespace osu.Game.Overlays.Settings
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ =>
             {
-                // Subsections may provide a custom header (for example the
-                // toggleable input-device header), so the default text field
-                // is not guaranteed to exist here.
                 if (headerText != null)
                     headerText.Colour = colourProvider.Content1;
             }, true);
         }
-
-        protected OverlayColourProvider? SubsectionColourProvider { get; private set; }
 
         protected virtual Drawable CreateHeader()
         {
@@ -85,7 +82,7 @@ namespace osu.Game.Overlays.Settings
                 Text = Header,
                 Font = OsuFont.GetFont(size: header_font_size),
                 Colour = SubsectionColourProvider?.Content1 ?? Color4.White,
-                Margin = new MarginPadding { Vertical = VERTICAL_PADDING },
+                Margin = new MarginPadding { Vertical = VERTICAL_PADDING, Horizontal = 5 },
                 Padding = SettingsPanel.CONTENT_PADDING,
             };
         }

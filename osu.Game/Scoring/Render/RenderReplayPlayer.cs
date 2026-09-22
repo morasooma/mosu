@@ -34,6 +34,10 @@ using osuTK;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
+// Standalone public build note: High-performance asynchronous Veldrid texture readback
+// via GameHost.BufferedScreenshotRequest is an optional Mosu framework extension. Standalone public builds
+// fall back to upstream host.TakeScreenshotAsync() for frame capture.
+
 namespace osu.Game.Scoring.Render
 {
     /// <summary>
@@ -121,7 +125,6 @@ namespace osu.Game.Scoring.Render
         private readonly Stopwatch renderWallClock = new Stopwatch();
         private double totalFrameCaptureWallTimeMs;
         private double totalFrameQueueWriteWallTimeMs;
-        private double totalFrameAdvanceWallTimeMs;
         private long peakManagedBytes;
         private long peakWorkingSetBytes;
         private long peakPrivateBytes;
@@ -1150,6 +1153,7 @@ namespace osu.Game.Scoring.Render
         /// </summary>
         private async Task<bool> writeFrameToChannelWithTimeoutAsync(Channel<FrameWriteRequest> channel, FrameWriteRequest capture, CancellationToken token)
         {
+            long startedAt = Stopwatch.GetTimestamp();
             ValueTask writeTask = channel.Writer.WriteAsync(capture, token);
             Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(30), token);
 
@@ -1166,6 +1170,7 @@ namespace osu.Game.Scoring.Render
                 return false;
             }
 
+            totalFrameQueueWriteWallTimeMs += Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
             return true;
         }
 

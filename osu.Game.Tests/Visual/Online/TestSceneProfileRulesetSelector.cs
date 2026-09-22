@@ -35,9 +35,9 @@ namespace osu.Game.Tests.Visual.Online
             AddStep("User on catch ruleset", () => user.Value = new UserProfileData(new APIUser { Id = 2, PlayMode = "osu" }, new CatchRuleset().RulesetInfo));
             AddStep("User on mania ruleset", () => user.Value = new UserProfileData(new APIUser { Id = 3, PlayMode = "osu" }, new ManiaRuleset().RulesetInfo));
             AddStep("User on mania 4K", () => user.Value = new UserProfileData(
-                new APIUser { Id = 3, PlayMode = "mania", ServerPlayMode = "mania4k" }, new ManiaRuleset().RulesetInfo, "4K"));
+                new APIUser { Id = 3, PlayMode = "mania", G0v0PlayMode = "mania4k" }, new ManiaRuleset().RulesetInfo, "4K"));
             AddStep("User on mania 7K", () => user.Value = new UserProfileData(
-                new APIUser { Id = 3, PlayMode = "mania", ServerPlayMode = "mania7k" }, new ManiaRuleset().RulesetInfo, "7K"));
+                new APIUser { Id = 3, PlayMode = "mania", G0v0PlayMode = "mania7k" }, new ManiaRuleset().RulesetInfo, "7K"));
 
             AddStep("User with osu as default", () => user.Value = new UserProfileData(new APIUser { Id = 0, PlayMode = "osu" }, new OsuRuleset().RulesetInfo));
             AddStep("User with taiko as default", () => user.Value = new UserProfileData(new APIUser { Id = 1, PlayMode = "taiko" }, new OsuRuleset().RulesetInfo));

@@ -12,11 +12,12 @@ using osuTK.Graphics;
 
 namespace osu.Game.Rulesets.Dodge.Edit
 {
-    public class DodgeBulletCompositionTool : CompositionTool
+    public class DodgeBulletCompositionTool : CompositionTool<DodgeAction>
     {
         public DodgeBulletCompositionTool()
             : base(DodgeEditorStrings.Bullet)
         {
+            Action = DodgeAction.EditorBulletTool;
         }
 
         public override Drawable CreateIcon() => new Circle

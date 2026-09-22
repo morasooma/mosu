@@ -13,11 +13,12 @@ using osuTK.Graphics;
 
 namespace osu.Game.Rulesets.Dodge.Edit
 {
-    public class DodgeBeamCompositionTool : CompositionTool
+    public class DodgeBeamCompositionTool : CompositionTool<DodgeAction>
     {
         public DodgeBeamCompositionTool()
             : base(DodgeEditorStrings.Beam)
         {
+            Action = DodgeAction.EditorBeamTool;
             TooltipText = DodgeEditorStrings.BeamToolTip;
         }
 

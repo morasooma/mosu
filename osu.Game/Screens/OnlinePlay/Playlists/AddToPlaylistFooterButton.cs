@@ -4,6 +4,7 @@
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Transforms;
+using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
@@ -13,6 +14,13 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
 {
     public partial class AddToPlaylistFooterButton : ShearedButton
     {
+        private readonly LocalisableString buttonText;
+
+        public AddToPlaylistFooterButton(LocalisableString? buttonText = null)
+        {
+            this.buttonText = buttonText ?? OnlinePlayStrings.FooterButtonPlaylistAdd;
+        }
+
         [BackgroundDependencyLoader]
         private void load(OsuColour colours)
         {
@@ -29,7 +37,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                     Origin = Anchor.Centre,
                     X = -10,
                     Font = OsuFont.TorusAlternate.With(size: 17),
-                    Text = OnlinePlayStrings.FooterButtonPlaylistAdd,
+                    Text = buttonText,
                     UseFullGlyphHeight = false,
                 },
                 new OsuSpriteText

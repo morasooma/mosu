@@ -22,7 +22,7 @@ namespace osu.Game.Skinning
         public static SkinInfo CreateInfo() => new SkinInfo
         {
             ID = Skinning.SkinInfo.RETRO_SKIN,
-            Name = "osu! \"retro\" (2008)",
+            Name = "Retro (upstream, 2008)",
             Creator = "team osu!",
             Protected = true,
             InstantiationInfo = typeof(RetroSkin).GetInvariantInstantiationInfo(),

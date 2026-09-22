@@ -13,7 +13,7 @@ namespace osu.Game.Overlays
 {
     public abstract partial class OverlaySidebar : CompositeDrawable
     {
-        private readonly Box sidebarBackground;
+        private readonly BackdropBlurSurface sidebarBackground;
         private readonly Box scrollbarBackground;
         private IBindable<Colour4> themeColour = null!;
         private OverlayColourProvider colourProvider = null!;
@@ -24,7 +24,7 @@ namespace osu.Game.Overlays
             Width = 250;
             InternalChildren = new Drawable[]
             {
-                sidebarBackground = new Box
+                sidebarBackground = new BackdropBlurSurface
                 {
                     RelativeSizeAxes = Axes.Both,
                 },
@@ -73,7 +73,7 @@ namespace osu.Game.Overlays
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
             themeColour.BindValueChanged(_ =>
             {
-                sidebarBackground.Colour = this.colourProvider.Background4;
+                sidebarBackground.SurfaceColour = this.colourProvider.Background4;
                 scrollbarBackground.Colour = this.colourProvider.Background3;
             }, true);
         }

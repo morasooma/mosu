@@ -91,6 +91,12 @@ namespace osu.Game.Rulesets.Difficulty
         }
 
         /// <summary>
+        /// Whether this calculation should also prepare ruleset-specific state required by a
+        /// subsequent performance calculation. Visual star-rating-only callers may disable this.
+        /// </summary>
+        public bool PreparePerformanceCalculation { get; set; } = true;
+
+        /// <summary>
         /// Calculates the difficulty of the beatmap with no mods applied and returns a set of <see cref="TimedDifficultyAttributes"/> representing the difficulty at every relevant time value in the beatmap.
         /// </summary>
         /// <param name="cancellationToken">The cancellation token.</param>
@@ -125,26 +131,45 @@ namespace osu.Game.Rulesets.Difficulty
             var difficultyObjects = getDifficultyHitObjects().ToArray();
 
             int currentIndex = 0;
+            bool preparePerformance = PreparePerformanceCalculation;
 
-            foreach (var obj in Beatmap.HitObjects)
+            // A timed calculation creates one attributes instance per hit object. Ruleset-specific
+            // performance preparation must run once for the complete map, not once for every prefix.
+            PreparePerformanceCalculation = false;
+
+            try
             {
-                progressiveBeatmap.HitObjects.Add(obj);
-
-                while (currentIndex < difficultyObjects.Length && difficultyObjects[currentIndex].BaseObject.GetEndTime() <= obj.GetEndTime())
+                foreach (var obj in Beatmap.HitObjects)
                 {
-                    foreach (var skill in skills)
+                    progressiveBeatmap.HitObjects.Add(obj);
+
+                    while (currentIndex < difficultyObjects.Length && difficultyObjects[currentIndex].BaseObject.GetEndTime() <= obj.GetEndTime())
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        skill.Process(difficultyObjects[currentIndex]);
+                        foreach (var skill in skills)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            skill.Process(difficultyObjects[currentIndex]);
+                        }
+
+                        currentIndex++;
                     }
 
-                    currentIndex++;
+                    attribs.Add(new TimedDifficultyAttributes(obj.GetEndTime(), CreateDifficultyAttributes(progressiveBeatmap, playableMods, skills)));
                 }
 
-                attribs.Add(new TimedDifficultyAttributes(obj.GetEndTime(), CreateDifficultyAttributes(progressiveBeatmap, playableMods, skills)));
-            }
+                if (preparePerformance)
+                    PrepareTimedPerformanceCalculation(Beatmap, playableMods, attribs);
 
-            return attribs;
+                return attribs;
+            }
+            finally
+            {
+                PreparePerformanceCalculation = preparePerformance;
+            }
+        }
+
+        protected virtual void PrepareTimedPerformanceCalculation(IBeatmap beatmap, Mod[] mods, IReadOnlyList<TimedDifficultyAttributes> attributes)
+        {
         }
 
         /// <summary>

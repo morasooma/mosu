@@ -41,14 +41,21 @@ namespace osu.Game.Screens.Select
         private LegacyMenuButtonBackground legacyMenuButtonBackground = null!;
         private IBindable<Colour4> themeColour = null!;
 
+        internal Color4 CountTextColour => countText.Colour;
+        internal Color4 ModernBackgroundColour => modernBackground.Colour;
+        internal ColourInfo TrianglesColour => triangles.Colour;
+
         private readonly BindableBool useSkinnedLegacyCarousel = new BindableBool();
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
 
+        [Resolved(CanBeNull = true)]
+        private ISongSelect? songSelect { get; set; }
+
         [BackgroundDependencyLoader]
         private void load(OsuConfigManager config)
         {
-            config.BindWith(OsuSetting.ForkSongSelectSkinnedLegacyCarousel, useSkinnedLegacyCarousel);
+            ForkSongSelectStyleBinding.BindSkinnedLegacyCarousel(config, useSkinnedLegacyCarousel, () => songSelect is SoloSongSelect);
 
             Height = HEIGHT;
 
@@ -143,8 +150,10 @@ namespace osu.Game.Screens.Select
                 backgroundBorder.Colour = colourProvider.Highlight1;
                 AccentColour = colourProvider.Highlight1;
                 modernBackground.Colour = colourProvider.Background5;
+                triangles.Colour = ColourInfo.GradientHorizontal(colourProvider.Background6, colourProvider.Background5);
                 glow.Colour = ColourInfo.GradientHorizontal(colourProvider.Highlight1, colourProvider.Highlight1.Opacity(0f));
                 titleText.Colour = colourProvider.Content1;
+                countText.Colour = Color4.White;
                 onExpanded();
             }, true);
         }

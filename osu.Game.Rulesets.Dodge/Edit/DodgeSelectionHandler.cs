@@ -52,6 +52,9 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
                 if (hitObject is not DodgeBullet bullet)
                 {
+                    if (hitObject is DodgeTrigger trigger)
+                        trigger.Position += delta;
+
                     if (hitObject is DodgeArenaChange arenaChange)
                     {
                         arenaChange.TargetPosition += delta;
@@ -179,6 +182,9 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
                         break;
                     }
+
+                    case DodgeTrigger:
+                        break;
                 }
 
                 EditorBeatmap.Update(item);

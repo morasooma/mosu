@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
@@ -21,6 +22,7 @@ namespace osu.Game.Overlays.BeatmapSet.Scores
 
         private readonly int index;
         private readonly ScoreInfo score;
+        private IBindable<Colour4>? themeColour;
 
         public ScoreTableRowBackground(int index, ScoreInfo score, float height)
         {
@@ -52,14 +54,21 @@ namespace osu.Game.Overlays.BeatmapSet.Scores
         {
             bool isOwnScore = api.LocalUser.Value.Id == score.UserID;
 
-            if (isOwnScore)
-                background.Colour = colours.GreenDarker;
-            else if (index % 2 == 0)
-                background.Colour = colourProvider.Background4;
-            else
-                background.Alpha = 0;
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
+            themeColour.BindValueChanged(_ =>
+            {
+                if (isOwnScore)
+                    background.Colour = colours.GreenDarker;
+                else if (index % 2 == 0)
+                {
+                    background.Colour = colourProvider.Background4;
+                    background.Alpha = 1;
+                }
+                else
+                    background.Alpha = 0;
 
-            hoveredBackground.Colour = isOwnScore ? colours.GreenDark : colourProvider.Background3;
+                hoveredBackground.Colour = isOwnScore ? colours.GreenDark : colourProvider.Background3;
+            }, true);
         }
 
         protected override bool OnHover(HoverEvent e)

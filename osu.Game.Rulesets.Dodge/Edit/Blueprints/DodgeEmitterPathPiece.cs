@@ -66,6 +66,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 emitter.EffectiveBulletCount,
                 emitter.EffectiveSpreadAngle,
                 emitter.EffectiveBurstCount,
+                emitter.BurstRotation,
                 emitter.BulletSize,
                 emitter.Shape,
                 emitter.Colour,
@@ -73,6 +74,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 emitter.OutlineThickness,
                 Math.Clamp(emitter.Opacity, 0, 1),
                 emitter.MovementType,
+                emitter.MovementEasing,
                 emitter.WaveAmplitude,
                 Math.Max(1, emitter.WaveCycles),
                 emitter.WavePhase);
@@ -85,7 +87,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             GeometryRebuildCount++;
 
             int raysPerBurst = emitter.EffectiveBulletCount;
-            ensureTrajectoryCount(raysPerBurst);
+            int previewBurstCount = emitter.EffectiveBurstCount > 1 && emitter.BurstRotation != 0 ? 2 : 1;
+            ensureTrajectoryCount(raysPerBurst * previewBurstCount);
 
             source.Position = emitter.Position;
             source.Size = new Vector2(emitter.BulletSize);
@@ -97,7 +100,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 emitter.MovementType,
                 emitter.WaveAmplitude,
                 emitter.WaveCycles,
-                emitter.WavePhase);
+                emitter.WavePhase,
+                emitter.MovementEasing);
             source.FillColour = emitter.Colour;
             source.OutlineColour = emitter.OutlineColour;
             source.OutlineThickness = emitter.OutlineThickness;
@@ -129,9 +133,11 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
 
             for (int i = 0; i < trajectories.Count; i++)
             {
-                int rayIndex = i;
-                Vector2 burstSource = emitter.Position;
-                Vector2 controlEndPosition = emitter.EndPositionAt(rayIndex);
+                int previewBurst = i / raysPerBurst;
+                int burstIndex = previewBurst == 0 ? 0 : emitter.EffectiveBurstCount - 1;
+                int rayIndex = i % raysPerBurst;
+                Vector2 burstSource = emitter.SourcePositionAt(burstIndex);
+                Vector2 controlEndPosition = emitter.EndPositionAt(burstIndex, rayIndex);
                 TrajectoryPiece trajectory = trajectories[i];
 
                 trajectory.Path.Colour = emitter.Colour;
@@ -144,7 +150,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                     emitter.MovementType,
                     emitter.WaveAmplitude,
                     emitter.WaveCycles,
-                    emitter.WavePhase);
+                    emitter.WavePhase,
+                    emitter.MovementEasing);
 
                 foreach (Vector2 vertex in vertices)
                 {
@@ -164,7 +171,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                     emitter.MovementType,
                     emitter.WaveAmplitude,
                     emitter.WaveCycles,
-                    emitter.WavePhase);
+                    emitter.WavePhase,
+                    emitter.MovementEasing);
                 trajectory.End.FillColour = emitter.Colour;
                 trajectory.End.OutlineColour = emitter.OutlineColour;
                 trajectory.End.OutlineThickness = emitter.OutlineThickness;
@@ -250,6 +258,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             int BulletCount,
             float SpreadAngle,
             int BurstCount,
+            float BurstRotation,
             float BulletSize,
             DodgeBulletShape Shape,
             Colour4 Colour,
@@ -257,6 +266,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             float OutlineThickness,
             float Opacity,
             DodgeMovementType MovementType,
+            DodgeMovementEasing MovementEasing,
             float WaveAmplitude,
             int WaveCycles,
             float WavePhase);

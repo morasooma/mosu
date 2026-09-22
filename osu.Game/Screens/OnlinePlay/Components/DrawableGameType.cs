@@ -87,19 +87,18 @@ namespace osu.Game.Screens.OnlinePlay.Components
                         },
                     };
 
-#pragma warning disable IDE0055 // Indentation of commented code
-                    // case MatchType.TagCoop:
-                    //     return new SpriteIcon
-                    //     {
-                    //         Anchor = Anchor.Centre,
-                    //         Origin = Anchor.Centre,
-                    //         Size = new Vector2(size),
-                    //         Icon = FontAwesome.Solid.Sync,
-                    //         Colour = colours.Blue,
-                    //
-                    //         Shadow = false
-                    //     };
+                case MatchType.TagCoop:
+                    return new SpriteIcon
+                    {
+                        Anchor = Anchor.Centre,
+                        Origin = Anchor.Centre,
+                        Size = new Vector2(size),
+                        Icon = FontAwesome.Solid.Sync,
+                        Colour = colours.Blue,
+                        Shadow = false
+                    };
 
+#pragma warning disable IDE0055 // Indentation of commented code
                     // case MatchType.TagTeamCoop:
                     //     return new FillFlowContainer
                     //     {

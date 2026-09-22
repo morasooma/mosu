@@ -45,6 +45,23 @@ namespace osu.Game.Screens.Select
         public IBindable<BeatmapSetInfo?> ScopedBeatmapSet { get; } = new Bindable<BeatmapSetInfo?>();
 
         private SongSelectSearchTextBox searchTextBox = null!;
+
+        /// <summary>
+        /// Fork (ported from torii): exposes the search query so external chrome
+        /// (e.g. the stable-style song select top panel) can bind to it.
+        /// </summary>
+        public Bindable<string> SearchQuery => searchTextBox.Current;
+
+        public void AddToSearch(string query)
+        {
+            string existingQuery = searchTextBox.Current.Value;
+
+            if (string.IsNullOrWhiteSpace(existingQuery))
+                searchTextBox.Current.Value = query;
+            else if (!existingQuery.Contains(query, StringComparison.OrdinalIgnoreCase))
+                searchTextBox.Current.Value = $"{existingQuery} {query}";
+        }
+
         private ShearedToggleButton showConvertedBeatmapsButton = null!;
         private DifficultyRangeSlider difficultyRangeSlider = null!;
         private ShearedDropdown<SortMode> sortDropdown = null!;
@@ -654,7 +671,7 @@ namespace osu.Game.Screens.Select
                             break;
 
                         case GroupMode.Variant:
-                            if (rulesetInstance.AvailableVariants.Count() <= 1)
+                            if (rulesetInstance.GameplayVariants.Count() <= 1)
                                 break;
 
                             items.Add(new GroupModeDropdownItem(GroupMode.Variant, rulesetInstance.VariantDescription));

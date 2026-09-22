@@ -54,6 +54,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                         hash.Add(bullet.BulletSize);
                         hash.Add(bullet.ContinueUntilExit);
                         hash.Add(bullet.MovementType);
+                        hash.Add(bullet.MovementEasing);
                         hash.Add(bullet.WaveAmplitude);
                         hash.Add(bullet.WaveCycles);
                         hash.Add(bullet.WavePhase);
@@ -72,9 +73,11 @@ namespace osu.Game.Rulesets.Dodge.Edit
                         hash.Add(emitter.BurstCount);
                         hash.Add(emitter.BurstInterval);
                         hash.Add(emitter.BurstBeatDivisor);
+                        hash.Add(emitter.BurstRotation);
                         hash.Add(emitter.MoveSource);
                         hash.Add(emitter.ContinueUntilExit);
                         hash.Add(emitter.MovementType);
+                        hash.Add(emitter.MovementEasing);
                         hash.Add(emitter.WaveAmplitude);
                         hash.Add(emitter.WaveCycles);
                         hash.Add(emitter.WavePhase);
@@ -121,7 +124,8 @@ namespace osu.Game.Rulesets.Dodge.Edit
                                          bullet.MovementType,
                                          bullet.WaveAmplitude,
                                          bullet.WaveCycles,
-                                         bullet.WavePhase)
+                                         bullet.WavePhase,
+                                         bullet.MovementEasing)
                                      .ToArray();
                 trajectories.Add(new Trajectory(points, bullet.BulletSize));
             }
@@ -143,7 +147,8 @@ namespace osu.Game.Rulesets.Dodge.Edit
                                                  emitter.MovementType,
                                                  emitter.WaveAmplitude,
                                                  emitter.WaveCycles,
-                                                 emitter.WavePhase)
+                                                 emitter.WavePhase,
+                                                 emitter.MovementEasing)
                                              .ToArray();
                         trajectories.Add(new Trajectory(points, emitter.BulletSize));
                     }
