@@ -21,7 +21,7 @@ using osuTK.Graphics;
 
 namespace osu.Game.Rulesets.Osu.Mods
 {
-    public class OsuModMosuMalevich : Mod, IApplicableToDrawableRuleset<OsuHitObject>, IApplicableToScoreProcessor, IApplicableToPlayer
+    public partial class OsuModMosuMalevich : Mod, IApplicableToDrawableRuleset<OsuHitObject>, IApplicableToScoreProcessor, IApplicableToPlayer
     {
         public override string Name => "Malevich Square";
 
@@ -30,8 +30,6 @@ namespace osu.Game.Rulesets.Osu.Mods
         public override ModType Type => ModType.Mosu;
 
         public override LocalisableString Description => MosuModsStrings.ModMalevichDescription;
-
-        public override double ScoreMultiplier => 1.0;
 
         public override bool Ranked => true;
 

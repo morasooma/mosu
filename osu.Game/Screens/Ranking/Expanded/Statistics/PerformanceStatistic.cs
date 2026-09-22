@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
@@ -41,7 +41,9 @@ namespace osu.Game.Screens.Ranking.Expanded.Statistics
         [BackgroundDependencyLoader]
         private void load(BeatmapDifficultyCache difficultyCache, CancellationToken? cancellationToken)
         {
-            if (score.PP.HasValue)
+            bool forceLocalRelaxRecalculation = score.Mods.Any(m => m.Acronym is "RX" or "MRX");
+
+            if (score.PP.HasValue && !forceLocalRelaxRecalculation)
             {
                 setPerformanceValue(score, score.PP.Value);
             }
@@ -69,7 +71,7 @@ namespace osu.Game.Screens.Ranking.Expanded.Statistics
             {
                 performance.Value = (int)Math.Round(pp.Value, MidpointRounding.AwayFromZero);
 
-            if (!scoreInfo.Ranked)
+                if (!ModPerformancePointHelper.BeatmapAwardsPerformancePoints(scoreInfo.Ruleset, scoreInfo.BeatmapInfo))
                 {
                     Alpha = 0.5f;
                     TooltipText = ResultsScreenStrings.NoPPForUnrankedBeatmaps;

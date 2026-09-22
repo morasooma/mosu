@@ -93,7 +93,7 @@ namespace osu.Game.Overlays.Mods
         /// <summary>
         /// Whether per-mod customisation controls are visible.
         /// </summary>
-        protected virtual bool AllowCustomisation => true;
+        protected virtual bool AllowCustomisation => !Online.MosuServerEnvironment.UsesStableProtocol;
 
         /// <summary>
         /// Whether the column with available mod presets should be shown.
@@ -420,8 +420,10 @@ namespace osu.Game.Overlays.Mods
         private void filterMods()
         {
             foreach (var modState in AllAvailableMods)
-                modState.ValidForSelection.Value = modState.Mod.Type != ModType.System
-                                                   && (modState.Mod.HasImplementation || modState.Mod.Type == ModType.Mosu)
+                 modState.ValidForSelection.Value = modState.Mod.Type != ModType.System
+                                                    && (modState.Mod.HasImplementation || modState.Mod.Type == ModType.Mosu)
+                                                    && (Online.MosuServerEnvironment.IsToriiServer || modState.Mod is not IToriiServerMod)
+                                                    && (!Online.MosuServerEnvironment.UsesStableProtocol || Online.Legacy.StableModCompatibility.IsSupported(modState.Mod))
                                                    && IsValidMod.Invoke(modState.Mod);
         }
 

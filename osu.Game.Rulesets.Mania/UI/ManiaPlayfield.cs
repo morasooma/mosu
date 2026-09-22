@@ -9,12 +9,15 @@ using System;
 using System.Collections.Generic;
 using JetBrains.Annotations;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics.Primitives;
 using osu.Game.Rulesets.Mania.Beatmaps;
 using osu.Game.Rulesets.Mania.Objects;
+using osu.Game.Rulesets.Mania.Skinning;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Drawables;
 using osu.Game.Rulesets.UI.Scrolling;
+using osu.Game.Skinning;
 using osuTK;
 
 namespace osu.Game.Rulesets.Mania.UI
@@ -25,6 +28,16 @@ namespace osu.Game.Rulesets.Mania.UI
         public IReadOnlyList<Stage> Stages => stages;
 
         private readonly List<Stage> stages = new List<Stage>();
+        private readonly GridContainer playfieldGrid;
+        private readonly IBindable<ScrollingDirection> direction = new Bindable<ScrollingDirection>();
+
+        private ISkinSource skin = null!;
+        private Bindable<int> boundPlayfieldScale;
+        private float playfieldScale = 1;
+        private float hitPosition = Stage.HIT_TARGET_POSITION;
+
+        [Resolved]
+        private SkinManager skins { get; set; } = null!;
 
         public override Quad SkinnableComponentScreenSpaceDrawQuad
         {
@@ -60,9 +73,10 @@ namespace osu.Game.Rulesets.Mania.UI
             if (stageDefinitions.Count <= 0)
                 throw new ArgumentException("Can't have zero or fewer stages.");
 
-            GridContainer playfieldGrid;
             AddInternal(playfieldGrid = new GridContainer
             {
+                Anchor = Anchor.TopCentre,
+                Origin = Anchor.TopCentre,
                 RelativeSizeAxes = Axes.Both,
                 Content = new[] { new Drawable[stageDefinitions.Count] }
             });
@@ -81,6 +95,65 @@ namespace osu.Game.Rulesets.Mania.UI
 
                 firstColumnIndex += newStage.Columns.Length;
             }
+        }
+
+        [BackgroundDependencyLoader]
+        private void load(ISkinSource skin, IScrollingInfo scrollingInfo)
+        {
+            this.skin = skin;
+            direction.BindTo(scrollingInfo.Direction);
+
+            skin.SourceChanged += onSkinChanged;
+            onSkinChanged();
+        }
+
+        private void onSkinChanged()
+        {
+            hitPosition = skin.GetConfig<ManiaSkinConfigurationLookup, float>(
+                                  new ManiaSkinConfigurationLookup(LegacyManiaSkinConfigurationLookups.HitPosition))?.Value
+                              ?? Stage.HIT_TARGET_POSITION;
+
+            if (boundPlayfieldScale != null)
+                boundPlayfieldScale.ValueChanged -= onPlayfieldScaleChanged;
+
+            boundPlayfieldScale = skin.GetManiaNoteScale(skins.CurrentSkin.Value);
+
+            if (boundPlayfieldScale != null)
+            {
+                playfieldScale = boundPlayfieldScale.Value / 100f;
+                boundPlayfieldScale.ValueChanged += onPlayfieldScaleChanged;
+            }
+            else
+                playfieldScale = 1;
+        }
+
+        private void onPlayfieldScaleChanged(ValueChangedEvent<int> scale) => playfieldScale = scale.NewValue / 100f;
+
+        protected override void Update()
+        {
+            base.Update();
+
+            playfieldGrid.Scale = new Vector2(playfieldScale);
+            playfieldGrid.Height = 1 / playfieldScale;
+
+            // The source notefield is made taller by the inverse scale so that its transformed bounds still cover
+            // the whole screen. Offset the remaining margin to keep the receptor line at its original position.
+            playfieldGrid.Y = direction.Value == ScrollingDirection.Up
+                ? (1 - playfieldScale) * hitPosition
+                : -(1 - playfieldScale) * hitPosition;
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (isDisposing)
+            {
+                skin.SourceChanged -= onSkinChanged;
+
+                if (boundPlayfieldScale != null)
+                    boundPlayfieldScale.ValueChanged -= onPlayfieldScaleChanged;
+            }
+
+            base.Dispose(isDisposing);
         }
 
         [Pure]

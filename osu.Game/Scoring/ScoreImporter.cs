@@ -108,8 +108,8 @@ namespace osu.Game.Scoring
                         // Clone it and null out the BeatmapSet so we don't insert a ghost BeatmapSet.
                         // This prevents the original BeatmapInfo from becoming managed, which caused RealmClosedException.
                         model.BeatmapInfo = original.Clone();
-                        model.BeatmapInfo.Difficulty = original.Difficulty?.Clone();
-                        model.BeatmapInfo.Metadata = original.Metadata?.DeepClone();
+                        model.BeatmapInfo.Difficulty = original.Difficulty?.Clone() ?? new BeatmapDifficulty();
+                        model.BeatmapInfo.Metadata = original.Metadata?.DeepClone() ?? new BeatmapMetadata();
                         if (original.UserSettings != null)
                             model.BeatmapInfo.UserSettings = new BeatmapUserSettings { Offset = original.UserSettings.Offset };
                         model.BeatmapInfo.BeatmapSet = null;

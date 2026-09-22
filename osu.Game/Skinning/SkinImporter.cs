@@ -252,6 +252,17 @@ namespace osu.Game.Skinning
                 else if (existingCustomFontFile != null)
                     modelManager.DeleteFile(s, existingCustomFontFile, s.Realm!);
 
+                var existingMosuSettingsFile = s.GetFile(MosuSkinSettings.FILENAME);
+                string mosuSettingsJson = JsonConvert.SerializeObject(skin.MosuSettings, new JsonSerializerSettings { Formatting = Formatting.Indented });
+
+                using (var streamContent = new MemoryStream(Encoding.UTF8.GetBytes(mosuSettingsJson)))
+                {
+                    if (existingMosuSettingsFile != null)
+                        modelManager.ReplaceFile(existingMosuSettingsFile, streamContent, s.Realm!);
+                    else
+                        modelManager.AddFile(s, streamContent, MosuSkinSettings.FILENAME, s.Realm!);
+                }
+
                 string newHash = ComputeHash(s);
 
                 hadChanges = newHash != s.Hash;

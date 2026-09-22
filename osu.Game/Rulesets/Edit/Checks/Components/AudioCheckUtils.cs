@@ -52,8 +52,8 @@ namespace osu.Game.Rulesets.Edit.Checks.Components
             if (beatmapSet == null || audioFile == null)
                 return ChannelType.Unknown;
 
-            using (Stream data = context.CurrentDifficulty.Working.GetStream(audioFile.File.GetStoragePath()))
-                return GetAudioFormat(data);
+            using Stream? data = context.CurrentDifficulty.Working.GetStream(audioFile.File.GetStoragePath());
+            return data == null ? ChannelType.Unknown : GetAudioFormat(data);
         }
     }
 }

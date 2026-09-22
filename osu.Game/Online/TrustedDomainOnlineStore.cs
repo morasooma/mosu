@@ -42,11 +42,40 @@ namespace osu.Game.Online
             if (!string.IsNullOrWhiteSpace(customApiUrl))
                 return url;
 
+            return ResolveLookupUrl(url);
+        }
+
+        internal static string ResolveLookupUrl(string url)
+        {
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
                 (trustedDomainRoots.Any(root => isSameOrSubdomain(uri.Host, root)) ||
                  trustedHosts.Any(host => string.Equals(uri.Host, host, StringComparison.OrdinalIgnoreCase))))
             {
                 return url;
+            }
+
+            // Older API records may contain an absolute URL from a retired server.
+            // Server-owned files are identified by their path and can be safely
+            // resolved against the current endpoint without contacting the old host.
+            if (uri != null && uri.AbsolutePath.StartsWith("/file/", StringComparison.OrdinalIgnoreCase))
+            {
+                var currentEndpoint = new Uri(MosuServerEnvironment.ServerUrl, UriKind.Absolute);
+                var migratedUri = new UriBuilder(uri)
+                {
+                    Scheme = currentEndpoint.Scheme,
+                    Host = currentEndpoint.Host,
+                    Port = currentEndpoint.IsDefaultPort ? -1 : currentEndpoint.Port,
+                    UserName = string.Empty,
+                    Password = string.Empty,
+                }.Uri.AbsoluteUri;
+
+                Logger.Log(
+                    $"[TrustedDomainOnlineStore] Redirected stored server resource to the current endpoint: {uri.PathAndQuery}",
+                    LoggingTarget.Network,
+                    LogLevel.Verbose
+                );
+
+                return migratedUri;
             }
 
             Logger.Log(

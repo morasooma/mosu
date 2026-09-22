@@ -23,20 +23,20 @@ namespace osu.Game.Scoring.Render
         private readonly Action<double, double> onConfirm;
         private double totalDuration;
 
-        private Container timelineContainer;
-        private RenderPlaybackControlBar playbackBar;
-        private ArgonSongProgressGraph difficultyGraph;
+        private Container timelineContainer = null!;
+        private RenderPlaybackControlBar playbackBar = null!;
+        private ArgonSongProgressGraph difficultyGraph = null!;
 
-        private TrimHandle startHandle;
-        private TrimHandle endHandle;
-        private Box leftOverlay;
-        private Box rightOverlay;
-        private Box currentTimeIndicator;
+        private TrimHandle startHandle = null!;
+        private TrimHandle endHandle = null!;
+        private Box leftOverlay = null!;
+        private Box rightOverlay = null!;
+        private Box currentTimeIndicator = null!;
 
         public readonly BindableDouble TrimStartTime = new BindableDouble();
         public readonly BindableDouble TrimEndTime = new BindableDouble();
 
-        private Container editorContainer;
+        private Container editorContainer = null!;
 
         public ReplayPeriodSelectorScreen(Score score, Action<double, double> onConfirm) : base(score)
         {

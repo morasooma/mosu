@@ -3,6 +3,7 @@
 
 using System;
 using MessagePack;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Online.Multiplayer.MatchTypes.TeamVersus;
 
 namespace osu.Game.Online.Multiplayer
@@ -14,6 +15,7 @@ namespace osu.Game.Online.Multiplayer
     [Serializable]
     [MessagePackObject]
     [Union(0, typeof(TeamVersusUserState))] // IMPORTANT: Add rules to SignalRUnionWorkaroundResolver for new derived types.
+    [Union(1, typeof(TagCoopUserState))]
     public abstract class MatchUserState
     {
     }

@@ -10,6 +10,7 @@ using osu.Framework.Input.Events;
 using osu.Framework.Input.States;
 using osu.Framework.Logging;
 using osu.Framework.Testing.Input;
+using osu.Framework.Utils;
 using osu.Game.Rulesets.Osu.UI;
 using osu.Game.Skinning;
 using osuTK;
@@ -24,6 +25,30 @@ namespace osu.Game.Rulesets.Osu.Tests
             addStep("Create short smoke", 2_000);
             addStep("Create medium smoke", 5_000);
             addStep("Create long smoke", 10_000);
+        }
+
+        [Test]
+        public void TestSmokePositionWithOffsetParent()
+        {
+            SmokeContainer? smokeContainer = null;
+            TestInputManager? inputManager = null;
+
+            AddStep("create offset smoke container", () => SetContents(_ => inputManager = new TestInputManager
+            {
+                RelativeSizeAxes = Axes.Both,
+                Padding = new MarginPadding
+                {
+                    Left = 100,
+                    Top = 50,
+                },
+                Child = smokeContainer = new SmokeContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                },
+            }));
+
+            AddStep("move mouse", () => inputManager!.MoveMouseTo(smokeContainer!.ToScreenSpace(new Vector2(200, 150))));
+            AddAssert("smoke position is cursor position", () => Precision.AlmostEquals(smokeContainer!.LastMousePosition, new Vector2(200, 150)));
         }
 
         private void addStep(string stepName, double duration)
@@ -101,6 +126,14 @@ namespace osu.Game.Rulesets.Osu.Tests
 
                 Vector2 pos = radius * new Vector2(MathF.Cos(angle), MathF.Sin(angle)) + DrawSize / 2;
                 MoveMouseTo(ToScreenSpace(pos));
+            }
+        }
+
+        private partial class TestInputManager : ManualInputManager
+        {
+            public TestInputManager()
+            {
+                UseParentInput = false;
             }
         }
 

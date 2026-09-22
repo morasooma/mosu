@@ -36,7 +36,7 @@ namespace osu.Game.Graphics.Carousel
     /// A highly efficient vertical list display that is used primarily for the song select screen,
     /// but flexible enough to be used for other use cases.
     /// </summary>
-    public abstract partial class Carousel<T> : CompositeDrawable, IKeyBindingHandler<GlobalAction>
+    public abstract partial class Carousel<T> : CompositeDrawable, IKeyBindingHandler<GlobalAction>, ICarouselBenchmarkController
         where T : notnull
     {
         #region Properties and methods for external usage
@@ -45,6 +45,11 @@ namespace osu.Game.Graphics.Carousel
         /// Called after a filter operation or change in items results in the visible carousel items changing.
         /// </summary>
         public Action<IEnumerable<CarouselItem>>? NewItemsPresented { private get; init; }
+
+        /// <summary>
+        /// Optionally handles selection navigation before the carousel's linear traversal.
+        /// </summary>
+        public Func<GlobalAction, bool>? CustomNavigationHandler { private get; init; }
 
         /// <summary>
         /// Height of the area above the carousel that should be treated as visible due to transparency of elements in front of it.
@@ -61,6 +66,15 @@ namespace osu.Game.Graphics.Carousel
         /// This allows preloading content before it scrolls into view.
         /// </summary>
         public float DistanceOffscreenToPreload { get; set; }
+
+        /// <summary>
+        /// Removes decorative panel and scroll transitions for workloads which favour stable frame times.
+        /// </summary>
+        protected virtual bool UseReducedPanelMotion => false;
+
+        // Exit animations keep pooled panels checked out until their lifetime ends. Unbounded animated exits
+        // can starve the pools during rapid scrolling and force thousands of synchronously-loaded replacements.
+        private const int max_concurrent_animated_exits = 16;
 
         /// <summary>
         /// When a new request arrives to change filtering, the number of milliseconds to wait before performing the filter.
@@ -312,6 +326,15 @@ namespace osu.Game.Graphics.Carousel
 
         protected readonly ScrollContainer Scroll;
 
+        double ICarouselBenchmarkController.BenchmarkScrollPosition => Scroll.Current;
+
+        double ICarouselBenchmarkController.BenchmarkScrollableExtent => Scroll.ScrollableExtent;
+
+        void ICarouselBenchmarkController.ScrollToBenchmarkPosition(double position) => Scroll.ScrollTo(position, animated: false);
+
+        void ICarouselBenchmarkController.ActivateNextSetForBenchmark()
+            => Scheduler.AddOnce(traverseFromKey, new TraversalOperation(TraversalType.Set, 1));
+
         protected Carousel()
         {
             InternalChild = Scroll = new ScrollContainer
@@ -430,9 +453,7 @@ namespace osu.Game.Graphics.Carousel
 
                 if (!filterReusesPanels.IsValid)
                 {
-                    foreach (var panel in Scroll.Panels)
-                        expirePanel(panel);
-
+                    expirePanels(Scroll.Panels);
                     filterReusesPanels.Validate();
                 }
 
@@ -470,8 +491,7 @@ namespace osu.Game.Graphics.Carousel
             if (spacing > 0)
             {
                 item.CarouselInputLenienceAbove = spacing / 2;
-                if (previousVisible != null)
-                    previousVisible.CarouselInputLenienceBelow = item.CarouselInputLenienceAbove;
+                previousVisible?.CarouselInputLenienceBelow = item.CarouselInputLenienceAbove;
             }
 
             if (item.IsVisible)
@@ -501,6 +521,9 @@ namespace osu.Game.Graphics.Carousel
 
         public bool OnPressed(KeyBindingPressEvent<GlobalAction> e)
         {
+            if (CustomNavigationHandler?.Invoke(e.Action) == true)
+                return true;
+
             switch (e.Action)
             {
                 case GlobalAction.Select:
@@ -984,8 +1007,7 @@ namespace osu.Game.Graphics.Carousel
             displayedRange = null;
             filterReusesPanels.Invalidate();
 
-            foreach (var panel in Scroll.Panels.ToArray())
-                expirePanel(panel);
+            expirePanels(Scroll.Panels);
         }
 
         protected override void Update()
@@ -1061,7 +1083,8 @@ namespace osu.Game.Graphics.Carousel
             if (scrollToSelection != PendingScrollOperation.None)
             {
                 if (GetScrollTarget() is double scrollTarget)
-                    Scroll.ScrollTo(scrollTarget - visibleHalfHeight + BleedTop, animated: scrollToSelection == PendingScrollOperation.Standard);
+                    Scroll.ScrollTo(scrollTarget - visibleHalfHeight + BleedTop,
+                        animated: scrollToSelection == PendingScrollOperation.Standard && !UseReducedPanelMotion);
 
                 scrollToSelection = PendingScrollOperation.None;
             }
@@ -1130,8 +1153,12 @@ namespace osu.Game.Graphics.Carousel
 
             toDisplay.RemoveAll(i => !i.IsVisible);
 
+            int animatedExits = Scroll.Panels.Count(p => ((ICarouselPanel)p).Item == null);
+            var immediatelyExpired = new List<Drawable>();
+
+            // Snapshot because expiring a panel can change its depth and therefore its position in the container.
             // Iterate over all panels which are already displayed and figure which need to be displayed / removed.
-            foreach (var panel in Scroll.Panels)
+            foreach (var panel in Scroll.Panels.ToArray())
             {
                 var carouselPanel = (ICarouselPanel)panel;
 
@@ -1151,8 +1178,14 @@ namespace osu.Game.Graphics.Carousel
                 }
 
                 // If the new display range doesn't contain the panel, it's no longer required for display.
-                expirePanel(panel);
+                if (expirePanel(panel, ref animatedExits))
+                    immediatelyExpired.Add(panel);
             }
+
+            // Detaching returns non-animated drawables to their pools synchronously, before replacements
+            // are requested below. Animated exits remain attached until their transforms complete.
+            foreach (var panel in immediatelyExpired)
+                Scroll.Panels.Remove(panel, disposeImmediately: false);
 
             // Add any new items which need to be displayed and haven't yet.
             foreach (var item in toDisplay)
@@ -1168,7 +1201,7 @@ namespace osu.Game.Graphics.Carousel
                 Scroll.Add(drawable);
             }
 
-            if (toDisplay.Any())
+            if (toDisplay.Any() && !UseReducedPanelMotion)
             {
                 // To make transitions of items appearing in the flow look good, do a pass and make sure newly added items spawn from
                 // just beneath the *current interpolated position* of the previous panel.
@@ -1194,15 +1227,41 @@ namespace osu.Game.Graphics.Carousel
             }
         }
 
-        private void expirePanel(Drawable panel)
+        private void expirePanels(IEnumerable<Drawable> panels)
+        {
+            int animatedExits = Scroll.Panels.Count(p => ((ICarouselPanel)p).Item == null);
+
+            // Ignore panels which are already exiting, and snapshot because animated expiry changes child depth.
+            foreach (var panel in panels.Where(p => ((ICarouselPanel)p).Item != null).ToArray())
+            {
+                if (expirePanel(panel, ref animatedExits))
+                    Scroll.Panels.Remove(panel, disposeImmediately: false);
+            }
+        }
+
+        /// <returns>Whether the panel should be detached immediately.</returns>
+        private bool expirePanel(Drawable panel, ref int animatedExits)
         {
             var carouselPanel = (ICarouselPanel)panel;
+            bool expireImmediately = UseReducedPanelMotion || animatedExits >= max_concurrent_animated_exits;
 
-            // expired panels should have a depth behind all other panels to make the transition not look weird.
-            Scroll.Panels.ChangeChildDepth(panel, panel.Depth + 1024);
+            if (expireImmediately)
+            {
+                // Rapid traversal can otherwise retain an unbounded number of complete panel graphs for
+                // the full exit animation. Once the bounded animation budget is used, detach immediately
+                // so pooled panels become available before synchronously requesting replacements.
+                panel.ClearTransforms();
+            }
+            else
+            {
+                animatedExits++;
 
-            panel.FadeOut(150, Easing.OutQuint);
-            panel.MoveToX(panel.X + 100, 200, Easing.Out);
+                // expired panels should have a depth behind all other panels to make the transition not look weird.
+                Scroll.Panels.ChangeChildDepth(panel, panel.Depth + 1024);
+
+                panel.FadeOut(150, Easing.OutQuint);
+                panel.MoveToX(panel.X + 100, 200, Easing.Out);
+            }
 
             panel.Expire();
 
@@ -1210,6 +1269,8 @@ namespace osu.Game.Graphics.Carousel
             carouselPanel.Selected.Value = false;
             carouselPanel.KeyboardSelected.Value = false;
             carouselPanel.Expanded.Value = false;
+
+            return expireImmediately;
         }
 
         protected override bool OnInvalidate(Invalidation invalidation, InvalidationSource source)

@@ -7,5 +7,6 @@ namespace osu.Game.Rulesets.Dodge.Mods
 {
     public class DodgeModMosuTargetDifficulty : ModMosuTargetDifficulty
     {
+        public override bool Ranked => false;
     }
 }

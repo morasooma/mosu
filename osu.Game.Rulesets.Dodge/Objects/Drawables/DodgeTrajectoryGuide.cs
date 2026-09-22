@@ -37,7 +37,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             DodgeMovementType movementType,
             float waveAmplitude,
             int waveCycles,
-            float wavePhase)
+            float wavePhase,
+            DodgeMovementEasing movementEasing = DodgeMovementEasing.Linear)
         {
             minimumProgress = Math.Max(0, minimumProgress);
             maximumProgress = Math.Max(minimumProgress, maximumProgress);
@@ -48,7 +49,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 movementType,
                 waveAmplitude,
                 waveCycles,
-                wavePhase);
+                wavePhase,
+                movementEasing);
             EndPosition = DodgeTrajectory.PositionAtProgress(
                 start,
                 controlEnd,
@@ -56,7 +58,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 movementType,
                 waveAmplitude,
                 waveCycles,
-                wavePhase);
+                wavePhase,
+                movementEasing);
 
             if (movementType == DodgeMovementType.Linear || waveAmplitude == 0 || start == controlEnd)
             {
@@ -80,7 +83,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 movementType,
                 waveAmplitude,
                 waveCycles,
-                wavePhase);
+                wavePhase,
+                movementEasing);
             BufferedGeometryRebuildCount++;
         }
 

@@ -1,7 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
+#nullable disable warnings
 
 using System;
 using System.Collections.Generic;
@@ -37,11 +37,11 @@ namespace osu.Game.Beatmaps
 
         public ISkin Skin => skin.Value;
 
-        private AudioManager audioManager { get; }
+        private AudioManager? audioManager { get; }
 
         private CancellationTokenSource loadCancellationSource = new CancellationTokenSource();
 
-        private readonly object beatmapFetchLock = new object();
+        private readonly Lock beatmapFetchLock = new Lock();
 
         private readonly Lazy<Storyboard> storyboard;
         private readonly Lazy<ISkin> skin;
@@ -49,7 +49,7 @@ namespace osu.Game.Beatmaps
         protected internal Track track; // track is not Lazy as we allow transferring and loading multiple times.
         private Waveform waveform; // waveform is also not Lazy as the track may change.
 
-        protected WorkingBeatmap(BeatmapInfo beatmapInfo, AudioManager audioManager)
+        protected WorkingBeatmap(BeatmapInfo beatmapInfo, AudioManager? audioManager)
         {
             this.audioManager = audioManager;
 
@@ -71,10 +71,12 @@ namespace osu.Game.Beatmaps
         };
 
         protected abstract IBeatmap GetBeatmap();
-        public abstract Texture GetBackground();
-        public virtual Texture GetLegacyPreviewBackground() => GetBackground();
-        public virtual Texture GetPanelBackground() => GetBackground();
-        protected abstract Track GetBeatmapTrack();
+        public abstract Texture? GetBackground();
+        public virtual Texture? GetLegacyPreviewBackground() => GetBackground();
+        public virtual Texture? GetLegacyPreviewBackground(int resolutionPercent) => GetLegacyPreviewBackground();
+        public virtual Texture? GetPanelBackground() => GetBackground();
+        public virtual Texture? GetPanelBackground(int resolutionPercent) => GetPanelBackground();
+        protected abstract Track? GetBeatmapTrack();
 
         /// <summary>
         /// Creates a new skin instance for this beatmap.
@@ -84,7 +86,7 @@ namespace osu.Game.Beatmaps
         /// (e.g. for editing purposes, to avoid state pollution).
         /// For standard reading purposes, <see cref="Skin"/> should always be used directly.
         /// </remarks>
-        protected internal abstract ISkin GetSkin();
+        protected internal abstract ISkin? GetSkin();
 
         #endregion
 
@@ -177,7 +179,7 @@ namespace osu.Game.Beatmaps
 
             double length = (BeatmapInfo?.Length + excess_length) ?? emptyLength;
 
-            return audioManager.Tracks.GetVirtual(length);
+            return audioManager?.Tracks.GetVirtual(length) ?? new TrackVirtual(length);
         }
 
         #endregion
@@ -259,7 +261,7 @@ namespace osu.Game.Beatmaps
 
         #region Playable beatmap
 
-        public IBeatmap GetPlayableBeatmap(IRulesetInfo ruleset, IReadOnlyList<Mod> mods = null)
+        public IBeatmap GetPlayableBeatmap(IRulesetInfo ruleset, IReadOnlyList<Mod>? mods = null)
         {
             try
             {
@@ -364,7 +366,7 @@ namespace osu.Game.Beatmaps
 
         public override string ToString() => BeatmapInfo.ToString();
 
-        public abstract Stream GetStream(string storagePath);
+        public abstract Stream? GetStream(string storagePath);
 
         IBeatmapInfo IWorkingBeatmap.BeatmapInfo => BeatmapInfo;
 

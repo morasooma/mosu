@@ -112,6 +112,7 @@ namespace osu.Game.Scoring.Render
 
             if (host.Window != null)
             {
+                // Standalone public build note: ShowOnFirstDraw is an optional Mosu framework extension.
                 host.Window.CursorState |= CursorState.Hidden;
 
                 host.Window.Hide();
@@ -139,9 +140,8 @@ namespace osu.Game.Scoring.Render
             // BDLs execute in base-to-derived order, so Game.Audio is available here. Keep all
             // ReplayRenderGame dependency initialisation in this single loader; osu-framework
             // permits only one BackgroundDependencyLoader method per concrete type.
-            // The stock framework has no detached sample-mixer routing hook. Public builds
-            // render video and music, but do not export gameplay hitsounds.
-            renderSampleCaptureMixer = null;
+            renderSampleCaptureMixer = Audio.CreateAudioMixer("ReplayRenderHitsoundCapture");
+            // Standalone public build note: SampleStoreMixerOverride is an optional Mosu framework extension.
 
             // Save original audio settings so we can restore them in Dispose.
             previousMasterVolumeForLog = Audio.Volume.Value;
@@ -185,8 +185,11 @@ namespace osu.Game.Scoring.Render
             // Hitsound export requires the sample mixer to be backed by a decode-capable global mixer.
             frameworkConfig.SetValue(FrameworkSetting.AudioUseExperimentalWasapi, true);
 
-            // Apply the user's custom skin from their osu.cfg configuration.
-            SkinManager.SetSkinFromConfiguration(LocalConfig.Get<string>(OsuSetting.Skin));
+            // Prefer the skin captured by the parent process when the render was started. Config
+            // saves are deferred, so a new render process may otherwise observe the previous skin.
+            // This also preserves the effective ruleset-specific skin rather than the global one.
+            string configuredSkin = getArgument("--skin") ?? LocalConfig.Get<string>(OsuSetting.Skin);
+            SkinManager.SetSkinFromConfiguration(configuredSkin);
 
             Add(screenStack = new OsuScreenStack
             {
@@ -223,6 +226,8 @@ namespace osu.Game.Scoring.Render
 
             if (Audio != null)
             {
+                // Standalone public build note: SuspendLiveOutputAsync is an optional Mosu framework extension.
+
                 if (!Audio.UsingGlobalMixer.Value)
                 {
                     Audio.Volume.Value = 0;

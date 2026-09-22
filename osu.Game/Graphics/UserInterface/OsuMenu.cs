@@ -26,6 +26,17 @@ namespace osu.Game.Graphics.UserInterface
 
         public bool PlaySamples { get; }
 
+        private readonly BackdropBlurSurface glassBackground;
+
+        /// <summary>
+        /// The colour applied over the shared blurred backdrop.
+        /// </summary>
+        public new Color4 BackgroundColour
+        {
+            get => glassBackground.SurfaceColour;
+            set => glassBackground.SurfaceColour = value;
+        }
+
         [Resolved]
         private OsuMenuSamples menuSamples { get; set; } = null!;
 
@@ -38,7 +49,13 @@ namespace osu.Game.Graphics.UserInterface
             : base(direction, topLevelMenu)
         {
             PlaySamples = playSamples;
-            BackgroundColour = Color4.Black.Opacity(0.5f);
+            base.BackgroundColour = Color4.Transparent;
+
+            MaskingContainer.Add(glassBackground = new BackdropBlurSurface
+            {
+                Depth = float.MaxValue,
+                SurfaceColour = Color4.Black,
+            });
 
             MaskingContainer.CornerRadius = 4;
             ItemsContainer.Padding = new MarginPadding(5);

@@ -29,8 +29,11 @@ namespace osu.Game.Overlays.Settings
         {
             void updateThemeColours()
             {
-                borderColourUnfocused = colour.Gray4.Opacity(0.5f);
+                borderColourUnfocused = colourProvider != null
+                    ? (OverlayColourProvider.IsLightTheme ? colourProvider.Light4.Opacity(0.5f) : colour.Gray4.Opacity(0.5f))
+                    : colour.Gray4.Opacity(0.5f);
                 borderColourFocused = colourProvider?.Highlight1 ?? colour.Yellow;
+                SetSelectionColour(colourProvider?.Background1 ?? new Color4(249, 90, 255, 255));
 
                 var textColour = colourProvider?.Content1 ?? (OverlayColourProvider.IsLightTheme ? Color4.Black : Color4.White);
                 TextFlow.Colour = textColour;

@@ -10,7 +10,7 @@ namespace osu.Game.Beatmaps
 {
     public class BeatmapModelDownloader : ModelDownloader<BeatmapSetInfo, IBeatmapSetInfo>
     {
-        private readonly OsuConfigManager config;
+        private readonly OsuConfigManager? config;
         private readonly IBeatmapApiProvider? beatmapApi;
 
         protected override ArchiveDownloadRequest<IBeatmapSetInfo> CreateDownloadRequest(IBeatmapSetInfo set, bool minimiseDownloadSize)
@@ -35,7 +35,7 @@ namespace osu.Game.Beatmaps
         public override ArchiveDownloadRequest<IBeatmapSetInfo>? GetExistingDownload(IBeatmapSetInfo model)
             => model == null ? null : CurrentDownloads.Find(r => r.Model?.OnlineID == model.OnlineID);
 
-        public BeatmapModelDownloader(IModelImporter<BeatmapSetInfo> beatmapImporter, IAPIProvider api, OsuConfigManager config = null)
+        public BeatmapModelDownloader(IModelImporter<BeatmapSetInfo> beatmapImporter, IAPIProvider api, OsuConfigManager? config = null)
             : base(beatmapImporter, api)
         {
             this.config = config;

@@ -172,9 +172,27 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
             RulesetInfo ruleset = rulesets.GetRuleset(item.RulesetID)!;
             Ruleset rulesetInstance = ruleset.CreateInstance();
-            BeatmapInfo? localBeatmap = beatmapManager.QueryOnlineBeatmapId(item.BeatmapID);
+            BeatmapInfo? localBeatmap = beatmapManager.QueryOnlineBeatmapId(item.BeatmapID, item.BeatmapChecksum);
 
-            globalBeatmap.Value = beatmapManager.GetWorkingBeatmap(localBeatmap);
+            if (localBeatmap == null)
+            {
+                Logger.Log($"Ranked play beatmap {item.BeatmapID} could not be resolved with the expected checksum.", LoggingTarget.Runtime, LogLevel.Important);
+                return;
+            }
+
+            WorkingBeatmap workingBeatmap = beatmapManager.GetWorkingBeatmap(localBeatmap);
+
+            // Force the file to be decoded before announcing readiness. A directly-accessed stable
+            // file may have disappeared or changed after availability was last calculated.
+            _ = workingBeatmap.Beatmap;
+
+            if (workingBeatmap.BeatmapInfo.Status == BeatmapOnlineStatus.LocallyModified)
+            {
+                Logger.Log($"Ranked play beatmap {item.BeatmapID} is locally modified or unavailable.", LoggingTarget.Runtime, LogLevel.Important);
+                return;
+            }
+
+            globalBeatmap.Value = workingBeatmap;
             globalRuleset.Value = ruleset;
             globalMods.Value = item.RequiredMods.Select(m => m.ToMod(rulesetInstance)).ToArray();
 

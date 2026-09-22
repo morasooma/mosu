@@ -27,7 +27,10 @@ namespace osu.Game.Beatmaps
             this.api = api;
         }
 
-        public bool Available => api.State.Value == APIState.Online;
+        // Stable profiles obtain status and identifiers from osu!.db and the stable
+        // getscores protocol. They do not have a lazer OAuth session with which to
+        // call /api/v2/beatmapsets, so attempting these lookups only produces noise.
+        public bool Available => !Online.MosuServerEnvironment.UsesStableProtocol && api.State.Value == APIState.Online;
 
         public bool TryLookup(BeatmapInfo beatmapInfo, out OnlineBeatmapMetadata? onlineMetadata)
         {
@@ -145,7 +148,7 @@ namespace osu.Game.Beatmaps
         {
             var beatmapSet = beatmapInfo.BeatmapSet;
 
-            if (beatmapSet?.OnlineID <= 0)
+            if (beatmapSet == null || beatmapSet.OnlineID <= 0)
                 return null;
 
             Logger.Log($@"{nameof(APIBeatmapMetadataSource)} trying beatmap set lookup for set id {beatmapSet.OnlineID}", LoggingTarget.Network);

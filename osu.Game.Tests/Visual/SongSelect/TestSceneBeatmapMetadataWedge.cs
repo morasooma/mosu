@@ -14,6 +14,7 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Models;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Screens.Select;
+using osuTK;
 
 namespace osu.Game.Tests.Visual.SongSelect
 {
@@ -32,6 +33,23 @@ namespace osu.Game.Tests.Visual.SongSelect
             {
                 State = { Value = Visibility.Visible },
             };
+        }
+
+        [Test]
+        public void TestShearReactivity()
+        {
+            AddStep("all metrics", () => (Beatmap.Value, onlineLookupResult.Value) = createTestBeatmap());
+            AddStep("reset shear to default", () => OsuGame.DisableShear.Value = false);
+            AddAssert("outer flow has shear", () => wedge.ChildrenOfType<FillFlowContainer>().Any(f => f.Shear == OsuGame.SHEAR));
+            AddAssert("inner container has reverse shear", () => wedge.ChildrenOfType<Container>().Any(c => c.Shear == -OsuGame.SHEAR));
+
+            AddStep("disable shear live", () => OsuGame.DisableShear.Value = true);
+            AddAssert("outer flow shear is zero", () => wedge.ChildrenOfType<FillFlowContainer>().All(f => f.Shear == Vector2.Zero));
+            AddAssert("inner container shear is zero", () => wedge.ChildrenOfType<Container>().All(c => c.Shear == Vector2.Zero));
+
+            AddStep("re-enable shear live", () => OsuGame.DisableShear.Value = false);
+            AddAssert("outer flow shear restored", () => wedge.ChildrenOfType<FillFlowContainer>().Any(f => f.Shear == OsuGame.SHEAR));
+            AddAssert("inner container shear restored", () => wedge.ChildrenOfType<Container>().Any(c => c.Shear == -OsuGame.SHEAR));
         }
 
         [Test]

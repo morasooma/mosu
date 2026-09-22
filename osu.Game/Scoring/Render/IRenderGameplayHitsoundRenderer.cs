@@ -14,6 +14,13 @@ namespace osu.Game.Scoring.Render
 
         double PlaybackTempo { get; set; }
 
+        /// <summary>
+        /// Number of requested samples that could not be resolved to a playable channel
+        /// (missing from the skin or no skin source available). Non-zero with a silent
+        /// capture indicates a skin lookup problem rather than a capture mixer problem.
+        /// </summary>
+        int MissingSampleCount { get; }
+
         void PlaySamples(ISampleInfo[] samples, double balance = 0, int minimumSampleVolume = 0);
     }
 }

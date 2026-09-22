@@ -54,6 +54,11 @@ namespace osu.Game.Skinning
         /// </summary>
         public SkinCustomFontInfo CustomFontInfo { get; private set; } = new SkinCustomFontInfo();
 
+        /// <summary>
+        /// Mosu-specific settings stored with this skin.
+        /// </summary>
+        public MosuSkinSettings MosuSettings { get; private set; } = new MosuSkinSettings();
+
         public abstract ISample? GetSample(ISampleInfo sampleInfo);
 
         public Texture? GetTexture(string componentName) => GetTexture(componentName, default, default);
@@ -160,6 +165,23 @@ namespace osu.Game.Skinning
                 catch (Exception ex)
                 {
                     Logger.Error(ex, "Failed to load custom skin font configuration.");
+                }
+            }
+
+            byte[]? mosuSettingsBytes = store?.Get(MosuSkinSettings.FILENAME);
+
+            if (mosuSettingsBytes != null)
+            {
+                try
+                {
+                    MosuSettings = JsonConvert.DeserializeObject<MosuSkinSettings>(Encoding.UTF8.GetString(mosuSettingsBytes)) ?? new MosuSkinSettings();
+                    MosuSettings.SetManiaNoteScalePercent(MosuSettings.GetManiaNoteScalePercent());
+                    MosuSettings.Version = MosuSkinSettings.LATEST_VERSION;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Failed to load Mosu skin settings.");
+                    MosuSettings = new MosuSkinSettings();
                 }
             }
         }

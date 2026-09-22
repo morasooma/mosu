@@ -1,8 +1,10 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Graphics;
@@ -15,6 +17,7 @@ using osu.Game.Beatmaps.Drawables;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Online.Leaderboards;
+using osu.Game.Overlays;
 using osu.Game.Resources.Localisation.Web;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Scoring;
@@ -34,6 +37,9 @@ namespace osu.Game.Screens.Ranking.Contracted
     public partial class ContractedPanelMiddleContent : CompositeDrawable
     {
         private readonly ScoreInfo score;
+        private Box backgroundBox = null!;
+        private readonly List<OsuSpriteText> labelTexts = new List<OsuSpriteText>();
+        private IBindable<Colour4>? themeColour;
 
         [Resolved]
         private ScoreManager scoreManager { get; set; } = null!;
@@ -48,8 +54,8 @@ namespace osu.Game.Screens.Ranking.Contracted
             RelativeSizeAxes = Axes.Both;
         }
 
-        [BackgroundDependencyLoader]
-        private void load()
+        [BackgroundDependencyLoader(permitNulls: true)]
+        private void load(OverlayColourProvider? colourProvider = null)
         {
             InternalChild = new GridContainer
             {
@@ -73,10 +79,10 @@ namespace osu.Game.Screens.Ranking.Contracted
                             },
                             Children = new Drawable[]
                             {
-                                new Box
+                                backgroundBox = new Box
                                 {
                                     RelativeSizeAxes = Axes.Both,
-                                    Colour = Color4Extensions.FromHex("444")
+                                    Colour = colourProvider?.Background4 ?? Color4Extensions.FromHex("444")
                                 },
                                 new UserCoverBackground
                                 {
@@ -213,33 +219,50 @@ namespace osu.Game.Screens.Ranking.Contracted
                     new Dimension(GridSizeMode.Absolute, 45),
                 }
             };
+
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
+                themeColour.BindValueChanged(_ =>
+                {
+                    backgroundBox.Colour = colourProvider.Background4;
+                    foreach (var label in labelTexts)
+                        label.Colour = colourProvider.Content1;
+                }, true);
+            }
         }
 
         private Drawable createStatistic(HitResultDisplayStatistic result)
             => createStatistic(result.DisplayName, result.MaxCount == null ? $"{result.Count}" : $"{result.Count}/{result.MaxCount}");
 
-        private Drawable createStatistic(LocalisableString key, string value) => new Container
+        private Drawable createStatistic(LocalisableString key, string value)
         {
-            RelativeSizeAxes = Axes.X,
-            AutoSizeAxes = Axes.Y,
-            Children = new Drawable[]
+            var label = new OsuSpriteText
             {
-                new OsuSpriteText
+                Anchor = Anchor.CentreLeft,
+                Origin = Anchor.CentreLeft,
+                Text = key.ToTitle(),
+                Font = OsuFont.GetFont(size: 12, weight: FontWeight.SemiBold)
+            };
+            labelTexts.Add(label);
+
+            return new Container
+            {
+                RelativeSizeAxes = Axes.X,
+                AutoSizeAxes = Axes.Y,
+                Children = new Drawable[]
                 {
-                    Anchor = Anchor.CentreLeft,
-                    Origin = Anchor.CentreLeft,
-                    Text = key.ToTitle(),
-                    Font = OsuFont.GetFont(size: 12, weight: FontWeight.SemiBold)
-                },
-                new OsuSpriteText
-                {
-                    Anchor = Anchor.CentreRight,
-                    Origin = Anchor.CentreRight,
-                    Text = value,
-                    Font = OsuFont.GetFont(size: 12, weight: FontWeight.SemiBold),
-                    Colour = Color4Extensions.FromHex("#FFDD55")
+                    label,
+                    new OsuSpriteText
+                    {
+                        Anchor = Anchor.CentreRight,
+                        Origin = Anchor.CentreRight,
+                        Text = value,
+                        Font = OsuFont.GetFont(size: 12, weight: FontWeight.SemiBold),
+                        Colour = Color4Extensions.FromHex("#FFDD55")
+                    }
                 }
-            }
-        };
+            };
+        }
     }
 }

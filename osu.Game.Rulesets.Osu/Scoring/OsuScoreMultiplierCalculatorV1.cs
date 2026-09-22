@@ -88,6 +88,7 @@ namespace osu.Game.Rulesets.Osu.Scoring
 
             Single<OsuModMosuStaticBpm>(hasMultiplier: staticBpm => rateAdjustMultiplier(staticBpm.SpeedChange.Value));
             Single<OsuModMosuTargetDifficulty>(hasMultiplier: targetDifficulty => rateAdjustMultiplier(targetDifficulty.SpeedChange.Value));
+            Single<OsuModMosuAimAssist>(hasMultiplier: 0.8);
 
             #endregion
         }

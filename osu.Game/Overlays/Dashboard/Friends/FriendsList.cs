@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
@@ -49,6 +50,7 @@ namespace osu.Game.Overlays.Dashboard.Friends
                 AutoSizeAxes = Axes.Y,
                 Spacing = new Vector2(style == OverlayPanelDisplayStyle.Card ? 10 : 2),
                 SortCriteria = { BindTarget = SortCriteria },
+                FriendPresences = friendPresences,
                 ChildrenEnumerable = friends.Select(createUserPanel)
             };
         }
@@ -71,6 +73,7 @@ namespace osu.Game.Overlays.Dashboard.Friends
                 case NotifyDictionaryChangedAction.Add:
                 case NotifyDictionaryChangedAction.Remove:
                     updatePanelVisibilities();
+                    searchContainer.RefreshSort();
                     break;
             }
         }
@@ -136,11 +139,15 @@ namespace osu.Game.Overlays.Dashboard.Friends
         {
             public readonly IBindable<UserSortCriteria> SortCriteria = new Bindable<UserSortCriteria>();
 
+            public IReadOnlyDictionary<int, UserPresence> FriendPresences { get; init; } = null!;
+
             protected override void LoadComplete()
             {
                 base.LoadComplete();
                 SortCriteria.BindValueChanged(_ => InvalidateLayout(), true);
             }
+
+            public void RefreshSort() => InvalidateLayout();
 
             public override IEnumerable<Drawable> FlowingChildren
             {
@@ -152,8 +159,9 @@ namespace osu.Game.Overlays.Dashboard.Friends
                     {
                         default:
                         case UserSortCriteria.LastVisit:
-                            // Todo: Last visit time is not currently updated according to realtime user presence.
-                            return panels.OrderByDescending(panel => panel.User.LastVisit);
+                            return panels.OrderByDescending(panel => FriendPresences.ContainsKey(panel.User.OnlineID))
+                                         .ThenByDescending(panel => panel.User.LastVisit ?? DateTimeOffset.MinValue)
+                                         .ThenBy(panel => panel.User.Username, StringComparer.OrdinalIgnoreCase);
 
                         case UserSortCriteria.Rank:
                             // Todo: Statistics are not currently updated according to realtime user statistics, but it's also not currently displayed in the panels.

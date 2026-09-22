@@ -6,8 +6,12 @@ using System.Linq;
 using NUnit.Framework;
 using osu.Game.Beatmaps;
 using osu.Game.Rulesets.Difficulty;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Difficulty;
+using osu.Game.Rulesets.Osu.Difficulty.Relax.Realistik;
 using osu.Game.Rulesets.Osu.Mods;
+using osu.Game.Rulesets.Scoring;
+using osu.Game.Scoring;
 using osu.Game.Tests.Beatmaps;
 
 namespace osu.Game.Rulesets.Osu.Tests
@@ -70,6 +74,28 @@ namespace osu.Game.Rulesets.Osu.Tests
             Assert.That(timedAttributes[74600].StarRating, Is.EqualTo(6.5240617806983261).Within(CHECK_PRECISION));
         }
 
+        [Test]
+        public void TestTimedRelaxPerformanceUsesSinglePreparedMap()
+        {
+            IWorkingBeatmap working = GetBeatmap("diffcalc-test");
+            Mod[] mods = { new OsuModMosuRelax() };
+            var attributes = CreateDifficultyCalculator(working).CalculateTimed(mods);
+            var first = (OsuDifficultyAttributes)attributes.First().Attributes;
+            var last = (OsuDifficultyAttributes)attributes.Last().Attributes;
+
+            Assert.That(ManagedRealistikRelaxCalculator.GetPreparedBeatmap(first),
+                Is.SameAs(ManagedRealistikRelaxCalculator.GetPreparedBeatmap(last)));
+
+            var score = new ScoreInfo((BeatmapInfo)working.BeatmapInfo, new OsuRuleset().RulesetInfo)
+            {
+                Mods = mods,
+                MaxCombo = last.MaxCombo,
+                Statistics = new Dictionary<HitResult, int> { [HitResult.Great] = last.HitCircleCount + last.SliderCount + last.SpinnerCount },
+            };
+
+            Assert.That(new OsuPerformanceCalculator().Calculate(score, last).Total, Is.GreaterThan(0));
+        }
+
         [TestCase(239, "diffcalc-test")]
         [TestCase(54, "zero-length-sliders")]
         [TestCase(4, "very-fast-slider")]
@@ -78,18 +104,20 @@ namespace osu.Game.Rulesets.Osu.Tests
             const double offset_iterations = 400;
             var beatmap = GetBeatmap(name);
 
-            var attributes = CreateDifficultyCalculator(beatmap).Calculate();
-            double expectedStarRating = attributes.StarRating;
+            var expectedAttributes = CreateDifficultyCalculator(beatmap).Calculate();
 
             for (int i = 0; i < offset_iterations; i++)
             {
                 foreach (var beatmapHitObject in beatmap.Beatmap.HitObjects)
                     beatmapHitObject.StartTime++;
 
-                attributes = CreateDifficultyCalculator(beatmap).Calculate();
+                var calc = CreateDifficultyCalculator(beatmap);
 
-                Assert.That(attributes.StarRating, Is.EqualTo(expectedStarRating).Within(CHECK_PRECISION));
-                Assert.That(attributes.MaxCombo, Is.EqualTo(expectedMaxCombo));
+                var attributes = calc.Calculate();
+                var timedAttributes = calc.CalculateTimed();
+
+                Assert.That(attributes, Is.EqualTo(expectedAttributes).UsingPropertiesComparer());
+                Assert.That(timedAttributes.Last().Attributes, Is.EqualTo(expectedAttributes).UsingPropertiesComparer());
             }
         }
 

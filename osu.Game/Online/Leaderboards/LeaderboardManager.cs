@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using osu.Framework.Allocation;
@@ -18,9 +19,13 @@ using osu.Game.Extensions;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Online.Legacy;
+using osu.Game.Beatmaps.Legacy;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Scoring;
+using osu.Game.Scoring.Legacy;
+using osu.Game.Rulesets.Scoring;
 using osu.Game.Screens.Play.Leaderboards;
 using Realms;
 
@@ -40,6 +45,11 @@ namespace osu.Game.Online.Leaderboards
         private IDisposable? localScoreSubscription;
         private GetScoresRequest? inFlightOnlineRequest;
         private GetBeatmapRequest? inFlightBeatmapLookupRequest;
+        private CancellationTokenSource? stableLeaderboardCancellation;
+
+        [Resolved(CanBeNull = true)]
+        private StableScoreSubmissionClient? stableClient { get; set; }
+
         [Resolved]
         private IAPIProvider api { get; set; } = null!;
 
@@ -67,6 +77,9 @@ namespace osu.Game.Online.Leaderboards
             inFlightOnlineRequest = null;
             inFlightBeatmapLookupRequest?.Cancel();
             inFlightBeatmapLookupRequest = null;
+            stableLeaderboardCancellation?.Cancel();
+            stableLeaderboardCancellation?.Dispose();
+            stableLeaderboardCancellation = null;
             scores.Value = null;
 
             if (newCriteria.Beatmap == null || newCriteria.Ruleset == null)
@@ -108,6 +121,12 @@ namespace osu.Game.Online.Leaderboards
 
                 default:
                 {
+                    if (MosuServerEnvironment.UsesStableProtocol)
+                    {
+                        fetchStableLeaderboard(newCriteria);
+                        return;
+                    }
+
                     if (!api.IsLoggedIn)
                     {
                         scores.Value = LeaderboardScores.Failure(LeaderboardFailState.NotLoggedIn);
@@ -182,7 +201,7 @@ namespace osu.Game.Online.Leaderboards
                             inFlightOnlineRequest = null;
                             Logger.Log($@"Failed to fetch leaderboards when displaying results: {ex}", LoggingTarget.Network);
                             if (ex is not OperationCanceledException)
-                                scores.Value = LeaderboardScores.Failure(LeaderboardFailState.NetworkFailure);
+                                scores.Value = LeaderboardScores.Failure(GetFailureState(ex));
                         };
 
                         api.Queue(inFlightOnlineRequest = newRequest);
@@ -221,7 +240,7 @@ namespace osu.Game.Online.Leaderboards
                             inFlightBeatmapLookupRequest = null;
                             Logger.Log($@"Failed to resolve server-exclusive leaderboard beatmap by checksum: {ex}", LoggingTarget.Network);
                             if (ex is not OperationCanceledException)
-                                scores.Value = LeaderboardScores.Failure(LeaderboardFailState.NetworkFailure);
+                                scores.Value = LeaderboardScores.Failure(GetFailureState(ex));
                         };
 
                         api.Queue(inFlightBeatmapLookupRequest = lookupRequest);
@@ -232,6 +251,205 @@ namespace osu.Game.Online.Leaderboards
                     break;
                 }
             }
+        }
+
+        internal static LeaderboardFailState GetFailureState(Exception exception) =>
+            exception is APIException { StatusCode: HttpStatusCode.NotFound }
+                ? LeaderboardFailState.BeatmapUnavailable
+                : LeaderboardFailState.NetworkFailure;
+
+        private void fetchStableLeaderboard(LeaderboardCriteria criteria)
+        {
+            if (stableClient == null || !stableClient.IsConfigured(out _))
+            {
+                scores.Value = LeaderboardScores.Failure(LeaderboardFailState.NotLoggedIn);
+                return;
+            }
+
+            // Special rulesets are addressed by a separate mode in the Mosu API, while the
+            // stable protocol uses the base ruleset plus the RX/AP legacy mod bit. Keep the
+            // bit separate from ExactMods: with no explicit mod filter, v must remain the
+            // normal leaderboard type so stable servers can return every RX/AP score.
+            (RulesetInfo stableRuleset, LegacyMods specialModeMod) = NormaliseStableRuleset(criteria.Ruleset!);
+            criteria = criteria with { Ruleset = stableRuleset };
+
+            if (criteria.Ruleset.OnlineID != 0)
+            {
+                scores.Value = LeaderboardScores.Failure(LeaderboardFailState.RulesetUnavailable);
+                return;
+            }
+
+            if (criteria.Scope == BeatmapLeaderboardScope.Team)
+            {
+                scores.Value = LeaderboardScores.Failure(LeaderboardFailState.NoTeam);
+                return;
+            }
+
+            int leaderboardType = criteria.ExactMods != null
+                ? 2
+                : criteria.Scope switch
+                {
+                    BeatmapLeaderboardScope.Country => 4,
+                    BeatmapLeaderboardScope.Friend => 3,
+                    _ => 1,
+                };
+
+            var rulesetInstance = criteria.Ruleset.CreateInstance();
+            LegacyMods legacyMods = criteria.ExactMods == null ? LegacyMods.None : rulesetInstance.ConvertToLegacyMods(criteria.ExactMods);
+            legacyMods |= specialModeMod;
+            var cancellation = stableLeaderboardCancellation = new CancellationTokenSource();
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    StableLeaderboardResult response = await stableClient.FetchLeaderboardAsync(criteria.Beatmap!, criteria.Ruleset.OnlineID, (int)legacyMods,
+                        leaderboardType, cancellation.Token).ConfigureAwait(false);
+
+                    if (!response.BeatmapAvailable)
+                    {
+                        Schedule(() => scores.Value = LeaderboardScores.Failure(LeaderboardFailState.BeatmapUnavailable));
+                        return;
+                    }
+
+                    ScoreInfo[] topScores = response.Scores.Select(score => createStableScoreInfo(score, criteria.Beatmap!, criteria.Ruleset)).ToArray();
+                    ScoreInfo? personalBest = response.PersonalBest == null
+                        ? null
+                        : createStableScoreInfo(response.PersonalBest, criteria.Beatmap!, criteria.Ruleset);
+
+                    Schedule(() =>
+                    {
+                        if (ReferenceEquals(cancellation, stableLeaderboardCancellation))
+                        {
+                            int totalScores = Math.Max(response.ScoreCount, personalBest?.Position ?? 0);
+                            scores.Value = LeaderboardScores.Success(topScores, response.Scores.Count, totalScores, personalBest);
+                        }
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception exception)
+                {
+                    Logger.Error(exception, "Failed to fetch stable leaderboard.");
+                    Schedule(() =>
+                    {
+                        if (ReferenceEquals(cancellation, stableLeaderboardCancellation))
+                            scores.Value = LeaderboardScores.Failure(LeaderboardFailState.NetworkFailure);
+                    });
+                }
+            });
+        }
+
+        internal static (RulesetInfo Ruleset, LegacyMods SpecialModeMod) NormaliseStableRuleset(RulesetInfo ruleset)
+        {
+            if (!ruleset.IsSpecialRuleset())
+                return (ruleset, LegacyMods.None);
+
+            LegacyMods specialModeMod = ruleset.OnlineID switch
+            {
+                RulesetInfo.OSU_RELAX_ONLINE_ID or RulesetInfo.TAIKO_RELAX_ONLINE_ID or RulesetInfo.CATCH_RELAX_ONLINE_ID => LegacyMods.Relax,
+                RulesetInfo.OSU_AUTOPILOT_ONLINE_ID => LegacyMods.Autopilot,
+                _ => LegacyMods.None,
+            };
+
+            return (ruleset.CreateNormalRuleset(), specialModeMod);
+        }
+
+        private ScoreInfo createStableScoreInfo(StableLeaderboardScore source, BeatmapInfo beatmap, RulesetInfo ruleset)
+        {
+            var rulesetInstance = ruleset.CreateInstance();
+            var mods = rulesetInstance.ConvertFromLegacyMods((LegacyMods)source.Mods).ToList();
+            Mod? classic = rulesetInstance.CreateModFromAcronym("CL");
+            if (classic != null)
+                mods.Add(classic);
+
+            var score = new ScoreInfo
+            {
+                // Stable score identifiers belong to the legacy namespace. Setting OnlineID
+                // makes lazer try /api/v2 score and replay routes which stable servers do not expose.
+                OnlineID = -1,
+                LegacyOnlineID = source.Id,
+                User = new APIUser
+                {
+                    Id = source.UserId,
+                    Username = source.Username,
+                    AvatarUrl = stableClient?.GetAvatarUrl(source.UserId) ?? string.Empty,
+                },
+                BeatmapInfo = beatmap,
+                BeatmapHash = beatmap.Hash,
+                Ruleset = ruleset,
+                TotalScore = source.TotalScore,
+                TotalScoreWithoutMods = source.TotalScore,
+                LegacyTotalScore = source.TotalScore,
+                MaxCombo = source.MaxCombo,
+                Date = source.Date,
+                // Legacy replay download uses /web/osu-getreplay.php and is not implemented yet.
+                HasOnlineReplay = false,
+                Mods = mods.ToArray(),
+                Position = source.Position,
+                Passed = true,
+            };
+
+            score.SetCount50(source.Count50);
+            score.SetCount100(source.Count100);
+            score.SetCount300(source.Count300);
+            score.SetCountMiss(source.CountMiss);
+            score.SetCountKatu(source.CountKatu);
+            score.SetCountGeki(source.CountGeki);
+            score.Accuracy = calculateAccuracy(score);
+            score.Rank = calculateRank(score);
+            return score;
+        }
+
+        private static double calculateAccuracy(ScoreInfo score)
+        {
+            int count300 = score.GetCount300() ?? 0;
+            int count100 = score.GetCount100() ?? 0;
+            int count50 = score.GetCount50() ?? 0;
+            int countMiss = score.GetCountMiss() ?? 0;
+            int totalHits = count300 + count100 + count50 + countMiss;
+
+            return totalHits == 0 ? 0 : (count300 * 300d + count100 * 100d + count50 * 50d) / (totalHits * 300d);
+        }
+
+        private static ScoreRank calculateRank(ScoreInfo score)
+        {
+            if (!score.Passed)
+                return ScoreRank.F;
+
+            int count300 = score.GetCount300() ?? 0;
+            int count50 = score.GetCount50() ?? 0;
+            int countMiss = score.GetCountMiss() ?? 0;
+            int totalHits = count300 + (score.GetCount100() ?? 0) + count50 + countMiss;
+
+            if (totalHits == 0)
+                return ScoreRank.D;
+
+            double ratio300 = count300 / (double)totalHits;
+            double ratio50 = count50 / (double)totalHits;
+            ScoreRank rank;
+
+            if (count300 == totalHits)
+                rank = ScoreRank.X;
+            else if (ratio300 > 0.9 && ratio50 <= 0.01 && countMiss == 0)
+                rank = ScoreRank.S;
+            else if ((ratio300 > 0.8 && countMiss == 0) || ratio300 > 0.9)
+                rank = ScoreRank.A;
+            else if ((ratio300 > 0.7 && countMiss == 0) || ratio300 > 0.8)
+                rank = ScoreRank.B;
+            else if (ratio300 > 0.6)
+                rank = ScoreRank.C;
+            else
+                rank = ScoreRank.D;
+
+            bool silver = score.Mods.Any(mod => mod is Rulesets.Mods.ModHidden or Rulesets.Mods.ModFlashlight);
+            if (silver && rank == ScoreRank.X)
+                return ScoreRank.XH;
+            if (silver && rank == ScoreRank.S)
+                return ScoreRank.SH;
+
+            return rank;
         }
 
         private static bool requiresChecksumLookup(IBeatmapInfo beatmap)
@@ -286,6 +504,8 @@ namespace osu.Game.Online.Leaderboards
             localScoreSubscription?.Dispose();
             inFlightOnlineRequest?.Cancel();
             inFlightBeatmapLookupRequest?.Cancel();
+            stableLeaderboardCancellation?.Cancel();
+            stableLeaderboardCancellation?.Dispose();
         }
     }
 

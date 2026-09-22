@@ -20,6 +20,7 @@ namespace osu.Game.Online.API.Requests
         private const int mirror_timeout = 15000;
         private const int hedge_delay = 2000;
         private const int cancellation_poll_interval = 100;
+        private static readonly string hinamizawa_user_agent = $"Morasooma/{typeof(DownloadBeatmapSetRequest).Assembly.GetName().Version} (+https://github.com/GooGuTeam/osu)";
 
         private static readonly object preferred_mirror_lock = new object();
         private static string? preferredAutoMirror;
@@ -72,6 +73,7 @@ namespace osu.Game.Online.API.Requests
             string sayobotUrl = $"https://dl.sayobot.cn/beatmaps/download/{(noVideo ? "novideo" : "full")}/{Model.OnlineID}";
             string nerinyanUrl = $"https://api.nerinyan.moe/d/{Model.OnlineID}?noVideo={(noVideo ? "true" : "false")}";
             string minoUrl = $"https://catboy.best/d/{Model.OnlineID}{(noVideo ? "n" : "")}";
+            string hinamizawaUrl = $"https://mirror.hinamizawa.ai/api/v1/hinai/d/{Model.OnlineID}{(noVideo ? "?noVideo=1" : "")}";
 
             return Mirror switch
             {
@@ -81,6 +83,7 @@ namespace osu.Game.Online.API.Requests
                 DownloadMirror.BeatConnect => [new DownloadSource("BeatConnect", $"https://beatconnect.io/b/{Model.OnlineID}")],
                 DownloadMirror.Chimu => [new DownloadSource("Chimu", $"https://api.chimu.moe/v1/download/{Model.OnlineID}")],
                 DownloadMirror.OsuDirect => [new DownloadSource("OsuDirect", $"https://api.osu.direct/d/{Model.OnlineID}?noVideo={(noVideo ? "true" : "false")}")],
+                DownloadMirror.Hinamizawa => [new DownloadSource("Hinamizawa", hinamizawaUrl, UserAgent: hinamizawa_user_agent)],
                 _ =>
                 [
                     new DownloadSource("Sayobot", sayobotUrl),
@@ -89,6 +92,7 @@ namespace osu.Game.Online.API.Requests
                     new DownloadSource("BeatConnect", $"https://beatconnect.io/b/{Model.OnlineID}"),
                     new DownloadSource("Chimu", $"https://api.chimu.moe/v1/download/{Model.OnlineID}"),
                     new DownloadSource("OsuDirect", $"https://api.osu.direct/d/{Model.OnlineID}?noVideo={(noVideo ? "true" : "false")}"),
+                    new DownloadSource("Hinamizawa", hinamizawaUrl, UserAgent: hinamizawa_user_agent),
                     new DownloadSource("Server", Uri, true)
                 ]
             };
@@ -189,11 +193,12 @@ namespace osu.Game.Online.API.Requests
             string filename = Path.ChangeExtension(temporaryFile, FileExtension);
             File.Move(temporaryFile, filename);
 
-            var request = new FileWebRequest(filename, source.Url)
-            {
-                AllowRetryOnTimeout = false,
-                Timeout = mirror_timeout
-            };
+            FileWebRequest request = source.UserAgent == null
+                ? new FileWebRequest(filename, source.Url)
+                : new UserAgentFileWebRequest(filename, source.Url, source.UserAgent);
+
+            request.AllowRetryOnTimeout = false;
+            request.Timeout = mirror_timeout;
 
             if (source.RequiresAuthentication)
             {
@@ -292,7 +297,20 @@ namespace osu.Game.Online.API.Requests
             }
         }
 
-        private sealed record DownloadSource(string Name, string Url, bool RequiresAuthentication = false);
+        private sealed record DownloadSource(string Name, string Url, bool RequiresAuthentication = false, string? UserAgent = null);
+
+        private sealed class UserAgentFileWebRequest : FileWebRequest
+        {
+            private readonly string userAgent;
+
+            protected override string UserAgent => userAgent;
+
+            public UserAgentFileWebRequest(string filename, string url, string userAgent)
+                : base(filename, url)
+            {
+                this.userAgent = userAgent;
+            }
+        }
 
         private sealed record MirrorDownload(DownloadSource Source, FileWebRequest Request, string Filename, Task<MirrorDownloadResult> Task);
 

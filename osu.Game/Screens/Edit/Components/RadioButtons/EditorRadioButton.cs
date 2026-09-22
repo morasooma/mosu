@@ -3,12 +3,14 @@
 
 using System;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Localisation;
+using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
@@ -20,11 +22,22 @@ namespace osu.Game.Screens.Edit.Components.RadioButtons
     public partial class EditorRadioButton : OsuButton, IHasTooltip
     {
         /// <summary>
-        /// Invoked when this <see cref="EditorRadioButton"/> has been selected.
+        /// Whether this <see cref="EditorRadioButton"/> is selected.
+        /// Disable this bindable to disable the button.
         /// </summary>
-        public Action<RadioButton>? Selected;
+        public readonly BindableBool Selected = new BindableBool();
 
-        public readonly RadioButton Button;
+        /// <summary>
+        /// A function which creates a drawable icon to represent this item. If null, a sane default should be used.
+        /// </summary>
+        public readonly Func<Drawable?>? CreateIcon;
+
+        public Hotkey? Hotkey { get; init; }
+
+        private readonly Action? action;
+
+        private OverlayColourProvider colourProvider = null!;
+        private IBindable<Colour4>? themeColour;
 
         private Color4 defaultBackgroundColour;
         private Color4 defaultIconColour;
@@ -33,12 +46,19 @@ namespace osu.Game.Screens.Edit.Components.RadioButtons
 
         private Drawable icon = null!;
 
-        public EditorRadioButton(RadioButton button)
-        {
-            Button = button;
+        internal Color4 SelectedBackgroundColour => selectedBackgroundColour;
+        new internal Color4 DefaultBackgroundColour => defaultBackgroundColour;
+        internal Color4 SelectedIconColour => selectedIconColour;
+        internal Color4 DefaultIconColour => defaultIconColour;
+        internal Color4 CurrentTextColour => SpriteText.Colour;
+        internal Color4 CurrentIconColour => icon.Colour;
 
-            Text = button.Label;
-            Action = button.Select;
+        public EditorRadioButton(LocalisableString label, Action? action, Func<Drawable?>? createIcon = null)
+        {
+            Text = label;
+            CreateIcon = createIcon;
+            this.action = action;
+            Action = Select;
 
             RelativeSizeAxes = Axes.X;
         }
@@ -46,13 +66,9 @@ namespace osu.Game.Screens.Edit.Components.RadioButtons
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
-            defaultBackgroundColour = colourProvider.Background3;
-            selectedBackgroundColour = colourProvider.Background1;
+            this.colourProvider = colourProvider;
 
-            defaultIconColour = defaultBackgroundColour.Darken(0.5f);
-            selectedIconColour = selectedBackgroundColour.Lighten(0.5f);
-
-            Add(icon = (Button.CreateIcon?.Invoke() ?? new Circle()).With(b =>
+            Add(icon = (CreateIcon?.Invoke() ?? new Circle()).With(b =>
             {
                 b.Blending = BlendingParameters.Additive;
                 b.Anchor = Anchor.CentreLeft;
@@ -60,30 +76,80 @@ namespace osu.Game.Screens.Edit.Components.RadioButtons
                 b.Size = new Vector2(20);
                 b.X = 10;
             }));
+
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+            themeColour.BindValueChanged(_ => updateColours(), true);
+
+            if (Hotkey != null)
+            {
+                SpriteText.Origin = Anchor.BottomLeft;
+                SpriteText.Y = -1;
+
+                Add(new HotkeyDisplay
+                {
+                    Hotkey = Hotkey.Value,
+                    Anchor = Anchor.CentreLeft,
+                    Origin = Anchor.TopLeft,
+                    X = 40,
+                    Y = 1,
+                });
+            }
+        }
+
+        private void updateColours()
+        {
+            defaultBackgroundColour = colourProvider.Background3;
+            selectedBackgroundColour = colourProvider.Background1;
+
+            if (OverlayColourProvider.IsLightTheme)
+            {
+                defaultIconColour = colourProvider.Light4;
+                selectedIconColour = colourProvider.Content1;
+                icon.Blending = BlendingParameters.Inherit;
+            }
+            else
+            {
+                defaultIconColour = defaultBackgroundColour.Darken(0.5f);
+                selectedIconColour = selectedBackgroundColour.Lighten(0.5f);
+                icon.Blending = BlendingParameters.Additive;
+            }
+
+            updateSelectionState();
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
 
-            Button.Selected.ValueChanged += selected =>
+            Selected.BindValueChanged(selected =>
             {
                 updateSelectionState();
                 if (selected.NewValue)
-                    Selected?.Invoke(Button);
-            };
+                    action?.Invoke();
+            }, true);
 
-            Button.Selected.BindDisabledChanged(disabled => Enabled.Value = !disabled, true);
+            Selected.BindDisabledChanged(disabled => Enabled.Value = !disabled, true);
             updateSelectionState();
         }
+
+        /// <summary>
+        /// Selects this <see cref="EditorRadioButton"/>.
+        /// </summary>
+        public void Select() => Selected.Value = true;
+
+        /// <summary>
+        /// Deselects this <see cref="EditorRadioButton"/>.
+        /// </summary>
+        public void Deselect() => Selected.Value = false;
 
         private void updateSelectionState()
         {
             if (!IsLoaded)
                 return;
 
-            BackgroundColour = Button.Selected.Value ? selectedBackgroundColour : defaultBackgroundColour;
-            icon.Colour = Button.Selected.Value ? selectedIconColour : defaultIconColour;
+            BackgroundColour = Selected.Value ? selectedBackgroundColour : defaultBackgroundColour;
+            icon.Colour = Selected.Value ? selectedIconColour : defaultIconColour;
+            SpriteText.Colour = OsuColour.ForegroundTextColourFor(BackgroundColour);
         }
 
         protected override SpriteText CreateText() => new OsuSpriteText
@@ -94,6 +160,6 @@ namespace osu.Game.Screens.Edit.Components.RadioButtons
             X = 40f
         };
 
-        public LocalisableString TooltipText => Button.TooltipText;
+        public LocalisableString TooltipText { get; set; }
     }
 }

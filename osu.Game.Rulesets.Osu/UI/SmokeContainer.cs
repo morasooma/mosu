@@ -21,8 +21,9 @@ namespace osu.Game.Rulesets.Osu.UI
     {
         private DrawablePool<SmokeSkinnableDrawable> segmentPool = null!;
         private SmokeSkinnableDrawable? currentSegmentSkinnable;
+        private OsuInputManager? inputManager;
 
-        private Vector2 lastMousePosition;
+        internal Vector2 LastMousePosition { get; private set; }
 
         public override bool ReceivePositionalInputAt(Vector2 _) => true;
 
@@ -60,13 +61,20 @@ namespace osu.Game.Rulesets.Osu.UI
 
         protected override bool OnMouseMove(MouseMoveEvent e)
         {
-            lastMousePosition = e.MousePosition;
+            inputManager ??= GetContainingInputManager() as OsuInputManager;
+
+            if (inputManager?.ShouldSuppressPhysicalCursorMove == true)
+                return false;
+
+            // MousePosition is expressed in the target's parent space. Smoke points are drawn in this
+            // container's local space, which differs when the playfield content has padding or an offset.
+            LastMousePosition = ToLocalSpace(e.ScreenSpaceMousePosition);
             addPosition();
 
             return base.OnMouseMove(e);
         }
 
-        private void addPosition() => currentSegmentSkinnable?.Segment?.AddPosition(lastMousePosition, Time.Current);
+        private void addPosition() => currentSegmentSkinnable?.Segment?.AddPosition(LastMousePosition, Time.Current);
 
         private partial class SmokeSkinnableDrawable : SkinnableDrawable
         {

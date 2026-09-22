@@ -142,7 +142,15 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
 
         private IQueryable<BeatmapInfo> getBeatmapsForPlaylist(Realm r)
         {
-            return r.All<BeatmapInfo>().Filter(string.Join(" OR ", room.Playlist.Select(item => $"(OnlineID == {item.Beatmap.OnlineID})").Distinct()));
+            int[] onlineIds = room.Playlist.Select(item => item.Beatmap.OnlineID)
+                                          .Where(id => id > 0)
+                                          .Distinct()
+                                          .ToArray();
+
+            if (onlineIds.Length == 0)
+                return r.All<BeatmapInfo>().Filter("OnlineID == -1");
+
+            return r.All<BeatmapInfo>().Filter($"OnlineID IN {{ {string.Join(',', onlineIds)} }}");
         }
 
         private bool hasAllItemsInCollection

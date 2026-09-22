@@ -17,7 +17,6 @@ using osu.Game.Online.API.Requests.Responses;
 using osuTK.Graphics;
 using osu.Game.Resources.Localisation.Web;
 using osuTK;
-using osuTK.Graphics;
 
 namespace osu.Game.Overlays.Profile.Header.Components
 {

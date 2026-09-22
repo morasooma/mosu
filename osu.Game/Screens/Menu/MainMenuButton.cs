@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Linq;
 using osu.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
@@ -20,6 +19,7 @@ using osu.Framework.Extensions.Color4Extensions;
 using osu.Game.Graphics.Containers;
 using osu.Framework.Graphics.Effects;
 using osu.Framework.Graphics.Sprites;
+using osu.Framework.Graphics.Textures;
 using osu.Framework.Input.Events;
 using osu.Framework.Localisation;
 using osu.Game.Beatmaps.ControlPoints;
@@ -70,7 +70,7 @@ namespace osu.Game.Screens.Menu
         private readonly Container background;
         private readonly Drawable backgroundContent;
         private readonly Box boxHoverLayer;
-        private readonly SpriteIcon icon;
+        private readonly Drawable icon;
         private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
         internal Vector2 BackgroundShear => background.Shear;
@@ -89,6 +89,22 @@ namespace osu.Game.Screens.Menu
         public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => background.ReceivePositionalInputAt(screenSpacePos);
 
         public MainMenuButton(LocalisableString text, string sampleName, IconUsage symbol, Color4 colour, Action<MainMenuButton, UIEvent>? clickAction = null, params Key[] triggerKeys)
+            : this(text, sampleName, new SpriteIcon
+            {
+                Shadow = true,
+                Icon = symbol,
+            }, colour, clickAction, triggerKeys)
+        {
+        }
+
+        public MainMenuButton(LocalisableString text, string sampleName, string iconTexture, Color4 colour, Action<MainMenuButton, UIEvent>? clickAction = null,
+                              params Key[] triggerKeys)
+            : this(text, sampleName, new MenuTextureIcon(iconTexture), colour, clickAction, triggerKeys)
+        {
+        }
+
+        private MainMenuButton(LocalisableString text, string sampleName, Drawable iconDrawable, Color4 colour, Action<MainMenuButton, UIEvent>? clickAction,
+                               params Key[] triggerKeys)
         {
             this.sampleName = sampleName;
             this.clickAction = clickAction;
@@ -153,19 +169,33 @@ namespace osu.Game.Screens.Menu
                             },
                             Text = text
                         },
-                        icon = new SpriteIcon
+                        icon = iconDrawable.With(d =>
                         {
-                            Shadow = true,
-                            Anchor = Anchor.Centre,
-                            Origin = Anchor.Centre,
-                            Size = new Vector2(32),
-                            Position = new Vector2(0, 0),
-                            Margin = new MarginPadding { Top = -4 },
-                            Icon = symbol
-                        }
+                            d.Anchor = Anchor.Centre;
+                            d.Origin = Anchor.Centre;
+                            d.Size = new Vector2(32);
+                            d.Position = Vector2.Zero;
+                            d.Margin = new MarginPadding { Top = -4 };
+                        })
                     }
                 }
             });
+        }
+
+        private partial class MenuTextureIcon : Sprite
+        {
+            private readonly string textureName;
+
+            public MenuTextureIcon(string textureName)
+            {
+                this.textureName = textureName;
+            }
+
+            [BackgroundDependencyLoader]
+            private void load(TextureStore textures)
+            {
+                Texture = textures.Get(textureName);
+            }
         }
 
         protected virtual Drawable CreateBackground(Colour4 accentColour) => new Container

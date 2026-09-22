@@ -140,6 +140,8 @@ namespace osu.Game.Online.Multiplayer
 
         public event Action<int, bool>? UserVotedToSkipIntro;
         public event Action? VoteToSkipIntroPassed;
+        public event Action<int, MultiplayerBreakSkipRequest>? UserVotedToSkipBreak;
+        public event Action<MultiplayerBreakSkipRequest>? VoteToSkipBreakPassed;
 
         public event Action<MultiplayerRoomUser, BeatmapAvailability>? BeatmapAvailabilityChanged;
 
@@ -510,6 +512,8 @@ namespace osu.Game.Online.Multiplayer
         public abstract Task RemovePlaylistItem(long playlistItemId);
 
         public abstract Task VoteToSkipIntro();
+
+        public abstract Task VoteToSkipBreak(MultiplayerBreakSkipRequest request);
 
         Task IMultiplayerClient.RoomStateChanged(MultiplayerRoomState state)
         {
@@ -962,6 +966,18 @@ namespace osu.Game.Online.Multiplayer
                 VoteToSkipIntroPassed?.Invoke();
             });
 
+            return Task.CompletedTask;
+        }
+
+        Task IMultiplayerClient.UserVotedToSkipBreak(int userId, MultiplayerBreakSkipRequest request)
+        {
+            handleRoomRequest(() => UserVotedToSkipBreak?.Invoke(userId, request));
+            return Task.CompletedTask;
+        }
+
+        Task IMultiplayerClient.VoteToSkipBreakPassed(MultiplayerBreakSkipRequest request)
+        {
+            handleRoomRequest(() => VoteToSkipBreakPassed?.Invoke(request));
             return Task.CompletedTask;
         }
 

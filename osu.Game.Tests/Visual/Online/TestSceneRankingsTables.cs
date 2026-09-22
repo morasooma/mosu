@@ -9,10 +9,14 @@ using osu.Game.Overlays.Rankings.Tables;
 using osu.Framework.Graphics;
 using System.Threading;
 using osu.Framework.Allocation;
+using osu.Framework.Testing;
 using osu.Game.Graphics.UserInterface;
+using osu.Game.Configuration;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Overlays;
 using osu.Game.Users;
+using osu.Game.Users.Drawables;
+using System.Linq;
 
 namespace osu.Game.Tests.Visual.Online
 {
@@ -20,6 +24,9 @@ namespace osu.Game.Tests.Visual.Online
     {
         [Cached]
         private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Green);
+
+        [Resolved]
+        private OsuConfigManager config { get; set; } = null!;
 
         private readonly BasicScrollContainer scrollFlow;
         private readonly LoadingLayer loading;
@@ -44,7 +51,12 @@ namespace osu.Game.Tests.Visual.Online
         {
             base.LoadComplete();
 
+            AddStep("enable enhanced ranking rows", () => config.SetValue(OsuSetting.ForkEnhancedRankingRows, true));
             AddStep("User performance", createPerformanceTable);
+            AddUntilStep("avatars shown", () => scrollFlow.ChildrenOfType<UpdateableAvatar>().Count() == 3);
+            AddStep("disable enhanced ranking rows", () => config.SetValue(OsuSetting.ForkEnhancedRankingRows, false));
+            AddUntilStep("avatars hidden", () => !scrollFlow.ChildrenOfType<UpdateableAvatar>().Any());
+            AddStep("restore enhanced ranking rows", () => config.GetBindable<bool>(OsuSetting.ForkEnhancedRankingRows).SetDefault());
             AddStep("Weekly user performance", createWeeklyPerformanceTable);
             AddStep("User scores", createScoreTable);
             AddStep("Country scores", createCountryTable);

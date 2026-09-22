@@ -52,8 +52,7 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
                 switch (mode.NewValue)
                 {
                     case GCLatencyMode.Default:
-                        // https://github.com/ppy/osu-framework/blob/1d5301018dfed1a28702be56e1d53c4835b199f2/osu.Framework/Platform/GameHost.cs#L703
-                        GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+                        GCSettings.LatencyMode = System.Runtime.GCLatencyMode.Interactive;
                         break;
 
                     case GCLatencyMode.Interactive:
@@ -71,9 +70,16 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
                         Text = @"Compact realm",
                         Action = () =>
                         {
-                            // Blocking operations implicitly causes a Compact().
-                            using (realm.BlockAllOperations(@"compact"))
+                            try
                             {
+                                // Blocking operations implicitly causes a Compact().
+                                using (realm.BlockAllOperations(@"compact"))
+                                {
+                                }
+                            }
+                            catch (Exception e)
+                            {
+                                Logger.Error(e, @"Compacting realm failed");
                             }
                         }
                     },

@@ -236,7 +236,7 @@ namespace osu.Game.Overlays.BeatmapListing
 
         private void performRequest()
         {
-            getSetsRequest = new SearchBeatmapSetsRequest(
+            var request = getSetsRequest = new SearchBeatmapSetsRequest(
                 searchControl.Query.Value,
                 searchControl.Ruleset.Value,
                 lastResponse?.Cursor,
@@ -251,10 +251,16 @@ namespace osu.Game.Overlays.BeatmapListing
                 searchControl.Played.Value,
                 searchControl.ExplicitContent.Value);
 
-            getSetsRequest.Success += response =>
+            request.Success += response =>
             {
+                // Requests may complete after being cancelled by a subsequent search. In that case,
+                // getSetsRequest is either null or refers to the newer request, and this result must not
+                // affect the current search.
+                if (!ReferenceEquals(getSetsRequest, request))
+                    return;
+
                 var sets = response.BeatmapSets.ToList();
-                bool serverExclusiveOnly = getSetsRequest.ServerExclusiveOnly;
+                bool serverExclusiveOnly = request.ServerExclusiveOnly;
 
                 // If the previous request returned a null cursor, the API is indicating we can't paginate further (maybe there are no more beatmaps left).
                 if (sets.Count == 0 || response.Cursor == null)
@@ -293,8 +299,11 @@ namespace osu.Game.Overlays.BeatmapListing
                 SearchFinished?.Invoke(resultsReturned);
             };
 
-            getSetsRequest.Failure += e =>
+            request.Failure += e =>
             {
+                if (!ReferenceEquals(getSetsRequest, request))
+                    return;
+
                 if (e is not OperationCanceledException)
                     Logger.Error(e, "SearchBeatmapSetsRequest failed");
 
@@ -302,7 +311,7 @@ namespace osu.Game.Overlays.BeatmapListing
                 noMoreResults = true;
                 SearchFinished?.Invoke(SearchResult.ResultsReturned(new List<APIBeatmapSet>()));
             };
-            beatmapApi.Queue(getSetsRequest);
+            beatmapApi.Queue(request);
         }
 
         private void resetSearch()

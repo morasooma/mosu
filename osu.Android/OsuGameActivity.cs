@@ -114,6 +114,7 @@ namespace osu.Android
             Assembly.Load("osu.Game.Rulesets.Osu");
             Assembly.Load("osu.Game.Rulesets.Taiko");
             Assembly.Load("osu.Game.Rulesets.Catch");
+            Assembly.Load("osu.Game.Rulesets.Dodge");
             Assembly.Load("osu.Game.Rulesets.Mania");
         }
 

@@ -64,6 +64,15 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
             // isolated settings/test hierarchy, without bypassing the server policy.
             themeMode.BindValueChanged(_ => applyEffectiveTheme(), true);
 
+            // Same reasoning as above for the overlay transparency state.
+            var overlayTransparency = config.GetBindable<bool>(OsuSetting.ForkOverlayTransparency);
+            var overlayBlurStrength = config.GetBindable<double>(OsuSetting.ForkOverlayBlurStrength);
+            var overlayDimAmount = config.GetBindable<double>(OsuSetting.ForkOverlayDimAmount);
+
+            overlayTransparency.BindValueChanged(e => OverlayTransparency.Enabled.Value = e.NewValue, true);
+            overlayBlurStrength.BindValueChanged(e => OverlayTransparency.BlurStrength.Value = e.NewValue, true);
+            overlayDimAmount.BindValueChanged(e => OverlayTransparency.DimAmount.Value = e.NewValue, true);
+
             var themeDropdown = new FormEnumDropdown<ThemeMode>
             {
                 Caption = ForkSettingsStrings.ThemeModeCaption,
@@ -100,6 +109,58 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 new SettingsItemV2(themeDropdown),
                 new SettingsItemV2(new FormCheckBox
                 {
+                    Caption = ForkSettingsStrings.UseSkinCursorOutsideGameplayCaption,
+                    HintText = ForkSettingsStrings.UseSkinCursorOutsideGameplayHint,
+                    Current = config.GetBindable<bool>(OsuSetting.ForkUseSkinCursorOutsideGameplay)
+                })
+                {
+                    Keywords = new[] { @"cursor", @"skin", @"menu", @"gameplay" },
+                },
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = ForkSettingsStrings.OverlayTransparencyCaption,
+                    HintText = ForkSettingsStrings.OverlayTransparencyHint,
+                    Current = overlayTransparency
+                })
+                {
+                    Keywords = new[] { @"transparency", @"transparent", @"glass", @"blur", @"overlay" },
+                },
+                new SettingsItemV2(new FormSliderBar<double>
+                {
+                    Caption = ForkSettingsStrings.OverlayBlurStrengthCaption,
+                    HintText = ForkSettingsStrings.OverlayBlurStrengthHint,
+                    Current = overlayBlurStrength,
+                    KeyboardStep = 0.01f,
+                    DisplayAsPercentage = true
+                }),
+                new SettingsItemV2(new FormSliderBar<double>
+                {
+                    Caption = ForkSettingsStrings.OverlayDimCaption,
+                    HintText = ForkSettingsStrings.OverlayDimHint,
+                    Current = overlayDimAmount,
+                    KeyboardStep = 0.01f,
+                    DisplayAsPercentage = true
+                }),
+                new SettingsItemV2(new FormEnumDropdown<ForkMenuLogo>
+                {
+                    Caption = ForkSettingsStrings.MenuLogoCaption,
+                    HintText = ForkSettingsStrings.MenuLogoHint,
+                    Current = config.GetBindable<ForkMenuLogo>(OsuSetting.ForkMenuLogo)
+                }),
+                new SettingsItemV2(new FormEnumDropdown<ForkMenuLogoGradient>
+                {
+                    Caption = ForkSettingsStrings.MenuLogoGradientCaption,
+                    HintText = ForkSettingsStrings.MenuLogoGradientHint,
+                    Current = config.GetBindable<ForkMenuLogoGradient>(OsuSetting.ForkMenuLogoGradient)
+                }),
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = ForkSettingsStrings.MenuLogoTrianglesCaption,
+                    HintText = ForkSettingsStrings.MenuLogoTrianglesHint,
+                    Current = config.GetBindable<bool>(OsuSetting.ForkMenuLogoTriangles)
+                }),
+                new SettingsItemV2(new FormCheckBox
+                {
                     Caption = ForkSettingsStrings.DisableInterfaceShearCaption,
                     HintText = ForkSettingsStrings.DisableInterfaceShearHint,
                     Current = disableShear
@@ -128,7 +189,25 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     HintText = ForkSettingsStrings.ShowModsInPresetListHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkShowModsInPresetList)
                 }),
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = ForkSettingsStrings.EnhancedRankingRowsCaption,
+                    HintText = ForkSettingsStrings.EnhancedRankingRowsHint,
+                    Current = config.GetBindable<bool>(OsuSetting.ForkEnhancedRankingRows)
+                })
+                {
+                    Keywords = new[] { @"ranking", @"leaderboard", @"avatar", @"rows", @"top" },
+                },
 
+                new SettingsItemV2(new FormEnumDropdown<ForkSongSelectStyle>
+                {
+                    Caption = ForkSettingsStrings.SongSelectStyleCaption,
+                    HintText = ForkSettingsStrings.SongSelectStyleHint,
+                    Current = config.GetBindable<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle)
+                })
+                {
+                    Keywords = new[] { @"song select", @"carousel", @"preview", @"legacy", @"old", @"v1", @"2024", @"beatmap cards", @"classic", @"skin", @"infinite", @"glass", @"zoom", @"pan", @"drift" },
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.OldCarouselPreviewCaption,
@@ -137,6 +216,15 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 })
                 {
                     Keywords = new[] { @"song select", @"carousel", @"preview", @"legacy", @"old", @"beatmap cards" },
+                },
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = ForkSettingsStrings.AutoHideToolbarCaption,
+                    HintText = ForkSettingsStrings.AutoHideToolbarHint,
+                    Current = config.GetBindable<bool>(OsuSetting.ForkAutoHideToolbar)
+                })
+                {
+                    Keywords = new[] { @"toolbar", @"top bar", @"auto", @"hide", @"reveal", @"hover", @"legacy", @"stable" },
                 },
                 new SettingsItemV2(new FormSliderBar<double>
                 {

@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup Condition="'$(OS)' != 'Windows_NT' and '$(RuntimeIdentifier)' == '' and '$([MSBuild]::IsOSPlatform(&quot;Linux&quot;))' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe') and '$(TargetPlatformIdentifier)' == '' and !$(TargetFramework.Contains('-'))">
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+  </PropertyGroup>
+</Project>

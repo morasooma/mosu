@@ -30,6 +30,7 @@ namespace osu.Game.Rulesets.Mods
         public override float IconScale => 0.78f;
         public override ModType Type => ModType.Mosu;
         public override LocalisableString Description => MosuModsStrings.ModAudioEffectsDescription;
+        public override bool Ranked => true;
         public override bool ValidForFreestyleAsRequiredMod => true;
 
         [SettingSource(typeof(MosuModsStrings), nameof(MosuModsStrings.ModAudioEffectsPreset), nameof(MosuModsStrings.ModAudioEffectsPresetDescription), 0)]

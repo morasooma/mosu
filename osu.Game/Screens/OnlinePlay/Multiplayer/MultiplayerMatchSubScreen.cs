@@ -25,7 +25,9 @@ using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Chat;
+using osu.Game.Online.Legacy;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Dialog;
@@ -135,6 +137,9 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
         [Resolved]
         private MultiplayerClient client { get; set; } = null!;
 
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
+
         [Resolved]
         private OsuGame? game { get; set; }
 
@@ -209,7 +214,8 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                                         {
                                             new MultiplayerRoomPanel(room)
                                             {
-                                                OnEdit = () => settingsOverlay.Show()
+                                                OnEdit = () => settingsOverlay.Show(),
+                                                ShowDescription = true,
                                             }
                                         },
                                         null,
@@ -282,7 +288,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                                                                     {
                                                                         new Drawable[]
                                                                         {
-                                                                            new SectionHeader(OnlinePlayStrings.MultiplayerBeatmapQueue)
+                                                                            new SectionHeader(stableBanchoSession != null ? "Beatmap" : OnlinePlayStrings.MultiplayerBeatmapQueue)
                                                                         },
                                                                         new Drawable[]
                                                                         {
@@ -290,7 +296,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                                                                             {
                                                                                 RelativeSizeAxes = Axes.X,
                                                                                 Height = 30,
-                                                                                Text = "Add item",
+                                                                                Text = stableBanchoSession != null ? "Change beatmap" : "Add item",
                                                                                 Action = () => ShowSongSelect()
                                                                             },
                                                                         },
@@ -588,8 +594,18 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
             // Start the gameplay session.
             sampleStart?.Play();
 
-            int[] userIds = client.CurrentMatchPlayingUserIds.ToArray();
-            MultiplayerRoomUser[] users = userIds.Select(id => client.Room.Users.First(u => u.UserID == id)).ToArray();
+            // WaitingForLoad users remain in CurrentMatchPlayingUserIds even if they miss the
+            // load deadline. Tag Co-op's server-frozen order contains only users that actually
+            // entered gameplay; using it also guarantees that one of them owns the single score.
+            int[] currentMatchUserIds = client.CurrentMatchPlayingUserIds.ToArray();
+            var currentMatchUserIdSet = currentMatchUserIds.ToHashSet();
+            int[] userIds = room.Type == MatchType.TagCoop
+                            && client.Room.MatchState is TagCoopRoomState { PlayerOrder.Length: > 0 } tagCoopState
+                ? tagCoopState.PlayerOrder.Where(currentMatchUserIdSet.Contains).Distinct().ToArray()
+                : currentMatchUserIds;
+            MultiplayerRoomUser[] users = userIds.Select(id => client.Room.Users.FirstOrDefault(u => u.UserID == id))
+                                                 .OfType<MultiplayerRoomUser>()
+                                                 .ToArray();
 
             // fallback is to allow this class to operate when there is no parent OnlineScreen (testing purposes).
             var targetScreen = (Screen?)parentScreen ?? this;
@@ -677,9 +693,10 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
 
             // Update global gameplay state to correspond to the new selection.
             // Retrieve the corresponding local beatmap, since we can't directly use the playlist's beatmap info
-            var localBeatmap = !string.IsNullOrEmpty(item.BeatmapChecksum)
-                ? beatmapManager.QueryBeatmap(b => b.MD5Hash == item.BeatmapChecksum)
-                : beatmapManager.QueryOnlineBeatmapId(gameplayBeatmapId);
+            // In freestyle rooms the local user's beatmap may differ from the playlist item,
+            // so the playlist checksum only applies when both IDs refer to the same beatmap.
+            string? expectedChecksum = gameplayBeatmapId == item.BeatmapID ? item.BeatmapChecksum : null;
+            var localBeatmap = beatmapManager.QueryOnlineBeatmapId(gameplayBeatmapId, expectedChecksum);
             Beatmap.Value = beatmapManager.GetWorkingBeatmap(localBeatmap);
             Ruleset.Value = ruleset;
             Mods.Value = client.LocalUser.Mods.Concat(item.RequiredMods).Select(m => m.ToMod(rulesetInstance)).ToArray();

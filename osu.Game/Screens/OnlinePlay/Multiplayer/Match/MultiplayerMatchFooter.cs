@@ -4,6 +4,7 @@
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Game.Online.Legacy;
 
 namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
 {
@@ -11,6 +12,9 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
     {
         private const float ready_button_width = 600;
         private const float spectate_button_width = 200;
+
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
 
         public MultiplayerMatchFooter()
         {
@@ -20,6 +24,8 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
         [BackgroundDependencyLoader]
         private void load()
         {
+            bool supportsSpectating = stableBanchoSession == null;
+
             InternalChild = new GridContainer
             {
                 RelativeSizeAxes = Axes.Both,
@@ -28,10 +34,10 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
                     new Drawable?[]
                     {
                         null,
-                        new MultiplayerSpectateButton
+                        supportsSpectating ? new MultiplayerSpectateButton
                         {
                             RelativeSizeAxes = Axes.Both,
-                        },
+                        } : null,
                         null,
                         new MatchStartControl
                         {
@@ -43,8 +49,8 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
                 ColumnDimensions = new[]
                 {
                     new Dimension(),
-                    new Dimension(maxSize: spectate_button_width),
-                    new Dimension(GridSizeMode.Absolute, 5),
+                    supportsSpectating ? new Dimension(maxSize: spectate_button_width) : new Dimension(GridSizeMode.Absolute, 0),
+                    new Dimension(GridSizeMode.Absolute, supportsSpectating ? 5 : 0),
                     new Dimension(maxSize: ready_button_width),
                     new Dimension()
                 }

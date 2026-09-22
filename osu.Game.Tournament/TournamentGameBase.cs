@@ -57,8 +57,7 @@ namespace osu.Game.Tournament
         {
             base.SetHost(host);
 
-            if (host.Window != null)
-                host.Window.Title = $"{Name} [tournament client]";
+            host.Window?.Title = $"{Name} [tournament client]";
         }
 
         private TournamentSpriteText initialisationText = null!;
@@ -199,7 +198,12 @@ namespace osu.Game.Tournament
 
             Schedule(() =>
             {
-                Ruleset.BindTo(ladder.Ruleset);
+                ladder.Ruleset.BindValueChanged(change =>
+                {
+                    if (change.NewValue != null)
+                        Ruleset.Value = change.NewValue;
+                }, true);
+                Ruleset.BindValueChanged(change => ladder.Ruleset.Value = change.NewValue);
 
                 dependencies.Cache(ladder);
                 dependencies.CacheAs<MatchIPCInfo>(ipc = new FileBasedIPC());

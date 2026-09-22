@@ -11,6 +11,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Input.Bindings;
 using osu.Framework.Input.Events;
 using osu.Framework.Testing;
+using osu.Framework.Timing;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Configuration;
@@ -42,6 +43,7 @@ namespace osu.Game.Rulesets.Osu.Tests
         [SetUpSteps]
         public void SetUpSteps()
         {
+            AddStep("reset fork config", resetRelaxConfig);
             AddStep("create test scene", () =>
             {
                 var hitObject = new HitCircle
@@ -75,10 +77,10 @@ namespace osu.Game.Rulesets.Osu.Tests
                 };
 
                 playfield.HitObjectContainer.Add(hitCircle = new DrawableHitCircle(hitObject));
+                hitCircle.CheckHittable = new StartTimeOrderedHitPolicy { HitObjectContainer = playfield.HitObjectContainer }.CheckHittable;
                 osuInputManager.KeyBindingContainer.Add(actionListener = new RecordedActionListener());
             });
 
-            AddStep("reset fork config", resetRelaxConfig);
             AddUntilStep("scene loaded", () => osuInputManager.IsLoaded && hitCircle.IsLoaded);
             AddUntilStep("aim assist controller loaded", () =>
             {
@@ -149,14 +151,14 @@ namespace osu.Game.Rulesets.Osu.Tests
         [Test]
         public void TestRelaxUsesConfiguredTimingAndHold()
         {
-            double startTime = 0;
-
+            ManualClock clock = prepareManualRelax();
             configureRelax(baseOffset: 20, timingVariance: 0, holdTime: 30, syncRadius: 0, maxSyncDelay: 0);
-
-            AddStep("store start time", () => startTime = hitCircle.HitObject.StartTime);
-            AddStep("move cursor to gameplay target", () => osuInputManager.HandleUserCursorMovement(playfield.GamefieldToScreenSpace(hitCircle.HitObject.StackedPosition)));
-            AddUntilStep("press and release logged", () => relaxController.InputEvents.Count >= 2);
-            AddAssert("press uses configured offset", () => firstPress().Time - startTime, () => Is.EqualTo(20).Within(35));
+            AddStep("move cursor to gameplay target", () => InputManager.MoveMouseTo(playfield.GamefieldToScreenSpace(hitCircle.HitObject.StackedPosition)));
+            AddStep("advance to press", () => clock.CurrentTime = 1020);
+            AddAssert("circle hit", () => hitCircle.IsHit);
+            AddStep("advance past release", () => clock.CurrentTime = 1055);
+            AddAssert("press and release logged", () => relaxController.InputEvents.Count == 2);
+            AddAssert("press uses configured offset", () => firstPress().Time - hitCircle.HitObject.StartTime, () => Is.EqualTo(20).Within(35));
             AddAssert("release uses configured hold", () => firstRelease().Time - firstPress().Time, () => Is.EqualTo(30).Within(20));
         }
 
@@ -187,52 +189,101 @@ namespace osu.Game.Rulesets.Osu.Tests
             });
         }
 
-        public void TestRelaxForcesPressAfterMaxSyncDelay()
+        [TestCase(0, 0, 6)]
+        [TestCase(60, 45, 6)]
+        [TestCase(60, 45, 180)]
+        public void TestRelaxPressGuardWaitsForAimAfterSyncTimeout(float syncRadius, double maxSyncDelay, float outsideDistance)
         {
-            double startTime = 0;
-            float localRadius = 0;
-            Vector2 localPosition = Vector2.Zero;
-
-            configureRelax(baseOffset: 0, timingVariance: 0, holdTime: 18, syncRadius: 60, maxSyncDelay: 45);
-
-            AddStep("store timing and local radius", () =>
-            {
-                startTime = hitCircle.HitObject.StartTime;
-                localRadius = (float)hitCircle.HitObject.Radius;
-                localPosition = hitCircle.HitObject.StackedPosition;
-            });
-            AddStep("move cursor far from note first", () => osuInputManager.HandleUserCursorMovement(playfield.GamefieldToScreenSpace(localPosition + new Vector2(localRadius + 80, 0))));
-            AddStep("stay inside sync ring", () => osuInputManager.HandleUserCursorMovement(playfield.GamefieldToScreenSpace(localPosition + new Vector2(localRadius + 18, 0))));
-            AddUntilStep("press logged after sync timeout", () => relaxController.InputEvents.Any(e => e.IsPress));
-            AddAssert("press is delayed inside sync ring", () => firstPress().Time - startTime, () => Is.GreaterThan(10));
-            AddAssert("press stays within timeout envelope", () => firstPress().Time - startTime, () => Is.LessThan(90));
+            ManualClock clock = prepareManualRelax();
+            configureRelax(baseOffset: 0, syncRadius: syncRadius, maxSyncDelay: maxSyncDelay);
+            AddStep("курсор вне хитбокса", () => InputManager.MoveMouseTo(
+                playfield.GamefieldToScreenSpace(hitCircle.HitObject.StackedPosition + new Vector2((float)hitCircle.HitObject.Radius + outsideDistance, 0))));
+            AddStep("таймаут истёк", () => clock.CurrentTime = 1060);
+            AddAssert("клика мимо нет", () => pressCount() == 0);
+            AddStep("довести курсор", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre));
+            AddStep("время реакции прошло", () => clock.CurrentTime = 1090);
+            AddAssert("попадание зарегистрировано", () => $"hit={hitCircle.IsHit}, presses={pressCount()}, time={relaxController.Time.Current}, hovered={hitCircle.HitArea.IsHovered}, pending={relaxController.IsTargetAwaitingPress(hitCircle.HitObject)}",
+                () => Is.EqualTo("hit=True, presses=1, time=1090, hovered=True, pending=False"));
         }
 
         [Test]
         public void TestRelaxDoesNotOvertakeDelayedQueueHead()
         {
-            DrawableHitCircle first = null!;
             DrawableHitCircle second = null!;
-            double firstStartTime = 0;
-
-            AddStep("replace with close pair", () =>
+            ManualClock clock = prepareManualRelax();
+            AddStep("добавить следующую ноту", () =>
             {
-                double start = relaxController.Time.Current + 850;
-
-                replaceHitObjects(
-                    first = createCircle(new Vector2(210, 192), start),
-                    second = createCircle(new Vector2(255, 192), start + 45));
+                second = createCircle(new Vector2(350, 192), 1120);
+                second.CheckHittable = new StartTimeOrderedHitPolicy { HitObjectContainer = playfield.HitObjectContainer }.CheckHittable;
+                playfield.HitObjectContainer.Add(second);
             });
-            AddUntilStep("pair loaded", () => first.IsLoaded && second.IsLoaded);
+            AddUntilStep("пара загружена", () => second.IsLoaded);
+            configureRelax(syncRadius: 70, maxSyncDelay: 80);
+            AddStep("курсор на следующей ноте", () => InputManager.MoveMouseTo(second.ScreenSpaceDrawQuad.Centre));
+            AddStep("первая нота ещё доступна", () => clock.CurrentTime = 1130);
+            AddAssert("обгона нет", () => pressCount() == 0);
+            AddStep("окно первой ноты закончилось", () => clock.CurrentTime = 1160);
+            AddStep("время реакции прошло", () => clock.CurrentTime = 1190);
+            AddAssert("первая пропущена, вторая нажата", () => $"firstJudged={hitCircle.AllJudged}, firstHit={hitCircle.IsHit}, secondHit={second.IsHit}, presses={pressCount()}, time={relaxController.Time.Current}, hovered={second.HitArea.IsHovered}",
+                () => Is.EqualTo("firstJudged=True, firstHit=False, secondHit=True, presses=1, time=1190, hovered=True"));
+            AddAssert("клик относится ко второй ноте", () => firstPress().TargetStartTime == second.HitObject.StartTime);
+        }
 
-            configureRelax(baseOffset: 0, timingVariance: 0, holdTime: 10, syncRadius: 70, maxSyncDelay: 80,
-                alternateThreshold: 100, misaltProbability: 0);
+        [Test]
+        public void TestRelaxPressGuardRejectsEarlyMissWindow()
+        {
+            ManualClock clock = prepareManualRelax();
+            configureRelax(baseOffset: -60);
+            AddStep("сузить окно попадания", () => hitCircle.HitObject.HitWindows!.CustomSpeedMultiplier = 0.25);
+            AddStep("навести курсор", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre));
+            AddStep("ранний тайминг даёт Miss", () => clock.CurrentTime = 940);
+            AddAssert("ранний клик не потрачен", () => pressCount() == 0 && !hitCircle.AllJudged);
+            AddStep("наступило время ноты", () => clock.CurrentTime = 1000);
+            AddAssert("нота нажата в допустимом окне", () => hitCircle.IsHit && pressCount() == 1);
+        }
 
-            AddStep("store first start time", () => firstStartTime = first.HitObject.StartTime);
-            AddStep("move cursor to second note", () => InputManager.MoveMouseTo(second.ScreenSpaceDrawQuad.Centre));
-            AddUntilStep("first press logged", () => relaxController.InputEvents.Any(e => e.IsPress));
-            AddAssert("earlier note stays queue head", () => firstPress().TargetStartTime, () => Is.EqualTo(firstStartTime).Within(1));
-            AddAssert("queue head waited instead of being overtaken", () => firstPress().Time - firstStartTime, () => Is.GreaterThan(20));
+        [Test]
+        public void TestRelaxPressGuardRespectsNotelock()
+        {
+            ManualClock clock = prepareManualRelax();
+            configureRelax();
+            AddStep("заблокировать ноту", () => hitCircle.CheckHittable = (_, _, _) => ClickAction.Ignore);
+            AddStep("навести курсор", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre));
+            AddStep("наступило время ноты", () => clock.CurrentTime = 1000);
+            AddAssert("заблокированный клик не потрачен", () => pressCount() == 0);
+            AddStep("снять блокировку", () => hitCircle.CheckHittable = (_, _, _) => ClickAction.Hit);
+            AddAssert("план сохранился до попадания", () => hitCircle.IsHit && pressCount() == 1);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestRelaxPressGuardSkipsExpiredSliderHead(bool classic)
+        {
+            DrawableSlider slider = null!;
+            ManualClock clock = prepareManualRelax();
+            AddStep("заменить длинным слайдером", () =>
+            {
+                slider = createSlider(new Vector2(256, 192), 1000, 900, new Vector2(200, 0));
+                slider.HitObject.ClassicSliderBehaviour = classic;
+                replaceHitObjects(slider);
+            });
+            AddUntilStep("голова загружена", () => slider.HeadCircle.IsLoaded);
+            configureRelax();
+            AddStep("курсор вне головы", () => InputManager.MoveMouseTo(slider.HeadCircle.ScreenSpaceDrawQuad.Centre + new Vector2(200, 0)));
+            AddStep("голова просрочена, тело ещё активно", () => clock.CurrentTime = 1200);
+            AddStep("навести на просроченную голову", () => InputManager.MoveMouseTo(slider.HeadCircle.ScreenSpaceDrawQuad.Centre));
+            AddAssert("запоздалого клика нет", () => pressCount() == 0 && !relaxController.IsTargetAwaitingPress(slider.HitObject));
+        }
+
+        [Test]
+        public void TestRelaxPressGuardAllowsExplicitBlindTap()
+        {
+            ManualClock clock = prepareManualRelax();
+            configureRelax(syncRadius: 30, maxSyncDelay: 20);
+            AddStep("включить слепые нажатия", () => config.SetValue(OsuSetting.ForkRelaxBlindTapEnabled, true));
+            AddStep("увести курсор", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre + new Vector2(300, 0)));
+            AddStep("наступило время ноты", () => clock.CurrentTime = 1000);
+            AddAssert("явно разрешённый слепой клик сохранён", () => pressCount() == 1 && !hitCircle.IsHit);
         }
 
         [Test]
@@ -1008,32 +1059,16 @@ namespace osu.Game.Rulesets.Osu.Tests
         }
 
         [Test]
-        public void TestRelaxKeepsPendingPressAfterDrawableRemoval()
+        public void TestRelaxPressGuardDiscardsRemovedDrawable()
         {
-            DrawableHitCircle circle = null!;
-            double startTime = 0;
-            float radius = 0;
-
-            AddStep("replace with removable circle", () =>
-            {
-                double start = relaxController.Time.Current + 900;
-
-                replaceHitObjects(circle = createCircle(new Vector2(256, 192), start));
-            });
-            AddUntilStep("removable circle loaded", () => circle.IsLoaded);
-
-            configureRelax(baseOffset: 0, timingVariance: 0, holdTime: 12, syncRadius: 60, maxSyncDelay: 70);
-
-            AddStep("store timing and radius", () =>
-            {
-                startTime = circle.HitObject.StartTime;
-                radius = getHitCircleScreenRadius(circle);
-            });
-            AddStep("stay in sync ring", () => InputManager.MoveMouseTo(circle.ScreenSpaceDrawQuad.Centre + new Vector2(radius + 6, 0)));
-            AddUntilStep("sync delay started", () => relaxController.CurrentPendingSyncDelay > 0);
-            AddStep("remove drawable before timeout", () => playfield.HitObjectContainer.Remove(circle));
-            AddUntilStep("press still logged after removal", () => relaxController.InputEvents.Any(e => e.IsPress));
-            AddAssert("pending click survives drawable removal", () => firstPress().Time - startTime, () => Is.GreaterThan(35));
+            ManualClock clock = prepareManualRelax();
+            configureRelax(syncRadius: 60, maxSyncDelay: 70);
+            AddStep("курсор вне ноты", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre + new Vector2(100, 0)));
+            AddStep("приблизиться к времени клика", () => clock.CurrentTime = 990);
+            AddAssert("план создан", () => relaxController.IsTargetAwaitingPress(hitCircle.HitObject));
+            AddStep("удалить цель", () => playfield.HitObjectContainer.Remove(hitCircle));
+            AddStep("перейти за таймаут", () => clock.CurrentTime = 1100);
+            AddAssert("удалённая цель не порождает кликов", () => pressCount() == 0 && !relaxController.IsTargetAwaitingPress(hitCircle.HitObject));
         }
 
         [Test]
@@ -1540,6 +1575,158 @@ namespace osu.Game.Rulesets.Osu.Tests
                 (osuInputManager.CurrentState.Mouse.Position - osuInputManager.OriginalUserCursorPosition).Length, () => Is.GreaterThan(5f));
         }
 
+        [TestCase(0)]
+        [TestCase(22)]
+        public void TestRelaxAimTimingGentlyFollowsEarlyRawAim(double baseOffset)
+        {
+            ManualClock clock = prepareManualRelax();
+            double linkedTime = double.NaN;
+            configureRelax(baseOffset: baseOffset, syncRadius: 40, maxSyncDelay: 32);
+            AddStep("увести курсор перед ранним доведением", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre + new Vector2(200, 0)));
+            AddStep("приблизиться ко времени ноты", () => clock.CurrentTime = 970);
+            AddStep("довести курсор заранее", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre));
+            AddStep("запомнить время клика", () => relaxController.TryGetTargetLinkedPressTime(hitCircle.HitObject, out linkedTime));
+            AddAssert("доведение лишь немного сдвигает исходный план", () => linkedTime,
+                () => Is.GreaterThanOrEqualTo(1000 + baseOffset - 1.5).And.LessThan(1000 + baseOffset));
+            AddAssert("наведение не вызывает мгновенный клик", () => pressCount() == 0);
+            AddStep("дойти до времени клика", () => clock.CurrentTime = Math.Ceiling(linkedTime));
+            AddAssert("попадание сохраняет базовый ритм", () => hitCircle.IsHit && pressCount() == 1 && firstPress().Time < 1000 + baseOffset);
+        }
+
+        [Test]
+        public void TestRelaxAimTimingLeavesReactionGapAfterLateRawAim()
+        {
+            ManualClock clock = prepareManualRelax();
+            configureRelax(syncRadius: 40, maxSyncDelay: 32);
+            AddStep("увести курсор перед поздним доведением", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre + new Vector2(200, 0)));
+            AddStep("опоздать к ноте", () => clock.CurrentTime = 1030);
+            AddStep("довести курсор поздно", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre));
+            AddAssert("позднее доведение не даёт мгновенный клик", () => pressCount() == 0);
+            AddStep("дать время на нажатие", () => clock.CurrentTime = 1035);
+            AddAssert("позднее попадание зарегистрировано", () => hitCircle.IsHit && pressCount() == 1 && firstPress().Time > 1030);
+        }
+
+        [Test]
+        public void TestRelaxAimTimingKeepsRhythmWithParkedCursor()
+        {
+            ManualClock clock = prepareManualRelax();
+            configureRelax(syncRadius: 40, maxSyncDelay: 32);
+            AddStep("припарковать курсор за 100 мс", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre));
+            AddStep("приблизиться ко времени ноты", () => clock.CurrentTime = 990);
+            AddAssert("ожидание на ноте не сдвигает ритм", () =>
+                relaxController.TryGetTargetLinkedPressTime(hitCircle.HitObject, out double time) && time == 1000 && pressCount() == 0);
+            AddStep("наступило время ноты", () => clock.CurrentTime = 1000);
+            AddAssert("попадание по исходному ритму", () => hitCircle.IsHit && firstPress().Time == 1000);
+        }
+
+        [TestCase(0, 32)]
+        [TestCase(40, 0)]
+        public void TestRelaxAimTimingRespectsDisabledSync(float syncRadius, double maxSyncDelay)
+        {
+            ManualClock clock = prepareManualRelax();
+            configureRelax(baseOffset: 22, syncRadius: syncRadius, maxSyncDelay: maxSyncDelay);
+            AddStep("увести курсор", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre + new Vector2(200, 0)));
+            AddStep("время раннего доведения", () => clock.CurrentTime = 970);
+            AddStep("довести курсор", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre));
+            AddAssert("отключённая синхронизация сохраняет заданный offset", () =>
+                relaxController.TryGetTargetLinkedPressTime(hitCircle.HitObject, out double time) && time == 1022);
+            AddStep("время исходного клика", () => clock.CurrentTime = 1022);
+            AddAssert("попадание с заданным offset", () => hitCircle.IsHit && firstPress().Time == 1022);
+        }
+
+        [Test]
+        public void TestRelaxAimTimingRemembersParkedAimWhileEarlierNoteBlocksQueue()
+        {
+            ManualClock clock = prepareManualRelax();
+            DrawableHitCircle second = null!;
+            AddStep("добавить следующую ноту", () =>
+            {
+                second = createCircle(new Vector2(400, 192), 1040);
+                second.CheckHittable = new StartTimeOrderedHitPolicy { HitObjectContainer = playfield.HitObjectContainer }.CheckHittable;
+                playfield.HitObjectContainer.Add(second);
+            });
+            AddUntilStep("следующая нота загружена", () => second.IsLoaded);
+            configureRelax(syncRadius: 40, maxSyncDelay: 32);
+            AddStep("припарковать курсор на следующей ноте", () => InputManager.MoveMouseTo(second.ScreenSpaceDrawQuad.Centre));
+            AddStep("следующая нота уже готова", () => clock.CurrentTime = 1040);
+            AddAssert("ранняя нота удерживает очередь", () => pressCount() == 0);
+            AddStep("окно ранней ноты истекло", () => clock.CurrentTime = 1160);
+            AddAssert("очередь помнит прежнее наведение", () => second.IsHit && pressCount() == 1 && firstPress().Time == 1160);
+        }
+
+        [Test]
+        public void TestRelaxAimTimingDiscardsEarlyAimAfterLeavingTarget()
+        {
+            ManualClock clock = prepareManualRelax();
+            configureRelax(baseOffset: 22, syncRadius: 40, maxSyncDelay: 32);
+            AddStep("увести курсор", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre + new Vector2(200, 0)));
+            AddStep("время раннего доведения", () => clock.CurrentTime = 970);
+            AddStep("раннее доведение", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre));
+            AddStep("уйти с ноты до клика", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre + new Vector2(200, 0)));
+            AddStep("время раннего клика прошло", () => clock.CurrentTime = 999);
+            AddAssert("старое доведение сброшено", () =>
+                relaxController.TryGetTargetLinkedPressTime(hitCircle.HitObject, out double time) && time == 1022 && pressCount() == 0);
+            AddStep("вернуться поздно", () => clock.CurrentTime = 1030);
+            AddStep("повторно довести курсор", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre));
+            AddAssert("новое доведение имеет свою задержку", () => pressCount() == 0);
+            AddStep("дождаться нового клика", () => clock.CurrentTime = 1035);
+            AddAssert("только одно попадание после возвращения", () => hitCircle.IsHit && pressCount() == 1);
+        }
+
+        [Test]
+        public void TestRelaxAimTimingDoesNotUseVirtualCursorAsRawAim()
+        {
+            ManualClock clock = prepareManualRelax();
+            configureRelax(baseOffset: 22, syncRadius: 40, maxSyncDelay: 32);
+            AddStep("оставить сырой курсор снаружи", () => InputManager.MoveMouseTo(hitCircle.ScreenSpaceDrawQuad.Centre + new Vector2(200, 0)));
+            AddStep("время раннего доведения", () => clock.CurrentTime = 970);
+            AddStep("навести только виртуальный курсор", () => osuInputManager.MoveVirtualCursorTo(hitCircle.ScreenSpaceDrawQuad.Centre));
+            AddAssert("виртуальный курсор действительно внутри", () => hitCircle.HitArea.IsHovered
+                && (osuInputManager.OriginalUserCursorPosition - hitCircle.ScreenSpaceDrawQuad.Centre).Length > 100);
+            AddAssert("виртуальное доведение не сдвигает ритм игрока", () =>
+                relaxController.TryGetTargetLinkedPressTime(hitCircle.HitObject, out double time) && time == 1022);
+            AddStep("исходное время ещё не наступило", () => clock.CurrentTime = 1000);
+            AddAssert("преждевременного клика нет", () => pressCount() == 0);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestRelaxAimTimingHitsSliderHeadEarlyAndKeepsHold(bool classic)
+        {
+            ManualClock clock = prepareManualRelax();
+            DrawableSlider slider = null!;
+            double linkedTime = double.NaN;
+            AddStep("заменить цель слайдером", () =>
+            {
+                slider = createSlider(OsuPlayfield.BASE_SIZE / 2, 1000, 400, new Vector2(150, 0));
+                slider.HitObject.ClassicSliderBehaviour = classic;
+                replaceHitObjects(slider);
+            });
+            AddUntilStep("голова слайдера загружена", () => slider.HeadCircle.IsLoaded);
+            configureRelax(syncRadius: 40, maxSyncDelay: 32, holdTime: 30);
+            AddStep("увести курсор от головы", () => InputManager.MoveMouseTo(slider.HeadCircle.ScreenSpaceDrawQuad.Centre + new Vector2(200, 0)));
+            AddStep("время раннего доведения", () => clock.CurrentTime = 970);
+            AddStep("довести курсор на голову", () => InputManager.MoveMouseTo(slider.HeadCircle.ScreenSpaceDrawQuad.Centre));
+            AddStep("запомнить время клика", () => relaxController.TryGetTargetLinkedPressTime(slider.HitObject, out linkedTime));
+            AddAssert("голова получает раннее нажатие", () => linkedTime, () => Is.GreaterThan(970).And.LessThan(1000));
+            AddStep("дойти до раннего клика", () => clock.CurrentTime = Math.Ceiling(linkedTime));
+            AddAssert("голова засчитана", () => slider.HeadCircle.IsHit && pressCount() == 1);
+            AddStep("пройти обычное время удержания круга", () => clock.CurrentTime = 1080);
+            AddAssert("слайдер продолжает удерживаться", () => !relaxController.InputEvents.Any(e => !e.IsPress));
+        }
+
+        private ManualClock prepareManualRelax()
+        {
+            var clock = new ManualClock { CurrentTime = 900, Rate = 1 };
+            AddStep("установить управляемые часы", () =>
+            {
+                osuInputManager.Clock = new FramedClock(clock);
+                replaceHitObjects(hitCircle = createCircle(OsuPlayfield.BASE_SIZE / 2, 1000));
+            });
+            AddUntilStep("новая цель загружена", () => hitCircle.IsLoaded);
+            return clock;
+        }
+
         private void configureRelax(double baseOffset = 0, double timingVariance = 0, double dynamicDrift = 0, double holdTime = 18,
                                     double sliderTailOffset = 0, float syncRadius = 0, double maxSyncDelay = 0,
                                     double alternateThreshold = 100, double misaltProbability = 0, double? stableBpm = null, bool streamBlindMode = false)
@@ -1585,6 +1772,7 @@ namespace osu.Game.Rulesets.Osu.Tests
             config.SetValue(OsuSetting.ForkVirtualCursorInputDelay, false);
             config.SetValue(OsuSetting.ForkAimAssistEnabled, false);
             config.SetValue(OsuSetting.ForkRelaxEnabled, false);
+            config.SetValue(OsuSetting.ForkRelaxBlindTapEnabled, false);
             config.SetValue(OsuSetting.ForkRelaxBaseOffset, 0.0);
             config.SetValue(OsuSetting.ForkRelaxTimingVariance, 10.0);
             config.SetValue(OsuSetting.ForkRelaxDynamicDrift, 0.0);
@@ -1650,7 +1838,11 @@ namespace osu.Game.Rulesets.Osu.Tests
                 playfield.HitObjectContainer.Remove(existing);
 
             foreach (DrawableHitObject drawable in objects)
+            {
+                if (drawable is DrawableOsuHitObject osuDrawable)
+                    osuDrawable.CheckHittable = new StartTimeOrderedHitPolicy { HitObjectContainer = playfield.HitObjectContainer }.CheckHittable;
                 playfield.HitObjectContainer.Add(drawable);
+            }
         }
 
         private RelaxController.RelaxInputEvent firstPress() => relaxController.InputEvents.First(e => e.IsPress);

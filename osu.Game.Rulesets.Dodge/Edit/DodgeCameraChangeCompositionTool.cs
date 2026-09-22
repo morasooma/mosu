@@ -13,11 +13,12 @@ using osuTK.Graphics;
 
 namespace osu.Game.Rulesets.Dodge.Edit
 {
-    public class DodgeCameraChangeCompositionTool : CompositionTool
+    public class DodgeCameraChangeCompositionTool : CompositionTool<DodgeAction>
     {
         public DodgeCameraChangeCompositionTool()
             : base(DodgeEditorStrings.Camera)
         {
+            Action = DodgeAction.EditorCameraChangeTool;
             TooltipText = "Place camera scroll change";
         }
 

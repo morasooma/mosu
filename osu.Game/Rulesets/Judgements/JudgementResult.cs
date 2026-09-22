@@ -25,6 +25,12 @@ namespace osu.Game.Rulesets.Judgements
         public HitResult? VisualType;
 
         /// <summary>
+        /// Whether this result was generated locally as a timing-safe representation of a remote player.
+        /// Such results must not affect local timing diagnostics such as hit error meters.
+        /// </summary>
+        public bool IgnoreForHitErrorMeter;
+
+        /// <summary>
         /// The <see cref="HitObject"/> which was judged.
         /// </summary>
         public readonly HitObject HitObject;
@@ -126,6 +132,7 @@ namespace osu.Game.Rulesets.Judgements
         {
             Type = HitResult.None;
             VisualType = null;
+            IgnoreForHitErrorMeter = false;
             RawTime = null;
         }
 

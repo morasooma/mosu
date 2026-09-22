@@ -10,6 +10,7 @@ using osu.Framework.Bindables;
 using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Timing;
+using osu.Game.Online.Legacy;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Scoring;
@@ -55,6 +56,17 @@ namespace osu.Game.Online.Spectator
         public IReadOnlyList<Mod> Mods => scoreInfo?.Mods ?? Array.Empty<Mod>();
 
         public Func<ScoringMode, long> GetDisplayScore => mode => scoreInfo?.GetDisplayScore(mode) ?? TotalScore.Value;
+
+        public void ApplyStableFrame(StableBanchoScoreFrame frame)
+        {
+            int totalHits = frame.Count300 + frame.Count100 + frame.Count50 + frame.CountMiss;
+            Accuracy.Value = totalHits == 0
+                ? 1
+                : (frame.Count300 * 300d + frame.Count100 * 100d + frame.Count50 * 50d) / (totalHits * 300d);
+            Combo.Value = frame.CurrentCombo;
+            HighestCombo.Value = frame.MaxCombo;
+            TotalScore.Value = frame.TotalScore;
+        }
 
         private IClock? referenceClock;
 
@@ -126,7 +138,7 @@ namespace osu.Game.Online.Spectator
 
         private void onNewFrames(int incomingUserId, FrameDataBundle bundle)
         {
-            if (incomingUserId != userId)
+            if (incomingUserId != userId || bundle.Frames.Count == 0)
                 return;
 
             Schedule(() =>

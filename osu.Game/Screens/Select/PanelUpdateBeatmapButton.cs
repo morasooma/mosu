@@ -74,6 +74,9 @@ namespace osu.Game.Screens.Select
         {
             AutoSizeAxes = Axes.X;
             Height = 22f;
+            // A hidden button still needs to observe in-place Realm metadata updates so it can
+            // become visible when a newer server revision is discovered.
+            AlwaysPresent = true;
         }
 
         private Bindable<bool> preferNoVideo = null!;
@@ -140,6 +143,16 @@ namespace osu.Game.Screens.Select
         {
             base.LoadComplete();
             beatmapChanged();
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+
+            // Beatmap metadata is updated in-place by Realm after an online lookup. The panel
+            // itself does not get rebound in that case, so keep the button mode in sync here.
+            if (mode != getMode())
+                beatmapChanged();
         }
 
         private void beatmapChanged()
@@ -262,8 +275,15 @@ namespace osu.Game.Screens.Select
 
         private ButtonMode getMode()
         {
-            if (beatmap?.Metadata.IsServerExclusive() == true || beatmapSet.IsServerExclusive())
-                return ButtonMode.Hidden;
+            bool serverExclusive = beatmap?.OnlineID >= BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD
+                                   || beatmapSet?.OnlineID >= BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD
+                                   || beatmap?.Metadata.IsServerExclusive() == true
+                                   || beatmapSet.IsServerExclusive();
+
+            if (serverExclusive)
+                return beatmapSet?.OnlineID > 0 && beatmapSet.AllBeatmapsUpToDate == false
+                    ? ButtonMode.Update
+                    : ButtonMode.Hidden;
 
             if (beatmap?.OnlineID <= 0)
                 return ButtonMode.Help;

@@ -50,7 +50,7 @@ namespace osu.Game.Overlays.BeatmapSet
         protected const float TRANSITION_DURATION = 250;
 
         [Resolved]
-        private OverlayColourProvider colourProvider { get; set; }
+        private OverlayColourProvider colourProvider { get; set; } = null!;
 
         protected MetadataSection(MetadataType type, Action<T>? searchAction = null)
         {

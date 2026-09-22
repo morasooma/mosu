@@ -466,6 +466,12 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
             {
                 base.Update();
 
+                // A newly-created room has no playlist item until the user chooses a beatmap.
+                // Keep Tag Co-op visible during that initial state, then hide it only when a
+                // selected item explicitly uses a ruleset other than osu!standard.
+                bool playlistSupportsTagCoop = drawablePlaylist.Items.All(item => item.RulesetID == 0);
+                TypePicker.TagCoopAvailable = playlistSupportsTagCoop;
+
                 ApplyButton.Enabled.Value = room.Playlist.Count > 0 && NameField.Text.Length > 0 && !operationInProgress.Value;
                 playlistContainer.Alpha = room.RoomID == null ? 1 : 0;
             }
@@ -473,6 +479,9 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
             private void apply()
             {
                 if (!ApplyButton.Enabled.Value)
+                    return;
+
+                if (TypePicker.Current.Value == MatchType.TagCoop && drawablePlaylist.Items.Any(item => item.RulesetID != 0))
                     return;
 
                 byte? maxParticipants = maximumParticipantsCheckbox.Current.Value ? maximumParticipantsSliderBar.Current.Value : null;

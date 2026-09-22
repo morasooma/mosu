@@ -18,8 +18,8 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
             Add(new SettingsButtonV2
             {
                 Text = ForkSettingsStrings.CommunityTgChannel,
-                TooltipText = @"https://t.me/osufork",
-                Action = () => game?.OpenUrlExternally(@"https://t.me/osufork")
+                TooltipText = @"https://t.me/morasooma",
+                Action = () => game?.OpenUrlExternally(@"https://t.me/morasooma")
             });
 
             Add(new SettingsButtonV2

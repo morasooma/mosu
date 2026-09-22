@@ -34,6 +34,8 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         public bool SlowActive { get; private set; }
 
+        private bool trailVisible = true;
+
         public int MissFlashCount { get; private set; }
 
         public DodgePlayerTrail Trail { get; }
@@ -120,7 +122,7 @@ namespace osu.Game.Rulesets.Dodge.UI
             if (replayState?.PlayerPosition is Vector2 replayPosition)
             {
                 Position = ClampToArena(replayPosition, ArenaPosition, ArenaSize, PlayerSize, ArenaRotation);
-                Trail.UpdatePosition(Position, Time.Current);
+                updateTrail(replayPosition);
                 return;
             }
 
@@ -130,7 +132,23 @@ namespace osu.Game.Rulesets.Dodge.UI
 
             // Apply camera drift first so input acts on the already-scrolled position.
             Position = CalculatePosition(Position + cameraDelta, direction, SlowActive, Clock.ElapsedFrameTime, ArenaPosition, ArenaSize, MovementSpeed, PlayerSize, ArenaRotation);
-            Trail.UpdatePosition(Position, Time.Current);
+            updateTrail(Position);
+        }
+
+        private void updateTrail(Vector2 position)
+        {
+            // Map triggers and the user's global setting gate the trail; a state change
+            // resets segments so stale pieces never linger after re-enabling.
+            bool visible = playfield?.TrailVisible ?? true;
+
+            if (visible != trailVisible)
+            {
+                trailVisible = visible;
+                Trail.Reset(position, Time.Current);
+            }
+
+            if (visible)
+                Trail.UpdatePosition(position, Time.Current);
         }
 
         public static Vector2 CalculatePosition(Vector2 currentPosition, Vector2 direction, bool slow, double elapsedMilliseconds)
@@ -196,6 +214,11 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         public bool OnPressed(KeyBindingPressEvent<DodgeAction> e)
         {
+            // Non-movement actions (for example ToggleHud) are handled by the
+            // playfield. Do not consume them here before they can bubble up.
+            if (e.Action == DodgeAction.ToggleHud)
+                return false;
+
             setPressed(e.Action, true);
             return true;
         }

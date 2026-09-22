@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,14 +21,22 @@ namespace osu.Game.Database
         where TLookup : notnull
     {
         private readonly ConcurrentDictionary<TLookup, TValue?> cache = new ConcurrentDictionary<TLookup, TValue?>();
+        private readonly object cacheOrderLock = new object();
+        private readonly LinkedList<TLookup> cacheOrder = new LinkedList<TLookup>();
+        private readonly Dictionary<TLookup, LinkedListNode<TLookup>> cacheNodes = new Dictionary<TLookup, LinkedListNode<TLookup>>();
 
         private readonly GlobalStatistic<MemoryCachingStatistics> statistics;
 
         protected virtual bool CacheNullValues => true;
 
+        /// <summary>
+        /// Optional bound for caches holding large computed values. Defaults to unlimited for existing consumers.
+        /// </summary>
+        protected virtual int MaximumCacheEntries => int.MaxValue;
+
         protected MemoryCachingComponent()
         {
-            statistics = GlobalStatistics.Get<MemoryCachingStatistics>(nameof(MemoryCachingComponent<TLookup, TValue>), GetType().ReadableName());
+            statistics = GlobalStatistics.Get<MemoryCachingStatistics>(nameof(MemoryCachingComponent<,>), GetType().ReadableName());
             statistics.Value = new MemoryCachingStatistics();
         }
 
@@ -42,6 +51,18 @@ namespace osu.Game.Database
             if (CheckExists(lookup, out TValue? existing))
             {
                 statistics.Value.HitCount++;
+                if (MaximumCacheEntries < int.MaxValue)
+                {
+                    lock (cacheOrderLock)
+                    {
+                        if (cacheNodes.TryGetValue(lookup, out LinkedListNode<TLookup>? node))
+                        {
+                            cacheOrder.Remove(node);
+                            cacheOrder.AddLast(node);
+                        }
+                    }
+                }
+
                 return existing;
             }
 
@@ -53,12 +74,37 @@ namespace osu.Game.Database
             statistics.Value.MissCount++;
 
             if (computed != null || CacheNullValues)
-            {
-                cache[lookup] = computed;
-                statistics.Value.Usage = cache.Count;
-            }
+                StoreValue(lookup, computed);
 
             return computed;
+        }
+
+        /// <summary>
+        /// Stores a value produced by an alternate lookup path in this cache.
+        /// </summary>
+        protected void StoreValue(TLookup lookup, TValue? value)
+        {
+            lock (cacheOrderLock)
+            {
+                cache[lookup] = value;
+                if (MaximumCacheEntries < int.MaxValue)
+                {
+                    if (cacheNodes.Remove(lookup, out LinkedListNode<TLookup>? previousNode))
+                        cacheOrder.Remove(previousNode);
+
+                    cacheNodes[lookup] = cacheOrder.AddLast(lookup);
+
+                    while (cacheNodes.Count > MaximumCacheEntries)
+                    {
+                        TLookup oldest = cacheOrder.First!.Value;
+                        cacheOrder.RemoveFirst();
+                        cacheNodes.Remove(oldest);
+                        cache.TryRemove(oldest, out _);
+                    }
+                }
+
+                statistics.Value.Usage = cache.Count;
+            }
         }
 
         /// <summary>
@@ -67,13 +113,20 @@ namespace osu.Game.Database
         /// <param name="matchKeyPredicate">The predicate to decide which keys should be invalidated.</param>
         protected void Invalidate(Func<TLookup, bool> matchKeyPredicate)
         {
-            foreach (var kvp in cache)
+            lock (cacheOrderLock)
             {
-                if (matchKeyPredicate(kvp.Key))
-                    cache.TryRemove(kvp.Key, out _);
-            }
+                foreach (var kvp in cache)
+                {
+                    if (!matchKeyPredicate(kvp.Key))
+                        continue;
 
-            statistics.Value.Usage = cache.Count;
+                    cache.TryRemove(kvp.Key, out _);
+                    if (cacheNodes.Remove(kvp.Key, out LinkedListNode<TLookup>? node))
+                        cacheOrder.Remove(node);
+                }
+
+                statistics.Value.Usage = cache.Count;
+            }
         }
 
         /// <summary>
@@ -81,8 +134,13 @@ namespace osu.Game.Database
         /// </summary>
         public virtual void Clear()
         {
-            cache.Clear();
-            statistics.Value.Usage = 0;
+            lock (cacheOrderLock)
+            {
+                cache.Clear();
+                cacheOrder.Clear();
+                cacheNodes.Clear();
+                statistics.Value.Usage = 0;
+            }
         }
 
         protected bool CheckExists(TLookup lookup, [MaybeNullWhen(false)] out TValue value) =>

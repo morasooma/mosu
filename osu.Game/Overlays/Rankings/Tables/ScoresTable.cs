@@ -25,11 +25,11 @@ namespace osu.Game.Overlays.Rankings.Tables
 
         protected override Drawable[] CreateUniqueContent(UserStatistics item) => new Drawable[]
         {
-            new ColouredRowText
+            new ColouredRowText(TextSize)
             {
                 Text = item.TotalScore.ToLocalisableString(@"N0"),
             },
-            new RowText
+            new RowText(TextSize)
             {
                 Text = item.RankedScore.ToLocalisableString(@"N0")
             }

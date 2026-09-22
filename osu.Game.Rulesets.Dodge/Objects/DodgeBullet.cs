@@ -15,7 +15,7 @@ namespace osu.Game.Rulesets.Dodge.Objects
     /// <summary>
     /// The first Dodge gameplay object: a bullet moving linearly between two points.
     /// </summary>
-    public class DodgeBullet : DodgeHitObject, IHasPosition, IHasDuration, IEditorTimelineEndTimeAdjustable
+    public class DodgeBullet : DodgeHitObject, IHasPosition, IHasDuration, IEditorTimelineEndTimeAdjustable, IContributesToGameplayDuration
     {
         public const float SIZE = 12;
 
@@ -53,18 +53,25 @@ namespace osu.Game.Rulesets.Dodge.Objects
         public void SetEditorTimelineEndTime(double endTime)
             => Duration = Math.Max(0, endTime - StartTime);
 
-        public double MovementEndTime => ContinueUntilExit
-            ? DodgeTrajectory.CalculateExitTime(
-                StartTime,
-                Duration,
-                Position,
-                EndPosition,
-                BulletSize,
-                MovementType,
-                WaveAmplitude,
-                WaveCycles,
-                WavePhase)
-            : EndTime;
+        public double MovementEndTime
+        {
+            get
+            {
+                double exitTime = DodgeTrajectory.CalculateExitTime(
+                    StartTime,
+                    Duration,
+                    Position,
+                    EndPosition,
+                    BulletSize,
+                    MovementType,
+                    WaveAmplitude,
+                    WaveCycles,
+                    WavePhase,
+                    MovementEasing);
+
+                return ContinueUntilExit ? exitTime : EndTime;
+            }
+        }
 
         public Vector2 TrajectoryEndPosition => ContinueUntilExit
             ? DodgeTrajectory.CalculateExitPosition(
@@ -74,7 +81,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
                 MovementType,
                 WaveAmplitude,
                 WaveCycles,
-                WavePhase)
+                WavePhase,
+                MovementEasing)
             : EndPosition;
 
         protected override void ApplyDefaultsToSelf(ControlPointInfo controlPointInfo, IBeatmapDifficultyInfo difficulty)
@@ -111,7 +119,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
                 MovementType,
                 WaveAmplitude,
                 WaveCycles,
-                WavePhase);
+                WavePhase,
+                MovementEasing);
         }
 
         public Vector2 DirectionAt(double time)
@@ -126,7 +135,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
                 MovementType,
                 WaveAmplitude,
                 WaveCycles,
-                WavePhase);
+                WavePhase,
+                MovementEasing);
         }
 
         public static bool IntersectsPlayer(Vector2 bulletPosition, Vector2 playerPosition, float bulletSize = SIZE, float playerSize = UI.DodgePlayer.SIZE)

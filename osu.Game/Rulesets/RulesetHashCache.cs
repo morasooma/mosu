@@ -18,7 +18,15 @@ namespace osu.Game.Rulesets
                     continue;
 
                 Ruleset instance = rulesetInfo.CreateInstance();
-                using var str = File.OpenRead(instance.GetType().Assembly.Location);
+                string assemblyLocation = instance.GetType().Assembly.Location;
+
+                // Bundled assemblies do not have a readable on-disk location on Android.
+                // Omitting the hash is preferable to preventing the game from starting;
+                // callers already treat missing ruleset hashes as optional.
+                if (string.IsNullOrEmpty(assemblyLocation) || !File.Exists(assemblyLocation))
+                    continue;
+
+                using var str = File.OpenRead(assemblyLocation);
                 RulesetsHashes[instance.ShortName] = str.ComputeMD5Hash();
             }
         }

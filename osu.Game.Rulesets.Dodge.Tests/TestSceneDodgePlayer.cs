@@ -1,15 +1,22 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
+using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using osu.Framework.Allocation;
+using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
+using osu.Framework.Audio.Track;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Rendering;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
+using osu.Framework.Input;
+using osu.Framework.IO.Stores;
+using osu.Framework.Platform;
 using osu.Framework.Testing;
 using osu.Framework.Timing;
 using osu.Framework.Utils;
@@ -19,6 +26,7 @@ using osu.Game.Rulesets.Dodge.Beatmaps;
 using osu.Game.Rulesets.Dodge.Objects;
 using osu.Game.Rulesets.Dodge.Objects.Drawables;
 using osu.Game.Rulesets.Dodge.Mods;
+using osu.Game.Rulesets.Dodge.Scoring;
 using osu.Game.Rulesets.Dodge.Skinning;
 using osu.Game.Rulesets.Dodge.Skinning.Components;
 using osu.Game.Rulesets.Dodge.UI;
@@ -26,6 +34,7 @@ using osu.Game.Rulesets.Scoring;
 using osu.Game.Skinning;
 using osu.Game.Tests.Visual;
 using osuTK;
+using osuTK.Graphics;
 using osuTK.Input;
 
 namespace osu.Game.Rulesets.Dodge.Tests
@@ -35,6 +44,9 @@ namespace osu.Game.Rulesets.Dodge.Tests
     {
         [Resolved]
         private IRenderer renderer { get; set; } = null!;
+
+        [Resolved]
+        private AudioManager audioManager { get; set; } = null!;
 
         [Test]
         public void TestArenaAndPlayerInput()
@@ -52,6 +64,9 @@ namespace osu.Game.Rulesets.Dodge.Tests
             AddUntilStep("wait for ruleset load", () => drawableRuleset.IsLoaded && drawableRuleset.Playfield.Player.IsLoaded);
             AddAssert("arena uses osu dimensions", () => DodgePlayfield.BASE_SIZE, () => Is.EqualTo(new Vector2(512, 384)));
             AddAssert("player is square", () => drawableRuleset.Playfield.Player.Size, () => Is.EqualTo(new Vector2(DodgePlayer.SIZE)));
+            AddAssert("playfield visuals remain centred", () => Precision.AlmostEquals(
+                drawableRuleset.Playfield.Player.ScreenSpaceDrawQuad.Centre,
+                drawableRuleset.Playfield.ScreenSpaceDrawQuad.Centre));
             AddAssert("optional trail is absent by default", () => drawableRuleset.Playfield.Player.Trail.HasVisual, () => Is.False);
             AddAssert("optional graze effect is absent by default", () => drawableRuleset.Playfield.Player.GrazeEffect.HasVisual, () => Is.False);
             AddAssert("optional collision effect is absent by default", () => drawableRuleset.Playfield.Player.CollisionEffect.HasVisual, () => Is.False);
@@ -65,6 +80,52 @@ namespace osu.Game.Rulesets.Dodge.Tests
             AddUntilStep("slow mode activates", () => drawableRuleset.Playfield.Player.SlowActive);
             AddStep("release shift", () => InputManager.ReleaseKey(Key.LShift));
             AddUntilStep("slow mode deactivates", () => !drawableRuleset.Playfield.Player.SlowActive);
+            AddStep("press H", () => InputManager.PressKey(Key.H));
+            AddUntilStep("HUD toggle reaches playfield", () => drawableRuleset.Playfield.UserHudHidden);
+            AddStep("release H", () => InputManager.ReleaseKey(Key.H));
+            AddStep("press H again", () => InputManager.PressKey(Key.H));
+            AddUntilStep("HUD can be restored", () => !drawableRuleset.Playfield.UserHudHidden);
+            AddStep("release H again", () => InputManager.ReleaseKey(Key.H));
+        }
+
+        [Test]
+        public void TestMobileTouchControls()
+        {
+            DrawableDodgeRuleset drawableRuleset = null!;
+            DodgeTouchInputOverlay touchOverlay = null!;
+            Drawable joystick = null!;
+            Drawable slowButton = null!;
+            float initialX = 0;
+
+            AddStep("create dodge ruleset", () =>
+            {
+                Child = drawableRuleset = new DrawableDodgeRuleset(
+                    new DodgeRuleset(),
+                    new Beatmap<DodgeHitObject>(),
+                    []);
+            });
+            AddUntilStep("wait for ruleset load", () => drawableRuleset.IsLoaded && drawableRuleset.Playfield.Player.IsLoaded);
+            AddStep("add mobile touch controls", () =>
+            {
+                DodgeInputManager inputManager = drawableRuleset.ChildrenOfType<DodgeInputManager>().Single();
+                inputManager.Add(touchOverlay = new DodgeTouchInputOverlay());
+            });
+            AddUntilStep("wait for touch controls", () => touchOverlay.IsLoaded);
+            AddStep("find controls", () =>
+            {
+                joystick = touchOverlay.ChildrenOfType<Drawable>().Single(drawable => drawable.Name == "Movement joystick");
+                slowButton = touchOverlay.ChildrenOfType<Drawable>().Single(drawable => drawable.Name == "Slow movement button");
+                initialX = drawableRuleset.Playfield.Player.X;
+            });
+            AddStep("hold joystick right", () => InputManager.BeginTouch(new Touch(
+                TouchSource.Touch1,
+                joystick.ToScreenSpace(new Vector2(joystick.DrawWidth * 0.85f, joystick.DrawHeight / 2)))));
+            AddUntilStep("player moves right", () => drawableRuleset.Playfield.Player.X > initialX);
+            AddStep("hold slow simultaneously", () => InputManager.BeginTouch(new Touch(TouchSource.Touch2, slowButton.ScreenSpaceDrawQuad.Centre)));
+            AddUntilStep("slow activates", () => drawableRuleset.Playfield.Player.SlowActive);
+            AddStep("release joystick", () => InputManager.EndTouch(new Touch(TouchSource.Touch1, joystick.ScreenSpaceDrawQuad.Centre)));
+            AddStep("release slow", () => InputManager.EndTouch(new Touch(TouchSource.Touch2, slowButton.ScreenSpaceDrawQuad.Centre)));
+            AddUntilStep("slow deactivates", () => !drawableRuleset.Playfield.Player.SlowActive);
         }
 
         [Test]
@@ -80,6 +141,46 @@ namespace osu.Game.Rulesets.Dodge.Tests
             });
             AddUntilStep("wait for ruleset load", () => drawableRuleset.IsLoaded && drawableRuleset.Playfield.Player.IsLoaded);
             AddAssert("configured size applied", () => drawableRuleset.Playfield.Player.Size, () => Is.EqualTo(new Vector2(28)));
+        }
+
+        [Test]
+        public void TestMultiplayerPlayerPingAndBreakVisibility()
+        {
+            DrawableDodgeRuleset drawableRuleset = null!;
+            DodgeMultiplayerPlayer remotePlayer = null!;
+            var isBreakTime = new BindableBool();
+
+            AddStep("create dodge ruleset", () =>
+            {
+                Child = drawableRuleset = new DrawableDodgeRuleset(
+                    new DodgeRuleset(),
+                    new Beatmap<DodgeHitObject>(),
+                    []);
+            });
+            AddUntilStep("wait for ruleset load", () => drawableRuleset.IsLoaded && drawableRuleset.Playfield.Player.IsLoaded);
+            AddStep("add remote player", () =>
+            {
+                remotePlayer = new DodgeMultiplayerPlayer("remote", Color4.Cyan, drawableRuleset, isBreakTime);
+                drawableRuleset.Overlays.Add(remotePlayer);
+                remotePlayer.Push(1, new Vector2(0.25f, 0.75f), 199);
+            });
+            AddUntilStep("low ping player visible", () => remotePlayer.Alpha == 1);
+            AddAssert("low ping gameplay alpha", () => remotePlayer.BodyAlpha, () => Is.EqualTo(DodgeMultiplayerPlayer.GAMEPLAY_ALPHA));
+            AddAssert("gameplay label hidden", () => remotePlayer.LabelAlpha, () => Is.Zero);
+
+            AddStep("enter break", () => isBreakTime.Value = true);
+            AddAssert("break body visible", () => remotePlayer.BodyAlpha, () => Is.EqualTo(DodgeMultiplayerPlayer.BREAK_ALPHA));
+            AddAssert("break label visible", () => remotePlayer.LabelAlpha, () => Is.EqualTo(1));
+
+            AddStep("receive high ping position", () => remotePlayer.Push(2, new Vector2(0.75f, 0.25f), 200));
+            AddAssert("high ping accepted", () => remotePlayer.IsLowLatency, () => Is.False);
+            AddAssert("high ping still visible in break", () => remotePlayer.Alpha, () => Is.EqualTo(1));
+            AddAssert("high ping label still visible in break", () => remotePlayer.LabelAlpha, () => Is.EqualTo(1));
+
+            AddStep("leave break", () => isBreakTime.Value = false);
+            AddAssert("high ping player remains visible", () => remotePlayer.Alpha, () => Is.EqualTo(1));
+            AddAssert("high ping is more transparent", () => remotePlayer.BodyAlpha, () => Is.EqualTo(DodgeMultiplayerPlayer.HIGH_LATENCY_GAMEPLAY_ALPHA));
+            AddAssert("high ping gameplay label hidden", () => remotePlayer.LabelAlpha, () => Is.Zero);
         }
 
         [Test]
@@ -275,6 +376,86 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 !Precision.AlmostEquals(drawableEmitter.FirstTrajectoryGuideEndPosition!.Value, emitter.EndPositionAt(0), 0.001f));
             AddStep("disable full paths", () => drawableEmitter.ShowFullTrajectories = false);
             AddUntilStep("guide drawables are released", () => drawableEmitter.TrajectoryGuideCount == 0);
+        }
+
+        [Test]
+        public void TestEmitterStartingOutsidePlayfieldRemainsAliveWhileEntering()
+        {
+            DrawableDodgeRuleset drawableRuleset = null!;
+            ManualClock manualClock = null!;
+
+            AddStep("create outside emitter", () =>
+            {
+                var emitter = new DodgeEmitter
+                {
+                    StartTime = 1000,
+                    Duration = 1000,
+                    Position = new Vector2(-64, 192),
+                    AimPosition = new Vector2(64, 192),
+                    BulletCount = 2,
+                    SpreadAngle = 0,
+                    ContinueUntilExit = true,
+                };
+                var beatmap = new Beatmap<DodgeHitObject>
+                {
+                    HitObjects = { emitter },
+                };
+                manualClock = new ManualClock { CurrentTime = 1500 };
+                Child = drawableRuleset = new DrawableDodgeRuleset(new DodgeRuleset(), beatmap, [])
+                {
+                    Clock = new FramedClock(manualClock),
+                };
+            });
+            AddUntilStep("entering bullets remain alive", () =>
+            {
+                DrawableDodgeEmitter? emitter = drawableRuleset.ChildrenOfType<DrawableDodgeEmitter>().SingleOrDefault();
+                return emitter != null
+                       && emitter.AliveBulletVisualCount + emitter.BatchedBulletVisualCount == 2;
+            });
+            AddAssert("bullets reached playfield edge", () =>
+                drawableRuleset.ChildrenOfType<DrawableDodgeEmitter>().Single().FirstBatchedBulletPosition?.X,
+                () => Is.EqualTo(0).Within(0.01));
+        }
+
+        [Test]
+        public void TestSlowEmitterBulletsRemainAlivePastMinimumGracePeriod()
+        {
+            DrawableDodgeRuleset drawableRuleset = null!;
+
+            AddStep("create slow continued emitter", () =>
+            {
+                var beatmap = new Beatmap<DodgeHitObject>
+                {
+                    HitObjects =
+                    {
+                        new DodgeEmitter
+                        {
+                            StartTime = 1000,
+                            Duration = 1000,
+                            Position = new Vector2(256, 192),
+                            AimPosition = new Vector2(266, 192),
+                            BulletCount = 3,
+                            ContinueUntilExit = true,
+                        },
+                    },
+                };
+                var manualClock = new ManualClock
+                {
+                    CurrentTime = 2000 + DodgePlayfield.CONTINUED_BULLET_GRACE_PERIOD + 100,
+                };
+                Child = drawableRuleset = new DrawableDodgeRuleset(new DodgeRuleset(), beatmap, [])
+                {
+                    Clock = new FramedClock(manualClock),
+                };
+            });
+            AddUntilStep("slow bullets remain alive", () =>
+            {
+                DrawableDodgeEmitter? emitter = drawableRuleset.ChildrenOfType<DrawableDodgeEmitter>().SingleOrDefault();
+                return emitter != null
+                       && emitter.AliveBulletVisualCount + emitter.BatchedBulletVisualCount == 3;
+            });
+            AddAssert("emitter remains unjudged before natural exit", () =>
+                drawableRuleset.Playfield.AllHitObjects.Single().Result.HasResult, () => Is.False);
         }
 
         [Test]
@@ -510,6 +691,212 @@ namespace osu.Game.Rulesets.Dodge.Tests
         }
 
         [Test]
+        public void TestFinalBulletAndScoreCompleteAtFrozenTrackBoundary()
+        {
+            DrawableDodgeRuleset drawableRuleset = null!;
+            DodgeScoreProcessor scoreProcessor = null!;
+
+            AddStep("create final boundary bullet", () =>
+            {
+                var beatmap = new Beatmap<DodgeHitObject>
+                {
+                    HitObjects =
+                    {
+                        new DodgeBullet
+                        {
+                            StartTime = 1000,
+                            Duration = 1000,
+                            Position = new Vector2(32, 32),
+                            EndPosition = new Vector2(64, 32),
+                        },
+                    },
+                };
+                var manualClock = new ManualClock
+                {
+                    CurrentTime = 2000,
+                };
+
+                scoreProcessor = new DodgeScoreProcessor(new DodgeRuleset());
+                scoreProcessor.ApplyBeatmap(beatmap);
+                drawableRuleset = new DrawableDodgeRuleset(new DodgeRuleset(), beatmap, [])
+                {
+                    Clock = new FramedClock(manualClock),
+                };
+                drawableRuleset.NewResult += scoreProcessor.ApplyResult;
+                drawableRuleset.FrameStableComponents.Add(scoreProcessor);
+                Child = new DependencyProvidingContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    CachedDependencies = [(typeof(ScoreProcessor), scoreProcessor)],
+                    Child = drawableRuleset,
+                };
+            });
+            AddUntilStep("final bullet judged when audio stops", () =>
+                drawableRuleset.Playfield.AllHitObjects.Single().Result.HasResult);
+            AddWaitStep("keep track clock frozen", 2);
+            AddAssert("score completes without another audio timestamp", () => scoreProcessor.HasCompleted.Value);
+        }
+
+        [Test]
+        [Category("ExternalRegression")]
+        public void TestExportedMapCompletesAtAudioEnd()
+        {
+            string? mapDirectory = Environment.GetEnvironmentVariable("DODGE_REGRESSION_MAP_DIR");
+
+            if (string.IsNullOrWhiteSpace(mapDirectory) || !Directory.Exists(mapDirectory))
+            {
+                Assert.Ignore("Set DODGE_REGRESSION_MAP_DIR to run exported Dodge maps.");
+                return;
+            }
+
+            string[] beatmapFiles = Directory.GetFiles(mapDirectory, "*.osu", SearchOption.AllDirectories);
+            string? mapFilter = Environment.GetEnvironmentVariable("DODGE_REGRESSION_MAP_FILTER");
+
+            if (!string.IsNullOrWhiteSpace(mapFilter))
+            {
+                beatmapFiles = beatmapFiles.Where(path =>
+                                                   Path.GetFileNameWithoutExtension(path).Contains(
+                                                       mapFilter,
+                                                       StringComparison.OrdinalIgnoreCase))
+                                           .ToArray();
+            }
+
+            Assert.That(beatmapFiles, Is.Not.Empty, $"No matching .osu file found below {mapDirectory}.");
+
+            string beatmapFile = beatmapFiles.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).First();
+            string sidecarFile = Path.ChangeExtension(beatmapFile, ".ruleset.json");
+            Assert.That(File.Exists(sidecarFile), Is.True, $"Missing Dodge sidecar for {beatmapFile}.");
+            var beatmap = (Beatmap<DodgeHitObject>)DodgeExportedMapRegressionTest.DecodeBeatmap(beatmapFile, sidecarFile);
+            DrawableDodgeRuleset drawableRuleset = null!;
+            DodgeScoreProcessor scoreProcessor = null!;
+            ITrackStore trackStore = null!;
+            Track track = null!;
+
+            AddStep("load exported audio", () =>
+            {
+                trackStore = audioManager.GetTrackStore(new StorageBackedResourceStore(new NativeStorage(mapDirectory)));
+                track = trackStore.Get(Path.GetFileName(beatmap.Metadata.AudioFile));
+            });
+            AddUntilStep("exported audio length loaded", () => track.Length > 0 && double.IsFinite(track.Length));
+            AddStep("create exported ruleset at audio end", () =>
+            {
+                TestContext.Progress.WriteLine($"Audio length: {track.Length:N6} ms; gameplay end: {DodgeGameplayTiming.GetGameplayEndTime(beatmap.HitObjects):N6} ms");
+                var manualClock = new ManualClock { CurrentTime = track.Length };
+                scoreProcessor = new DodgeScoreProcessor(new DodgeRuleset());
+                scoreProcessor.ApplyBeatmap(beatmap);
+                drawableRuleset = new DrawableDodgeRuleset(new DodgeRuleset(), beatmap, [])
+                {
+                    Clock = new FramedClock(manualClock),
+                };
+                drawableRuleset.NewResult += scoreProcessor.ApplyResult;
+                drawableRuleset.FrameStableComponents.Add(scoreProcessor);
+                Child = new DependencyProvidingContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    CachedDependencies = [(typeof(ScoreProcessor), scoreProcessor)],
+                    Child = drawableRuleset,
+                };
+            });
+            AddUntilStep("all exported objects judged", () => drawableRuleset.Playfield.AllHitObjects.All(hitObject => hitObject.Result.HasResult));
+            AddUntilStep("exported score completed", () => scoreProcessor.HasCompleted.Value);
+            AddStep("dispose exported track", () =>
+            {
+                track.Dispose();
+                trackStore.Dispose();
+            });
+        }
+
+        [Test]
+        public void TestAutoplayKeepsCollisionJudgementsEnabled()
+        {
+            DrawableDodgeRuleset drawableRuleset = null!;
+
+            AddStep("create autoplay ruleset", () =>
+            {
+                var beatmap = new Beatmap<DodgeHitObject>
+                {
+                    HitObjects =
+                    {
+                        new DodgeBullet
+                        {
+                            StartTime = 0,
+                            Duration = 1_000_000,
+                            Position = DodgePlayfield.BASE_SIZE / 2,
+                            EndPosition = DodgePlayfield.BASE_SIZE / 2,
+                        },
+                    },
+                };
+                Child = drawableRuleset = new DrawableDodgeRuleset(
+                    new DodgeRuleset(),
+                    beatmap,
+                    [new DodgeModAutoplay()]);
+            });
+            AddUntilStep("ruleset loaded", () => drawableRuleset.IsLoaded);
+            AddAssert("collisions enabled", () => drawableRuleset.Playfield.CollisionEnabled, () => Is.True);
+            AddUntilStep("autoplay collision judged", () => drawableRuleset.Playfield.AllHitObjects.Single().Result.HasResult);
+            AddAssert("autoplay collision counts as HIT", () => drawableRuleset.Playfield.AllHitObjects.Single().Result.Type, () => Is.EqualTo(HitResult.Miss));
+        }
+
+        [Test]
+        public void TestBeamRegistersOneGrazeAndCompletesScore()
+        {
+            DrawableDodgeRuleset drawableRuleset = null!;
+            DodgeScoreProcessor scoreProcessor = null!;
+            ManualClock manualClock = null!;
+            DodgeBeam beam = null!;
+
+            AddStep("create grazing beam", () =>
+            {
+                var beatmap = new Beatmap<DodgeHitObject>();
+                beatmap.Difficulty.SliderMultiplier = DodgeBeatmapSettings.GetSliderMultiplier(16);
+                beatmap.HitObjects.Add(beam = new DodgeBeam
+                {
+                    StartTime = 100,
+                    Duration = 500,
+                    Position = new Vector2(0, 167),
+                    EndPosition = new Vector2(DodgePlayfield.WIDTH, 167),
+                    BeamWidth = 10,
+                });
+                manualClock = new ManualClock { CurrentTime = 100 };
+                scoreProcessor = new DodgeScoreProcessor(new DodgeRuleset());
+                scoreProcessor.ApplyBeatmap(beatmap);
+                drawableRuleset = new DrawableDodgeRuleset(new DodgeRuleset(), beatmap, [])
+                {
+                    Clock = new FramedClock(manualClock),
+                };
+                drawableRuleset.NewResult += scoreProcessor.ApplyResult;
+                drawableRuleset.FrameStableComponents.Add(scoreProcessor);
+                Child = new DependencyProvidingContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    CachedDependencies = [(typeof(ScoreProcessor), scoreProcessor)],
+                    Child = drawableRuleset,
+                };
+            });
+            AddUntilStep("beam grazed once", () => scoreProcessor.Statistics.TryGetValue(HitResult.SmallBonus, out int count) && count == 1);
+            AddStep("move beam outside graze range", () =>
+            {
+                beam.Position = new Vector2(0, 100);
+                beam.EndPosition = new Vector2(DodgePlayfield.WIDTH, 100);
+                manualClock.CurrentTime = 200;
+            });
+            AddWaitStep("leave graze range", 2);
+            AddStep("move beam back into graze range", () =>
+            {
+                beam.Position = new Vector2(0, 167);
+                beam.EndPosition = new Vector2(DodgePlayfield.WIDTH, 167);
+                manualClock.CurrentTime = 300;
+            });
+            AddWaitStep("re-enter graze range", 2);
+            AddAssert("graze not duplicated", () => scoreProcessor.Statistics[HitResult.SmallBonus], () => Is.EqualTo(1));
+            AddAssert("only one result before beam end", () => scoreProcessor.JudgedHits, () => Is.EqualTo(1));
+            AddStep("finish beam", () => manualClock.CurrentTime = 600);
+            AddUntilStep("beam judged", () => drawableRuleset.Playfield.AllHitObjects.Single().Result.HasResult);
+            AddUntilStep("beam score completed", () => scoreProcessor.HasCompleted.Value);
+            AddAssert("one graze plus one beam result", () => scoreProcessor.JudgedHits, () => Is.EqualTo(2));
+        }
+
+        [Test]
         public void TestFarEmitterBulletsAreRejectedBeforeTrajectoryTests()
         {
             DrawableDodgeRuleset drawableRuleset = null!;
@@ -634,6 +1021,55 @@ namespace osu.Game.Rulesets.Dodge.Tests
             AddUntilStep("judged emitter leaves collision active set", () => drawableRuleset.Playfield.ActiveCollisionSourceCount, () => Is.Zero);
             AddAssert("emitter miss feedback triggered once", () => drawableRuleset.Playfield.MissFeedbackCount, () => Is.EqualTo(1));
             AddAssert("emitter miss sound triggered once", () => drawableRuleset.Playfield.MissSoundPlayCount, () => Is.EqualTo(1));
+        }
+
+        [Test]
+        public void TestRepeatedEmitterCollisionsAreJudgedSeparately()
+        {
+            DrawableDodgeRuleset drawableRuleset = null!;
+            DodgeScoreProcessor scoreProcessor = null!;
+            ManualClock manualClock = null!;
+
+            AddStep("create colliding repeated emitter", () =>
+            {
+                var beatmap = new Beatmap<DodgeHitObject>();
+                var emitter = new DodgeEmitter
+                {
+                    StartTime = 100,
+                    Duration = 50,
+                    Position = DodgePlayfield.BASE_SIZE / 2,
+                    AimPosition = DodgePlayfield.BASE_SIZE / 2,
+                    BulletCount = 2,
+                    SpreadAngle = 0,
+                    BurstCount = 2,
+                    BurstInterval = 200,
+                    BurstBeatDivisor = 0,
+                };
+
+                emitter.ApplyDefaults(beatmap.ControlPointInfo, beatmap.Difficulty);
+                beatmap.HitObjects.Add(emitter);
+
+                scoreProcessor = new DodgeScoreProcessor(new DodgeRuleset());
+                scoreProcessor.ApplyBeatmap(beatmap);
+                drawableRuleset = new DrawableDodgeRuleset(new DodgeRuleset(), beatmap, [])
+                {
+                    Clock = new FramedClock(manualClock = new ManualClock()),
+                };
+                drawableRuleset.NewResult += scoreProcessor.ApplyResult;
+                drawableRuleset.FrameStableComponents.Add(scoreProcessor);
+                Child = new DependencyProvidingContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    CachedDependencies = [(typeof(ScoreProcessor), scoreProcessor)],
+                    Child = drawableRuleset,
+                };
+            });
+            AddAssert("one score slot per burst", () => scoreProcessor.TotalMaxHits, () => Is.EqualTo(2));
+            AddStep("hit first burst", () => manualClock.CurrentTime = 100);
+            AddUntilStep("first burst is a miss", () => scoreProcessor.Statistics.TryGetValue(HitResult.Miss, out int count) ? count : 0, () => Is.EqualTo(1));
+            AddStep("hit repeated burst", () => manualClock.CurrentTime = 300);
+            AddUntilStep("repeat is a second miss", () => scoreProcessor.Statistics.TryGetValue(HitResult.Miss, out int count) ? count : 0, () => Is.EqualTo(2));
+            AddAssert("both burst results were counted", () => scoreProcessor.JudgedHits, () => Is.EqualTo(2));
         }
 
         [Test]

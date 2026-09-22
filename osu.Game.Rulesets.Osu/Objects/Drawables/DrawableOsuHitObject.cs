@@ -69,6 +69,9 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
         {
             base.OnFree();
 
+            tagCoopSamplesPreplayed = false;
+            suppressNextTagCoopSamplePlayback = false;
+
             IndexInCurrentComboBindable.UnbindFrom(HitObject.IndexInCurrentComboBindable);
             PositionBindable.UnbindFrom(HitObject.PositionBindable);
             StackHeightBindable.UnbindFrom(HitObject.StackHeightBindable);
@@ -141,6 +144,53 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
         /// Causes this <see cref="DrawableOsuHitObject"/> to get missed, disregarding all conditions in implementations of <see cref="DrawableHitObject.CheckForResult"/>.
         /// </summary>
         public void MissForcefully() => ApplyMinResult();
+
+        private bool tagCoopSamplesPreplayed;
+        private bool suppressNextTagCoopSamplePlayback;
+
+        /// <summary>
+        /// Plays this object's samples at the map-defined time for Tag Co-op, without waiting for
+        /// the remote owner's judgement to complete a network round trip.
+        /// </summary>
+        public void PlayTagCoopSamplesAhead()
+        {
+            if (tagCoopSamplesPreplayed)
+                return;
+
+            tagCoopSamplesPreplayed = true;
+
+            // Deliberately bypass overrides whose playback depends on a judgement which has not
+            // arrived yet. The remote result remains authoritative for score, but not audio timing.
+            base.PlaySamples();
+        }
+
+        /// <summary>
+        /// Applies a result received from the Tag Co-op owner of this hit object.
+        /// </summary>
+        public void ApplyTagCoopResult(HitResult result, bool playSamples = true)
+        {
+            if (!Judged)
+            {
+                suppressNextTagCoopSamplePlayback = !playSamples && tagCoopSamplesPreplayed && result.IsHit();
+
+                ApplyResult(static (judgementResult, state) =>
+                {
+                    judgementResult.Type = state;
+                    judgementResult.IgnoreForHitErrorMeter = true;
+                }, result);
+            }
+        }
+
+        public override void PlaySamples()
+        {
+            if (suppressNextTagCoopSamplePlayback)
+            {
+                suppressNextTagCoopSamplePlayback = false;
+                return;
+            }
+
+            base.PlaySamples();
+        }
 
         // ReSharper disable once FunctionRecursiveOnAllPaths (TODO: remove after fixed https://youtrack.jetbrains.com/issue/RIDER-135036/Incorrect-recursive-on-all-execution-paths-inspection)
         private RectangleF parentScreenSpaceRectangle => ((DrawableOsuHitObject)ParentHitObject)?.parentScreenSpaceRectangle ?? Parent!.ScreenSpaceDrawQuad.AABBFloat;

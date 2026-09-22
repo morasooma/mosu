@@ -29,6 +29,7 @@ using osu.Game.Overlays.Settings;
 using osu.Game.Scoring;
 using osu.Game.Scoring.Render;
 using osu.Game.Screens;
+using osu.Game.Skinning;
 using osu.Framework.Screens;
 using osuTK;
 using osuTK.Graphics;
@@ -47,6 +48,14 @@ namespace osu.Game.Screens.Ranking
 
         private double? customStartTime;
         private double? customEndTime;
+
+        /// <summary>
+        /// Invoked with the period confirmed in the period selector screen.
+        /// The popover instance does not survive that screen (it is expired while the results
+        /// screen is suspended), so consumers must persist the values themselves.
+        /// </summary>
+        public Action<double, double>? OnPeriodSelected;
+
         private readonly List<OsuSpriteText> themedPrimaryText = new List<OsuSpriteText>();
         private readonly List<OsuSpriteText> themedSecondaryText = new List<OsuSpriteText>();
         private OsuScrollContainer settingsScroll = null!;
@@ -71,10 +80,15 @@ namespace osu.Game.Screens.Ranking
         [Resolved]
         private ScoreManager scoreManager { get; set; } = null!;
 
-        public ReplayRenderPopover(ScoreInfo scoreInfo)
+        [Resolved]
+        private SkinManager skinManager { get; set; } = null!;
+
+        public ReplayRenderPopover(ScoreInfo scoreInfo, double? trimStart = null, double? trimEnd = null)
             : base(false)
         {
             this.scoreInfo = scoreInfo;
+            customStartTime = trimStart;
+            customEndTime = trimEnd;
 
             Content.Padding = new MarginPadding(15);
             Body.CornerRadius = 6;
@@ -194,7 +208,9 @@ namespace osu.Game.Screens.Ranking
 
             var periodText = trackThemedText(new OsuSpriteText
             {
-                Text = ReplayRenderStrings.PeriodFullReplay,
+                Text = customStartTime.HasValue && customEndTime.HasValue
+                    ? formatPeriodText(customStartTime.Value, customEndTime.Value)
+                    : ReplayRenderStrings.PeriodFullReplay,
                 Font = OsuFont.GetFont(size: 15, weight: FontWeight.SemiBold),
                 Margin = new MarginPadding { Top = 10 },
             });
@@ -246,17 +262,7 @@ namespace osu.Game.Screens.Ranking
                                 fullScore.ScoreInfo.Mods = scoreInfo.Mods;
 
                                 Hide();
-                                performer?.PerformFromScreen(s => osu.Framework.Screens.ScreenExtensions.Push(s, new osu.Game.Screens.Play.ReplayPeriodSelectorLoader(fullScore, (start, end) =>
-                                {
-                                    customStartTime = start;
-                                    customEndTime = end;
-
-                                    TimeSpan sTime = TimeSpan.FromMilliseconds(start);
-                                    TimeSpan eTime = TimeSpan.FromMilliseconds(end);
-                                    periodText.Text = $"Period: {(int)sTime.TotalMinutes:00}:{sTime.Seconds:00} -> {(int)eTime.TotalMinutes:00}:{eTime.Seconds:00}";
-
-                                    Show();
-                                })), new[] { typeof(osu.Game.Screens.Ranking.ResultsScreen) });
+                                performer?.PerformFromScreen(s => osu.Framework.Screens.ScreenExtensions.Push(s, new osu.Game.Screens.Play.ReplayPeriodSelectorLoader(fullScore, (start, end) => OnPeriodSelected?.Invoke(start, end))), new[] { typeof(osu.Game.Screens.Ranking.ResultsScreen) });
                             }
                         },
                         showResultsAfterPeriodCheckbox,
@@ -328,6 +334,8 @@ namespace osu.Game.Screens.Ranking
                     qualityPreset.ToString(),
                     "--show-results-after-period",
                     showResultsAfterPeriod.ToString(),
+                    "--skin",
+                    skinManager.CurrentSkinInfo.Value.ID.ToString(),
                 };
 
                 var argsList = args.ToList();
@@ -697,6 +705,13 @@ namespace osu.Game.Screens.Ranking
 
             foreach (OsuSpriteText text in themedSecondaryText)
                 text.Colour = secondary;
+        }
+
+        private static string formatPeriodText(double start, double end)
+        {
+            TimeSpan sTime = TimeSpan.FromMilliseconds(start);
+            TimeSpan eTime = TimeSpan.FromMilliseconds(end);
+            return $"Period: {(int)sTime.TotalMinutes:00}:{sTime.Seconds:00} -> {(int)eTime.TotalMinutes:00}:{eTime.Seconds:00}";
         }
 
         private FillFlowContainer createSetting(LocalisableString label, Drawable control) => new FillFlowContainer

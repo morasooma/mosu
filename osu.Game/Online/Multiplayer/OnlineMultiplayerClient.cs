@@ -92,7 +92,7 @@ namespace osu.Game.Online.Multiplayer
             }
             catch (HubException ex)
             {
-                string message = ex.GetHubExceptionMessage();
+                string? message = ex.GetHubExceptionMessage();
                 Logger.Log($"{nameof(OnlineMultiplayerClient)} invoke of '{methodName}' failed with hub error: {message}", LoggingTarget.Network, LogLevel.Important);
 
                 if (isRoomNotFoundException(message) && Room != null)
@@ -133,7 +133,7 @@ namespace osu.Game.Online.Multiplayer
             }
             catch (HubException ex)
             {
-                string message = ex.GetHubExceptionMessage();
+                string? message = ex.GetHubExceptionMessage();
                 Logger.Log($"{nameof(OnlineMultiplayerClient)} invoke of '{methodName}' failed with hub error: {message}", LoggingTarget.Network, LogLevel.Important);
 
                 if (isRoomNotFoundException(message) && Room != null)
@@ -143,12 +143,12 @@ namespace osu.Game.Online.Multiplayer
             }
         }
 
-        private static bool isRoomNotFoundException(string message)
+        private static bool isRoomNotFoundException(string? message)
         {
-            return message.Contains("has not yet joined", StringComparison.OrdinalIgnoreCase)
-                   || message.Contains("NotJoinedRoomException", StringComparison.OrdinalIgnoreCase)
-                   || message.Contains("not in a room", StringComparison.OrdinalIgnoreCase)
-                   || message.Contains("not joined", StringComparison.OrdinalIgnoreCase);
+            return message?.Contains("has not yet joined", StringComparison.OrdinalIgnoreCase) == true
+                   || message?.Contains("NotJoinedRoomException", StringComparison.OrdinalIgnoreCase) == true
+                   || message?.Contains("not in a room", StringComparison.OrdinalIgnoreCase) == true
+                   || message?.Contains("not joined", StringComparison.OrdinalIgnoreCase) == true;
         }
 
         public OnlineMultiplayerClient(EndpointConfiguration endpoints)
@@ -192,6 +192,8 @@ namespace osu.Game.Online.Multiplayer
                     connection.On<MultiplayerPlaylistItem>(nameof(IMultiplayerClient.PlaylistItemChanged), ((IMultiplayerClient)this).PlaylistItemChanged);
                     connection.On<int, bool>(nameof(IMultiplayerClient.UserVotedToSkipIntro), ((IMultiplayerClient)this).UserVotedToSkipIntro);
                     connection.On(nameof(IMultiplayerClient.VoteToSkipIntroPassed), ((IMultiplayerClient)this).VoteToSkipIntroPassed);
+                    connection.On<int, MultiplayerBreakSkipRequest>(nameof(IMultiplayerClient.UserVotedToSkipBreak), ((IMultiplayerClient)this).UserVotedToSkipBreak);
+                    connection.On<MultiplayerBreakSkipRequest>(nameof(IMultiplayerClient.VoteToSkipBreakPassed), ((IMultiplayerClient)this).VoteToSkipBreakPassed);
 
                     connection.On(nameof(IMatchmakingClient.MatchmakingQueueJoined), ((IMatchmakingClient)this).MatchmakingQueueJoined);
                     connection.On(nameof(IMatchmakingClient.MatchmakingQueueLeft), ((IMatchmakingClient)this).MatchmakingQueueLeft);
@@ -294,7 +296,11 @@ namespace osu.Game.Online.Multiplayer
             }
             catch (HubException exception)
             {
-                switch (exception.GetHubExceptionMessage())
+                string message = exception.GetHubExceptionMessage() ?? exception.Message;
+
+                Logger.Log($"{nameof(OnlineMultiplayerClient)} invoke of '{nameof(IMultiplayerServer.InvitePlayer)}' failed: {message}", LoggingTarget.Network);
+
+                switch (message)
                 {
                     case UserBlockedException.MESSAGE:
                         PostNotification?.Invoke(new SimpleErrorNotification { Text = OnlinePlayStrings.InviteFailedUserBlocked });
@@ -302,6 +308,10 @@ namespace osu.Game.Online.Multiplayer
 
                     case UserBlocksPMsException.MESSAGE:
                         PostNotification?.Invoke(new SimpleErrorNotification { Text = OnlinePlayStrings.InviteFailedUserOptOut });
+                        break;
+
+                    default:
+                        PostNotification?.Invoke(new SimpleErrorNotification { Text = @"Failed to invite this user. Check the network log for details." });
                         break;
                 }
             }
@@ -351,6 +361,11 @@ namespace osu.Game.Online.Multiplayer
 
         public override Task VoteToSkipIntro()
             => invokeAsync(nameof(IMultiplayerServer.VoteToSkipIntro));
+
+        public override Task VoteToSkipBreak(MultiplayerBreakSkipRequest request)
+            => MosuServerEnvironment.SupportsBreakSkipping
+                ? invokeAsync(nameof(IMultiplayerServer.VoteToSkipBreak), request)
+                : Task.CompletedTask;
 
         public override Task DiscardCards(RankedPlayCardItem[] cards)
             => invokeAsync(nameof(IRankedPlayServer.DiscardCards), cards);

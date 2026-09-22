@@ -1,6 +1,7 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.ComponentModel;
 using osu.Framework.Localisation;
 using osu.Game.Resources.Localisation.Web;
 
@@ -26,7 +27,13 @@ namespace osu.Game.Online.Rooms
         /// <summary>
         /// Matchmaking: Ranked play
         /// </summary>
-        RankedPlay
+        RankedPlay,
+
+        /// <summary>
+        /// Unranked osu!-only cooperative play. Players take turns playing complete combos.
+        /// </summary>
+        [Description("Tag Co-op")]
+        TagCoop
     }
 
     public static class MatchTypeExtensions

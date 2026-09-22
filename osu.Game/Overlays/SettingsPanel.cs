@@ -11,7 +11,6 @@ using osuTK;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
-using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Cursor;
@@ -65,8 +64,7 @@ namespace osu.Game.Overlays
         private readonly bool showBackButton;
 
         private LoadingLayer loading;
-
-        private Box contentBackground;
+        private BackdropBlurSurface contentBackground;
         private IBindable<Colour4> themeColour;
 
         private readonly List<SettingsSection> loadableSections = new List<SettingsSection>();
@@ -85,8 +83,6 @@ namespace osu.Game.Overlays
             AutoSizeAxes = Axes.X;
         }
 
-        protected virtual IEnumerable<SettingsSection> CreateSections() => null;
-
         [BackgroundDependencyLoader]
         private void load()
         {
@@ -97,13 +93,13 @@ namespace osu.Game.Overlays
                 RelativeSizeAxes = Axes.Y,
                 Children = new Drawable[]
                 {
-                    contentBackground = new Box
+                    contentBackground = new BackdropBlurSurface
                     {
                         Anchor = Anchor.TopRight,
                         Origin = Anchor.TopRight,
                         Scale = new Vector2(2, 1), // over-extend to the left for transitions
                         RelativeSizeAxes = Axes.Both,
-                        Colour = colourProvider.Background4,
+                        SurfaceColour = colourProvider.Background4,
                         Alpha = 1,
                     },
                     loading = new LoadingLayer
@@ -159,15 +155,8 @@ namespace osu.Game.Overlays
                 Width = sidebar_width
             });
 
-            CreateSections()?.ForEach(AddSection);
-
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
-            themeColour.BindValueChanged(_ => updateThemeColours(), true);
-        }
-
-        private void updateThemeColours()
-        {
-            contentBackground.Colour = colourProvider.Background4;
+            themeColour.BindValueChanged(_ => contentBackground.SurfaceColour = colourProvider.Background4, true);
         }
 
         protected void AddSection(SettingsSection section)
@@ -277,13 +266,11 @@ namespace osu.Game.Overlays
 
                 SectionsContainer.SelectedSection.BindValueChanged(section =>
                 {
-                    if (selectedSidebarButton != null)
-                        selectedSidebarButton.Selected = false;
+                    selectedSidebarButton?.Selected = false;
 
                     selectedSidebarButton = Sidebar.Children.OfType<SidebarIconButton>().FirstOrDefault(b => b.Section == section.NewValue);
 
-                    if (selectedSidebarButton != null)
-                        selectedSidebarButton.Selected = true;
+                    selectedSidebarButton?.Selected = true;
                 }, true);
             });
         }
@@ -330,6 +317,8 @@ namespace osu.Game.Overlays
                     Direction = FillDirection.Vertical,
                 };
 
+            private IBindable<Colour4> headerBgColour;
+
             [BackgroundDependencyLoader]
             private void load(OverlayColourProvider colourProvider)
             {
@@ -338,6 +327,9 @@ namespace osu.Game.Overlays
                     Colour = colourProvider.Background5,
                     RelativeSizeAxes = Axes.Both
                 };
+
+                headerBgColour = colourProvider.GetColourBindable(OverlayColour.Background5);
+                headerBgColour.BindValueChanged(c => HeaderBackground.Colour = c.NewValue, true);
 
                 SearchContainer.FilterCompleted += InvalidateScrollPosition;
             }

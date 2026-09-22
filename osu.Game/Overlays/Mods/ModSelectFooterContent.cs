@@ -86,7 +86,6 @@ namespace osu.Game.Overlays.Mods
                             Anchor = Anchor.BottomRight,
                             Origin = Anchor.BottomRight,
                             BeatmapInfo = { Value = Beatmap.Value?.BeatmapInfo },
-                            WorkingBeatmap = { Value = Beatmap.Value },
                         },
                     }
                 });
@@ -101,11 +100,7 @@ namespace osu.Game.Overlays.Mods
 
             Beatmap.BindValueChanged(b =>
             {
-                if (beatmapAttributesDisplay != null)
-                {
-                    beatmapAttributesDisplay.BeatmapInfo.Value = b.NewValue?.BeatmapInfo;
-                    beatmapAttributesDisplay.WorkingBeatmap.Value = b.NewValue;
-                }
+                beatmapAttributesDisplay?.BeatmapInfo.Value = b.NewValue?.BeatmapInfo;
 
                 updateInformation();
             }, true);
@@ -136,11 +131,10 @@ namespace osu.Game.Overlays.Mods
                 double multiplier = scoreMultiplierCalculator?.CalculateFor(ActiveMods.Value) ?? 1;
 
                 rankingInformationDisplay.ModMultiplier.Value = multiplier;
-                rankingInformationDisplay.Ranked.Value = ModPerformancePointHelper.ModsAwardPerformancePoints(Beatmap.Value?.BeatmapInfo, ActiveMods.Value);
+                rankingInformationDisplay.Ranked.Value = ActiveMods.Value.All(m => m.Ranked);
             }
 
-            if (beatmapAttributesDisplay != null)
-                beatmapAttributesDisplay.Mods.Value = ActiveMods.Value;
+            beatmapAttributesDisplay?.Mods.Value = ActiveMods.Value;
         }
 
         protected override void Update()

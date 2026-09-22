@@ -53,6 +53,11 @@ namespace osu.Game.Screens.Ranking.Statistics
         private double hitOffset;
 
         private Bar[]? barDrawables;
+        private Container? axisFlow;
+        private IBindable<Colour4>? themeColour;
+
+        [Resolved(CanBeNull = true)]
+        private OverlayColourProvider? colourProvider { get; set; }
 
         /// <summary>
         /// Creates a new <see cref="HitEventTimingDistributionGraph"/>.
@@ -67,6 +72,16 @@ namespace osu.Game.Screens.Ranking.Statistics
         [BackgroundDependencyLoader]
         private void load()
         {
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ =>
+                {
+                    if (axisFlow != null)
+                        axisFlow.Colour = colourProvider.Content1;
+                }, true);
+            }
+
             if (hitEvents.Count == 0)
                 return;
 
@@ -130,8 +145,6 @@ namespace osu.Game.Screens.Ranking.Statistics
             int maxCount = bins.Max(b => b.Values.Sum());
             barDrawables = bins.Select((_, i) => new Bar(bins[i], maxCount, i == timing_distribution_centre_bin_index)).ToArray();
 
-            Container axisFlow;
-
             Padding = new MarginPadding { Horizontal = 5 };
 
             InternalChild = new GridContainer
@@ -153,6 +166,7 @@ namespace osu.Game.Screens.Ranking.Statistics
                         {
                             RelativeSizeAxes = Axes.X,
                             Height = StatisticItem.FONT_SIZE,
+                            Colour = colourProvider?.Content1 ?? Color4.White,
                         }
                     },
                 },
@@ -219,15 +233,15 @@ namespace osu.Game.Screens.Ranking.Statistics
             private Circle[] boxOriginals = null!;
 
             private Circle? boxAdjustment;
-            private IBindable<Colour4> themeColour = null!;
+            private IBindable<Colour4>? themeColour;
 
             private float? lastDrawHeight;
 
             [Resolved]
             private OsuColour colours { get; set; } = null!;
 
-            [Resolved]
-            private OverlayColourProvider colourProvider { get; set; } = null!;
+            [Resolved(CanBeNull = true)]
+            private OverlayColourProvider? colourProvider { get; set; }
 
             private const double duration = 300;
 
@@ -246,6 +260,8 @@ namespace osu.Game.Screens.Ranking.Statistics
             [BackgroundDependencyLoader]
             private void load()
             {
+                Color4 centreColour = OverlayColourProvider.IsLightTheme ? (colourProvider?.Content1 ?? Color4.Black) : Color4.White;
+
                 if (values.Any())
                 {
                     boxOriginals = values.Select((v, i) => new Circle
@@ -253,7 +269,7 @@ namespace osu.Game.Screens.Ranking.Statistics
                         RelativeSizeAxes = Axes.Both,
                         Anchor = Anchor.BottomCentre,
                         Origin = Anchor.BottomCentre,
-                        Colour = isCentre && i == 0 ? (OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : Color4.White) : colours.ForHitResult(v.Key),
+                        Colour = isCentre && i == 0 ? centreColour : colours.ForHitResult(v.Key),
                         Height = 0,
                     }).ToArray();
                     // The bars of the stacked bar graph will be processed (stacked) from the bottom, which is the base position,
@@ -271,14 +287,17 @@ namespace osu.Game.Screens.Ranking.Statistics
                             RelativeSizeAxes = Axes.Both,
                             Anchor = Anchor.BottomCentre,
                             Origin = Anchor.BottomCentre,
-                            Colour = isCentre ? (OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : Color4.White) : Color4.Gray,
+                            Colour = isCentre ? centreColour : Color4.Gray,
                             Height = 0,
                         }
                     };
                 }
 
-                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-                themeColour.BindValueChanged(_ => updateThemeColours(), true);
+                if (colourProvider != null)
+                {
+                    themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                    themeColour.BindValueChanged(_ => updateThemeColours(), true);
+                }
             }
 
             private void updateThemeColours()
@@ -286,13 +305,15 @@ namespace osu.Game.Screens.Ranking.Statistics
                 if (boxOriginals == null)
                     return;
 
+                Color4 centreColour = OverlayColourProvider.IsLightTheme ? (colourProvider?.Content1 ?? Color4.Black) : Color4.White;
+
                 if (values.Any())
                 {
                     for (int i = 0; i < boxOriginals.Length; i++)
-                        boxOriginals[i].Colour = isCentre && i == 0 ? (OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : Color4.White) : colours.ForHitResult(values[i].Key);
+                        boxOriginals[i].Colour = isCentre && i == 0 ? centreColour : colours.ForHitResult(values[i].Key);
                 }
                 else
-                    boxOriginals[0].Colour = isCentre ? (OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : Color4.White) : Color4.Gray;
+                    boxOriginals[0].Colour = isCentre ? centreColour : Color4.Gray;
             }
 
             protected override void LoadComplete()

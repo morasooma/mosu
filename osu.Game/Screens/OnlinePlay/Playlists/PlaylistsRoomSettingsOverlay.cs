@@ -6,7 +6,6 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using Humanizer;
-using Humanizer.Localisation;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
@@ -18,14 +17,14 @@ using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Graphics.UserInterfaceV2;
+using osu.Game.Localisation;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays;
+using osu.Game.Rulesets;
 using osu.Game.Screens.OnlinePlay.Match.Components;
 using osuTK;
-using osu.Game.Localisation;
-using osu.Game.Rulesets;
 using Container = osu.Framework.Graphics.Containers.Container;
 
 namespace osu.Game.Screens.OnlinePlay.Playlists
@@ -85,6 +84,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
 
             private readonly Room room;
             private OsuSpriteText durationNoticeText = null!;
+            private bool updatingPlaylistFromRoom;
 
             public MatchSettings(Room room)
             {
@@ -339,9 +339,17 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                 updateRoomMaxParticipants();
                 updateRoomDuration();
                 updateRoomMaxAttempts();
-                updateRoomPlaylist();
 
-                playlist.Items.BindCollectionChanged((_, __) => room.Playlist = playlist.Items.ToArray());
+                // Existing rooms display their playlist in the main room view. Populating this
+                // hidden editor would create a second full set of drawables for no benefit.
+                if (room.RoomID == null)
+                    updateRoomPlaylist();
+
+                playlist.Items.BindCollectionChanged((_, __) =>
+                {
+                    if (!updatingPlaylistFromRoom)
+                        room.Playlist = playlist.Items.ToArray();
+                });
             }
 
             private void onRoomPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -369,7 +377,8 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                         break;
 
                     case nameof(Room.Playlist):
-                        updateRoomPlaylist();
+                        if (room.RoomID == null)
+                            updateRoomPlaylist();
                         break;
                 }
             }
@@ -390,7 +399,10 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                 => MaxAttemptsField.Text = room.MaxAttempts?.ToString();
 
             private void updateRoomPlaylist()
-                => playlist.Items.ReplaceRange(0, playlist.Items.Count, room.Playlist);
+            {
+                updatingPlaylistFromRoom = true;
+                playlist.ReplaceItemsBatched(room.Playlist, () => updatingPlaylistFromRoom = false);
+            }
 
             private void populateDurations(ValueChangedEvent<APIUser> user)
             {

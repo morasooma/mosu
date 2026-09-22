@@ -43,10 +43,10 @@ namespace osu.Game.Screens.Play
         private double? failTime;
 
         [Resolved(canBeNull: true)]
-        private IRenderGameplaySampleTriggerRecorder renderGameplaySampleTriggerRecorder { get; set; }
+        private IRenderGameplaySampleTriggerRecorder? renderGameplaySampleTriggerRecorder { get; set; }
 
         [Resolved(canBeNull: true)]
-        private IRenderGameplayHitsoundRenderer renderGameplayHitsoundRenderer { get; set; }
+        private IRenderGameplayHitsoundRenderer? renderGameplayHitsoundRenderer { get; set; }
 
         // relied on to make arbitrary seeks / rewinding work pretty well out-of-the-box, leveraging custom clock and absolute transform sequences
         public override bool RemoveCompletedTransforms => false;

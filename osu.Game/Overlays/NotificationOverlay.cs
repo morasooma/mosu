@@ -69,7 +69,7 @@ namespace osu.Game.Overlays
         private NotificationOverlayToastTray toastTray = null!;
 
         private Container mainContent = null!;
-        private Box mainBackground = null!;
+        private BackdropBlurSurface mainBackground = null!;
         private IBindable<Colour4> themeColour = null!;
 
         [BackgroundDependencyLoader]
@@ -99,10 +99,10 @@ namespace osu.Game.Overlays
                     },
                     Children = new Drawable[]
                     {
-                        mainBackground = new Box
+                        mainBackground = new BackdropBlurSurface
                         {
                             RelativeSizeAxes = Axes.Both,
-                            Colour = colourProvider.Background4,
+                            SurfaceColour = colourProvider.Background4,
                         },
                         new OsuScrollContainer
                         {
@@ -129,7 +129,7 @@ namespace osu.Game.Overlays
             };
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
-            themeColour.BindValueChanged(_ => mainBackground.Colour = colourProvider.Background4, true);
+            themeColour.BindValueChanged(_ => mainBackground.SurfaceColour = colourProvider.Background4, true);
         }
 
         private ScheduledDelegate? notificationsEnabler;

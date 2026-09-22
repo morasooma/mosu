@@ -28,7 +28,6 @@ using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
 using osu.Game.Resources.Localisation.Web;
 using osu.Game.Rulesets;
-using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Mania;
 
 using osu.Game.Rulesets.Mods;
@@ -96,7 +95,7 @@ namespace osu.Game.Screens.Select
         private void load(OverlayColourProvider colourProvider, OsuConfigManager config)
         {
             this.colourProvider = colourProvider;
-            config.BindWith(OsuSetting.ForkSongSelectSkinnedLegacyCarousel, useSkinnedLegacyCarousel);
+            ForkSongSelectStyleBinding.BindSkinnedLegacyCarousel(config, useSkinnedLegacyCarousel, () => songSelect is SoloSongSelect);
 
             Height = HEIGHT;
 
@@ -195,6 +194,8 @@ namespace osu.Game.Screens.Select
                                 },
                                 new FillFlowContainer
                                 {
+                                    Anchor = Anchor.TopLeft,
+                                    Origin = Anchor.TopLeft,
                                     Direction = FillDirection.Horizontal,
                                     Spacing = new Vector2(3),
                                     AutoSizeAxes = Axes.Both,
@@ -230,8 +231,22 @@ namespace osu.Game.Screens.Select
                 modernBackground.Alpha = legacy.NewValue ? 0 : 1;
                 backgroundDifficultyTint.Alpha = legacy.NewValue ? 0 : 1;
                 triangles.Alpha = legacy.NewValue ? 0 : 1;
-                localRank.Alpha = legacy.NewValue ? 0 : 1;
-                starRatingDisplay.Alpha = legacy.NewValue ? 0 : 1;
+                localRank.Alpha = 1;
+                starRatingDisplay.Alpha = 1;
+                starCounter.Alpha = 1;
+
+                if (legacy.NewValue)
+                {
+                    mainFill.Padding = new MarginPadding { Bottom = 1 };
+                    difficultyText.Font = OsuFont.Style.Body.With(weight: FontWeight.Bold);
+                    authorText.Font = OsuFont.Style.Caption1.With(weight: FontWeight.SemiBold);
+                }
+                else
+                {
+                    mainFill.Padding = new MarginPadding { Bottom = 3.5f };
+                    difficultyText.Font = OsuFont.Style.Body.With(weight: FontWeight.SemiBold);
+                    authorText.Font = OsuFont.Style.Caption1.With(weight: FontWeight.SemiBold);
+                }
 
                 if (!legacy.NewValue && starDifficultyBindable != null)
                     updateAdditionalInfoText(starDifficultyBindable.Value);
@@ -257,6 +272,11 @@ namespace osu.Game.Screens.Select
 
             ruleset.BindValueChanged(_ => updateManiaDisplay());
             mods.BindValueChanged(_ => updateManiaDisplay(), true);
+            Selected.BindValueChanged(_ =>
+            {
+                if (starDifficultyBindable != null)
+                    computeStarRating();
+            });
 
             config.GetBindable<bool>(OsuSetting.ForkDifficultyAdditionalInfo).BindValueChanged(_ =>
             {
@@ -289,6 +309,7 @@ namespace osu.Game.Screens.Select
             difficultyText.Text = beatmap.DifficultyName;
             authorText.Text = BeatmapsetsStrings.ShowDetailsMappedBy(beatmap.Metadata.Author.Username);
 
+            updateThemeColours();
             computeStarRating();
             Height = Item?.DrawHeight ?? HEIGHT;
             updateManiaDisplay();
@@ -322,7 +343,8 @@ namespace osu.Game.Screens.Select
             if (Item == null)
                 return;
 
-            starDifficultyBindable = difficultyCache.GetBindableDifficulty(beatmap, starDifficultyCancellationSource.Token, SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE);
+            starDifficultyBindable = difficultyCache.GetBindableDifficulty(beatmap, starDifficultyCancellationSource.Token,
+                SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE, calculatePerformance: Selected.Value, usePersistedAdditionalInfo: true);
             starDifficultyBindable.BindValueChanged(starDifficulty =>
             {
                 starRatingDisplay.Current.Value = starDifficulty.NewValue;
@@ -337,12 +359,13 @@ namespace osu.Game.Screens.Select
 
             if (useSkinnedLegacyCarousel.Value)
             {
-                Color4 textColour = legacyMenuButtonBackground.InactiveTextColour;
+                Color4 textColour = Selected.Value ? legacyMenuButtonBackground.ActiveTextColour : legacyMenuButtonBackground.InactiveTextColour;
                 difficultyText.Colour = textColour;
                 authorText.Colour = textColour;
                 additionalStatsText.Hide();
-                localRank.Hide();
-                starRatingDisplay.Hide();
+                localRank.Show();
+                starRatingDisplay.Show();
+                starCounter.Show();
             }
 
             if (Item?.IsVisible != true)
@@ -387,7 +410,7 @@ namespace osu.Game.Screens.Select
 
             var rulesetInstance = ruleset.Value.CreateInstance();
 
-            if (rulesetInstance.AvailableVariants.Count() > 1)
+            if (rulesetInstance.GameplayVariants.Count() > 1)
             {
                 int variant = rulesetInstance.GetVariantForBeatmap(beatmap, mods.Value);
                 var variantName = rulesetInstance.GetVariantName(variant);
@@ -412,26 +435,7 @@ namespace osu.Game.Screens.Select
                 return;
             }
 
-            var perfAttrs = starDiff.PerformanceAttributes;
-            if (perfAttrs != null)
-            {
-                var displayAttrs = perfAttrs.GetAttributesForDisplay().ToList();
-                double maxPP = perfAttrs.Total;
-
-                var aspects = displayAttrs.Where(a => a.PropertyName != nameof(PerformanceAttributes.Total))
-                                          .Select(a => $"{a.DisplayName}: {Math.Round(a.Value):0}pp");
-
-                string aspectsStr = string.Join(", ", aspects);
-                if (!string.IsNullOrEmpty(aspectsStr))
-                    additionalStatsText.Text = $"Combo: {starDiff.MaxCombo}x | PP: {Math.Round(maxPP):0} pp ({aspectsStr})";
-                else
-                    additionalStatsText.Text = $"Combo: {starDiff.MaxCombo}x | PP: {Math.Round(maxPP):0} pp";
-            }
-            else
-            {
-                additionalStatsText.Text = $"Combo: {starDiff.MaxCombo}x | PP: -";
-            }
-
+            additionalStatsText.Text = BeatmapAdditionalInfoFormatter.Format(starDiff);
             additionalStatsText.Alpha = 1;
         }
 

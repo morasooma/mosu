@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
@@ -36,10 +37,18 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
         private OsuColour colours { get; set; } = null!;
 
         private Button skipButton = null!;
+        private readonly MultiplayerBreakSkipRequest? breakRequest;
+        private readonly HashSet<int> breakVoters = new HashSet<int>();
 
         public MultiplayerSkipOverlay(double startTime)
             : base(startTime)
         {
+        }
+
+        public MultiplayerSkipOverlay(double startTime, MultiplayerBreakSkipRequest breakRequest)
+            : base(startTime)
+        {
+            this.breakRequest = breakRequest;
         }
 
         protected override OsuClickableContainer CreateButton(IBindable<bool> inSkipPeriod) => skipButton = new Button
@@ -60,12 +69,19 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
 
             client.UserLeft += onUserLeft;
             client.UserStateChanged += onUserStateChanged;
-            client.UserVotedToSkipIntro += onUserVotedToSkipIntro;
+            if (breakRequest == null)
+                client.UserVotedToSkipIntro += onUserVotedToSkipIntro;
+            else
+                client.UserVotedToSkipBreak += onUserVotedToSkipBreak;
 
             updateCount();
         }
 
-        private void onUserLeft(MultiplayerRoomUser user) => Schedule(updateCount);
+        private void onUserLeft(MultiplayerRoomUser user) => Schedule(() =>
+        {
+            breakVoters.Remove(user.UserID);
+            updateCount();
+        });
 
         private void onUserStateChanged(MultiplayerRoomUser user, MultiplayerUserState state) => Schedule(updateCount);
 
@@ -75,13 +91,25 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
             updateCount();
         });
 
+        private void onUserVotedToSkipBreak(int userId, MultiplayerBreakSkipRequest request) => Schedule(() =>
+        {
+            if (breakRequest?.Matches(request) != true)
+                return;
+
+            breakVoters.Add(userId);
+            FadingContent.TriggerShow();
+            updateCount();
+        });
+
         private void updateCount()
         {
-            if (client.Room == null || client.Room.Settings.AutoSkip)
+            if (client.Room == null || breakRequest == null && client.Room.Settings.AutoSkip)
                 return;
 
             int countTotal = client.Room.Users.Count(u => u.State == MultiplayerUserState.Playing);
-            int countSkipped = client.Room.Users.Count(u => u.State == MultiplayerUserState.Playing && u.VotedToSkipIntro);
+            int countSkipped = breakRequest == null
+                ? client.Room.Users.Count(u => u.State == MultiplayerUserState.Playing && u.VotedToSkipIntro)
+                : client.Room.Users.Count(u => u.State == MultiplayerUserState.Playing && breakVoters.Contains(u.UserID));
             int countRequired = countTotal / 2 + 1;
 
             skipButton.SkippedCount.Value = Math.Min(countRequired, countSkipped);
@@ -97,6 +125,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                 client.UserLeft -= onUserLeft;
                 client.UserStateChanged -= onUserStateChanged;
                 client.UserVotedToSkipIntro -= onUserVotedToSkipIntro;
+                client.UserVotedToSkipBreak -= onUserVotedToSkipBreak;
             }
         }
 

@@ -52,9 +52,9 @@ namespace osu.Game.Collections
         {
             Children = new Drawable[]
             {
-                new Box
+                new BackdropBlurSurface
                 {
-                    Colour = colours.GreySeaFoamDark,
+                    SurfaceColour = colours.GreySeaFoamDark,
                     RelativeSizeAxes = Axes.Both,
                 },
                 new Container

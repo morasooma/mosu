@@ -95,10 +95,10 @@ namespace osu.Game.Screens.Play
 
         private readonly BindableBool holdingForHUD = new BindableBool();
 
-        private readonly SkinnableContainer mainComponents;
+        private readonly GameplaySkinnableContainer mainComponents;
 
         [CanBeNull]
-        private readonly SkinnableContainer rulesetComponents;
+        private readonly GameplaySkinnableContainer rulesetComponents;
 
         private readonly List<Drawable> hideTargets;
 
@@ -107,7 +107,7 @@ namespace osu.Game.Screens.Play
         /// </summary>
         internal readonly Drawable PlayfieldSkinLayer;
 
-        public HUDOverlay([CanBeNull] DrawableRuleset drawableRuleset, IReadOnlyList<Mod> mods, PlayerConfiguration configuration)
+        public HUDOverlay([CanBeNull] DrawableRuleset drawableRuleset, IReadOnlyList<Mod> mods, PlayerConfiguration configuration, [CanBeNull] ScoreProcessor scoreProcessor = null)
         {
             this.drawableRuleset = drawableRuleset;
             this.mods = mods;
@@ -127,12 +127,12 @@ namespace osu.Game.Screens.Play
                 judgementCountController = new JudgementCountController(),
                 clicksPerSecondController = new ClicksPerSecondController(),
                 InputCountController = new InputCountController(),
-                mainComponents = new HUDComponentsContainer { AlwaysPresent = true, },
+                mainComponents = new HUDComponentsContainer(null, scoreProcessor) { AlwaysPresent = true, },
                 drawableRuleset != null
-                    ? (rulesetComponents = new HUDComponentsContainer(drawableRuleset.Ruleset.RulesetInfo) { AlwaysPresent = true, })
+                    ? (rulesetComponents = new HUDComponentsContainer(drawableRuleset.Ruleset.RulesetInfo, scoreProcessor) { AlwaysPresent = true, })
                     : Empty(),
                 PlayfieldSkinLayer = drawableRuleset != null
-                    ? new SkinnableContainer(new GlobalSkinnableContainerLookup(GlobalSkinnableContainers.Playfield, drawableRuleset.Ruleset.RulesetInfo)) { AlwaysPresent = true, }
+                    ? new GameplaySkinnableContainer(new GlobalSkinnableContainerLookup(GlobalSkinnableContainers.Playfield, drawableRuleset.Ruleset.RulesetInfo), scoreProcessor) { AlwaysPresent = true, }
                     : Empty(),
                 TopRightElements = new FillFlowContainer
                 {
@@ -191,7 +191,7 @@ namespace osu.Game.Screens.Play
             mainComponents.Reload();
             rulesetComponents?.Reload();
 
-            if (PlayfieldSkinLayer is SkinnableContainer playfieldSkinLayer)
+            if (PlayfieldSkinLayer is GameplaySkinnableContainer playfieldSkinLayer)
                 playfieldSkinLayer.Reload();
         }
 
@@ -453,15 +453,36 @@ namespace osu.Game.Screens.Play
             }
         }
 
-        private partial class HUDComponentsContainer : SkinnableContainer
+        private partial class GameplaySkinnableContainer : SkinnableContainer
+        {
+            private readonly ScoreProcessor scoreProcessor;
+
+            public GameplaySkinnableContainer(GlobalSkinnableContainerLookup lookup, [CanBeNull] ScoreProcessor scoreProcessor)
+                : base(lookup)
+            {
+                this.scoreProcessor = scoreProcessor;
+            }
+
+            protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
+            {
+                var dependencyContainer = new DependencyContainer(base.CreateChildDependencies(parent));
+
+                if (scoreProcessor != null && parent.Get(typeof(ScoreProcessor)) == null)
+                    dependencyContainer.CacheAs(scoreProcessor);
+
+                return dependencyContainer;
+            }
+        }
+
+        private partial class HUDComponentsContainer : GameplaySkinnableContainer
         {
             private Bindable<ScoringMode> scoringMode;
 
             [Resolved]
             private OsuConfigManager config { get; set; }
 
-            public HUDComponentsContainer([CanBeNull] RulesetInfo ruleset = null)
-                : base(new GlobalSkinnableContainerLookup(GlobalSkinnableContainers.MainHUDComponents, ruleset))
+            public HUDComponentsContainer([CanBeNull] RulesetInfo ruleset = null, [CanBeNull] ScoreProcessor scoreProcessor = null)
+                : base(new GlobalSkinnableContainerLookup(GlobalSkinnableContainers.MainHUDComponents, ruleset), scoreProcessor)
             {
                 RelativeSizeAxes = Axes.Both;
             }

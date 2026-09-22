@@ -13,5 +13,11 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("osu.Game.Tests.Android")]
 [assembly: InternalsVisibleTo("osu.Game.Tournament.Tests")]
 
+// The spectator server runs the Dodge World simulation itself, so that the rules of the world exist
+// once rather than twice. It therefore needs the simulation and the stored world document, which are
+// internal because they are for these two consumers and nobody else.
+[assembly: InternalsVisibleTo("osu.Server.Spectator")]
+[assembly: InternalsVisibleTo("osu.Server.Spectator.Tests")]
+
 // intended for Moq usage
 [assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]

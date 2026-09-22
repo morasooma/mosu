@@ -15,13 +15,13 @@ namespace osu.Game.Tests.NonVisual
             var startInfo = ReplayRenderProcessStartInfoBuilder.Create(
                 @"C:\Games\osu!.exe",
                 @"C:\Games\osu!.dll",
-                ["--render-replay", "abc", "--resolution", "1920x1080"],
+                ["--render-replay", "abc", "--resolution", "1920x1080", "--skin", "01234567-89ab-cdef-0123-456789abcdef"],
                 @"C:\Games");
 
             Assert.Multiple(() =>
             {
                 Assert.That(startInfo.FileName, Is.EqualTo(@"C:\Games\osu!.exe"));
-                Assert.That(startInfo.Arguments, Is.EqualTo("--render-replay abc --resolution 1920x1080"));
+                Assert.That(startInfo.Arguments, Is.EqualTo("--render-replay abc --resolution 1920x1080 --skin 01234567-89ab-cdef-0123-456789abcdef"));
             });
         }
 

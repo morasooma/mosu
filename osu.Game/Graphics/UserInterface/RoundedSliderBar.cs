@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using osuTK.Graphics;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -42,6 +43,7 @@ namespace osu.Game.Graphics.UserInterface
         }
 
         private Colour4 backgroundColour;
+        private IBindable<Colour4>? themeColour;
 
         public Color4 BackgroundColour
         {
@@ -124,8 +126,20 @@ namespace osu.Game.Graphics.UserInterface
         [BackgroundDependencyLoader(true)]
         private void load(OverlayColourProvider? colourProvider, OsuColour colours)
         {
-            AccentColour = colourProvider?.Highlight1 ?? colours.Pink;
-            BackgroundColour = colourProvider?.Background5 ?? colours.PinkDarker.Darken(1);
+            if (colourProvider == null)
+            {
+                AccentColour = colours.Pink;
+                BackgroundColour = colours.PinkDarker.Darken(1);
+            }
+            else
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ =>
+                {
+                    AccentColour = colourProvider.Highlight1;
+                    BackgroundColour = colourProvider.Background5;
+                }, true);
+            }
         }
 
         protected override void Update()

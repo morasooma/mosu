@@ -51,7 +51,7 @@ namespace osu.Game.Online.API
                 DownloadBeatmapSetRequest download => isServerExclusive(download.Model),
                 GetBeatmapSetRequest set => set.ID >= SERVER_EXCLUSIVE_ID_THRESHOLD,
                 GetBeatmapRequest beatmap => beatmap.ServerExclusive || beatmap.OnlineID >= SERVER_EXCLUSIVE_ID_THRESHOLD,
-                GetBeatmapsRequest => false,
+                GetBeatmapsRequest beatmaps => beatmaps.BeatmapIds.Any(id => id >= SERVER_EXCLUSIVE_ID_THRESHOLD),
                 _ => true,
             };
 

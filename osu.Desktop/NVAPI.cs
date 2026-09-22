@@ -17,7 +17,7 @@ namespace osu.Desktop
     [SupportedOSPlatform("windows")]
     internal static class NVAPI
     {
-        private const string osu_filename = "osu!.exe";
+        private const string application_filename = "Morasooma.exe";
 
         // This is a good reference:
         // https://github.com/errollw/Warp-and-Blend-Quadros/blob/master/WarpBlend-Quadros/UnwarpAll-Quadros/include/nvapi.h
@@ -26,8 +26,8 @@ namespace osu.Desktop
         public const int MAX_PHYSICAL_GPUS = 64;
         public const int UNICODE_STRING_MAX = 2048;
 
-        public const string APPLICATION_NAME = @"osu!";
-        public const string PROFILE_NAME = @"osu!";
+        public const string APPLICATION_NAME = @"Morasooma";
+        public const string PROFILE_NAME = @"Morasooma";
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NvStatus EnumPhysicalGPUsDelegate([Out] IntPtr[] gpuHandles, out int gpuCount);
@@ -210,7 +210,7 @@ namespace osu.Desktop
 
             for (uint i = 0; i < numApps; i++)
             {
-                if (applications[i].AppName == osu_filename)
+                if (applications[i].AppName == application_filename)
                 {
                     application = applications[i];
                     return true;
@@ -236,7 +236,7 @@ namespace osu.Desktop
 
             isApplicationSpecific = true;
 
-            if (checkError(FindApplicationByName(sessionHandle, osu_filename, out profileHandle, ref application), nameof(FindApplicationByName)))
+            if (checkError(FindApplicationByName(sessionHandle, application_filename, out profileHandle, ref application), nameof(FindApplicationByName)))
             {
                 isApplicationSpecific = false;
                 if (checkError(GetCurrentGlobalProfile(sessionHandle, out profileHandle), nameof(GetCurrentGlobalProfile)))
@@ -327,7 +327,7 @@ namespace osu.Desktop
                 // Need to add the current application to the profile
                 application.IsPredefined = 0;
 
-                application.AppName = osu_filename;
+                application.AppName = application_filename;
                 application.UserFriendlyName = APPLICATION_NAME;
 
                 if (checkError(CreateApplication(sessionHandle, profileHandle, ref application), nameof(CreateApplication)))

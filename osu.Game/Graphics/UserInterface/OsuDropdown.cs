@@ -64,10 +64,24 @@ namespace osu.Game.Graphics.UserInterface
             private Sample? sampleClose;
             private IBindable<Colour4>? themeColour;
             private IBindable<ThemeMode>? themeMode;
+            private readonly BackdropBlurSurface glassBackground;
+
+            public new Color4 BackgroundColour
+            {
+                get => glassBackground.SurfaceColour;
+                set => glassBackground.SurfaceColour = value;
+            }
 
             // todo: this uses the same styling as OsuMenu. hopefully we can just use OsuMenu in the future with some refactoring
             public OsuDropdownMenu()
             {
+                base.BackgroundColour = Color4.Transparent;
+                MaskingContainer.Add(glassBackground = new BackdropBlurSurface
+                {
+                    Depth = float.MaxValue,
+                    SurfaceColour = Color4.Black,
+                });
+
                 CornerRadius = corner_radius;
 
                 MaskingContainer.CornerRadius = corner_radius;
@@ -170,7 +184,7 @@ namespace osu.Game.Graphics.UserInterface
                 set
                 {
                     hoverColour = value;
-                    foreach (var c in Children.OfType<DrawableOsuDropdownMenuItem>())
+                    foreach (var c in ItemsContainer.OfType<DrawableOsuDropdownMenuItem>())
                         c.BackgroundColourHover = value;
                 }
             }
@@ -183,7 +197,7 @@ namespace osu.Game.Graphics.UserInterface
                 set
                 {
                     selectionColour = value;
-                    foreach (var c in Children.OfType<DrawableOsuDropdownMenuItem>())
+                    foreach (var c in ItemsContainer.OfType<DrawableOsuDropdownMenuItem>())
                         c.BackgroundColourSelected = value;
                 }
             }

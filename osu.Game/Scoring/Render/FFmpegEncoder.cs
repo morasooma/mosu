@@ -587,11 +587,14 @@ namespace osu.Game.Scoring.Render
 
                 File.Copy(ffmpegSource, targetPath, overwrite: true);
 
-                // Set executable permissions
-                File.SetUnixFileMode(targetPath,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
-                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                // Set executable permissions on Unix platforms.
+                if (!OperatingSystem.IsWindows())
+                {
+                    File.SetUnixFileMode(targetPath,
+                        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                        UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                        UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                }
             }
             finally
             {

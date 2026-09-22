@@ -143,6 +143,12 @@ namespace osu.Game.Graphics.Backgrounds
             if (newBeatmap != Beatmap)
                 return;
 
+            // Song select can create the background before MusicController has requested the
+            // beatmap's audio. Accessing WorkingBeatmap.Track at that point throws; the later
+            // TrackChanged notification will install the clock source once LoadTrack() has run.
+            if (!newBeatmap.TrackLoaded)
+                return;
+
             // `MusicController` will sometimes reload the track, even when the working beatmap technically hasn't changed.
             // ensure that the storyboard's clock is always using the latest track instance.
             storyboardClock.ChangeSource(newBeatmap.Track);

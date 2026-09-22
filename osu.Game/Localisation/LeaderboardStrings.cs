@@ -60,9 +60,9 @@ namespace osu.Game.Localisation
         public static LocalisableString BeatmapUploadHelpHeader => new TranslatableString(getKey(@"beatmap_upload_help_header"), @"Что мне делать?");
 
         /// <summary>
-        /// "Если эта карта уже существует на сервере, нажмите ""Обновить данные карты"".\nЕсли её ещё нет на сервере, нажмите ""Загрузить на сервер"", чтобы помочь сообществу."
+        /// "Если эта карта уже существует на сервере, нажмите кнопку обновления данных карты. Если её ещё нет на сервере, нажмите кнопку загрузки, чтобы помочь сообществу."
         /// </summary>
-        public static LocalisableString BeatmapUploadHelpBody => new TranslatableString(getKey(@"beatmap_upload_help_body"), @"Если эта карта уже существует на сервере, нажмите ""Обновить данные карты"".\nЕсли её ещё нет на сервере, нажмите ""Загрузить на сервер"", чтобы помочь сообществу.");
+        public static LocalisableString BeatmapUploadHelpBody => new TranslatableString(getKey(@"beatmap_upload_help_body"), @"Если эта карта уже существует на сервере, нажмите кнопку обновления данных карты. Если её ещё нет на сервере, нажмите кнопку загрузки, чтобы помочь сообществу.");
 
         /// <summary>
         /// "Подготовка пакета карты..."
@@ -95,9 +95,9 @@ namespace osu.Game.Localisation
         public static LocalisableString PleaseSignInToViewOnlineLeaderboards => new TranslatableString(getKey(@"please_sign_in_to_view_online_leaderboards"), @"Please sign in to view online leaderboards!");
 
         /// <summary>
-        /// "Please invest in an osu!supporter tag to view this leaderboard!"
+        /// "Please invest in a Morasooma Supporter tag to view this leaderboard!"
         /// </summary>
-        public static LocalisableString PleaseInvestInAnOsuSupporterTagToViewThisLeaderboard => new TranslatableString(getKey(@"please_invest_in_an_osu_supporter_tag_to_view_this_leaderboard"), @"Please invest in an osu!supporter tag to view this leaderboard!");
+        public static LocalisableString PleaseInvestInAnOsuSupporterTagToViewThisLeaderboard => new TranslatableString(getKey(@"please_invest_in_an_osu_supporter_tag_to_view_this_leaderboard"), @"Please invest in a Morasooma Supporter tag to view this leaderboard!");
 
         /// <summary>
         /// "You are not on a team. Maybe you should join one!"

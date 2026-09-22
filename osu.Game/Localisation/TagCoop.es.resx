@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="all_players" xml:space="preserve"><value>Todos los jugadores</value></data>
+  <data name="spin_now" xml:space="preserve"><value>Gira el spinner</value></data>
+  <data name="your_turn" xml:space="preserve"><value>Tu turno</value></data>
+  <data name="hit_this_combo" xml:space="preserve"><value>Juega este combo</value></data>
+  <data name="all_get_ready" xml:space="preserve"><value>Todos preparados</value></data>
+  <data name="get_ready" xml:space="preserve"><value>Prepárate</value></data>
+  <data name="playing_now" xml:space="preserve"><value>Jugando ahora</value></data>
+  <data name="waiting_for_turn" xml:space="preserve"><value>Esperando turno</value></data>
+  <data name="tag_coop" xml:space="preserve"><value>Tag Co-op</value></data>
+  <data name="spinner_in" xml:space="preserve"><value>Spinner en {0:0.0} s</value></data>
+  <data name="your_turn_in" xml:space="preserve"><value>Tu turno en {0:0.0} s</value></data>
+  <data name="status_with_ping" xml:space="preserve"><value>{0} · {1} ms</value></data>
+  <data name="remote_miss" xml:space="preserve"><value>{0}: fallo</value></data>
+</root>

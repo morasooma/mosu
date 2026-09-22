@@ -133,9 +133,14 @@ namespace osu.Game.Tests.Visual.Navigation
             AddAssert("mania skin remembered", () => Game.LocalConfig.Get<string>(OsuSetting.ForkManiaSkin) == SkinInfo.CLASSIC_SKIN.ToString());
             AddAssert("osu skin unchanged", () => Game.LocalConfig.Get<string>(OsuSetting.ForkOsuSkin) == SkinInfo.ARGON_SKIN.ToString());
 
-            AddStep("set missing mania skin", () => Game.LocalConfig.SetValue(OsuSetting.ForkManiaSkin, Guid.NewGuid().ToString()));
+            string missingManiaSkin = null;
+            AddStep("set missing mania skin", () => Game.LocalConfig.SetValue(OsuSetting.ForkManiaSkin, missingManiaSkin = Guid.NewGuid().ToString()));
             AddAssert("falls back to global skin", () => skins.CurrentSkinInfo.Value.ID == SkinInfo.ARGON_SKIN);
-            AddAssert("normalises missing skin", () => Game.LocalConfig.Get<string>(OsuSetting.ForkManiaSkin) == SkinInfo.ARGON_SKIN.ToString());
+            AddAssert("keeps missing selection for later recovery", () => Game.LocalConfig.Get<string>(OsuSetting.ForkManiaSkin) == missingManiaSkin);
+
+            AddStep("switch to osu", () => Game.Ruleset.Value = rulesets.GetRuleset(0));
+            AddAssert("osu skin restored after fallback", () => skins.CurrentSkinInfo.Value.ID == SkinInfo.ARGON_SKIN);
+            AddAssert("osu skin setting unchanged", () => Game.LocalConfig.Get<string>(OsuSetting.ForkOsuSkin) == SkinInfo.ARGON_SKIN.ToString());
 
             AddStep("disable ruleset skins", () => Game.LocalConfig.SetValue(OsuSetting.ForkSeparateSkinsPerRuleset, false));
             AddAssert("global skin restored", () => skins.CurrentSkinInfo.Value.ID == SkinInfo.ARGON_SKIN);

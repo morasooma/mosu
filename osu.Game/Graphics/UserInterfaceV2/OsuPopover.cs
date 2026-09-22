@@ -8,10 +8,12 @@ using osu.Framework.Bindables;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Effects;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input.Bindings;
 using osu.Framework.Input.Events;
+using osu.Game.Graphics.Containers;
 using osu.Game.Input.Bindings;
 using osu.Game.Overlays;
 using osuTK;
@@ -26,6 +28,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
         private Sample? samplePopIn;
         private Sample? samplePopOut;
         private IBindable<Colour4>? themeColour;
+        private readonly BackdropBlurSurface glassBackground;
         protected virtual string PopInSampleName => "UI/overlay-pop-in";
         protected virtual string PopOutSampleName => "UI/overlay-pop-out";
 
@@ -34,6 +37,12 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
         public OsuPopover(bool withPadding = true)
         {
+            Background.Colour = Colour4.Transparent;
+            Body.Add(glassBackground = new BackdropBlurSurface
+            {
+                Depth = float.MaxValue,
+            });
+
             Content.Padding = withPadding ? new MarginPadding(20) : new MarginPadding();
 
             Body.Masking = true;
@@ -54,10 +63,10 @@ namespace osu.Game.Graphics.UserInterfaceV2
             if (colourProvider != null)
             {
                 themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
-                themeColour.BindValueChanged(colour => Background.Colour = Arrow.Colour = colour.NewValue, true);
+                themeColour.BindValueChanged(colour => glassBackground.SurfaceColour = Arrow.Colour = colour.NewValue, true);
             }
             else
-                Background.Colour = Arrow.Colour = colours.GreySeaFoamDarker;
+                glassBackground.SurfaceColour = Arrow.Colour = colours.GreySeaFoamDarker;
 
             samplePopIn = audio.Samples.Get(PopInSampleName);
             samplePopOut = audio.Samples.Get(PopOutSampleName);
@@ -93,7 +102,13 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
             if (e.Action == GlobalAction.Back)
             {
-                this.HidePopover();
+                // Popovers presented via a presentation host live outside their originating
+                // PopoverContainer, so HidePopover() would throw for them. Fall back to a plain
+                // hide; the owning container clears its target once the popover is no longer present.
+                if (this.FindClosestParent<PopoverContainer>() != null)
+                    this.HidePopover();
+                else
+                    this.Hide();
                 return true;
             }
 

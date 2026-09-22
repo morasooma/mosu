@@ -52,6 +52,15 @@ namespace osu.Game.Overlays.Settings.Sections.General
                     BackgroundColour = colours.YellowDark,
                     Action = () => game?.ShowWiki(@"Help_centre/Upgrading_to_lazer")
                 },
+                new SettingsButtonV2
+                {
+                    Text = GeneralSettingsStrings.ReportIssue,
+                    TooltipText = GeneralSettingsStrings.ReportIssueTooltip,
+                    BackgroundColour = colours.YellowDarker,
+                    Action = () => dialogOverlay?.Push(new IssueReportDialog(() =>
+                        game?.OpenUrlExternally(@"https://github.com/GooGuTeam/osu/issues", LinkWarnMode.NeverWarn)
+                    )),
+                },
             });
 
             Add(new SettingsButtonV2

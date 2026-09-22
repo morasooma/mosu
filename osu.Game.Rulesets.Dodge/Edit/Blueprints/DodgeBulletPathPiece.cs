@@ -70,6 +70,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 Math.Clamp(bullet.Opacity, 0, 1),
                 bullet.ContinueUntilExit,
                 bullet.MovementType,
+                bullet.MovementEasing,
                 bullet.WaveAmplitude,
                 Math.Max(1, bullet.WaveCycles),
                 bullet.WavePhase);
@@ -89,7 +90,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                     bullet.MovementType,
                     bullet.WaveAmplitude,
                     bullet.WaveCycles,
-                    bullet.WavePhase)
+                    bullet.WavePhase,
+                    bullet.MovementEasing)
                 : 1;
 
             start.Position = bullet.Position;
@@ -100,7 +102,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 bullet.MovementType,
                 bullet.WaveAmplitude,
                 bullet.WaveCycles,
-                bullet.WavePhase);
+                bullet.WavePhase,
+                bullet.MovementEasing);
             start.Size = end.Size = new Vector2(bullet.BulletSize);
             start.Shape = end.Shape = bullet.Shape;
             start.Direction = DodgeTrajectory.TangentAtProgress(
@@ -110,7 +113,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 bullet.MovementType,
                 bullet.WaveAmplitude,
                 bullet.WaveCycles,
-                bullet.WavePhase);
+                bullet.WavePhase,
+                bullet.MovementEasing);
             end.Direction = DodgeTrajectory.TangentAtProgress(
                 bullet.Position,
                 bullet.EndPosition,
@@ -118,7 +122,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 bullet.MovementType,
                 bullet.WaveAmplitude,
                 bullet.WaveCycles,
-                bullet.WavePhase);
+                bullet.WavePhase,
+                bullet.MovementEasing);
             start.FillColour = end.FillColour = bullet.Colour;
             start.OutlineColour = end.OutlineColour = bullet.OutlineColour;
             start.OutlineThickness = end.OutlineThickness = bullet.OutlineThickness;
@@ -133,7 +138,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 bullet.MovementType,
                 bullet.WaveAmplitude,
                 bullet.WaveCycles,
-                bullet.WavePhase);
+                bullet.WavePhase,
+                bullet.MovementEasing);
             float left = bullet.Position.X;
             float top = bullet.Position.Y;
             float right = bullet.Position.X;
@@ -171,6 +177,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             float Opacity,
             bool ContinueUntilExit,
             DodgeMovementType MovementType,
+            DodgeMovementEasing MovementEasing,
             float WaveAmplitude,
             int WaveCycles,
             float WavePhase);

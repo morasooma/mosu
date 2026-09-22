@@ -306,9 +306,19 @@ namespace osu.Game.Rulesets
         public virtual string PlayingVerb => "Playing";
 
         /// <summary>
-        /// A list of available variant ids.
+        /// A list of available gameplay variant ids.
         /// </summary>
-        public virtual IEnumerable<int> AvailableVariants => new[] { 0 };
+        public virtual IEnumerable<int> GameplayVariants => new[] { 0 };
+
+        /// <summary>
+        /// A list of all variants, including the editor binding variant.
+        /// </summary>
+        public IEnumerable<int> AllVariants => GameplayVariants.Append(EDITOR_VARIANT);
+
+        /// <summary>
+        /// Reserved variant for ruleset-specific editor key bindings.
+        /// </summary>
+        public const int EDITOR_VARIANT = int.MaxValue;
 
         /// <summary>
         /// Get a list of default keys for the specified variant.

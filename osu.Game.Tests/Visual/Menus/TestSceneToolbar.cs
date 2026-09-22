@@ -88,6 +88,19 @@ namespace osu.Game.Tests.Visual.Menus
                     () => unreadNotificationCount.Value = count);
         }
 
+        [Test]
+        public void TestMemoryDisplayComesAfterToolbarIcons()
+        {
+            AddAssert("memory display is last right-side item", () =>
+            {
+                var rightItems = toolbar.ChildrenOfType<FillFlowContainer>()
+                                        .Single(flow => flow.Children.Any(child => child is ToolbarMemoryDisplay))
+                                        .Children;
+
+                return rightItems.Last() is ToolbarMemoryDisplay;
+            });
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void TestRulesetSwitchingShortcut(bool toolbarHidden)
@@ -140,6 +153,25 @@ namespace osu.Game.Tests.Visual.Menus
                 AddAssert("toolbar still hidden", () => toolbar.State.Value == Visibility.Hidden);
             else
                 AddAssert("toolbar is visible", () => toolbar.State.Value == Visibility.Visible);
+        }
+
+        [Test]
+        public void TestAutoHideCanRevealManuallyHiddenToolbar()
+        {
+            AddStep("manually hide toolbar", () =>
+            {
+                InputManager.PressKey(Key.ControlLeft);
+                InputManager.Key(Key.T);
+                InputManager.ReleaseKey(Key.ControlLeft);
+            });
+            AddAssert("toolbar hidden", () => toolbar.State.Value == Visibility.Hidden);
+
+            AddStep("enable auto-hide and reveal", () =>
+            {
+                toolbar.AutoHideActive = true;
+                toolbar.Show();
+            });
+            AddAssert("toolbar revealed", () => toolbar.State.Value == Visibility.Visible);
         }
 
         [Test]

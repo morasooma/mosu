@@ -20,7 +20,6 @@ namespace osu.Game.Rulesets.Osu.Mods
 
         public override LocalisableString Description => MosuModsStrings.ModAimAssistDescription;
 
-        public override double ScoreMultiplier => 0.8;
 
         public override bool HasImplementation => true;
 

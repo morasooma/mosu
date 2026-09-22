@@ -36,7 +36,7 @@ namespace osu.Game.Overlays
 
         protected override Container<Drawable> Content => content;
 
-        private readonly Box background;
+        private readonly BackdropBlurSurface background;
         private readonly Container content;
         private IBindable<Colour4> themeColour = null!;
 
@@ -64,7 +64,7 @@ namespace osu.Game.Overlays
 
             base.Content.AddRange(new Drawable[]
             {
-                background = new Box
+                background = new BackdropBlurSurface
                 {
                     RelativeSizeAxes = Axes.Both,
                 },
@@ -112,7 +112,7 @@ namespace osu.Game.Overlays
             Waves.SecondWaveColour = ColourProvider.Light3;
             Waves.ThirdWaveColour = ColourProvider.Dark4;
             Waves.FourthWaveColour = ColourProvider.Dark3;
-            background.Colour = BackgroundColour;
+            background.SurfaceColour = BackgroundColour;
         }
 
         protected override void PopIn()

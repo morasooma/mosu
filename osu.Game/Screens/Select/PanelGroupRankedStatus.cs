@@ -150,7 +150,8 @@ namespace osu.Game.Screens.Select
             else
                 iconContainer.Colour = colourProvider.Background5;
 
-            countText.Colour = starRatingText.Colour = colourProvider.Content1;
+            starRatingText.Colour = colourProvider.Content1;
+            countText.Colour = Color4.White;
         }
 
         private Color4 statusColour;

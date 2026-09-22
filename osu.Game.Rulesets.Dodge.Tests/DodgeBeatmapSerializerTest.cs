@@ -95,6 +95,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 Opacity = 0.45f,
                 OutlineColour = Colour4.FromHex("#F2A65A"),
                 BorderOpacity = 0.7f,
+                Easing = DodgeCameraEasing.Bounce,
             });
             source.HitObjects.Add(new DodgeEmitter
             {
@@ -120,6 +121,23 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 WaveCycles = 4,
                 WavePhase = -15,
                 TrajectoryGuideStyle = DodgeTrajectoryGuideStyle.Hidden,
+            });
+            source.HitObjects.Add(new DodgeCameraChange
+            {
+                StartTime = 4500,
+                Duration = 1000,
+                Position = new Vector2(256, 192),
+                EndPosition = new Vector2(356, 242),
+                Easing = DodgeCameraEasing.Overshoot,
+            });
+            source.HitObjects.Add(new DodgeTrigger
+            {
+                StartTime = 5000,
+                Duration = 650,
+                Position = new Vector2(220, 48),
+                Action = DodgeTriggerAction.FlashEffect,
+                Strength = 0.75f,
+                Colour = Colour4.FromHex("#FF33AA"),
             });
 
             using var compatibilityStream = new MemoryStream();
@@ -164,6 +182,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 Assert.That(sidecarText, Does.Contain("\"movementType\": \"Sine\""));
                 Assert.That(sidecarText, Does.Contain("\"trajectoryGuideStyle\": \"FullPath\""));
                 Assert.That(sidecarText, Does.Contain("\"trajectoryGuideStyle\": \"Hidden\""));
+                Assert.That(sidecarText, Does.Contain("\"easing\": \"Overshoot\""));
                 Assert.That(sidecarText, Does.Not.Contain("travelDistancePerBeat"));
             });
 
@@ -179,12 +198,14 @@ namespace osu.Game.Rulesets.Dodge.Tests
             var bullet = decoded.HitObjects.OfType<DodgeBullet>().Single();
             var arenaChange = decoded.HitObjects.OfType<DodgeArenaChange>().Single();
             var emitter = decoded.HitObjects.OfType<DodgeEmitter>().Single();
+            var cameraChange = decoded.HitObjects.OfType<DodgeCameraChange>().Single();
+            var trigger = decoded.HitObjects.OfType<DodgeTrigger>().Single();
 
             Assert.Multiple(() =>
             {
                 Assert.That(compatibility.BeatmapInfo.Ruleset.OnlineID, Is.Zero);
                 Assert.That(compatibility.HitObjects, Has.Count.EqualTo(2));
-                Assert.That(decoded.HitObjects, Has.Count.EqualTo(3));
+                Assert.That(decoded.HitObjects, Has.Count.EqualTo(5));
                 Assert.That(bullet.StartTime, Is.EqualTo(1234));
                 Assert.That(bullet.Duration, Is.EqualTo(500));
                 Assert.That(bullet.Position, Is.EqualTo(new Vector2(100, 120)));
@@ -200,6 +221,12 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 Assert.That(bullet.WaveCycles, Is.EqualTo(3));
                 Assert.That(bullet.WavePhase, Is.EqualTo(25));
                 Assert.That(bullet.TrajectoryGuideStyle, Is.EqualTo(DodgeTrajectoryGuideStyle.FullPath));
+                Assert.That(trigger.StartTime, Is.EqualTo(5000));
+                Assert.That(trigger.Duration, Is.EqualTo(650));
+                Assert.That(trigger.Position, Is.EqualTo(new Vector2(220, 48)));
+                Assert.That(trigger.Action, Is.EqualTo(DodgeTriggerAction.FlashEffect));
+                Assert.That(trigger.Strength, Is.EqualTo(0.75f));
+                Assert.That(trigger.Colour, Is.EqualTo(Colour4.FromHex("#FF33AA")));
                 Assert.That(DodgeBeatmapSettings.GetAppearanceDuration(decoded.Difficulty), Is.EqualTo(1100).Within(0.001));
                 Assert.That(DodgeBeatmapSettings.GetBulletSize(decoded.Difficulty), Is.EqualTo(24).Within(0.001));
                 Assert.That(DodgeBeatmapSettings.GetPlayerSpeed(decoded.Difficulty), Is.EqualTo(360).Within(0.001));
@@ -217,6 +244,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 Assert.That(arenaChange.Opacity, Is.EqualTo(0.45f));
                 Assert.That(arenaChange.OutlineColour, Is.EqualTo(Colour4.FromHex("#F2A65A")));
                 Assert.That(arenaChange.BorderOpacity, Is.EqualTo(0.7f));
+                Assert.That(arenaChange.Easing, Is.EqualTo(DodgeCameraEasing.Bounce));
                 Assert.That(emitter.StartTime, Is.EqualTo(3000));
                 Assert.That(emitter.Duration, Is.EqualTo(1250));
                 Assert.That(emitter.Position, Is.EqualTo(new Vector2(256, 192)));
@@ -239,7 +267,66 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 Assert.That(emitter.WaveCycles, Is.EqualTo(4));
                 Assert.That(emitter.WavePhase, Is.EqualTo(-15));
                 Assert.That(emitter.TrajectoryGuideStyle, Is.EqualTo(DodgeTrajectoryGuideStyle.Hidden));
+                Assert.That(cameraChange.StartTime, Is.EqualTo(4500));
+                Assert.That(cameraChange.Duration, Is.EqualTo(1000));
+                Assert.That(cameraChange.Position, Is.EqualTo(new Vector2(256, 192)));
+                Assert.That(cameraChange.EndPosition, Is.EqualTo(new Vector2(356, 242)));
+                Assert.That(cameraChange.Easing, Is.EqualTo(DodgeCameraEasing.Overshoot));
             });
+        }
+
+        [Test]
+        public void TestVersionSixteenMigratesCameraEasingToLinear()
+        {
+            const string versionSixteen = """
+                                          {
+                                            "format": "dodge",
+                                            "rulesetOnlineId": 10,
+                                            "version": 16,
+                                            "cameraChanges": [
+                                              {
+                                                "startTime": 1000,
+                                                "duration": 500,
+                                                "startX": 10,
+                                                "startY": 20,
+                                                "endX": 110,
+                                                "endY": 20
+                                              }
+                                            ]
+                                          }
+                                          """;
+
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(versionSixteen));
+            DodgeCameraChange camera = DodgeBeatmapSerializer.DeserializeHitObjects(stream).OfType<DodgeCameraChange>().Single();
+
+            Assert.That(camera.Easing, Is.EqualTo(DodgeCameraEasing.Linear));
+        }
+
+        [Test]
+        public void TestVersionSeventeenMigratesArenaEasingToLinear()
+        {
+            const string versionSeventeen = """
+                                            {
+                                              "format": "dodge",
+                                              "rulesetOnlineId": 10,
+                                              "version": 17,
+                                              "arenaChanges": [
+                                                {
+                                                  "startTime": 1000,
+                                                  "duration": 500,
+                                                  "targetX": 10,
+                                                  "targetY": 20,
+                                                  "width": 300,
+                                                  "height": 200
+                                                }
+                                              ]
+                                            }
+                                            """;
+
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(versionSeventeen));
+            DodgeArenaChange arena = DodgeBeatmapSerializer.DeserializeHitObjects(stream).OfType<DodgeArenaChange>().Single();
+
+            Assert.That(arena.Easing, Is.EqualTo(DodgeCameraEasing.Linear));
         }
 
         [Test]
@@ -497,6 +584,71 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 Assert.That(emitter.BurstInterval, Is.EqualTo(137));
                 Assert.That(emitter.BurstBeatDivisor, Is.Zero);
             });
+        }
+
+        [Test]
+        public void TestVersionNineteenProjectileMotionRoundTrip()
+        {
+            var beatmap = new Beatmap<DodgeHitObject>();
+            beatmap.HitObjects.Add(new DodgeBullet
+            {
+                StartTime = 1000,
+                Duration = 750,
+                Position = new Vector2(10, 20),
+                EndPosition = new Vector2(300, 200),
+                MovementEasing = DodgeMovementEasing.EaseOut,
+            });
+            beatmap.HitObjects.Add(new DodgeEmitter
+            {
+                StartTime = 2000,
+                Duration = 900,
+                Position = new Vector2(256, 32),
+                AimPosition = new Vector2(256, 192),
+                BurstCount = 8,
+                BurstRotation = 22.5f,
+                MovementEasing = DodgeMovementEasing.EaseInOut,
+            });
+            beatmap.HitObjects.Add(new DodgeArenaChange
+            {
+                StartTime = 0,
+                TargetPosition = Vector2.Zero,
+                TargetSize = new Vector2(512, 384),
+                KiaiShakeAngle = 6.5f,
+            });
+
+            using var stream = new MemoryStream();
+            DodgeBeatmapSerializer.Serialize(beatmap, stream);
+            stream.Position = 0;
+            var objects = DodgeBeatmapSerializer.DeserializeHitObjects(stream);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(objects.OfType<DodgeBullet>().Single().MovementEasing, Is.EqualTo(DodgeMovementEasing.EaseOut));
+                Assert.That(objects.OfType<DodgeEmitter>().Single().MovementEasing, Is.EqualTo(DodgeMovementEasing.EaseInOut));
+                Assert.That(objects.OfType<DodgeEmitter>().Single().BurstRotation, Is.EqualTo(22.5f));
+                Assert.That(objects.OfType<DodgeArenaChange>().Single().KiaiShakeAngle, Is.EqualTo(6.5f));
+            });
+        }
+
+        [Test]
+        public void TestVersionEighteenMigratesProjectileMotionDefaults()
+        {
+            const string versionEighteen = """
+                                           {
+                                             "format": "dodge",
+                                             "rulesetOnlineId": 10,
+                                             "version": 18,
+                                             "bullets": [{ "startTime": 0, "duration": 500, "endX": 100 }],
+                                             "emitters": [{ "startTime": 1000, "duration": 500, "aimX": 100 }]
+                                           }
+                                           """;
+
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(versionEighteen));
+            var objects = DodgeBeatmapSerializer.DeserializeHitObjects(stream);
+
+            Assert.That(objects.OfType<DodgeBullet>().Single().MovementEasing, Is.EqualTo(DodgeMovementEasing.Linear));
+            Assert.That(objects.OfType<DodgeEmitter>().Single().MovementEasing, Is.EqualTo(DodgeMovementEasing.Linear));
+            Assert.That(objects.OfType<DodgeEmitter>().Single().BurstRotation, Is.Zero);
         }
     }
 }

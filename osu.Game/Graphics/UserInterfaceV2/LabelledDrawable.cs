@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -150,12 +151,30 @@ namespace osu.Game.Graphics.UserInterfaceV2
             }
         }
 
+        private IBindable<Colour4>? themeColour;
+        private IBindable<ThemeMode>? themeMode;
+
         [BackgroundDependencyLoader(true)]
         private void load(OverlayColourProvider? colourProvider, OsuColour osuColour)
         {
-            background.Colour = colourProvider?.Background4 ?? Color4Extensions.FromHex(@"1c2125");
-            labelText.Colour = colourProvider?.Content1 ?? Color4.White;
             descriptionText.Colour = osuColour.Yellow;
+
+            void updateColours()
+            {
+                background.Colour = colourProvider?.Background4 ?? (OverlayColourProvider.IsLightTheme ? Color4Extensions.FromHex(@"dedee3") : Color4Extensions.FromHex(@"1c2125"));
+                labelText.Colour = colourProvider?.Content1 ?? (OverlayColourProvider.IsLightTheme ? Color4.Black : Color4.White);
+            }
+
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ => updateColours(), true);
+            }
+            else
+            {
+                themeMode = OverlayColourProvider.CurrentTheme.GetBoundCopy();
+                themeMode.BindValueChanged(_ => updateColours(), true);
+            }
         }
 
         public LocalisableString Label

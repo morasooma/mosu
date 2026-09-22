@@ -73,7 +73,7 @@ namespace osu.Game.Screens.Menu
                 },
             };
 
-            const string url = @"https://osu.ppy.sh/home/support";
+            const string url = @"https://pay.cloudtips.ru/p/72f10912";
             considerBecomingASupporterText = localisation.GetLocalisedBindableString(SupporterDisplayStrings.ConsiderBecomingASupporter(url));
         }
 

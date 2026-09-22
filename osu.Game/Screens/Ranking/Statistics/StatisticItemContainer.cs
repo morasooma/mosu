@@ -1,16 +1,18 @@
-// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
-using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Bindables;
+using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Effects;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Overlays;
+using osuTK.Graphics;
 
 namespace osu.Game.Screens.Ranking.Statistics
 {
@@ -34,40 +36,99 @@ namespace osu.Game.Screens.Ranking.Statistics
             AutoSizeAxes = Axes.Y;
 
             Padding = new MarginPadding(5);
+            Width = item.FullWidth ? 1 : 0.5f;
 
             InternalChild = new Container
             {
                 RelativeSizeAxes = Axes.X,
                 AutoSizeAxes = Axes.Y,
                 Masking = true,
-                CornerRadius = 10,
-                Children = new Drawable[]
+                CornerRadius = 20,
+                CornerExponent = 2.5f,
+                Children = new[]
                 {
                     background = new Box
                     {
+                        Colour = ColourInfo.GradientVertical(
+                            OsuColour.Gray(0.25f).Opacity(0.8f),
+                            OsuColour.Gray(0.18f).Opacity(0.95f)
+                        ),
                         RelativeSizeAxes = Axes.Both,
                     },
                     new Container
                     {
                         RelativeSizeAxes = Axes.X,
                         AutoSizeAxes = Axes.Y,
-                        Padding = new MarginPadding(5),
+                        Padding = new MarginPadding(2),
                         Children = new[]
                         {
-                            LocalisableString.IsNullOrEmpty(item.Name)
-                                ? Empty()
-                                : new StatisticItemHeader { Text = item.Name },
                             new Container
                             {
                                 RelativeSizeAxes = Axes.X,
                                 AutoSizeAxes = Axes.Y,
-                                Padding = new MarginPadding(20) { Top = 45 },
+                                Padding = new MarginPadding(15) { Top = 40 },
                                 Child = item.CreateContent()
-                            }
+                            },
                         }
                     },
+                    new Container
+                    {
+                        RelativeSizeAxes = Axes.Both,
+                        Children = new Drawable[]
+                        {
+                            new Box
+                            {
+                                Colour = ColourInfo.GradientVertical(
+                                    OsuColour.Gray(0.25f),
+                                    OsuColour.Gray(0.25f).Opacity(0)
+                                ),
+                                RelativeSizeAxes = Axes.X,
+                                Height = 30,
+                            },
+                            new Box
+                            {
+                                Anchor = Anchor.BottomLeft,
+                                Origin = Anchor.BottomLeft,
+                                Colour = ColourInfo.GradientVertical(
+                                    OsuColour.Gray(0.18f).Opacity(0),
+                                    OsuColour.Gray(0.18f)
+                                ),
+                                RelativeSizeAxes = Axes.X,
+                                Height = 20,
+                            },
+                        }
+                    },
+                    LocalisableString.IsNullOrEmpty(item.Name)
+                        ? Empty()
+                        : new StatisticItemHeader
+                        {
+                            Text = item.Name
+                        },
                 }
             };
+
+            AddInternal(new Container
+            {
+                RelativeSizeAxes = Axes.Both,
+                Masking = true,
+                CornerRadius = 20,
+                CornerExponent = 2.5f,
+                EdgeEffect = new EdgeEffectParameters
+                {
+                    Radius = 2,
+                    Hollow = true,
+                    Colour = OsuColour.Gray(0.18f),
+                    Type = EdgeEffectType.Shadow,
+                },
+                Children = new[]
+                {
+                    new Box
+                    {
+                        Colour = Color4.Transparent,
+                        RelativeSizeAxes = Axes.Both,
+                    },
+                }
+            });
         }
 
         [BackgroundDependencyLoader]
@@ -81,7 +142,6 @@ namespace osu.Game.Screens.Ranking.Statistics
         {
             float topGray = OverlayColourProvider.IsDarkTheme ? 0.08f : OverlayColourProvider.IsLightTheme ? 0.90f : 0.25f;
             float bottomGray = OverlayColourProvider.IsDarkTheme ? 0.05f : OverlayColourProvider.IsLightTheme ? 0.94f : 0.18f;
-
             background.Colour = ColourInfo.GradientVertical(
                 OsuColour.Gray(topGray).Opacity(0.8f),
                 OsuColour.Gray(bottomGray).Opacity(0.95f));

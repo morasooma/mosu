@@ -367,11 +367,19 @@ namespace osu.Game.Screens.Play
 
         #region Screen handling
 
+        // Standalone public build note: FlushExclusiveQueueNow is an optional Mosu framework extension.
+        private void flushExclusiveAudioLatency() { }
+
         public override void OnEntering(ScreenTransitionEvent e)
         {
             base.OnEntering(e);
 
-            Beatmap.Value.Track.AddAdjustment(AdjustableProperty.Volume, volumeAdjustment);
+            // Song select normally has the selected track loaded via MusicController. There are
+            // valid paths where that invariant does not hold, though (for example selecting and
+            // immediately starting a freshly-created WorkingBeatmap). Do not leave a broken
+            // PlayerLoader on the screen stack just because the preview track has not caught up.
+            var track = Beatmap.Value.TrackLoaded ? Beatmap.Value.Track : Beatmap.Value.LoadTrack();
+            track.AddAdjustment(AdjustableProperty.Volume, volumeAdjustment);
 
             // Start side content off-screen.
             disclaimers.MoveToX(-disclaimers.DrawWidth);
@@ -384,6 +392,8 @@ namespace osu.Game.Screens.Play
             MetadataInfo.Delay(metadata_delay).FadeIn(500, Easing.OutQuint);
             contentIn(metadata_delay + 250);
 
+            flushExclusiveAudioLatency();
+
             // after an initial delay, start the debounced load check.
             // this will continue to execute even after resuming back on restart.
             Scheduler.Add(new ScheduledDelegate(pushWhenLoaded, Clock.CurrentTime + PlayerPushDelay, 0));
@@ -395,6 +405,8 @@ namespace osu.Game.Screens.Play
         public override void OnResuming(ScreenTransitionEvent e)
         {
             base.OnResuming(e);
+
+            flushExclusiveAudioLatency();
 
             Debug.Assert(CurrentPlayer != null);
 
@@ -421,8 +433,11 @@ namespace osu.Game.Screens.Play
 
             // we're moving to player, so a period of silence is upcoming.
             // stop the track before removing adjustment to avoid a volume spike.
-            Beatmap.Value.Track.Stop();
-            Beatmap.Value.Track.RemoveAdjustment(AdjustableProperty.Volume, volumeAdjustment);
+            if (Beatmap.Value.TrackLoaded)
+            {
+                Beatmap.Value.Track.Stop();
+                Beatmap.Value.Track.RemoveAdjustment(AdjustableProperty.Volume, volumeAdjustment);
+            }
 
             lowPassFilter?.RemoveAndDisposeImmediately();
             highPassFilter?.RemoveAndDisposeImmediately();
@@ -442,7 +457,11 @@ namespace osu.Game.Screens.Play
             ApplyToBackground(b => b.IgnoreUserSettings.Value = true);
 
             BackgroundBrightnessReduction = false;
-            Beatmap.Value.Track.RemoveAdjustment(AdjustableProperty.Volume, volumeAdjustment);
+            // OnEntering may have aborted before track initialisation. Exiting must remain safe so
+            // the previous screen can become current again instead of trapping a dead loader in
+            // the stack.
+            if (Beatmap.Value.TrackLoaded)
+                Beatmap.Value.Track.RemoveAdjustment(AdjustableProperty.Volume, volumeAdjustment);
 
             endHighPerformance();
 
@@ -704,6 +723,10 @@ namespace osu.Game.Screens.Play
 
             scheduledPushPlayer = Scheduler.AddDelayed(() =>
                 {
+                    // Loading can inflate the queue after the earlier reset. This final
+                    // safe-point flush also covers fast retries immediately before gameplay.
+                    flushExclusiveAudioLatency();
+
                     // ensure that once we have reached this "point of no return", readyForPush will be false for all future checks (until a new player instance is prepared).
                     Player consumedPlayer = consumePlayer();
 

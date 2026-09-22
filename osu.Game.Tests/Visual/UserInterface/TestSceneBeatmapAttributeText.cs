@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
 using NUnit.Framework;
+using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Sprites;
@@ -14,6 +15,7 @@ using osu.Framework.Testing;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Models;
+using osu.Game.Overlays;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
@@ -30,6 +32,9 @@ namespace osu.Game.Tests.Visual.UserInterface
 {
     public partial class TestSceneBeatmapAttributeText : OsuTestScene
     {
+        [Cached]
+        private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Aquamarine);
+
         private readonly BeatmapAttributeText text;
 
         public TestSceneBeatmapAttributeText()
@@ -170,6 +175,11 @@ namespace osu.Game.Tests.Visual.UserInterface
             TestMod mod = null!;
             AddStep("add mod with pp 1", () => SelectedMods.Value = new[] { mod = new TestMod { Performance = { Value = 1 } } });
             AddUntilStep("check max pp is 1", getText, () => Is.EqualTo("Max PP: 1"));
+
+            // Changing beatmap must immediately reset the displayed value while the new calculation is pending.
+            AddStep("change beatmap", () => Beatmap.Value = CreateWorkingBeatmap(new TestBeatmap(new TestRuleset().RulesetInfo)));
+            AddAssert("max pp resets for new beatmap", getText, () => Is.EqualTo("Max PP: 0"));
+            AddUntilStep("max pp updates for new beatmap", getText, () => Is.EqualTo("Max PP: 1"));
 
             // Changing mod setting
             AddStep("change mod pp to 2", () => mod.Performance.Value = 2);

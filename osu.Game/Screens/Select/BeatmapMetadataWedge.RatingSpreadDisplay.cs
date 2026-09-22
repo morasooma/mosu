@@ -3,6 +3,7 @@
 
 using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
@@ -10,6 +11,7 @@ using osu.Framework.Graphics.Shapes;
 using osu.Framework.Utils;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Overlays;
 using osu.Game.Resources.Localisation.Web;
 using osuTK;
 
@@ -25,6 +27,8 @@ namespace osu.Game.Screens.Select
             private const int rating_range = 10;
 
             private readonly GraphBar[] graph;
+            private OsuSpriteText headerText = null!;
+            private IBindable<Colour4>? themeColour;
 
             public int[] Data
             {
@@ -63,7 +67,7 @@ namespace osu.Game.Screens.Select
                         Spacing = new Vector2(0f, 1f),
                         Children = new Drawable[]
                         {
-                            new OsuSpriteText
+                            headerText = new OsuSpriteText
                             {
                                 Text = BeatmapsetsStrings.ShowStatsRatingSpread,
                                 Font = OsuFont.Style.Caption1.With(weight: FontWeight.SemiBold),
@@ -92,14 +96,20 @@ namespace osu.Game.Screens.Select
                 };
             }
 
-            [BackgroundDependencyLoader]
-            private void load(OsuColour colours)
+            [BackgroundDependencyLoader(permitNulls: true)]
+            private void load(OsuColour colours, OverlayColourProvider? colourProvider = null)
             {
                 for (int i = 0; i < 10; i++)
                 {
                     var left = Interpolation.ValueAt(i, colours.Blue4, colours.Blue0, 0, 10);
                     var right = Interpolation.ValueAt(i + 1, colours.Blue4, colours.Blue0, 0, 10);
                     graph[i].Colour = ColourInfo.GradientHorizontal(left, right);
+                }
+
+                if (colourProvider != null)
+                {
+                    themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                    themeColour.BindValueChanged(_ => headerText.Colour = colourProvider.Content1, true);
                 }
             }
 

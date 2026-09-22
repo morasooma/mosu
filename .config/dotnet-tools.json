@@ -3,7 +3,7 @@
   "isRoot": true,
   "tools": {
     "jetbrains.resharper.globaltools": {
-      "version": "2025.2.3",
+      "version": "2026.2.1",
       "commands": [
         "jb"
       ],
@@ -20,6 +20,13 @@
       "version": "2026.611.0",
       "commands": [
         "localisation"
+      ],
+      "rollForward": false
+    },
+    "obfuscar.globaltool": {
+      "version": "2.2.50",
+      "commands": [
+        "obfuscar.console"
       ],
       "rollForward": false
     }

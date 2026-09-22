@@ -19,7 +19,6 @@ using osu.Framework.Input.Events;
 using osu.Framework.Logging;
 using osu.Framework.Platform;
 using osu.Framework.Screens;
-using osu.Framework.Threading;
 using osu.Game.Audio;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
@@ -27,7 +26,6 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Input.Bindings;
 using osu.Game.IO;
-using osu.Game.Localisation;
 using osu.Game.Online.API;
 using osu.Game.Online.Matchmaking;
 using osu.Game.Overlays;
@@ -38,6 +36,7 @@ using osu.Game.Rulesets;
 using osu.Game.Screens.Backgrounds;
 using osu.Game.Screens.Edit;
 using osu.Game.Screens.OnlinePlay.DailyChallenge;
+using osu.Game.Screens.OnlinePlay.DodgeWorld;
 using osu.Game.Screens.OnlinePlay.Multiplayer;
 using osu.Game.Screens.OnlinePlay.Playlists;
 using osu.Game.Screens.Select;
@@ -96,7 +95,6 @@ namespace osu.Game.Screens.Menu
 
         private Bindable<double> holdDelay;
         private Bindable<bool> loginDisplayed;
-        private Bindable<bool> showMobileDisclaimer;
 
         private HoldToExitGameOverlay holdToExitGameOverlay;
 
@@ -116,6 +114,8 @@ namespace osu.Game.Screens.Menu
         [Resolved(canBeNull: true)]
         private SkinEditorOverlay skinEditor { get; set; }
 
+        private Bindable<ForkSongSelectStyle> songSelectStyle = null!;
+
         [CanBeNull]
         private IDisposable logoProxy;
 
@@ -124,7 +124,7 @@ namespace osu.Game.Screens.Menu
         {
             holdDelay = config.GetBindable<double>(OsuSetting.UIHoldActivationDelay);
             loginDisplayed = statics.GetBindable<bool>(Static.LoginOverlayDisplayed);
-            showMobileDisclaimer = config.GetBindable<bool>(OsuSetting.ShowMobileDisclaimer);
+            songSelectStyle = config.GetBindable<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle);
 
             if (host.CanExit)
             {
@@ -162,6 +162,7 @@ namespace osu.Game.Screens.Menu
                             OnMultiplayer = () => this.Push(new Multiplayer()),
                             OnQuickPlay = loadQuickPlay,
                             OnRankedPlay = loadRankedPlay,
+                            OnDodgeWorld = () => this.Push(new DodgeWorldScreen()),
                             OnPlaylists = () => this.Push(new Playlists()),
                             OnDailyChallenge = room =>
                             {
@@ -272,9 +273,6 @@ namespace osu.Game.Screens.Menu
                 dialogOverlay?.Push(new StorageErrorDialog(osuStorage, osuStorage.Error));
         }
 
-        [CanBeNull]
-        private ScheduledDelegate mobileDisclaimerSchedule;
-
         protected override void LogoArriving(OsuLogo logo, bool resuming)
         {
             base.LogoArriving(logo, resuming);
@@ -309,20 +307,7 @@ namespace osu.Game.Screens.Menu
 
         private bool onLogoClick(Func<bool> originalAction)
         {
-            if (showMobileDisclaimer.Value)
-            {
-                mobileDisclaimerSchedule?.Cancel();
-                mobileDisclaimerSchedule = Scheduler.AddDelayed(() =>
-                {
-                    dialogOverlay.Push(new MobileDisclaimerDialog(() =>
-                    {
-                        showMobileDisclaimer.Value = false;
-                        displayLoginIfApplicable();
-                    }));
-                }, 500);
-            }
-            else
-                displayLoginIfApplicable();
+            displayLoginIfApplicable();
 
             return originalAction.Invoke();
         }
@@ -483,30 +468,11 @@ namespace osu.Game.Screens.Menu
         {
         }
 
-        private void loadSongSelect() => this.Push(new SoloSongSelect());
+        private void loadSongSelect() => this.Push(SongSelectFactory.CreateSoloSongSelect(songSelectStyle.Value));
 
         private void loadQuickPlay() => this.Push(new OnlinePlay.Matchmaking.Intro.ScreenIntro(MatchmakingPoolType.QuickPlay));
 
         private void loadRankedPlay() => this.Push(new OnlinePlay.Matchmaking.Intro.ScreenIntro(MatchmakingPoolType.RankedPlay));
 
-        private partial class MobileDisclaimerDialog : PopupDialog
-        {
-            public MobileDisclaimerDialog(Action confirmed)
-            {
-                HeaderText = ButtonSystemStrings.MobileDisclaimerHeader;
-                BodyText = ButtonSystemStrings.MobileDisclaimerBody;
-
-                Icon = FontAwesome.Solid.SmileBeam;
-
-                Buttons = new PopupDialogButton[]
-                {
-                    new PopupDialogOkButton
-                    {
-                        Text = ButtonSystemStrings.MobileDisclaimerOkButton,
-                        Action = confirmed,
-                    },
-                };
-            }
-        }
     }
 }

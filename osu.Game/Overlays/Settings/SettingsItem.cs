@@ -18,7 +18,9 @@ using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.Containers;
+using osu.Game.Overlays;
 using osuTK;
+using osuTK.Graphics;
 
 namespace osu.Game.Overlays.Settings
 {
@@ -44,6 +46,10 @@ namespace osu.Game.Overlays.Settings
         private SpriteText labelText;
 
         private OsuTextFlowContainer noticeText;
+        private IBindable<Colour4> themeColour;
+
+        [Resolved(CanBeNull = true)]
+        private OverlayColourProvider colourProvider { get; set; }
 
         private bool showsDefaultIndicator = true;
 
@@ -72,7 +78,10 @@ namespace osu.Game.Overlays.Settings
                 if (labelText == null)
                 {
                     // construct lazily for cases where the label is not needed (may be provided by the Control).
-                    FlowContent.Insert(-1, labelText = new OsuSpriteText());
+                    FlowContent.Insert(-1, labelText = new OsuSpriteText
+                    {
+                        Colour = colourProvider?.Content1 ?? (OverlayColourProvider.IsLightTheme ? Color4.Black : Color4.White),
+                    });
 
                     updateDisabled();
                 }
@@ -216,14 +225,14 @@ namespace osu.Game.Overlays.Settings
             // IMPORTANT: all bindable logic is in constructor intentionally to support "CreateSettingsControls" being used in a context it is
             // never loaded, but requires bindable storage.
             if (controlWithCurrent == null)
-                throw new ArgumentException(@$"Control created via {nameof(CreateControl)} must implement {nameof(IHasCurrentValue<T>)}");
+                throw new ArgumentException(@$"Control created via {nameof(CreateControl)} must implement {nameof(IHasCurrentValue<>)}");
 
             controlWithCurrent.Current.ValueChanged += _ => SettingChanged?.Invoke();
             controlWithCurrent.Current.DisabledChanged += _ => updateDisabled();
         }
 
-        [BackgroundDependencyLoader]
-        private void load()
+        [BackgroundDependencyLoader(permitNulls: true)]
+        private void load(OverlayColourProvider colourProvider = null)
         {
             defaultValueIndicatorContainer.Child = new RevertToDefaultButton<T>
             {
@@ -233,6 +242,16 @@ namespace osu.Game.Overlays.Settings
             };
 
             updateLayout();
+
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ =>
+                {
+                    if (labelText != null)
+                        labelText.Colour = colourProvider.Content1;
+                }, true);
+            }
         }
 
         private void updateLayout()
@@ -246,8 +265,7 @@ namespace osu.Game.Overlays.Settings
 
         private void updateDisabled()
         {
-            if (labelText != null)
-                labelText.Alpha = controlWithCurrent.Current.Disabled ? 0.3f : 1;
+            labelText?.Alpha = controlWithCurrent.Current.Disabled ? 0.3f : 1;
         }
     }
 }

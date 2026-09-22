@@ -107,7 +107,12 @@ namespace osu.Game.Online.Chat
 
             // Only send notifications if ChatOverlay or the target channel aren't visible, or if the window is unfocused
             if (chatOverlay.IsPresent && channelManager.CurrentChannel.Value == channel && host.IsActive.Value)
+            {
+                // The user is actively looking at this channel. Keep the server-side
+                // last_read_id (and the corresponding web notification state) in sync.
+                channelManager.MarkChannelAsRead(channel);
                 return;
+            }
 
             foreach (var message in messages.OrderByDescending(m => m.Id))
             {

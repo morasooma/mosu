@@ -25,6 +25,7 @@ using osu.Game.Input;
 using osu.Game.Input.Bindings;
 using osu.Game.Localisation;
 using osu.Game.Online.API;
+using osu.Game.Online.Legacy;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays;
 using osuTK;
@@ -49,6 +50,7 @@ namespace osu.Game.Screens.Menu
         public Action? OnMultiplayer;
         public Action? OnQuickPlay;
         public Action? OnRankedPlay;
+        public Action? OnDodgeWorld;
         public Action? OnPlaylists;
         public Action<Room>? OnDailyChallenge;
 
@@ -140,6 +142,9 @@ namespace osu.Game.Screens.Menu
         [Resolved]
         private IAPIProvider api { get; set; } = null!;
 
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
+
         [Resolved]
         private OsuGame? game { get; set; }
 
@@ -163,6 +168,7 @@ namespace osu.Game.Screens.Menu
                 Padding = new MarginPadding { Left = WEDGE_WIDTH }
             });
             buttonsMulti.Add(new MainMenuButton(ButtonSystemStrings.RankedPlay, @"button-daily-select", FontAwesome.Solid.Crown, new Color4(94, 63, 186, 255), onRankedPlay, Key.R));
+            buttonsMulti.Add(new MainMenuButton("dodge world", @"button-daily-select", FontAwesome.Solid.Globe, new Color4(122, 72, 214, 255), onDodgeWorld, Key.W));
             // disabled for now to give ranked play space.
             // buttonsMulti.Add(new MainMenuButton(ButtonSystemStrings.QuickPlay, @"button-daily-select", FontAwesome.Solid.Bolt, new Color4(94, 63, 186, 255), onQuickPlay, Key.Q));
             buttonsMulti.ForEach(b => b.VisibleState = ButtonSystemState.Multi);
@@ -175,7 +181,7 @@ namespace osu.Game.Screens.Menu
             buttonsEdit.Add(new MainMenuButton(SkinEditorStrings.SkinEditor.ToLower(), @"button-default-select", OsuIcon.SkinB, new Color4(220, 160, 0, 255), (_, _) => OnEditSkin?.Invoke(), Key.S));
             buttonsEdit.ForEach(b => b.VisibleState = ButtonSystemState.Edit);
 
-            buttonsTopLevel.Add(new MainMenuButton(ButtonSystemStrings.Play, @"button-play-select", OsuIcon.Logo, new Color4(102, 68, 204, 255), (_, _) => State = ButtonSystemState.Play, Key.P, Key.M,
+            buttonsTopLevel.Add(new MainMenuButton(ButtonSystemStrings.Play, @"button-play-select", @"Menu/mora-logo", new Color4(102, 68, 204, 255), (_, _) => State = ButtonSystemState.Play, Key.P, Key.M,
                 Key.L)
             {
                 Padding = new MarginPadding { Left = WEDGE_WIDTH },
@@ -211,7 +217,7 @@ namespace osu.Game.Screens.Menu
 
         private void onMultiplayer(MainMenuButton mainMenuButton, UIEvent uiEvent)
         {
-            if (api.State.Value != APIState.Online)
+            if (api.State.Value != APIState.Online && stableBanchoSession?.IsConnected.Value != true)
             {
                 loginOverlay?.Show();
                 return;
@@ -240,6 +246,13 @@ namespace osu.Game.Screens.Menu
             }
 
             OnRankedPlay?.Invoke();
+        }
+
+        private void onDodgeWorld(MainMenuButton mainMenuButton, UIEvent uiEvent)
+        {
+            // The world itself is server-backed, but play is still simulated locally; a production
+            // Dodge World will require an authenticated realtime connection before entering.
+            OnDodgeWorld?.Invoke();
         }
 
         private void onPlaylists(MainMenuButton mainMenuButton, UIEvent uiEvent)

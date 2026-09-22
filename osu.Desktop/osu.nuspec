@@ -1,18 +1,17 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
     <metadata>
-        <id>osulazer</id>
+        <id>morasooma</id>
         <version>0.0.0</version>
-        <title>osu!</title>
-        <authors>ppy Pty Ltd</authors>
-        <owners>Dean Herbert</owners>
-        <projectUrl>https://osu.ppy.sh/</projectUrl>
-        <iconUrl>https://github.com/ppy/osu/blob/master/assets/lazer-nuget.png?raw=true</iconUrl>
+        <title>Morasooma</title>
+        <authors>Morasooma contributors</authors>
+        <owners>Morasooma contributors</owners>
+        <projectUrl>https://github.com/GooGuTeam/osu</projectUrl>
         <icon>icon.png</icon>
         <requireLicenseAcceptance>false</requireLicenseAcceptance>
-        <description>A free-to-win rhythm game. Rhythm is just a *click* away!</description>
+        <description>Morasooma — an independent rhythm game client based on MIT-licensed upstream code.</description>
         <releaseNotes>testing</releaseNotes>
-        <copyright>Copyright (c) 2025 ppy Pty Ltd</copyright>
+        <copyright>Copyright (c) 2026 Morasooma contributors. Upstream portions copyright (c) ppy Pty Ltd.</copyright>
         <language>en-AU</language>
     </metadata>
     <files>

@@ -19,6 +19,12 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
         {
             Children = new Drawable[]
             {
+                new SettingsItemV2(new FormEnumDropdown<ForkRelaxPpSystem>
+                {
+                    Caption = ForkSettingsStrings.RelaxPpSystemCaption,
+                    HintText = ForkSettingsStrings.RelaxPpSystemHint,
+                    Current = config.GetBindable<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem)
+                }),
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.RelaxEnableCaption,

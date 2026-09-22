@@ -86,13 +86,37 @@ namespace osu.Game.Rulesets.Osu.UI
         }
 
         [Resolved(CanBeNull = true)]
-        private osu.Game.Screens.Play.Player player { get; set; }
+        private osu.Game.Screens.Play.Player? player { get; set; }
+
+        [Resolved(CanBeNull = true)]
+        private GameplayIntegrityTracker gameplayIntegrityTracker { get; set; } = null!;
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+
+            if (gameplayIntegrityTracker == null)
+                return;
+
+            gameplayIntegrityTracker.VisualOD11Provider = () => IsVisualOD11;
+            gameplayIntegrityTracker.AssistanceReportProvider = () => new GameplayAssistanceIntegrityReport
+            {
+                AimAssistEnabled = Playfield.AimAssistController.IsAimAssistEnabled,
+                AimAssistDeclaredMod = Playfield.AimAssistController.IsAimAssistDeclaredMod,
+                AimAssistAdjustedFrameCount = Playfield.AimAssistController.AdjustedFrameCount,
+                AimAssistMaxAdjustment = Playfield.AimAssistController.MaxAdjustmentMagnitude,
+                RelaxEnabled = Playfield.RelaxController.IsEnabled,
+                RelaxDeclaredMod = Playfield.RelaxController.IsDeclaredMod,
+                RelaxGeneratedPressCount = Playfield.RelaxController.GeneratedPressCount,
+                RelaxGeneratedReleaseCount = Playfield.RelaxController.GeneratedReleaseCount,
+            };
+        }
 
         public override DrawableHitObject<OsuHitObject>? CreateDrawableRepresentation(OsuHitObject h) => null;
 
         public bool IsVisualOD11 => !(player is osu.Game.Screens.Play.ReplayPlayer) && !HasReplayLoaded.Value && myOsuConfig?.Get<bool>(OsuSetting.ForkVisualOD11) == true;
 
-        public override osu.Game.Rulesets.Scoring.HitWindows FirstAvailableVisualHitWindows
+        public override osu.Game.Rulesets.Scoring.HitWindows? FirstAvailableVisualHitWindows
         {
             get
             {

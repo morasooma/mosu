@@ -3,6 +3,7 @@
 
 using System;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Development;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -21,8 +22,11 @@ namespace osu.Game.Overlays.Settings
 {
     public partial class SettingsFooter : FillFlowContainer
     {
+        private OsuSpriteText gameNameText = null!;
+        private IBindable<Colour4>? themeColour;
+
         [BackgroundDependencyLoader]
-        private void load(OsuGameBase game, RulesetStore rulesets)
+        private void load(OsuGameBase game, RulesetStore rulesets, OverlayColourProvider? colourProvider = null)
         {
             RelativeSizeAxes = Axes.X;
             AutoSizeAxes = Axes.Y;
@@ -43,7 +47,7 @@ namespace osu.Game.Overlays.Settings
                     Spacing = new Vector2(5),
                     Padding = new MarginPadding { Bottom = 10 },
                 },
-                new OsuSpriteText
+                gameNameText = new OsuSpriteText
                 {
                     Anchor = Anchor.TopCentre,
                     Origin = Anchor.TopCentre,
@@ -56,6 +60,12 @@ namespace osu.Game.Overlays.Settings
                     Origin = Anchor.TopCentre,
                 }
             };
+
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ => gameNameText.Colour = colourProvider.Content1, true);
+            }
 
             foreach (var ruleset in rulesets.AvailableRulesets)
             {
@@ -82,6 +92,8 @@ namespace osu.Game.Overlays.Settings
         private partial class BuildDisplay : OsuAnimatedButton, IHasContextMenu
         {
             private readonly string version;
+            private OsuSpriteText versionText = null!;
+            private IBindable<Colour4>? themeColour;
 
             [Resolved]
             private OsuColour colours { get; set; } = null!;
@@ -99,11 +111,11 @@ namespace osu.Game.Overlays.Settings
             }
 
             [BackgroundDependencyLoader]
-            private void load(ChangelogOverlay? changelog)
+            private void load(ChangelogOverlay? changelog, OverlayColourProvider? colourProvider = null)
             {
                 Action = () => changelog?.ShowBuild(version);
 
-                Add(new OsuSpriteText
+                Add(versionText = new OsuSpriteText
                 {
                     Font = OsuFont.GetFont(size: 16),
 
@@ -113,6 +125,12 @@ namespace osu.Game.Overlays.Settings
                     Padding = new MarginPadding(5),
                     Colour = DebugUtils.IsDebugBuild ? colours.Red : Color4.White,
                 });
+
+                if (!DebugUtils.IsDebugBuild && colourProvider != null)
+                {
+                    themeColour = colourProvider.GetColourBindable(OverlayColour.Content2);
+                    themeColour.BindValueChanged(_ => versionText.Colour = colourProvider.Content2, true);
+                }
             }
 
             public MenuItem[] ContextMenuItems => new MenuItem[]

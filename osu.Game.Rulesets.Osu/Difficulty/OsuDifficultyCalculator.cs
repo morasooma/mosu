@@ -5,12 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Game.Beatmaps;
+using osu.Game.Configuration;
 using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Skills;
 using osu.Game.Rulesets.Difficulty.Utils;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
+using osu.Game.Rulesets.Osu.Difficulty.Relax.Realistik;
 using osu.Game.Rulesets.Osu.Difficulty.Skills;
 using osu.Game.Rulesets.Osu.Difficulty.Utils;
 using osu.Game.Rulesets.Osu.Mods;
@@ -21,8 +23,13 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 {
     public class OsuDifficultyCalculator : DifficultyCalculator
     {
+        // Small compatibility corrections for the pinned calculator's raw .osu geometry.
+        // lazer's slider preprocessing and reading object window are intentionally newer,
+        // so the legacy ratings need these stable conversion factors before PP conversion.
         private readonly bool applyMappingAntiAbuse;
 
+        // Relax PP has its own cache revision in ForkDataStore. Changes to that
+        // formula must not invalidate the displayed star ratings for every map.
         public override int Version => 20260802;
 
         public OsuDifficultyCalculator(IRulesetInfo ruleset, IWorkingBeatmap beatmap)
@@ -34,22 +41,45 @@ namespace osu.Game.Rulesets.Osu.Difficulty
         protected override DifficultyAttributes CreateDifficultyAttributes(IBeatmap beatmap, Mod[] mods, Skill[] skills)
         {
             if (beatmap.HitObjects.Count == 0)
-                return new OsuDifficultyAttributes { Mods = mods };
+            {
+                var emptyAttributes = new OsuDifficultyAttributes { Mods = mods };
+
+                // The RX performance calculator requires a prepared beatmap for any relax score,
+                // including scores on object-less maps; skipping Prepare here made such maps fail
+                // forever in background PP processing ("RX beatmap was not prepared").
+                if (PreparePerformanceCalculation
+                    && RelaxPpSystemSelection.Current != ForkRelaxPpSystem.LazerVanilla
+                    && ManagedRealistikRelaxCalculator.IsRelax(mods))
+                    ManagedRealistikRelaxCalculator.Prepare(beatmap, mods, emptyAttributes);
+
+                return emptyAttributes;
+            }
 
             var aim = skills.OfType<Aim>().Single(a => a.IncludeSliders);
             var aimWithoutSliders = skills.OfType<Aim>().Single(a => !a.IncludeSliders);
             var speed = skills.OfType<Speed>().Single();
             var flashlight = skills.OfType<Flashlight>().SingleOrDefault();
-            var reading = skills.OfType<Reading>().Single();
+            var reading = skills.OfType<Reading>().Single(r => !r.UseMosuRelaxProfile);
+            var mosuRelaxAim = skills.OfType<MosuRelaxDifficultySkill>().SingleOrDefault(s => s.Kind == MosuRelaxDifficultySkill.SkillKind.Aim);
+            var mosuRelaxSpeed = skills.OfType<MosuRelaxDifficultySkill>().SingleOrDefault(s => s.Kind == MosuRelaxDifficultySkill.SkillKind.Speed);
+            var mosuRelaxReading = skills.OfType<Reading>().SingleOrDefault(r => r.UseMosuRelaxProfile);
 
             double aimDifficultyValue = aim.DifficultyValue();
             double aimNoSlidersDifficultyValue = aimWithoutSliders.DifficultyValue();
             double speedDifficultyValue = speed.DifficultyValue();
             double readingDifficultyValue = reading.DifficultyValue();
 
+            double mosuRelaxAimDifficultyValue = mosuRelaxAim?.DifficultyValue() ?? 0;
+            double mosuRelaxSpeedDifficultyValue = mosuRelaxSpeed?.DifficultyValue() ?? 0;
+            double mosuRelaxReadingDifficultyValue = mosuRelaxReading?.DifficultyValue() ?? 0;
+
             double aimDifficultStrainCount = aim.CountTopWeightedStrains(aimDifficultyValue);
             double speedDifficultStrainCount = speed.CountTopWeightedObjectDifficulties(speedDifficultyValue);
             double readingDifficultNoteCount = reading.CountTopWeightedObjectDifficulties(readingDifficultyValue);
+
+            double mosuRelaxAimDifficultStrainCount = mosuRelaxAim?.CountDifficultStrains() ?? 0;
+            double mosuRelaxSpeedDifficultStrainCount = mosuRelaxSpeed?.CountDifficultStrains() ?? 0;
+            double mosuRelaxReadingDifficultNoteCount = mosuRelaxReading?.CountTopWeightedObjectDifficulties(mosuRelaxReadingDifficultyValue) ?? 0;
 
             double speedNotes = speed.RelevantObjectCount();
 
@@ -68,12 +98,15 @@ namespace osu.Game.Rulesets.Osu.Difficulty
             int spinnerCount = beatmap.HitObjects.Count(h => h is Spinner);
 
             int totalHits = beatmap.HitObjects.Count;
-
-            double sliderFactor = aimDifficultyValue > 0
-                ? calculateAimDifficultyRating(aimNoSlidersDifficultyValue) / calculateAimDifficultyRating(aimDifficultyValue)
-                : 1;
+            Aim.RelaxMetrics relaxMetrics = aim.CalculateRelaxMetrics(totalHits);
 
             double aimRating = calculateAimDifficultyRating(aimDifficultyValue);
+            double aimNoSlidersRating = calculateAimDifficultyRating(aimNoSlidersDifficultyValue);
+
+            double sliderFactor = aimDifficultyValue > 0
+                ? aimNoSlidersRating / aimRating
+                : 1;
+
             double speedRating = calculateDifficultyRating(speedDifficultyValue);
             double readingRating = calculateDifficultyRating(readingDifficultyValue);
 
@@ -84,6 +117,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
             double sliderNestedScorePerObject = LegacyScoreUtils.CalculateNestedScorePerObject(beatmap, totalHits);
             double legacyScoreBaseMultiplier = LegacyScoreUtils.CalculateDifficultyPeppyStars(WorkingBeatmap.Beatmap);
+            double mosuAimRatingMultiplier = calculateMosuAimRatingMultiplier(beatmap.Difficulty.CircleSize);
+            double mosuReadingRatingMultiplier = calculateMosuReadingRatingMultiplier(beatmap.Difficulty.CircleSize);
 
             var simulator = new OsuLegacyScoreSimulator();
             var scoreAttributes = simulator.Simulate(WorkingBeatmap, beatmap);
@@ -112,6 +147,25 @@ namespace osu.Game.Rulesets.Osu.Difficulty
                 AimDifficultStrainCount = aimDifficultStrainCount,
                 SpeedDifficultStrainCount = speedDifficultStrainCount,
                 ReadingDifficultNoteCount = readingDifficultNoteCount,
+                RelaxFlowAimBonusRatio = relaxMetrics.FlowAimBonusRatio,
+                RelaxJumpSpikeFillerWeight = mosuRelaxAim?.CalculateSectionSpikeFillerWeight() ?? relaxMetrics.JumpSpikeFillerWeight,
+                RelaxWideFlowPatternWeight = relaxMetrics.WideFlowPatternWeight,
+                RelaxFlowSectionCount = mosuRelaxAim?.SectionCount ?? relaxMetrics.FlowSectionCount,
+                RelaxPatternPenaltyRatio = relaxMetrics.PatternPenaltyRatio,
+                RelaxStreamWeight = calculateRelaxStreamWeight(
+                    mosuRelaxAimDifficultStrainCount,
+                    mosuRelaxSpeedDifficultStrainCount,
+                    calculateDifficultyRating(mosuRelaxAimDifficultyValue),
+                    calculateDifficultyRating(mosuRelaxSpeedDifficultyValue)),
+                RelaxVerticalAimPressure = relaxMetrics.VerticalAimPressure,
+                MosuRelaxAimDifficulty = calculateDifficultyRating(mosuRelaxAimDifficultyValue)
+                                           * mosuAimRatingMultiplier
+                                           * calculateMosuPatternPenalty(relaxMetrics.PatternPenaltyRatio),
+                MosuRelaxSpeedDifficulty = calculateDifficultyRating(mosuRelaxSpeedDifficultyValue),
+                MosuRelaxReadingDifficulty = calculateDifficultyRating(mosuRelaxReadingDifficultyValue) * mosuReadingRatingMultiplier,
+                MosuRelaxAimDifficultStrainCount = mosuRelaxAimDifficultStrainCount,
+                MosuRelaxSpeedDifficultStrainCount = mosuRelaxSpeedDifficultStrainCount,
+                MosuRelaxReadingDifficultNoteCount = mosuRelaxReadingDifficultNoteCount,
                 AimTopWeightedSliderFactor = aimTopWeightedSliderFactor,
                 SpeedTopWeightedSliderFactor = speedTopWeightedSliderFactor,
                 MaxCombo = beatmap.GetMaxCombo(),
@@ -123,7 +177,27 @@ namespace osu.Game.Rulesets.Osu.Difficulty
                 MaximumLegacyComboScore = scoreAttributes.ComboScore
             };
 
+            // Displayed SR remains on the current ruleset pipeline. The playable,
+            // already-modified beatmap is prepared for the independent RX PP core.
+            if (PreparePerformanceCalculation
+                && RelaxPpSystemSelection.Current != ForkRelaxPpSystem.LazerVanilla
+                && ManagedRealistikRelaxCalculator.IsRelax(mods))
+                ManagedRealistikRelaxCalculator.Prepare(beatmap, mods, attributes);
+
             return attributes;
+        }
+
+        protected override void PrepareTimedPerformanceCalculation(IBeatmap beatmap, Mod[] mods, IReadOnlyList<TimedDifficultyAttributes> attributes)
+        {
+            if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.LazerVanilla
+                || !ManagedRealistikRelaxCalculator.IsRelax(mods))
+                return;
+
+            // The RX representation is immutable and valid for every time-sliced attributes
+            // instance. Convert the complete map once and associate that one representation with
+            // all prefixes used by the live PP counter.
+            ManagedRealistikRelaxCalculator.PrepareTimed(beatmap, mods,
+                attributes.Select(attribute => (OsuDifficultyAttributes)attribute.Attributes));
         }
 
         public static double SumCognitionDifficulty(double reading, double flashlight)
@@ -141,6 +215,32 @@ namespace osu.Game.Rulesets.Osu.Difficulty
         private double calculateAimDifficultyRating(double difficultyValue) => DiffUtils.Pow(difficultyValue, 0.63) * 0.02275;
 
         private double calculateDifficultyRating(double difficultyValue) => Math.Sqrt(difficultyValue) * 0.0675;
+
+        private static double calculateMosuPatternPenalty(double rawPenaltyRatio)
+        {
+            // The legacy Mosu aim formula already prices ordinary short bursts and streams.
+            // Only blend in the modern detector once its map-wide evidence is strong enough;
+            // otherwise normal maps receive the same values as the pinned calculator.
+            double abuseWeight = DiffUtils.Smoothstep(0.80 - rawPenaltyRatio, 0, 0.65);
+            return 1 - 0.65 * abuseWeight;
+        }
+
+        private static double calculateMosuAimRatingMultiplier(double circleSize) =>
+            1 + Math.Max(Math.Clamp(circleSize, 0, 12) - 4, 0) / 120;
+
+        private static double calculateMosuReadingRatingMultiplier(double circleSize) =>
+            1.01 + 0.017 * Math.Clamp(circleSize, 0, 12);
+
+        private static double calculateRelaxStreamWeight(double aimDifficultStrainCount, double speedDifficultStrainCount,
+                                                         double aimDifficulty, double speedDifficulty)
+        {
+            double difficultCountRatio = speedDifficultStrainCount / Math.Max(aimDifficultStrainCount, 0.0001);
+            double countDominance = DiffUtils.Smoothstep(difficultCountRatio, 1.75, 2.50);
+            double strainRatio = aimDifficulty / Math.Max(speedDifficulty, 0.0001);
+            double strainBalance = 1 - DiffUtils.Smoothstep(strainRatio, 1.45, 1.75);
+
+            return Math.Clamp(countDominance * strainBalance, 0, 1);
+        }
 
         private double calculateStarRating(double basePerformance)
         {
@@ -172,6 +272,16 @@ namespace osu.Game.Rulesets.Osu.Difficulty
                 new Speed(mods),
                 new Reading(mods)
             };
+
+            // The pinned Mosu/Realistik skills feed only the RX performance calculator
+            // and its attributes; they are skipped under the vanilla PP system.
+            if (RelaxPpSystemSelection.Current != ForkRelaxPpSystem.LazerVanilla
+                && mods.Any(m => m is OsuModRelax or OsuModMosuRelax))
+            {
+                skills.Add(new MosuRelaxDifficultySkill(mods, MosuRelaxDifficultySkill.SkillKind.Aim, applyMappingAntiAbuse));
+                skills.Add(new MosuRelaxDifficultySkill(mods, MosuRelaxDifficultySkill.SkillKind.Speed, applyMappingAntiAbuse));
+                skills.Add(new Reading(mods, useMosuRelaxProfile: true));
+            }
 
             if (mods.Any(h => h is OsuModFlashlight))
                 skills.Add(new Flashlight(mods, beatmap.HitObjects.Count));

@@ -9,6 +9,7 @@ using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Localisation;
 using osu.Framework.Screens;
 using osu.Game.Localisation;
 using osu.Game.Online.API;
@@ -44,7 +45,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
 
         private IDisposable? modSelectOverlayRegistration;
 
-        public PlaylistsSongSelect(Room room)
+        public PlaylistsSongSelect(Room room, LocalisableString? addButtonText = null)
         {
             this.room = room;
 
@@ -53,7 +54,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             Padding = new MarginPadding { Horizontal = HORIZONTAL_OVERFLOW_PADDING };
             TopPadding = Header.HEIGHT - 10;
 
-            addToPlaylistFooterButton = new AddToPlaylistFooterButton
+            addToPlaylistFooterButton = new AddToPlaylistFooterButton(addButtonText)
             {
                 Anchor = Anchor.BottomRight,
                 Origin = Anchor.BottomRight,
@@ -107,7 +108,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             Footer?.Add(addToPlaylistFooterButton);
         }
 
-        public void AddNewItem()
+        public virtual void AddNewItem()
         {
             room.Playlist = room.Playlist.Append(createItem()).ToArray();
         }

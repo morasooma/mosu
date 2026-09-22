@@ -86,6 +86,18 @@ namespace osu.Game.Tests.NonVisual.Skinning
             },
         };
 
+        private bool previousPerformanceMode;
+
+        [SetUp]
+        public void DisableSkinPerformanceMode()
+        {
+            previousPerformanceMode = SkinPerformanceMode.Enabled;
+            SkinPerformanceMode.Enabled = false;
+        }
+
+        [TearDown]
+        public void RestoreSkinPerformanceMode() => SkinPerformanceMode.Enabled = previousPerformanceMode;
+
         [TestCaseSource(nameof(fallbackTestCases))]
         public void TestFallbackOrder(string[] filesInStore, string requestedComponent, string expectedTexture, float expectedScale)
         {

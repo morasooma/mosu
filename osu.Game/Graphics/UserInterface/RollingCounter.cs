@@ -89,11 +89,8 @@ namespace osu.Game.Graphics.UserInterface
                 return;
 
             LocalisableString formatted = FormatCount(DisplayedCount);
-
-            if (displayedCountText.Text.Equals(formatted))
-                return;
-
-            displayedCountText.Text = formatted;
+            if (!displayedCountText.Text.Equals(formatted))
+                displayedCountText.Text = formatted;
         }
 
         protected override void LoadComplete()
@@ -183,6 +180,7 @@ namespace osu.Game.Graphics.UserInterface
                     ? GetProportionalDuration(currentValue, newValue)
                     : RollingDuration;
 
+            FinishTransforms(false, nameof(DisplayedCount));
             this.TransformTo(nameof(DisplayedCount), newValue, rollingTotalDuration, RollingEasing);
         }
 

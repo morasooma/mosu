@@ -40,7 +40,7 @@ using osu.Game.Skinning;
 
 namespace osu.Game.Rulesets.Dodge
 {
-    public partial class DodgeRuleset : Ruleset, ILegacyRuleset, ICustomEditorBeatmapStateHandler, ICustomBeatmapFormat, IEditorDesignScreenProvider, IBeatmapVisualOverrideProvider
+    public partial class DodgeRuleset : Ruleset, ILegacyRuleset, ICustomEditorBeatmapStateHandler, ICustomBeatmapFormat, IEditorDesignScreenProvider, IBeatmapVisualOverrideProvider, IDodgeMultiplayerRuleset
     {
         public const int ONLINE_ID = 10;
 
@@ -55,11 +55,19 @@ namespace osu.Game.Rulesets.Dodge
         public override DrawableRuleset CreateDrawableRulesetWith(IBeatmap beatmap, IReadOnlyList<Mod>? mods = null)
             => new DrawableDodgeRuleset(this, beatmap, mods);
 
+        public DodgeMultiplayerGameplayController CreateDodgeMultiplayerGameplayController(
+            DrawableRuleset drawableRuleset,
+            DodgeMultiplayerGameplayConfiguration configuration)
+            => new DodgeMultiplayerController((DrawableDodgeRuleset)drawableRuleset, configuration);
+
         public override IBeatmapConverter CreateBeatmapConverter(IBeatmap beatmap)
             => new DodgeBeatmapConverter(beatmap, this);
 
         public override DifficultyCalculator CreateDifficultyCalculator(IWorkingBeatmap beatmap)
             => new DodgeDifficultyCalculator(RulesetInfo, beatmap);
+
+        public override PerformanceCalculator CreatePerformanceCalculator()
+            => new DodgePerformanceCalculator();
 
         public override IBeatmapProcessor CreateBeatmapProcessor(IBeatmap beatmap)
             => new DodgeBeatmapProcessor(beatmap);
@@ -140,18 +148,35 @@ namespace osu.Game.Rulesets.Dodge
         public override IEnumerable<Drawable> CreateEditorSetupSections()
             => base.CreateEditorSetupSections().Select(section => section is DifficultySection ? new DodgeDifficultySection() : section);
 
-        public override IEnumerable<KeyBinding> GetDefaultKeyBindings(int variant = 0) => new[]
+        public override IEnumerable<KeyBinding> GetDefaultKeyBindings(int variant = 0)
         {
-            new KeyBinding(InputKey.A, DodgeAction.MoveLeft),
-            new KeyBinding(InputKey.Left, DodgeAction.MoveLeft),
-            new KeyBinding(InputKey.D, DodgeAction.MoveRight),
-            new KeyBinding(InputKey.Right, DodgeAction.MoveRight),
-            new KeyBinding(InputKey.W, DodgeAction.MoveUp),
-            new KeyBinding(InputKey.Up, DodgeAction.MoveUp),
-            new KeyBinding(InputKey.S, DodgeAction.MoveDown),
-            new KeyBinding(InputKey.Down, DodgeAction.MoveDown),
-            new KeyBinding(InputKey.Shift, DodgeAction.Slow),
-        };
+            if (variant == EDITOR_VARIANT)
+            {
+                return new[]
+                {
+                    new KeyBinding(InputKey.Number2, DodgeAction.EditorBulletTool),
+                    new KeyBinding(InputKey.Number3, DodgeAction.EditorArenaChangeTool),
+                    new KeyBinding(InputKey.Number4, DodgeAction.EditorEmitterTool),
+                    new KeyBinding(InputKey.Number5, DodgeAction.EditorBeamTool),
+                    new KeyBinding(InputKey.Number6, DodgeAction.EditorCameraChangeTool),
+                    new KeyBinding(InputKey.Number7, DodgeAction.EditorTriggerTool),
+                };
+            }
+
+            return new[]
+            {
+                new KeyBinding(InputKey.A, DodgeAction.MoveLeft),
+                new KeyBinding(InputKey.Left, DodgeAction.MoveLeft),
+                new KeyBinding(InputKey.D, DodgeAction.MoveRight),
+                new KeyBinding(InputKey.Right, DodgeAction.MoveRight),
+                new KeyBinding(InputKey.W, DodgeAction.MoveUp),
+                new KeyBinding(InputKey.Up, DodgeAction.MoveUp),
+                new KeyBinding(InputKey.S, DodgeAction.MoveDown),
+                new KeyBinding(InputKey.Down, DodgeAction.MoveDown),
+                new KeyBinding(InputKey.Shift, DodgeAction.Slow),
+                new KeyBinding(InputKey.H, DodgeAction.ToggleHud),
+            };
+        }
 
         public override Drawable CreateIcon() => new SpriteIcon
         {

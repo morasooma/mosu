@@ -16,6 +16,8 @@ namespace osu.Game.Overlays
 {
     public partial class KudosuTable : RankingsTable<APIUser>
     {
+        protected override bool SupportsEnhancedRows => true;
+
         public KudosuTable(int page, List<APIUser> users)
             : base(page, users)
         {
@@ -63,15 +65,15 @@ namespace osu.Game.Overlays
             int kudosuAvailable = item.Kudosu.Available;
             return new Drawable[]
             {
-                new RowText
+                new RowText(TextSize)
                 {
                     Text = kudosuTotal.ToLocalisableString(@"N0")
                 },
-                new ColouredRowText
+                new ColouredRowText(TextSize)
                 {
                     Text = kudosuAvailable.ToLocalisableString(@"N0")
                 },
-                new ColouredRowText
+                new ColouredRowText(TextSize)
                 {
                     Text = (kudosuTotal - kudosuAvailable).ToLocalisableString(@"N0")
                 },
@@ -80,9 +82,11 @@ namespace osu.Game.Overlays
 
         protected override CountryCode GetCountryCode(APIUser item) => item.CountryCode;
 
+        protected override APIUser GetAvatarUser(APIUser item) => item;
+
         protected override Drawable[] CreateFlagContent(APIUser item)
         {
-            var username = new LinkFlowContainer(t => t.Font = OsuFont.GetFont(size: TEXT_SIZE, italics: true))
+            var username = new LinkFlowContainer(t => t.Font = OsuFont.GetFont(size: TextSize, italics: true))
             {
                 AutoSizeAxes = Axes.X,
                 RelativeSizeAxes = Axes.Y,

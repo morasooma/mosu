@@ -4,6 +4,7 @@
 using System;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
+using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
@@ -150,11 +151,13 @@ namespace osu.Game.Graphics.UserInterface
 
         private void updateThemeColours(OverlayColourProvider colourProvider)
         {
-            underlayContainer.BorderColour = ColourInfo.GradientVertical(Colour4.Black, colourProvider.Dark4);
-            underlayBackground.Colour = colourProvider.Dark4;
+            // header surfaces stay opaque: where the fork's overlay transparency limits the glass
+            // backdrop to specific panels, a translucent header would show the sharp game through.
+            underlayContainer.BorderColour = ColourInfo.GradientVertical(Colour4.Black, colourProvider.Dark4.Opacity(1f));
+            underlayBackground.Colour = colourProvider.Dark4.Opacity(1f);
 
-            contentContainer.BorderColour = ColourInfo.GradientVertical(colourProvider.Dark3, colourProvider.Dark1);
-            contentBackground.Colour = colourProvider.Dark3;
+            contentContainer.BorderColour = ColourInfo.GradientVertical(colourProvider.Dark3.Opacity(1f), colourProvider.Dark1.Opacity(1f));
+            contentBackground.Colour = colourProvider.Dark3.Opacity(1f);
 
             closeButton.IconHoverColour = colourProvider.Highlight1;
 

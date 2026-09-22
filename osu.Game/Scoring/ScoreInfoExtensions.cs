@@ -32,7 +32,8 @@ namespace osu.Game.Scoring
                      // Local scores may not have an online ID. Fall back to date in these cases.
                      .ThenBy(s => s.Date);
 
-        public static long GetLeaderboardScore(this ScoreInfo score) => score.TotalScore;
+        public static long GetLeaderboardScore(this ScoreInfo score)
+            => MosuServerEnvironment.UsesStableProtocol ? score.LegacyTotalScore ?? score.TotalScore : score.TotalScore;
 
         /// <summary>
         /// Orders an array of <see cref="ScoreInfo"/>s by the selected <see cref="LeaderboardSortMode"/>.

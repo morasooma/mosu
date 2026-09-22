@@ -2,8 +2,9 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using osu.Framework.Utils;
-using osu.Game.Rulesets.Scoring;
+using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.Objects.Drawables;
 using osuTK;
 
@@ -11,563 +12,168 @@ namespace osu.Game.Rulesets.Osu.UI
 {
     public partial class AimAssistController
     {
+        private readonly HashSet<OsuHitObject> exitedMotionTargets = new HashSet<OsuHitObject>();
+        private OsuHitObject? motionTarget;
+        private bool motionTargetCaptured;
+        private bool motionTargetExited;
+        private float closestMotionDistance = float.PositiveInfinity;
+        private Vector2 fastRawVelocity;
+        private Vector2 slowRawVelocity;
+        private Vector2 previousPointAssistStep;
+        private Vector2 previousSliderAssistStep;
+
+        private void clearPredictiveMotion()
+        {
+            motionTarget = null;
+            motionTargetCaptured = false;
+            motionTargetExited = false;
+            closestMotionDistance = float.PositiveInfinity;
+            exitedMotionTargets.Clear();
+            previousPointAssistStep = Vector2.Zero;
+            previousSliderAssistStep = Vector2.Zero;
+        }
+
+        private void updateTargetMotion(AimAssistContext context, Vector2 rawPosition, Vector2 rawDelta)
+        {
+            if (!ReferenceEquals(motionTarget, context.Drawable.HitObject))
+            {
+                motionTarget = context.Drawable.HitObject;
+                motionTargetCaptured = false;
+                motionTargetExited = false;
+                closestMotionDistance = float.PositiveInfinity;
+            }
+
+            if (context.ModeName is not (@"point" or @"stream"))
+                return;
+
+            if (toRealTimeWindow(context.FocusTime - Time.Current) > 180)
+                return;
+
+            Vector2 centre = getDisplayCentre(context.Drawable);
+            float radius = getDrawableTargetRadius(context.Drawable, context.Drawable.HitObject);
+            Vector2 output = rawPosition + assistOffset;
+            Vector2 from = rawPosition - rawDelta;
+            float progress = rawDelta.LengthSquared > 0
+                ? Math.Clamp(Vector2.Dot(centre - from, rawDelta) / rawDelta.LengthSquared, 0, 1)
+                : 0;
+            float passDistance = (from + rawDelta * progress - centre).Length;
+            float distance = (rawPosition - centre).Length;
+            closestMotionDistance = Math.Min(closestMotionDistance, passDistance);
+            motionTargetCaptured |= (output - centre).LengthSquared <= radius * radius;
+
+            // Выход определяет исходное движение игрока. Само притяжение не должно
+            // удерживать цель активной только потому, что виртуальный курсор ещё внутри.
+            bool leaving = Vector2.Dot(rawDelta, rawPosition - centre) > 0
+                           && Vector2.Dot(fastRawVelocity, rawPosition - centre) > radius * stationary_hold_speed_threshold;
+            if (leaving && distance > closestMotionDistance + radius * 0.18f
+                        && (motionTargetCaptured || closestMotionDistance < getTargetGravityRadius(context)))
+            {
+                motionTargetExited = true;
+                if (context.Drawable is DrawableHitCircle)
+                    exitedMotionTargets.Add(context.Drawable.HitObject);
+            }
+        }
+
         private Vector2 computeEngagedOffset(AimAssistContext context, ActivationState activation, Vector2 rawPosition, float strengthFactor)
         {
-            Vector2 outputPosition = rawPosition + assistOffset;
-            Vector2 toDesired = context.DesiredPoint - outputPosition;
-            float distanceToDesired = toDesired.Length;
-            float jumpAssistWeight = getPointJumpAssistWeight(context);
-            float overshootAllowance = getConfiguredOvershootAllowance();
-            float fovRadius = getConfiguredFovRadius();
+            if (context.ModeName == @"point")
+                return getTargetGravityOffset(context, rawPosition, activation.EngageAmount);
 
             if (context.ModeName == @"stream")
-                return computeStreamEngagedOffset(context, activation, rawPosition, outputPosition, strengthFactor);
+            {
+                ProjectionResult projection = getStreamCorridorProjection(rawPosition, context);
+                Vector2 correction = getTangentLineCorrectionVector(rawPosition, projection.Point, normaliseOrZero(projection.Tangent));
+                float radius = getDrawableTargetRadius(context.Drawable, context.Drawable.HitObject);
+                Vector2 pathOffset = outsideDeadzone(correction, radius * 0.3f) * activation.EngageAmount;
 
-            if (distanceToDesired <= 0.001f)
+                Vector2 toTarget = getDisplayCentre(context.Drawable) - rawPosition;
+                bool approachingTarget = fastRawVelocity.Length <= stationary_hold_speed_threshold
+                                         || Vector2.Dot(fastRawVelocity, toTarget) >= 0;
+                float acquisition = approachingTarget ? getGravityFieldFalloff(toTarget.Length, getTargetGravityRadius(context)) : 0;
+
+                // В поле текущей ноты работает полноценное доведение к кругу.
+                // Между нотами путь исправляет только поперечное отклонение.
+                return interpolate(pathOffset, getTargetGravityOffset(context, rawPosition, activation.EngageAmount), acquisition);
+            }
+
+            Vector2 output = rawPosition + assistOffset;
+            float trackingRadius = getDrawableTargetRadius(context.Drawable, context.Drawable.HitObject)
+                                   * (context.ModeName == @"slider-repeat" ? 0.18f : 0.24f);
+            return assistOffset + outsideDeadzone(context.DesiredPoint - output, trackingRadius);
+        }
+
+        private Vector2 getTargetGravityOffset(AimAssistContext context, Vector2 rawPosition, float authority)
+        {
+            Vector2 toTarget = getDisplayCentre(context.Drawable) - rawPosition;
+            float radius = getDrawableTargetRadius(context.Drawable, context.Drawable.HitObject);
+            float predictionHorizon = getPointAcquisitionPredictionHorizon(context);
+            float predictedMissDistance = GetPredictedPointMissDistance(rawPosition, getDisplayCentre(context.Drawable), averagedVelocity, predictionHorizon);
+            bool movingTowardTarget = fastRawVelocity.Length <= stationary_hold_speed_threshold || Vector2.Dot(fastRawVelocity, toTarget) >= 0;
+            if (!ShouldAttemptPointCorrection(toTarget.Length, predictedMissDistance, radius, getTargetGravityRadius(context), movingTowardTarget))
                 return assistOffset;
 
-            Vector2 radialDirection = toDesired / distanceToDesired;
-            float targetRadius = (context.Radius + overshootAllowance) * (1 - strengthFactor * (context.ModeName == @"point"
-                ? (0.85f + 0.15f * activation.EngageAmount)
-                : (0.35f + 0.65f * activation.EngageAmount)));
-            float pointFlowContinuationWeight = getPointFlowContinuationWeight(context, rawPosition);
-            float targetSwitchContinuationWeight = getRecentTargetSwitchCarryWeight(context);
-            float pointCaptureReleaseWeight = activation.PointCaptureReleaseWeight;
-            float effectivePointCaptureReleaseWeight = pointCaptureReleaseWeight * (float)Interpolation.Lerp(1f, 0.26f, jumpAssistWeight);
-            float pointRecenteringBias = getPointRecenteringBias(context, pointFlowContinuationWeight, strengthFactor);
-
-            if (context.ModeName == @"point")
-            {
-                float loosePointRadius = context.Radius + overshootAllowance;
-                targetRadius = (float)Interpolation.Lerp(loosePointRadius, targetRadius, pointRecenteringBias);
-
-                if (context.PointFlowBias > 0)
-                    targetRadius = (float)Interpolation.Lerp(loosePointRadius, targetRadius, 1 - context.PointFlowBias * 0.72f);
-
-                if (jumpAssistWeight > 0)
-                {
-                    float jumpTightenWeight = jumpAssistWeight * (float)Interpolation.Lerp(0.18f, 0.34f, activation.EngageAmount);
-                    targetRadius = (float)Interpolation.Lerp(loosePointRadius, targetRadius, jumpTightenWeight);
-                }
-
-                if (effectivePointCaptureReleaseWeight > 0)
-                    targetRadius = (float)Interpolation.Lerp(targetRadius, loosePointRadius, effectivePointCaptureReleaseWeight * 0.96f);
-
-                if (targetSwitchContinuationWeight > 0)
-                    targetRadius = (float)Interpolation.Lerp(targetRadius, loosePointRadius, targetSwitchContinuationWeight * 0.72f);
-            }
-
-            if (context.ModeName == @"slider-repeat")
-            {
-                float repeatDeadzone = context.Radius * (float)Interpolation.Lerp(0.18f, 0.32f, 1 - activation.EngageAmount);
-                targetRadius = Math.Min(targetRadius, repeatDeadzone + overshootAllowance);
-            }
-
-            if (context.ModeName == @"slider")
-            {
-                float trackingDeadzone = Math.Max(6f, context.Radius * 0.24f);
-                targetRadius = Math.Min(targetRadius, trackingDeadzone + overshootAllowance);
-            }
-
-            targetRadius = Math.Max(0, targetRadius);
-            float effectiveDistance = Math.Max(0, distanceToDesired - targetRadius);
-            Vector2 steeringPoint = outputPosition + radialDirection * effectiveDistance;
-            Vector2 desiredOffset = steeringPoint - rawPosition;
-
-            if (context.ModeName == @"point")
-            {
-                float loosePointRadius = context.Radius + overshootAllowance;
-                float exitIntentWeight = getPointExitIntentWeight(context, rawPosition);
-                float pointFlowRelaxation = Math.Max(pointFlowContinuationWeight, context.PointFlowBias * 0.74f);
-                pointFlowRelaxation = Math.Max(pointFlowRelaxation, effectivePointCaptureReleaseWeight);
-                float userFreedom = 1 - pointRecenteringBias;
-                float insideNoteWeight = userFreedom <= 0 || loosePointRadius <= 0
-                    ? 0
-                    : Math.Clamp(1 - distanceToDesired / loosePointRadius, 0, 1);
-
-                if (insideNoteWeight > 0)
-                {
-                    float releaseWeight = insideNoteWeight * userFreedom * (1 - exitIntentWeight * 0.94f) * (1 - pointFlowRelaxation * 0.9f);
-
-                    if (jumpAssistWeight > 0)
-                        releaseWeight *= 1 - jumpAssistWeight * 0.78f;
-
-                    // Reduce "hold inside note" pull when user is actively moving the mouse — prevents feeling of cursor being slowed/stuck
-                    float movementReleaseBoost = Math.Clamp(averagedVelocity.Length / (stationary_hold_speed_threshold * 3f), 0f, 1f);
-                    releaseWeight *= (1f - movementReleaseBoost * 0.7f);
-
-                    if (context.PointFlowBias > 0 || context.PatternInfo.Kind is OsuPatternKind.Burst or OsuPatternKind.Stack)
-                    {
-                        float continuityHold = Math.Max(context.PointFlowBias, context.PatternInfo.ContinuityWeight);
-                        Vector2 heldOffset = interpolate(CurrentOutputPosition - rawPosition, assistOffset, 0.34f);
-                        float holdWeight = releaseWeight * (float)Interpolation.Lerp(0.48f, 0.86f, continuityHold);
-                        desiredOffset = interpolate(desiredOffset, heldOffset, holdWeight);
-                    }
-                    else
-                        desiredOffset = interpolate(desiredOffset, Vector2.Zero, releaseWeight);
-                }
-
-                Vector2 centredOffset = context.DesiredPoint - rawPosition;
-                float centreBias = Math.Clamp(
-                    (float)Interpolation.Lerp(0.3f, 0.7f, strengthFactor) * (0.5f + 0.5f * activation.EngageAmount),
-                    0,
-                    0.85f);
-                centreBias *= pointRecenteringBias;
-                centreBias *= 1 - exitIntentWeight * 0.82f;
-                centreBias *= 1 - pointFlowRelaxation * 0.94f;
-
-                if (jumpAssistWeight > 0)
-                    centreBias = Math.Min(0.995f, centreBias + jumpAssistWeight * (float)Interpolation.Lerp(0.04f, 0.14f, strengthFactor));
-
-                if (context.PatternInfo.Kind == OsuPatternKind.Stack)
-                {
-                    centreBias *= 0.05f;
-                }
-
-                desiredOffset = interpolate(desiredOffset, centredOffset, centreBias);
-
-                if (effectivePointCaptureReleaseWeight > 0)
-                {
-                    if (context.PointFlowBias > 0 || context.PatternInfo.Kind is OsuPatternKind.Burst or OsuPatternKind.Stack)
-                        desiredOffset = interpolate(desiredOffset, assistOffset, effectivePointCaptureReleaseWeight * 0.72f);
-                    else
-                        desiredOffset = interpolate(desiredOffset, Vector2.Zero, effectivePointCaptureReleaseWeight * 0.98f);
-                }
-
-                if (pointFlowContinuationWeight > 0)
-                {
-                    Vector2 previewDirection = getPointPreviewDirection(context);
-
-                    if (previewDirection.LengthSquared > 0.0001f && context.PreviewPoint.HasValue)
-                    {
-                        float previewLeadDistance = Math.Min(context.Radius * 0.95f, (context.PreviewPoint.Value - context.DesiredPoint).Length * 0.24f);
-                        Vector2 continuousPoint = context.DesiredPoint + previewDirection * previewLeadDistance;
-                        Vector2 continuousOffset = continuousPoint - rawPosition;
-                        desiredOffset = interpolate(desiredOffset, continuousOffset, pointFlowContinuationWeight * 0.68f);
-                    }
-
-                    desiredOffset = interpolate(desiredOffset, assistOffset, pointFlowContinuationWeight * 0.3f);
-                }
-
-                if (targetSwitchContinuationWeight > 0)
-                {
-                    float macroCarryWeight = (float)Interpolation.Lerp(0.42f, 0.74f, Math.Max(context.PointFlowBias, targetSwitchContinuationWeight));
-                    desiredOffset = interpolate(desiredOffset, targetSwitchAnchorOffset, targetSwitchContinuationWeight * macroCarryWeight);
-                }
-
-                float stabilityRadius = Math.Max(context.Radius * 0.26f, 5f);
-                
-                if (context.PatternInfo.Kind == OsuPatternKind.Stack)
-                {
-                    stabilityRadius = context.Radius * 1.5f;
-                }
-
-                float stabilityWeight = Math.Clamp(1 - distanceToDesired / stabilityRadius, 0, 1)
-                                        * Math.Clamp(1 - averagedVelocity.Length / (stationary_hold_speed_threshold * 2.4f), 0, 1);
-                stabilityWeight *= 1 - exitIntentWeight * 0.94f;
-                stabilityWeight *= 1 - pointFlowRelaxation * 0.95f;
-
-                if (stabilityWeight > 0)
-                {
-                    Vector2 settledOffset = CurrentOutputPosition - rawPosition;
-                    desiredOffset = interpolate(desiredOffset, settledOffset, stabilityWeight * 0.74f);
-                }
-
-                // Coherence dampening: prevent conflicting correction systems from creating reversal loops
-                {
-                    Vector2 currentDir = normaliseOrZero(assistOffset);
-                    Vector2 desiredDir = normaliseOrZero(desiredOffset);
-
-                    if (currentDir.LengthSquared > 0.0001f && desiredDir.LengthSquared > 0.0001f && assistOffset.LengthSquared > 4f)
-                    {
-                        float dirAlign = Vector2.Dot(currentDir, desiredDir);
-
-                        if (dirAlign < -0.25f)
-                        {
-                            float conflictSeverity = Math.Clamp((-0.25f - dirAlign) / 0.95f, 0, 1);
-                            desiredOffset = interpolate(desiredOffset, assistOffset, conflictSeverity * 0.32f);
-                        }
-                    }
-                }
-            }
-
-            if (context.Drawable is DrawableSlider slider && isSliderHeadHit(slider))
-            {
-                double handoffWindow = getSliderHeadHandoffWindow(slider);
-                double handoffProgress = Math.Clamp((Time.Current - slider.HitObject.StartTime) / handoffWindow, 0, 1);
-                float handoffWeight = (float)(1 - handoffProgress);
-
-                if (handoffWeight > 0)
-                {
-                    Vector2 handoffOffset = CurrentOutputPosition - rawPosition;
-                    desiredOffset = interpolate(desiredOffset, handoffOffset, handoffWeight * 0.82f);
-                }
-            }
-
-            float steeringBlend = Math.Clamp(activation.EngageAmount * (float)Interpolation.Lerp(
-                context.ModeName == @"point" ? 2.05f : 1.1f,
-                context.ModeName == @"point" ? 3.8f : 1.55f,
-                strengthFactor), 0, 1);
-            Vector2 blendedOffset = interpolate(assistOffset, desiredOffset, steeringBlend);
-
-
-
-            if (context.ModeName == @"point" && activation.PointEarlySettleWeight > 0)
-            {
-                float candidateDistance = (context.DesiredPoint - (rawPosition + blendedOffset)).Length;
-
-                if (candidateDistance > distanceToDesired + 0.25f)
-                    blendedOffset = assistOffset;
-            }
-
-            if (context.ModeName == @"point")
-            {
-                Vector2 currentToDesired = context.DesiredPoint - outputPosition;
-                Vector2 candidateToDesired = context.DesiredPoint - (rawPosition + blendedOffset);
-                float candidateDistance = candidateToDesired.Length;
-                float overshootBrakeRadius = Math.Max(8f, context.Radius * 0.42f + overshootAllowance * 0.25f);
-
-                if (currentToDesired.LengthSquared > 0.001f
-                    && candidateToDesired.LengthSquared > 0.001f
-                    && distanceToDesired <= context.Radius + overshootAllowance + 20f)
-                {
-                    float directionalFlip = Vector2.Dot(currentToDesired / distanceToDesired, candidateToDesired / candidateDistance);
-
-                    if (directionalFlip < 0)
-                    {
-                        float closenessWeight = Math.Clamp(1 - candidateDistance / overshootBrakeRadius, 0, 1);
-                        float overshootBrake = Math.Clamp(-directionalFlip, 0, 1) * closenessWeight;
-
-                        if (overshootBrake > 0)
-                            blendedOffset = interpolate(blendedOffset, assistOffset, overshootBrake * 0.72f);
-                    }
-                }
-            }
-
-            float maxOffset = Math.Max(
-                context.Radius + overshootAllowance + (float)Interpolation.Lerp(
-                    context.ModeName == @"point" ? 150f : 28f,
-                    context.ModeName == @"point" ? 420f : 96f,
-                    strengthFactor),
-                fovRadius * (float)Interpolation.Lerp(context.ModeName == @"point" ? 1.05f : 0.35f, context.ModeName == @"point" ? 1.55f : 1.15f, strengthFactor));
-
-            // Further reduce allowed pull distance on very small notes (strengthFactor is already scaled)
-            float smallNoteScale = Math.Clamp(context.Radius / 30f, 0.30f, 1f);
-            maxOffset *= Math.Clamp(smallNoteScale * 1.1f, 0.5f, 1f);
-
-            return clampLength(blendedOffset, maxOffset);
-        }
-
-        private Vector2 computeStreamEngagedOffset(AimAssistContext context, ActivationState activation, Vector2 rawPosition, Vector2 outputPosition, float strengthFactor)
-        {
-            float overshootAllowance = getConfiguredOvershootAllowance();
-            float fovRadius = getConfiguredFovRadius();
-            ProjectionResult corridorProjection = getStreamCorridorProjection(outputPosition, context);
-            Vector2 tangentDirection = normaliseOrZero(corridorProjection.Tangent);
-            bool spacedStream = context.PatternInfo.StreamSpacing == OsuStreamSpacingKind.Spaced;
-            bool variableStream = context.PatternInfo.StreamSpacing == OsuStreamSpacingKind.Variable;
-            bool zigZagStream = context.PatternInfo.StreamShape == OsuStreamShapeKind.ZigZag;
-            float naturalCenteringBias = getNaturalCenteringBias(context.PatternInfo);
-            float curveFreedom = 1 - naturalCenteringBias;
-            float gentleFlowWeight = Time.Current >= context.FocusTime
-                ? getGentleFlowAssistWeight(context.PatternInfo)
-                : 0;
-
-            if (tangentDirection.LengthSquared <= 0.0001f)
-                tangentDirection = normaliseOrZero(context.DesiredPoint - outputPosition);
-
-            if (tangentDirection.LengthSquared <= 0.0001f)
+            if (motionTargetCaptured && fastRawVelocity.Length <= stationary_hold_speed_threshold
+                                     && (toTarget - assistOffset).LengthSquared <= radius * radius)
                 return assistOffset;
 
-            Vector2 corridorPoint = corridorProjection.Point;
-            Vector2 correctionVector = getTangentLineCorrectionVector(outputPosition, corridorPoint, tangentDirection);
-            float orthogonalDistance = correctionVector.Length;
-            float corridorScale = spacedStream
-                ? 0.74f
-                : variableStream
-                    ? 0.68f
-                    : zigZagStream
-                        ? 0.72f
-                        : 0.6f;
-            corridorScale = (float)Interpolation.Lerp(corridorScale, corridorScale + 0.18f, curveFreedom);
+            float distance = toTarget.Length;
+            if (distance <= radius)
+                return assistOffset;
 
-            if (gentleFlowWeight > 0)
-                corridorScale = (float)Interpolation.Lerp(corridorScale, corridorScale + 0.16f, gentleFlowWeight);
+            Vector2 missCorrection = GetTrajectoryMissCorrection(rawPosition, getDisplayCentre(context.Drawable), radius, averagedVelocity, getPointAcquisitionPredictionHorizon(context));
 
-            float corridorRadius = Math.Max(context.Radius * corridorScale, 8f);
-            float recaptureScale = spacedStream
-                ? 1.84f
-                : variableStream
-                    ? 1.68f
-                    : zigZagStream
-                        ? 1.72f
-                        : 1.48f;
-            recaptureScale = (float)Interpolation.Lerp(recaptureScale, recaptureScale + 0.14f, curveFreedom);
+            // Do not correct a trajectory which already intersects the real hitbox.
+            if (missCorrection.LengthSquared <= 0.0001f)
+                return assistOffset;
 
-            if (gentleFlowWeight > 0)
-                recaptureScale = (float)Interpolation.Lerp(recaptureScale, recaptureScale + 0.18f, gentleFlowWeight);
-
-            float recaptureRadius = Math.Max(context.Radius * recaptureScale, corridorRadius + 12f);
-            float recaptureWeight = orthogonalDistance <= corridorRadius
-                ? 0
-                : Math.Clamp((orthogonalDistance - corridorRadius) / Math.Max(1f, recaptureRadius - corridorRadius), 0, 1);
-            float insideCorridorFreedom = orthogonalDistance <= corridorRadius
-                ? Math.Clamp(1 - orthogonalDistance / Math.Max(1f, corridorRadius), 0, 1)
-                : 0;
-            float insideCorrectionWeight = spacedStream
-                ? 0.06f
-                : variableStream
-                    ? 0.08f
-                    : zigZagStream
-                        ? 0.07f
-                        : 0.09f;
-            insideCorrectionWeight = (float)Interpolation.Lerp(insideCorrectionWeight, insideCorrectionWeight * 0.78f, curveFreedom);
-            insideCorrectionWeight *= (float)Interpolation.Lerp(0.7f, 1.4f, strengthFactor);
-            float outsideCorrectionWeight = spacedStream
-                ? 0.44f
-                : variableStream
-                    ? 0.48f
-                    : zigZagStream
-                        ? 0.40f
-                        : 0.52f;
-            outsideCorrectionWeight = (float)Interpolation.Lerp(outsideCorrectionWeight, outsideCorrectionWeight * 0.78f, curveFreedom);
-            outsideCorrectionWeight *= (float)Interpolation.Lerp(0.85f, 1.25f, strengthFactor);
-            float orthogonalCorrectionWeight = orthogonalDistance <= corridorRadius
-                ? insideCorrectionWeight * (0.2f + 0.8f * (1 - insideCorridorFreedom))
-                : (float)Interpolation.Lerp(outsideCorrectionWeight * 0.22f, outsideCorrectionWeight, recaptureWeight);
-
-            if (gentleFlowWeight > 0)
-                orthogonalCorrectionWeight = (float)Interpolation.Lerp(orthogonalCorrectionWeight, orthogonalCorrectionWeight * 0.78f, gentleFlowWeight);
-
-            Vector2 tangentialOffset = tangentDirection * Vector2.Dot(assistOffset, tangentDirection);
-            Vector2 orthogonalOffset = assistOffset - tangentialOffset;
-            Vector2 desiredOrthogonalOffset = orthogonalOffset + correctionVector * orthogonalCorrectionWeight * activation.EngageAmount;
-
-            if (orthogonalDistance <= corridorRadius)
-            {
-                float insideHoldWeight = spacedStream
-                    ? 0.92f
-                    : zigZagStream
-                        ? 0.90f
-                        : 0.87f;
-                insideHoldWeight = (float)Interpolation.Lerp(insideHoldWeight, insideHoldWeight + 0.02f, curveFreedom);
-                insideHoldWeight *= (float)Interpolation.Lerp(1f, 0.92f, strengthFactor);
-                desiredOrthogonalOffset = interpolate(desiredOrthogonalOffset, orthogonalOffset, insideHoldWeight * insideCorridorFreedom);
-            }
-            else
-            {
-                float recaptureBlend = (float)Interpolation.Lerp(0.24f, spacedStream ? 0.68f : 0.62f, recaptureWeight);
-                desiredOrthogonalOffset = interpolate(orthogonalOffset, desiredOrthogonalOffset, recaptureBlend);
-            }
-
-            if (gentleFlowWeight > 0 && orthogonalDistance <= corridorRadius)
-                desiredOrthogonalOffset = interpolate(desiredOrthogonalOffset, orthogonalOffset, gentleFlowWeight * 0.24f);
-
-            if (orthogonalDistance > corridorRadius)
-            {
-                float curveEntry = Math.Clamp(orthogonalDistance / (corridorRadius * 1.5f), 0, 1);
-                tangentialOffset += tangentDirection * (corridorRadius * curveEntry * 0.8f);
-            }
-
-            Vector2 desiredOffset = tangentialOffset + desiredOrthogonalOffset;
-
-            float maxOffset = Math.Max(
-                context.Radius + overshootAllowance + (float)Interpolation.Lerp(42f, 128f, strengthFactor),
-                fovRadius * (float)Interpolation.Lerp(0.45f, 1.05f, strengthFactor));
-
-            // Further reduce allowed pull distance on very small notes (strengthFactor is already scaled)
-            float smallNoteScale = Math.Clamp(context.Radius / 30f, 0.30f, 1f);
-            maxOffset *= Math.Clamp(smallNoteScale * 1.1f, 0.5f, 1f);
-
-            return clampLength(desiredOffset, maxOffset);
+            // Correct perpendicular to the player's projected path. Pulling radially from the
+            // current position adds an artificial forward component and fights their timing.
+            // Activation authority already contains field falloff, timing, intent and strength.
+            // Applying field falloff again here made the useful outer half of the field effectively dead.
+            return missCorrection * Math.Clamp(authority, 0, 1);
         }
 
-        private float getPointExitIntentWeight(AimAssistContext context, Vector2 rawPosition)
+        internal static bool ShouldAttemptPointCorrection(float rawDistance, float predictedMissDistance, float hitboxRadius, float assistanceRadius, bool movingTowardTarget)
         {
-            if (context.ModeName != @"point")
-                return 0;
+            if (!movingTowardTarget || predictedMissDistance <= hitboxRadius)
+                return false;
 
-            Vector2 rawFromDesired = rawPosition - context.DesiredPoint;
-            float rawDistance = rawFromDesired.Length;
+            // Raw centre distance is deliberately not a rejection criterion. On a long jump it can be
+            // hundreds of pixels while the player's projected trajectory misses the hitbox by very little.
+            return predictedMissDistance <= Math.Max(hitboxRadius, assistanceRadius);
+        }
 
-            if (rawDistance <= 0.001f)
-                return 0;
+        internal static Vector2 GetTrajectoryMissCorrection(Vector2 position, Vector2 target, float radius, Vector2 velocity, float predictionHorizon)
+        {
+            Vector2 toTarget = target - position;
+            float velocitySquared = velocity.LengthSquared;
+            Vector2 closestPosition = position;
 
-            Vector2 moveDirection = normaliseOrZero(averagedVelocity);
-            Vector2 rawOutwardDirection = rawFromDesired / rawDistance;
-            float outwardIntent = moveDirection.LengthSquared > 0
-                ? Vector2.Dot(moveDirection, rawOutwardDirection)
-                : 0;
-
-            if (outwardIntent <= 0.08f)
-                return 0;
-
-            float exitRadius = Math.Max(context.Radius + getConfiguredOvershootAllowance() + 10f, 1f);
-            float distanceWeight = Math.Clamp((rawDistance + assistOffset.Length * 0.16f) / exitRadius, 0, 1);
-            float exitWeight = Math.Clamp((outwardIntent - 0.08f) / 0.72f, 0, 1) * distanceWeight;
-
-            if (context.PreviewPoint.HasValue)
+            if (velocitySquared > 1)
             {
-                Vector2 nextDirection = normaliseOrZero(context.PreviewPoint.Value - context.DesiredPoint);
-                float previewAlignment = nextDirection.LengthSquared > 0 && moveDirection.LengthSquared > 0
-                    ? Vector2.Dot(moveDirection, nextDirection)
-                    : 0;
-                float previewWeight = (float)Interpolation.Lerp(0.82f, 1.18f, Math.Clamp((previewAlignment + 1) * 0.5f, 0, 1));
-                exitWeight *= previewWeight;
+                float secondsToClosest = Math.Clamp(Vector2.Dot(toTarget, velocity) / velocitySquared, 0, Math.Max(0, predictionHorizon));
+                closestPosition += velocity * secondsToClosest;
             }
 
-            return Math.Clamp(exitWeight, 0, 1);
-        }
-
-        private float getPointFlowContinuationWeight(AimAssistContext context, Vector2 rawPosition)
-        {
-            if (context.ModeName != @"point" || context.PointFlowBias <= 0 || !context.PreviewPoint.HasValue)
-                return 0;
-
-            Vector2 previewDirection = getPointPreviewDirection(context);
-            Vector2 movementDirection = normaliseOrZero(averagedVelocity);
-            Vector2 outputPosition = rawPosition + assistOffset;
-            Vector2 outputFromDesired = outputPosition - context.DesiredPoint;
-            Vector2 rawFromDesired = rawPosition - context.DesiredPoint;
-
-            if (previewDirection.LengthSquared <= 0.0001f)
-                return 0;
-
-            float previewAlignment = movementDirection.LengthSquared > 0.0001f
-                ? Vector2.Dot(movementDirection, previewDirection)
-                : 0;
-            float outputAlignment = outputFromDesired.LengthSquared > 0.0001f
-                ? Vector2.Dot(normaliseOrZero(outputFromDesired), previewDirection)
-                : 0;
-            float rawAlignment = rawFromDesired.LengthSquared > 0.0001f
-                ? Vector2.Dot(normaliseOrZero(rawFromDesired), previewDirection)
-                : 0;
-            float motionAlignmentWeight = Math.Clamp((previewAlignment - 0.12f) / 0.76f, 0, 1);
-            float positionalAlignmentWeight = Math.Clamp((Math.Max(outputAlignment, rawAlignment) + 0.05f) / 0.95f, 0, 1);
-            float alignmentWeight = Math.Max(motionAlignmentWeight, positionalAlignmentWeight * 0.92f);
-
-            if (alignmentWeight <= 0)
-                return 0;
-
-            float loosePointRadius = context.Radius + getConfiguredOvershootAllowance() + 18f;
-            float proximityWeight = Math.Clamp(1 - (context.DesiredPoint - outputPosition).Length / Math.Max(1f, loosePointRadius), 0, 1);
-            float forwardProgress = Math.Clamp(Vector2.Dot(outputPosition - context.DesiredPoint, previewDirection) / Math.Max(1f, context.Radius * 0.82f), 0, 1);
-            float speedWeight = Math.Clamp((averagedVelocity.Length - stationary_hold_speed_threshold * 0.35f) / 280f, 0, 1);
-            float continuationBase = Math.Max(Math.Max(proximityWeight, forwardProgress), positionalAlignmentWeight * 0.78f);
-
-            return Math.Clamp(continuationBase * alignmentWeight * Math.Max(0.52f, speedWeight) * context.PointFlowBias, 0, 1);
-        }
-
-        private float getRecentTargetSwitchCarryWeight(AimAssistContext context)
-        {
-            if (context.ModeName != @"point" || lastTargetSwitchCarryWeight <= 0 || !ReferenceEquals(lastContextDrawable, context.Drawable))
-                return 0;
-
-            double elapsedSinceSwitch = Time.Current - lastTargetSwitchTime;
-
-            if (elapsedSinceSwitch < 0)
-                return 0;
-
-            double carryWindow = scaleRealTimeWindow(Interpolation.Lerp(80, 180, lastTargetSwitchCarryWeight));
-            float timeWeight = 1 - (float)Math.Clamp(elapsedSinceSwitch / carryWindow, 0, 1);
-            return Math.Clamp(timeWeight * lastTargetSwitchCarryWeight, 0, 1);
-        }
-
-        private float getPointRecenteringBias(AimAssistContext context, float pointFlowContinuationWeight, float strengthFactor)
-        {
-            float configuredBias = context.PointFlowBias > 0 || context.PatternInfo.IsContinuousFlow
-                ? getNaturalCenteringBias(context.PatternInfo)
-                : Math.Clamp((float)getConfiguredCenterBias(), 0, 1);
-            float recenteringBias = Math.Min(configuredBias, (float)Interpolation.Lerp(0.9f, 0.96f, strengthFactor));
-
-            if (context.ModeName != @"point")
-                return recenteringBias;
-
-            if (!context.PreviewPoint.HasValue && context.PointFlowBias <= 0)
-                return recenteringBias;
-
-            float flowWeight = Math.Max(pointFlowContinuationWeight, context.PointFlowBias);
-            float flowCap = (float)Interpolation.Lerp(0.68f, 0.2f, flowWeight);
-
-            if (context.PointFlowBias > 0)
-                flowCap = Math.Min(flowCap, (float)Interpolation.Lerp(0.56f, 0.18f, context.PointFlowBias));
-
-            if (context.PatternInfo.Kind == OsuPatternKind.Burst)
-            {
-                float burstWeight = Math.Max(context.PointFlowBias, context.PatternInfo.ContinuityWeight);
-                float burstCap = (float)Interpolation.Lerp(0.34f, 0.12f, burstWeight);
-                flowCap = Math.Min(flowCap, burstCap);
-            }
-
-            recenteringBias = Math.Min(recenteringBias, flowCap);
-            return Math.Clamp(recenteringBias, 0, 1);
-        }
-
-        private static Vector2 getPointPreviewDirection(AimAssistContext context)
-            => context.PreviewPoint.HasValue
-                ? normaliseOrZero(context.PreviewPoint.Value - context.DesiredPoint)
+            Vector2 miss = target - closestPosition;
+            float missDistance = miss.Length;
+            return missDistance > radius && missDistance > 0
+                ? miss * ((missDistance - Math.Max(0, radius)) / missDistance)
                 : Vector2.Zero;
+        }
+
+        private static Vector2 outsideDeadzone(Vector2 error, float radius)
+        {
+            float distance = error.Length;
+            return distance > Math.Max(0, radius) && distance > 0
+                ? error * ((distance - Math.Max(0, radius)) / distance)
+                : Vector2.Zero;
+        }
 
         private double getSliderHeadHandoffWindow(DrawableSlider slider)
         {
             double baseWindow = scaleRealTimeWindow(Math.Clamp(getGreatWindow(slider) * 1.1, 36, 95));
             return Math.Min(baseWindow, Math.Max(scaleRealTimeWindow(10), slider.HitObject.SpanDuration * 0.22));
-        }
-
-        private float getDynamicFrictionAmount(AimAssistContext context, Vector2 rawPosition)
-        {
-            double dynamicFriction = getConfiguredDynamicFriction();
-
-            if (dynamicFriction <= 0)
-                return 0;
-
-            if (context.ModeName == @"stream")
-                return 0;
-
-            if (context.ModeName == @"point")
-            {
-                double delta = context.FocusTime - Time.Current;
-                double greatWindow = Math.Max(18, context.Drawable.HitObject.HitWindows?.WindowFor(HitResult.Great) ?? 50);
-                double frictionLead = scaleRealTimeWindow(Math.Clamp(greatWindow * 1.25, 26, 90));
-
-                if (delta > frictionLead)
-                    return 0;
-            }
-
-            Vector2 outputPosition = rawPosition + assistOffset;
-            Vector2 toDesired = context.DesiredPoint - outputPosition;
-            float distanceToDesired = toDesired.Length;
-
-            if (distanceToDesired <= 0.001f)
-                return 0;
-
-            float brakingRadius = context.Radius + getConfiguredOvershootAllowance() + 24f;
-
-            if (distanceToDesired > brakingRadius)
-                return 0;
-
-            Vector2 radialDirection = toDesired / distanceToDesired;
-            float outwardSpeed = Vector2.Dot(averagedVelocity, -radialDirection);
-
-            if (outwardSpeed <= 0)
-                return 0;
-
-            float distanceFactor = 1 - distanceToDesired / brakingRadius;
-            float speedFactor = Math.Clamp(outwardSpeed / 600f, 0, 1);
-            float result = (float)dynamicFriction * distanceFactor * speedFactor;
-
-            if (context.ModeName == @"point")
-            {
-                double delta = context.FocusTime - Time.Current;
-                double greatWindow = Math.Max(18, context.Drawable.HitObject.HitWindows?.WindowFor(HitResult.Great) ?? 50);
-                double frictionLead = scaleRealTimeWindow(Math.Clamp(greatWindow * 1.25, 26, 90));
-                float timingFactor = delta <= 0
-                    ? 1
-                    : 1 - (float)Math.Clamp(delta / frictionLead, 0, 1);
-                result *= timingFactor;
-            }
-
-            return result;
         }
 
         private static Vector2 smoothDamp(Vector2 current, Vector2 target, ref Vector2 currentVelocity, float smoothTime, float maxSpeed, float deltaTime)
@@ -599,89 +205,151 @@ namespace osu.Game.Rulesets.Osu.UI
             return output;
         }
 
-        private Vector2 updateAssistOffset(Vector2 targetOffset, bool engaged, Vector2 rawPosition, Vector2 rawDelta, double elapsed, float engageAmount, float radialFrictionAmount,
+        private Vector2 updateAssistOffset(Vector2 targetOffset, bool engaged, Vector2 rawDelta, double elapsed, float engageAmount,
                                            bool pointMode, bool shortRepeatSliderMode, bool streamMode, float strengthFactor)
         {
-            float dt = (float)elapsed / 1000f;
-            if (dt <= 0) return assistOffset;
+            float dt = (float)(toRealTimeWindow(elapsed) / 1000);
+            if (dt <= 0)
+                return assistOffset;
+
+            float speed = rawDelta.Length / dt;
 
             if (!engaged)
-                targetOffset = getReleaseTargetOffset(rawDelta, elapsed, rawDelta.Length / dt, strengthFactor);
-
-            if (!engaged && assistOffset.Length <= 0.1f && targetOffset.Length <= 0.1f)
             {
-                clearStreamOutputMotionState();
-                return Vector2.Zero;
+                previousPointAssistStep = Vector2.Zero;
+                previousSliderAssistStep = Vector2.Zero;
+                return GetPlayerLedReleaseOffset(assistOffset, rawDelta);
             }
 
-            clearStreamOutputMotionState();
+            float responseTime = (float)Interpolation.Lerp(0.022f, 0.007f, strengthFactor);
+            if (shortRepeatSliderMode || streamMode)
+                responseTime *= 0.85f;
+            if (IsAntiJitterActive)
+                responseTime *= 1 + (1 - Math.Clamp(speed / 500f, 0, 1)) * 0.4f;
 
-            float smoothTime;
-            float maxSpeed = 10000f;
+            // Первый порядок: корректор не хранит собственную скорость и не продолжает
+            // разгонять курсор после торможения игрока или смены ноты.
+            // В режиме притяжения степень помощи уже задаёт величину целевого смещения.
+            float responseAuthority = pointMode || streamMode ? 1 : engageAmount;
+            Vector2 correction = (targetOffset - assistOffset) * (1 - MathF.Exp(-dt * responseAuthority / responseTime));
+            float maxSpeed = (float)Interpolation.Lerp(450f, 1500f, strengthFactor) + speed * 0.8f;
+            correction = clampLength(correction, maxSpeed * dt);
 
-            if (engaged) {
-                // Responsiveness is handled by faster smoothTime and high maxSpeed below.
-                // Previously adding rawDelta here caused crooked/overshooting behavior.
-
-                smoothTime = (float)Interpolation.Lerp(
-                    pointMode ? 0.065f : shortRepeatSliderMode ? 0.085f : 0.095f,
-                    pointMode ? 0.030f : shortRepeatSliderMode ? 0.040f : 0.050f,
-                    engageAmount);
-                
-                smoothTime *= (float)Interpolation.Lerp(1.15f, 0.72f, strengthFactor);
-                maxSpeed = averagedVelocity.Length * (pointMode ? 2.5f : 1.8f) + (float)Interpolation.Lerp(1200f, 4000f, strengthFactor);
-            } else {
-                smoothTime = 0.16f; 
-                maxSpeed = averagedVelocity.Length * 0.8f + 800f;
+            if (pointMode)
+            {
+                // targetOffset already contains activation authority. Applying it again here made
+                // moderate strengths effectively quadratic and therefore almost invisible.
+                float timeUntilHit = CurrentFocusTime.HasValue
+                    ? Math.Max(0, (float)toRealTimeWindow(CurrentFocusTime.Value - Time.Current))
+                    : float.PositiveInfinity;
+                bool homingPhase = ShouldAllowForwardCorrectionForMotion(motionTargetCaptured, fastRawVelocity.Length, slowRawVelocity.Length, timeUntilHit);
+                bool allowForwardCorrection = homingPhase
+                                              && ShouldAllowForwardCorrection(targetOffset - assistOffset, rawDelta, motionTargetCaptured, motionTargetExited);
+                correction = GetPlayerLedAssistStep(correction, rawDelta, strengthFactor, previousPointAssistStep, allowForwardCorrection);
+                previousPointAssistStep = correction;
+                previousSliderAssistStep = Vector2.Zero;
+            }
+            else if (streamMode && rawDelta.LengthSquared <= 0.0001f)
+            {
+                correction = Vector2.Zero;
+                previousPointAssistStep = Vector2.Zero;
+                previousSliderAssistStep = Vector2.Zero;
+            }
+            else if (shortRepeatSliderMode || (!pointMode && !streamMode))
+            {
+                correction = GetPlayerLedTrackingStep(correction, rawDelta, strengthFactor, previousSliderAssistStep);
+                previousPointAssistStep = Vector2.Zero;
+                previousSliderAssistStep = correction;
+            }
+            else
+            {
+                previousPointAssistStep = Vector2.Zero;
+                previousSliderAssistStep = Vector2.Zero;
             }
 
-            if (IsAntiJitterActive) {
-                smoothTime *= 2.0f;
-                maxSpeed *= 0.55f;
-            }
-
-            if (engaged && radialFrictionAmount > 0) {
-                smoothTime *= 1f + radialFrictionAmount * 1.8f;
-            }
-
-            if (!hasPreviousOffsetVelocity) {
-                previousOffsetVelocity = Vector2.Zero;
-                hasPreviousOffsetVelocity = true;
-            }
-
-            Vector2 nextOffset = smoothDamp(assistOffset, targetOffset, ref previousOffsetVelocity, smoothTime, maxSpeed, dt);
-            
-            float safeMaxOffset = Math.Max(getConfiguredFovRadius() * 1.3f, targetOffset.Length + 15f);
-            nextOffset = clampLength(nextOffset, safeMaxOffset);
-
-            if (!engaged && nextOffset.Length <= 0.1f) return Vector2.Zero;
-            
-            return nextOffset;
+            float maxOffset = Math.Max(24, getConfiguredFovRadius() * (float)Interpolation.Lerp(0.55f, 1.1f, strengthFactor));
+            return clampLength(assistOffset + correction, maxOffset);
         }
 
-        private Vector2 getReleaseTargetOffset(Vector2 rawDelta, double elapsed, float rawSpeed, float strengthFactor)
+        internal static Vector2 GetPlayerLedAssistStep(Vector2 requestedCorrection, Vector2 rawDelta, float authority, Vector2 previousStep = default, bool allowForwardCorrection = false)
         {
-            if (assistOffset.LengthSquared <= 0.01f)
+            float movement = rawDelta.Length;
+            if (movement <= 0.0001f || authority <= 0)
                 return Vector2.Zero;
 
-            Vector2 offsetDirection = normaliseOrZero(assistOffset);
-            Vector2 rawDirection = normaliseOrZero(rawDelta);
-            float alignment = rawDirection.LengthSquared > 0
-                ? Vector2.Dot(rawDirection, offsetDirection)
-                : 0;
+            Vector2 direction = rawDelta / movement;
+            float parallelCorrection = Vector2.Dot(requestedCorrection, direction);
+            Vector2 eligibleCorrection = requestedCorrection - direction * parallelCorrection;
 
-            float alignmentWeight = Math.Clamp((alignment + 1) * 0.5f, 0, 1);
-            float outputFollowFraction = (float)Interpolation.Lerp(0.28f, 0.62f, alignmentWeight);
-            outputFollowFraction = (float)Interpolation.Lerp(outputFollowFraction, outputFollowFraction + 0.12f, Math.Clamp(rawSpeed / 900f, 0, 1));
-            outputFollowFraction = Math.Clamp(outputFollowFraction, 0.24f, 0.76f);
+            if (allowForwardCorrection && parallelCorrection > 0)
+                eligibleCorrection += direction * parallelCorrection;
 
-            Vector2 offsetAfterInput = assistOffset - rawDelta * (1 - outputFollowFraction);
+            float strength = Math.Clamp(authority, 0, 1);
+            Vector2 desiredStep = clampLength(eligibleCorrection, movement * (0.18f + 0.42f * strength));
 
-            float recenterSpeed = (float)Interpolation.Lerp(55f, 165f, Math.Clamp(rawSpeed / 900f, 0, 1));
-            recenterSpeed *= (float)Interpolation.Lerp(0.9f, 1.15f, strengthFactor);
-            recenterSpeed *= (float)Interpolation.Lerp(0.8f, 1.35f, alignmentWeight);
+            if (allowForwardCorrection)
+            {
+                float forwardStep = Math.Clamp(Vector2.Dot(desiredStep, direction), 0, movement * 0.36f);
+                Vector2 lateralStep = desiredStep - direction * Vector2.Dot(desiredStep, direction);
+                desiredStep = lateralStep + direction * forwardStep;
+            }
 
-            return moveTowards(offsetAfterInput, Vector2.Zero, recenterSpeed * (float)elapsed / 1000f);
+            float maximumStepChange = movement * (0.08f + 0.16f * strength);
+            Vector2 nextStep = previousStep + clampLength(desiredStep - previousStep, maximumStepChange);
+
+            // A curvature reversal must pass through zero rather than crossing it within one frame.
+            if (previousStep.LengthSquared > 0.0001f && Vector2.Dot(previousStep, nextStep) < 0)
+                return Vector2.Zero;
+
+            return nextStep;
+        }
+
+        internal static bool ShouldAllowForwardCorrection(Vector2 requestedCorrection, Vector2 rawDelta, bool targetCaptured, bool targetExited)
+        {
+            if (targetCaptured || targetExited || rawDelta.LengthSquared <= 0.0001f)
+                return false;
+
+            return Vector2.Dot(requestedCorrection, rawDelta) > 0;
+        }
+
+        internal static bool ShouldAllowForwardCorrectionForMotion(bool targetCaptured, float fastSpeed, float slowSpeed, float timeUntilHit)
+        {
+            if (targetCaptured || timeUntilHit > 95)
+                return false;
+
+            // Forward correction belongs to the feedback-driven homing phase only. During the initial
+            // ballistic surge the player owns longitudinal speed completely.
+            return fastSpeed <= slowSpeed * 0.82f;
+        }
+
+        internal static Vector2 GetPlayerLedReleaseOffset(Vector2 currentOffset, Vector2 rawDelta)
+        {
+            if (rawDelta.LengthSquared <= 0.0001f || currentOffset.LengthSquared <= 0.01f)
+                return currentOffset;
+
+            Vector2 direction = normaliseOrZero(rawDelta);
+            float convergence = Math.Clamp(Vector2.Dot(currentOffset, direction), 0, rawDelta.Length);
+            Vector2 remaining = currentOffset - direction * convergence;
+            return remaining.LengthSquared <= 0.01f ? Vector2.Zero : remaining;
+        }
+
+        internal static Vector2 GetPlayerLedTrackingStep(Vector2 requestedCorrection, Vector2 rawDelta, float authority, Vector2 previousStep = default)
+        {
+            float movement = rawDelta.Length;
+            if (movement <= 0.0001f || authority <= 0)
+                return Vector2.Zero;
+
+            Vector2 direction = rawDelta / movement;
+            Vector2 lateralCorrection = requestedCorrection - direction * Vector2.Dot(requestedCorrection, direction);
+            float strength = Math.Clamp(authority, 0, 1);
+            Vector2 desiredStep = clampLength(lateralCorrection, movement * (0.1f + 0.22f * strength));
+            float maximumStepChange = movement * (0.06f + 0.1f * strength);
+            Vector2 nextStep = previousStep + clampLength(desiredStep - previousStep, maximumStepChange);
+
+            if (previousStep.LengthSquared > 0.0001f && Vector2.Dot(previousStep, nextStep) < 0)
+                return Vector2.Zero;
+
+            return nextStep;
         }
 
         private void releaseVirtualCursor(bool restoreOriginalPosition = true)

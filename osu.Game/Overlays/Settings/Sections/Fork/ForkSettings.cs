@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Realms;
 using osu.Framework.Bindables;
+using osu.Framework.Graphics.Sprites;
 using osu.Game.Online.API;
 
 namespace osu.Game.Overlays.Settings.Sections.Fork
@@ -81,9 +82,20 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
             {
                 new SettingsButtonV2
                 {
+                    Text = ForkSettingsStrings.AboutMorasoomaButton,
+                    Action = () => dialogOverlay?.Push(new AboutMorasoomaDialog())
+                },
+                new SettingsButtonV2
+                {
                     Text = ForkSettingsStrings.TabletSettingsBtn,
                     Action = () => settingsOverlay?.ShowAtControl<osu.Game.Overlays.Settings.Sections.Input.TabletSettings>()
                 },
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = ForkSettingsStrings.ReduceVolumeOutsideGameplayCaption,
+                    HintText = ForkSettingsStrings.ReduceVolumeOutsideGameplayHint,
+                    Current = config.GetBindable<bool>(OsuSetting.ForkReduceVolumeOutsideGameplay)
+                }),
                 new SettingsItemV2(new FormEnumDropdown<osu.Game.Online.API.DownloadMirror>
                 {
                     Caption = ForkSettingsStrings.DownloadMirrorCaption,
@@ -106,6 +118,18 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Current = useStable
                 }),
                 new SettingsItemV2(stablePathTextBox),
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = ForkSettingsStrings.DisableOnlineRecordsCaption,
+                    HintText = ForkSettingsStrings.DisableOnlineRecordsHint,
+                    Current = config.GetBindable<bool>(OsuSetting.ForkDisableOnlineRecordSending)
+                }),
+                new SettingsItemV2(new FormEnumDropdown<ForkRelaxPpSystem>
+                {
+                    Caption = ForkSettingsStrings.RelaxPpSystemCaption,
+                    HintText = ForkSettingsStrings.RelaxPpSystemHint,
+                    Current = config.GetBindable<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem)
+                }),
                 new SettingsItemV2(new FormTextBox
                 {
                     Caption = ForkSettingsStrings.CustomUsernameCaption,
@@ -113,6 +137,15 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     PlaceholderText = ForkSettingsStrings.CustomUsernamePlaceholder,
                     Current = config.GetBindable<string>(OsuSetting.ForkCustomUsername)
                 }),
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = ForkSettingsStrings.MorasoomaEndTagCaption,
+                    HintText = ForkSettingsStrings.MorasoomaEndTagHint,
+                    Current = config.GetBindable<bool>(OsuSetting.ForkMorasoomaEndTag)
+                })
+                {
+                    Keywords = new[] { @"morasooma", @"tag", @"smoke", @"replay", @"signature" },
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.OverrideRecDiffCaption,
@@ -217,6 +250,23 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
             };
 
 
+        }
+
+        private sealed partial class AboutMorasoomaDialog : PopupDialog
+        {
+            public AboutMorasoomaDialog()
+            {
+                HeaderText = ForkSettingsStrings.AboutMorasoomaHeader;
+                BodyText = ForkSettingsStrings.AboutMorasoomaDescription;
+                Icon = FontAwesome.Solid.InfoCircle;
+                Buttons = new PopupDialogButton[]
+                {
+                    new PopupDialogOkButton
+                    {
+                        Text = ForkSettingsStrings.AboutMorasoomaClose,
+                    },
+                };
+            }
         }
     }
 }

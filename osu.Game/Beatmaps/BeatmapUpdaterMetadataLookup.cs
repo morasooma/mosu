@@ -73,7 +73,7 @@ namespace osu.Game.Beatmaps
                 lookupResults.Add(res);
 
                 beatmapInfo.OnlineID = res.BeatmapID;
-                if (!Online.MosuServerEnvironment.IsThirdPartyServer)
+                if (shouldTrackOnlineVersion(beatmapInfo, res))
                 {
                     beatmapInfo.OnlineMD5Hash = res.MD5Hash;
                     beatmapInfo.LastOnlineUpdate = res.LastUpdated;
@@ -105,7 +105,7 @@ namespace osu.Game.Beatmaps
                         continue;
 
                     beatmapInfo.OnlineID = res.BeatmapID;
-                    if (!Online.MosuServerEnvironment.IsThirdPartyServer)
+                    if (shouldTrackOnlineVersion(beatmapInfo, res))
                     {
                         beatmapInfo.OnlineMD5Hash = res.MD5Hash;
                         beatmapInfo.LastOnlineUpdate = res.LastUpdated;
@@ -155,6 +155,14 @@ namespace osu.Game.Beatmaps
                 beatmapSet.DateSubmitted = representative.DateSubmitted;
             }
         }
+
+        private static bool shouldTrackOnlineVersion(BeatmapInfo beatmapInfo, OnlineBeatmapMetadata metadata)
+            => !Online.MosuServerEnvironment.IsThirdPartyServer
+               || metadata.BeatmapID >= BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD
+               || metadata.BeatmapSetID >= BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD
+               || beatmapInfo.OnlineID >= BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD
+               || beatmapInfo.Metadata.IsServerExclusive()
+               || beatmapInfo.BeatmapSet.IsServerExclusive();
 
         /// <summary>
         /// Attempts to retrieve the <see cref="OnlineBeatmapMetadata"/> for the given <paramref name="beatmapInfo"/>.

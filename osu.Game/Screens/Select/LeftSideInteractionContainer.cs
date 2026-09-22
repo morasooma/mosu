@@ -14,22 +14,54 @@ namespace osu.Game.Screens.Select
     internal partial class LeftSideInteractionContainer : Container
     {
         private readonly Action? resetCarouselPosition;
+        private readonly Action<float>? forwardScroll;
+        private readonly Func<bool>? canForwardDrag;
+        private readonly Func<bool>? receivePositionalInput;
 
         private bool mouseContained;
+        private bool isDragging;
 
         private InputManager inputManager = null!;
 
-        public LeftSideInteractionContainer(Action resetCarouselPosition)
+        public LeftSideInteractionContainer(Action resetCarouselPosition, Action<float>? forwardScroll = null, Func<bool>? canForwardDrag = null,
+                                            Func<bool>? receivePositionalInput = null)
         {
             this.resetCarouselPosition = resetCarouselPosition;
+            this.forwardScroll = forwardScroll;
+            this.canForwardDrag = canForwardDrag;
+            this.receivePositionalInput = receivePositionalInput;
         }
+
+        public override bool PropagatePositionalInputSubTree => receivePositionalInput?.Invoke() != false && base.PropagatePositionalInputSubTree;
 
         // we want to block plain scrolls on the left side so that they don't scroll the carousel,
         // but also we *don't* want to handle scrolls when they're combined with keyboard modifiers
         // as those will usually correspond to other interactions like adjusting volume.
-        protected override bool OnScroll(ScrollEvent e) => !e.ControlPressed && !e.AltPressed && !e.ShiftPressed && !e.SuperPressed;
+        protected override bool OnScroll(ScrollEvent e)
+        {
+            if (e.ControlPressed || e.AltPressed || e.ShiftPressed || e.SuperPressed)
+                return false;
+
+            // In styles which support forwarding a drag from the left side, allow the carousel's
+            // screen-wide scroll handler to receive the wheel event as well.
+            return canForwardDrag?.Invoke() != true;
+        }
 
         protected override bool OnMouseDown(MouseDownEvent e) => true;
+
+        protected override bool OnDragStart(DragStartEvent e) => canForwardDrag?.Invoke() == true;
+
+        protected override void OnDrag(DragEvent e)
+        {
+            isDragging = true;
+            forwardScroll?.Invoke(e.Delta.Y);
+        }
+
+        protected override void OnDragEnd(DragEndEvent e)
+        {
+            isDragging = false;
+            base.OnDragEnd(e);
+        }
 
         protected override void LoadComplete()
         {
@@ -40,6 +72,15 @@ namespace osu.Game.Screens.Select
         protected override void Update()
         {
             base.Update();
+
+            if (isDragging)
+                return;
+
+            if (canForwardDrag?.Invoke() == true)
+            {
+                mouseContained = Contains(inputManager.CurrentState.Mouse.Position);
+                return;
+            }
 
             // We want to trigger an action whenever the cursor is in the left area of song select.
             // Other elements in song select handle input, so rather than using `OnHover` let's check the true mouse position.

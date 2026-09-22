@@ -81,9 +81,9 @@ namespace osu.Game.Overlays.SkinEditor
                         Origin = Anchor.Centre,
                         Children = new Drawable[]
                         {
-                            new Box
+                            new BackdropBlurSurface
                             {
-                                Colour = colourProvider.Background5,
+                                SurfaceColour = colourProvider.Background5,
                                 RelativeSizeAxes = Axes.Both,
                             },
                             flow = new FillFlowContainer

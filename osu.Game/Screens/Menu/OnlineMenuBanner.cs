@@ -91,7 +91,8 @@ namespace osu.Game.Screens.Menu
                             if (!FetchOnlineContent)
                                 return;
 
-                            Current.Value = request.Response;
+                            if (request.Response is { } response)
+                                Current.Value = response;
                         });
                     }
 

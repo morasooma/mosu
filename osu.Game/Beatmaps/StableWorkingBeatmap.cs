@@ -5,7 +5,9 @@ using System.IO;
 using System.Linq;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Track;
+using osu.Framework.Extensions;
 using osu.Framework.Graphics.Textures;
+using osu.Framework.Logging;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.Formats;
 using osu.Game.Database;
@@ -16,12 +18,14 @@ namespace osu.Game.Beatmaps
 {
     public class StableWorkingBeatmap : WorkingBeatmap
     {
-        private readonly string beatmapPath;
-        private readonly string audioPath;
+        private readonly string? beatmapPath;
+        private readonly string? audioPath;
         private readonly AudioManager audioManager;
         private readonly LargeTextureStore? textureStore;
         private readonly LargeTextureStore? panelTextureStore;
         private readonly LargeTextureStore? legacyPreviewTextureStore;
+        private readonly bool panelTextureStoreUsesAbsolutePaths;
+        private readonly bool legacyPreviewTextureStoreUsesAbsolutePaths;
         private readonly osu.Framework.Audio.Track.ITrackStore? trackStore;
         private readonly osu.Framework.IO.Stores.IResourceStore<byte[]>? resourceStore;
         private readonly osu.Framework.Platform.GameHost host;
@@ -35,7 +39,7 @@ namespace osu.Game.Beatmaps
                 if (string.IsNullOrEmpty(beatmapPath))
                     return null;
 
-                string? backgroundFile = Beatmap?.Metadata?.BackgroundFile;
+                string? backgroundFile = Metadata?.BackgroundFile;
 
                 if (string.IsNullOrEmpty(backgroundFile))
                     return null;
@@ -45,11 +49,16 @@ namespace osu.Game.Beatmaps
             }
         }
 
-        public StableWorkingBeatmap(BeatmapInfo beatmapInfo, AudioManager audioManager, osu.Framework.Platform.GameHost host)
+        public StableWorkingBeatmap(BeatmapInfo beatmapInfo, AudioManager audioManager, osu.Framework.Platform.GameHost host,
+                                    LargeTextureStore? sharedPanelTextureStore = null, LargeTextureStore? sharedLegacyPreviewTextureStore = null)
             : base(beatmapInfo, audioManager)
         {
             this.audioManager = audioManager;
             this.host = host;
+            panelTextureStore = sharedPanelTextureStore;
+            legacyPreviewTextureStore = sharedLegacyPreviewTextureStore;
+            panelTextureStoreUsesAbsolutePaths = sharedPanelTextureStore != null;
+            legacyPreviewTextureStoreUsesAbsolutePaths = sharedLegacyPreviewTextureStore != null;
             StablePathManager.TryGetPath(beatmapInfo.ID, out beatmapPath);
             StablePathManager.TryGetAudioPath(beatmapInfo.ID, out audioPath);
 
@@ -59,15 +68,25 @@ namespace osu.Game.Beatmaps
 
                 if (!string.IsNullOrEmpty(dir))
                 {
-                    resourceStore = new osu.Framework.IO.Stores.StorageBackedResourceStore(new osu.Framework.Platform.NativeStorage(dir));
-                    trackStore = audioManager.GetTrackStore(resourceStore);
-
-                    if (host?.Renderer != null)
+                    try
                     {
-                        var textureLoaderStore = host.CreateTextureLoaderStore(resourceStore);
-                        textureStore = new LargeTextureStore(host.Renderer, textureLoaderStore);
-                        panelTextureStore = new LargeTextureStore(host.Renderer, new BeatmapPanelBackgroundTextureLoaderStore(textureLoaderStore));
-                        legacyPreviewTextureStore = new LargeTextureStore(host.Renderer, new BeatmapLegacyPreviewBackgroundTextureLoaderStore(textureLoaderStore));
+                        resourceStore = new osu.Framework.IO.Stores.StorageBackedResourceStore(new osu.Framework.Platform.NativeStorage(dir));
+                        trackStore = audioManager.GetTrackStore(resourceStore);
+
+                        if (host.Renderer != null)
+                        {
+                            var textureLoaderStore = host.CreateTextureLoaderStore(resourceStore);
+                            textureStore = new LargeTextureStore(host.Renderer, textureLoaderStore);
+                            if (panelTextureStore == null)
+                                panelTextureStore = new LargeTextureStore(host.Renderer, new BeatmapPanelBackgroundTextureLoaderStore(textureLoaderStore));
+
+                            if (legacyPreviewTextureStore == null)
+                                legacyPreviewTextureStore = new LargeTextureStore(host.Renderer, new BeatmapLegacyPreviewBackgroundTextureLoaderStore(textureLoaderStore));
+                        }
+                    }
+                    catch (System.Exception exception)
+                    {
+                        Logger.Error(exception, $"Stable beatmap storage failed to initialise for {dir}");
                     }
                 }
             }
@@ -76,15 +95,48 @@ namespace osu.Game.Beatmaps
         protected override IBeatmap GetBeatmap()
         {
             if (string.IsNullOrEmpty(beatmapPath) || !File.Exists(beatmapPath))
-                return new Beatmap();
-
-            using (var stream = File.OpenRead(beatmapPath))
-            using (var reader = new osu.Game.IO.LineBufferedReader(stream))
             {
-                var decoder = Decoder.GetDecoder<Beatmap>(reader);
-                var beatmap = decoder.Decode(reader);
-                BeatmapInfo.UpdateStatisticsFromBeatmap(beatmap);
-                return beatmap;
+                BeatmapInfo.Status = BeatmapOnlineStatus.LocallyModified;
+                Logger.Log($"Stable beatmap file is unavailable: {beatmapPath}", LoggingTarget.Database, LogLevel.Error);
+                return new Beatmap();
+            }
+
+            try
+            {
+                using (var stream = File.OpenRead(beatmapPath))
+                {
+                    string expectedMD5 = BeatmapInfo.MD5Hash;
+                    string actualMD5 = stream.ComputeMD5Hash();
+                    string actualSHA2 = stream.ComputeSHA2Hash();
+
+                    using var reader = new osu.Game.IO.LineBufferedReader(stream);
+                    var decoder = Decoder.GetDecoder<Beatmap>(reader);
+                    var beatmap = decoder.Decode(reader);
+
+                    BeatmapInfo.OnlineMD5Hash = expectedMD5;
+                    BeatmapInfo.MD5Hash = actualMD5;
+                    BeatmapInfo.Hash = actualSHA2;
+                    beatmap.BeatmapInfo.OnlineMD5Hash = expectedMD5;
+                    beatmap.BeatmapInfo.MD5Hash = actualMD5;
+                    beatmap.BeatmapInfo.Hash = actualSHA2;
+
+                    if (string.IsNullOrEmpty(expectedMD5) ||
+                        !string.Equals(expectedMD5, actualMD5, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        BeatmapInfo.Status = BeatmapOnlineStatus.LocallyModified;
+                        beatmap.BeatmapInfo.Status = BeatmapOnlineStatus.LocallyModified;
+                        Logger.Log($"Stable beatmap checksum changed on disk: {beatmapPath}", LoggingTarget.Database, LogLevel.Important);
+                    }
+
+                    BeatmapInfo.UpdateStatisticsFromBeatmap(beatmap);
+                    return beatmap;
+                }
+            }
+            catch (System.Exception exception)
+            {
+                BeatmapInfo.Status = BeatmapOnlineStatus.LocallyModified;
+                Logger.Error(exception, $"Stable beatmap failed to load: {beatmapPath}");
+                return new Beatmap();
             }
         }
 
@@ -145,27 +197,36 @@ namespace osu.Game.Beatmaps
                             .FirstOrDefault(path => string.Equals(Path.GetFileName(path), filename, System.StringComparison.OrdinalIgnoreCase));
         }
 
-        public override Texture GetBackground()
+        public override Texture? GetBackground()
             => getBackground(textureStore);
 
-        public override Texture GetPanelBackground()
-            => getBackground(panelTextureStore) ?? GetBackground();
+        public override Texture? GetPanelBackground()
+            => getBackground(panelTextureStore, useAbsolutePath: panelTextureStoreUsesAbsolutePaths) ?? GetBackground();
 
-        public override Texture GetLegacyPreviewBackground()
-            => getBackground(legacyPreviewTextureStore) ?? GetPanelBackground();
+        public override Texture? GetPanelBackground(int resolutionPercent)
+            => getBackground(panelTextureStore, resolutionPercent, panelTextureStoreUsesAbsolutePaths) ?? GetBackground();
 
-        private Texture? getBackground(TextureStore? store)
+        public override Texture? GetLegacyPreviewBackground()
+            => getBackground(legacyPreviewTextureStore, useAbsolutePath: legacyPreviewTextureStoreUsesAbsolutePaths) ?? GetPanelBackground();
+
+        public override Texture? GetLegacyPreviewBackground(int resolutionPercent)
+            => getBackground(legacyPreviewTextureStore, resolutionPercent, legacyPreviewTextureStoreUsesAbsolutePaths) ?? GetPanelBackground(resolutionPercent);
+
+        private Texture? getBackground(TextureStore? store, int? resolutionPercent = null, bool useAbsolutePath = false)
         {
             if (store == null || string.IsNullOrEmpty(beatmapPath))
                 return null;
 
-            string? bgFile = Beatmap?.Metadata?.BackgroundFile;
+            string? bgFile = Metadata?.BackgroundFile;
             if (string.IsNullOrEmpty(bgFile))
                 return null;
 
             try
             {
-                var texture = store.Get(bgFile);
+                string resourceName = useAbsolutePath ? BackgroundFilePath ?? bgFile : bgFile;
+                var texture = store.Get(resolutionPercent.HasValue
+                    ? CarouselPreviewTextureRequest.Create(resourceName, resolutionPercent.Value)
+                    : resourceName);
 
                 if (texture == null)
                     osu.Framework.Logging.Logger.Log($"Stable beatmap background failed to load: {bgFile} from {BackgroundFilePath}", osu.Framework.Logging.LoggingTarget.Database);
@@ -179,7 +240,7 @@ namespace osu.Game.Beatmaps
             }
         }
 
-        protected override Track GetBeatmapTrack()
+        protected override Track? GetBeatmapTrack()
         {
             osu.Framework.Logging.Logger.Log($"StableWorkingBeatmap getting track for {audioPath}", osu.Framework.Logging.LoggingTarget.Database);
 
@@ -189,13 +250,21 @@ namespace osu.Game.Beatmaps
                 return null;
             }
 
-            string file = Path.GetFileName(audioPath);
-            var track = trackStore.Get(file);
-            osu.Framework.Logging.Logger.Log($"Track created: {track != null}", osu.Framework.Logging.LoggingTarget.Database);
-            return track;
+            try
+            {
+                string file = Path.GetFileName(audioPath);
+                var track = trackStore.Get(file);
+                osu.Framework.Logging.Logger.Log($"Track created: {track != null}", osu.Framework.Logging.LoggingTarget.Database);
+                return track;
+            }
+            catch (System.Exception exception)
+            {
+                Logger.Error(exception, $"Stable beatmap track failed to load: {audioPath}");
+                return null;
+            }
         }
 
-        public override Stream GetStream(string storagePath)
+        public override Stream? GetStream(string storagePath)
         {
             if (string.IsNullOrEmpty(beatmapPath))
                 return null;
@@ -206,13 +275,20 @@ namespace osu.Game.Beatmaps
 
             string fullPath = Path.Combine(dir, storagePath);
 
-            if (File.Exists(fullPath))
-                return File.OpenRead(fullPath);
+            try
+            {
+                if (File.Exists(fullPath))
+                    return File.OpenRead(fullPath);
+            }
+            catch (System.Exception exception)
+            {
+                Logger.Error(exception, $"Stable beatmap resource failed to open: {fullPath}");
+            }
 
             return null;
         }
 
-        protected internal override osu.Game.Skinning.ISkin GetSkin()
+        protected internal override osu.Game.Skinning.ISkin? GetSkin()
         {
             if (resourceStore == null) return null;
             var provider = new StableResourceProvider(audioManager, resourceStore, host);
@@ -224,7 +300,7 @@ namespace osu.Game.Beatmaps
             public osu.Framework.Audio.AudioManager AudioManager { get; }
             public osu.Framework.IO.Stores.IResourceStore<byte[]> Files { get; }
             public osu.Framework.IO.Stores.IResourceStore<byte[]> Resources { get; }
-            public osu.Game.Database.RealmAccess RealmAccess => null;
+            public osu.Game.Database.RealmAccess RealmAccess => null!;
             public osu.Framework.Graphics.Rendering.IRenderer Renderer { get; }
             private readonly osu.Framework.Platform.GameHost host;
 
@@ -234,11 +310,11 @@ namespace osu.Game.Beatmaps
                 Files = files;
                 Resources = files;
                 this.host = host;
-                Renderer = host?.Renderer;
+                Renderer = host.Renderer;
             }
 
             public osu.Framework.IO.Stores.IResourceStore<osu.Framework.Graphics.Textures.TextureUpload> CreateTextureLoaderStore(osu.Framework.IO.Stores.IResourceStore<byte[]> underlyingStore)
-                => host?.CreateTextureLoaderStore(underlyingStore);
+                => host.CreateTextureLoaderStore(underlyingStore);
         }
 
         private class StableBeatmapSkin : osu.Game.Skinning.LegacySkin

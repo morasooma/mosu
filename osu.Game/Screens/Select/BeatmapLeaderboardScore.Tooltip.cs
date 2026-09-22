@@ -309,7 +309,8 @@ namespace osu.Game.Screens.Select
                     int ppValue = (int)Math.Round(pp, MidpointRounding.AwayFromZero);
                     ValueText.Text = LocalisableString.Interpolate(@$"{ppValue:N0}pp");
 
-            if (!scoreInfo.Ranked || hasUnrankedMods(scoreInfo))
+                    if (!ModPerformancePointHelper.BeatmapAwardsPerformancePoints(scoreInfo.Ruleset, scoreInfo.BeatmapInfo) ||
+                        hasUnrankedMods(scoreInfo))
                         Alpha = 0.5f;
                     else
                         Alpha = 1f;

@@ -9,6 +9,7 @@ using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Legacy;
 using osu.Game.Online.Rooms;
 
 namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match.Playlist
@@ -33,6 +34,9 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match.Playlist
         [Resolved]
         private MultiplayerClient client { get; set; } = null!;
 
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
+
         private MultiplayerPlaylistTabControl playlistTabControl = null!;
         private MultiplayerQueueList queueList = null!;
         private MultiplayerHistoryList historyList = null!;
@@ -43,7 +47,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match.Playlist
         {
             const float tab_control_height = 25;
 
-            const float content_top_padding = tab_control_height + 5;
+            float contentTopPadding = stableBanchoSession == null ? tab_control_height + 5 : 0;
 
             InternalChildren = new Drawable[]
             {
@@ -51,13 +55,13 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match.Playlist
                 {
                     RelativeSizeAxes = Axes.X,
                     Height = tab_control_height,
-                    Alpha = 1,
+                    Alpha = stableBanchoSession == null ? 1 : 0,
                     Current = { BindTarget = DisplayMode }
                 },
                 new Container
                 {
                     RelativeSizeAxes = Axes.Both,
-                    Padding = new MarginPadding { Top = content_top_padding },
+                    Padding = new MarginPadding { Top = contentTopPadding },
                     Masking = true,
                     Children = new Drawable[]
                     {

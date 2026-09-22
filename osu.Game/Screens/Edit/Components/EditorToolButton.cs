@@ -12,6 +12,7 @@ using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Localisation;
+using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
@@ -27,12 +28,22 @@ namespace osu.Game.Screens.Edit.Components
         private readonly Func<Drawable> createIcon;
         private readonly Func<Popover?> createPopover;
 
+        private OverlayColourProvider colourProvider = null!;
+        private IBindable<Colour4>? themeColour;
+
         private Color4 defaultBackgroundColour;
         private Color4 defaultIconColour;
         private Color4 selectedBackgroundColour;
         private Color4 selectedIconColour;
 
         private Drawable icon = null!;
+
+        internal Color4 SelectedBackgroundColour => selectedBackgroundColour;
+        new internal Color4 DefaultBackgroundColour => defaultBackgroundColour;
+        internal Color4 SelectedIconColour => selectedIconColour;
+        internal Color4 DefaultIconColour => defaultIconColour;
+        internal Color4 CurrentTextColour => SpriteText.Colour;
+        internal Color4 CurrentIconColour => icon.Colour;
 
         public EditorToolButton(LocalisableString text, Func<Drawable> createIcon, Func<Popover?> createPopover)
         {
@@ -46,11 +57,7 @@ namespace osu.Game.Screens.Edit.Components
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
-            defaultBackgroundColour = colourProvider.Background3;
-            selectedBackgroundColour = colourProvider.Background1;
-
-            defaultIconColour = defaultBackgroundColour.Darken(0.5f);
-            selectedIconColour = selectedBackgroundColour.Lighten(0.5f);
+            this.colourProvider = colourProvider;
 
             Add(icon = createIcon().With(b =>
             {
@@ -61,7 +68,31 @@ namespace osu.Game.Screens.Edit.Components
                 b.X = 10;
             }));
 
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+            themeColour.BindValueChanged(_ => updateColours(), true);
+
             Action = Selected.Toggle;
+        }
+
+        private void updateColours()
+        {
+            defaultBackgroundColour = colourProvider.Background3;
+            selectedBackgroundColour = colourProvider.Background1;
+
+            if (OverlayColourProvider.IsLightTheme)
+            {
+                defaultIconColour = colourProvider.Light4;
+                selectedIconColour = colourProvider.Content1;
+                icon.Blending = BlendingParameters.Inherit;
+            }
+            else
+            {
+                defaultIconColour = defaultBackgroundColour.Darken(0.5f);
+                selectedIconColour = selectedBackgroundColour.Lighten(0.5f);
+                icon.Blending = BlendingParameters.Additive;
+            }
+
+            updateSelectionState();
         }
 
         protected override void LoadComplete()
@@ -78,6 +109,7 @@ namespace osu.Game.Screens.Edit.Components
 
             BackgroundColour = Selected.Value ? selectedBackgroundColour : defaultBackgroundColour;
             icon.Colour = Selected.Value ? selectedIconColour : defaultIconColour;
+            SpriteText.Colour = OsuColour.ForegroundTextColourFor(BackgroundColour);
 
             if (Selected.Value)
                 this.ShowPopover();

@@ -7,12 +7,12 @@ using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
-using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Localisation;
 using osu.Framework.Threading;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
+using osu.Game.Database;
 using osu.Game.Graphics;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Online;
@@ -21,6 +21,7 @@ using osu.Game.Online.Rooms;
 using osu.Game.Localisation;
 using osu.Game.Rulesets;
 using osuTK;
+using Realms;
 
 namespace osu.Game.Screens.OnlinePlay.Components
 {
@@ -81,8 +82,8 @@ namespace osu.Game.Screens.OnlinePlay.Components
             private readonly List<int> playlistOrder = new List<int>();
             private readonly Dictionary<int, IBeatmapSetInfo> targetsById = new Dictionary<int, IBeatmapSetInfo>();
             private readonly Dictionary<int, List<IBeatmapInfo>> requiredBeatmapsBySetId = new Dictionary<int, List<IBeatmapInfo>>();
+            private readonly HashSet<int> locallyAvailableBeatmapIds = new HashSet<int>();
 
-            private readonly FillFlowContainer trackerContainer;
             private ScheduledDelegate? scheduledQueueProcessing;
 
             private Bindable<bool> noVideoSetting = null!;
@@ -92,6 +93,9 @@ namespace osu.Game.Screens.OnlinePlay.Components
 
             [Resolved]
             private BeatmapManager beatmapManager { get; set; } = null!;
+
+            [Resolved]
+            private RealmAccess realm { get; set; } = null!;
 
             [Resolved]
             private OsuConfigManager config { get; set; } = null!;
@@ -108,12 +112,6 @@ namespace osu.Game.Screens.OnlinePlay.Components
                 IconScale = new Vector2(0.8f);
                 TooltipText = ForkSettingsStrings.PlaylistDownloadAll;
                 Action = queueMissingBeatmaps;
-
-                AddInternal(trackerContainer = new FillFlowContainer
-                {
-                    RelativeSizeAxes = Axes.Both,
-                    Alpha = 0,
-                });
             }
 
             [BackgroundDependencyLoader]
@@ -140,7 +138,6 @@ namespace osu.Game.Screens.OnlinePlay.Components
                 queuedSetLookup.Clear();
                 scheduledQueueProcessing?.Cancel();
                 scheduledQueueProcessing = null;
-                trackerContainer.Clear();
 
                 foreach (PlaylistItem item in room.Playlist)
                 {
@@ -156,18 +153,10 @@ namespace osu.Game.Screens.OnlinePlay.Components
 
                     playlistOrder.Add(beatmapSet.OnlineID);
                     targetsById[beatmapSet.OnlineID] = beatmapSet;
-
-                    var tracker = new BeatmapDownloadTracker(beatmapSet);
-                    tracker.State.BindValueChanged(_ =>
-                    {
-                        processQueue();
-                        updateState();
-                    }, true);
-
-                    trackerContainer.Add(tracker);
                 }
 
                 updateState();
+                scheduleQueueProcessingIfNeeded();
             }
 
             private void trackRequiredBeatmap(int setId, IBeatmapInfo beatmap)
@@ -185,6 +174,8 @@ namespace osu.Game.Screens.OnlinePlay.Components
 
             private void queueMissingBeatmaps()
             {
+                refreshLocalAvailability();
+
                 foreach (int setId in playlistOrder)
                 {
                     if (!targetsById.ContainsKey(setId))
@@ -223,10 +214,13 @@ namespace osu.Game.Screens.OnlinePlay.Components
 
             private void updateState()
             {
+                refreshLocalAvailability();
+
                 int totalSets = playlistOrder.Count;
-                int localSets = playlistOrder.Count(setId => getState(setId) == DownloadState.LocallyAvailable);
+                var states = playlistOrder.ToDictionary(setId => setId, getState);
+                int localSets = states.Count(pair => pair.Value == DownloadState.LocallyAvailable);
                 int activeDownloads = playlistOrder.Count(isDownloadActive);
-                int missingSets = playlistOrder.Count(setId => getState(setId) == DownloadState.NotDownloaded);
+                int missingSets = states.Count(pair => pair.Value == DownloadState.NotDownloaded);
 
                 Enabled.Value = totalSets > 0 && (missingSets > 0 || queuedSetIds.Count > 0);
                 Alpha = totalSets == 0 ? 0.35f : Enabled.Value ? 1 : 0.55f;
@@ -242,29 +236,13 @@ namespace osu.Game.Screens.OnlinePlay.Components
 
             private DownloadState getState(int setId)
             {
-                DownloadState trackerState = getTrackerState(setId);
-
-                if (trackerState == DownloadState.Downloading || trackerState == DownloadState.Importing)
-                {
-                    if (isDownloadActive(setId))
-                        return trackerState;
-                }
-
-                bool setAvailableLocally = targetsById.TryGetValue(setId, out IBeatmapSetInfo? beatmapSet)
-                                           && beatmapManager.QueryBeatmapSet(s => s.OnlineID == beatmapSet.OnlineID && !s.DeletePending) != null;
-
-                if (!setAvailableLocally)
-                    return DownloadState.NotDownloaded;
+                if (isDownloadActive(setId))
+                    return DownloadState.Downloading;
 
                 return hasAllRequiredBeatmaps(setId)
                     ? DownloadState.LocallyAvailable
                     : DownloadState.NotDownloaded;
             }
-
-            private DownloadState getTrackerState(int setId)
-                => trackerContainer.Children.OfType<BeatmapDownloadTracker>()
-                                   .FirstOrDefault(tracker => tracker.TrackedItem.OnlineID == setId)?.State.Value
-                   ?? DownloadState.Unknown;
 
             private bool isDownloadActive(int setId)
                 => targetsById.TryGetValue(setId, out IBeatmapSetInfo? beatmapSet)
@@ -272,7 +250,8 @@ namespace osu.Game.Screens.OnlinePlay.Components
 
             private void scheduleQueueProcessingIfNeeded()
             {
-                if (queuedSetIds.Count == 0 || scheduledQueueProcessing != null)
+                if (scheduledQueueProcessing != null
+                    || (queuedSetIds.Count == 0 && !playlistOrder.Any(isDownloadActive)))
                     return;
 
                 scheduledQueueProcessing = Scheduler.AddDelayed(() =>
@@ -293,12 +272,47 @@ namespace osu.Game.Screens.OnlinePlay.Components
             private bool isBeatmapAvailableLocally(IBeatmapInfo beatmap)
             {
                 if (beatmap.OnlineID > 0)
-                    return beatmapManager.IsAvailableLocally(beatmap);
+                {
+                    // The download-all summary only needs to know whether this difficulty exists.
+                    // Avoid hashing every stable .osu file while opening a large playlist.
+                    return StablePathManager.IsAvailableLocally(beatmap.OnlineID)
+                           || locallyAvailableBeatmapIds.Contains(beatmap.OnlineID);
+                }
 
                 if (!string.IsNullOrEmpty(beatmap.MD5Hash))
                     return beatmapManager.QueryBeatmap(b => b.MD5Hash == beatmap.MD5Hash) != null;
 
                 return false;
+            }
+
+            private void refreshLocalAvailability()
+            {
+                const int query_batch_size = 200;
+
+                locallyAvailableBeatmapIds.Clear();
+
+                int[] requiredOnlineIds = requiredBeatmapsBySetId.Values
+                                                                 .SelectMany(beatmaps => beatmaps)
+                                                                 .Select(beatmap => beatmap.OnlineID)
+                                                                 .Where(id => id > 0)
+                                                                 .Distinct()
+                                                                 .ToArray();
+
+                realm.Run(r =>
+                {
+                    for (int start = 0; start < requiredOnlineIds.Length; start += query_batch_size)
+                    {
+                        string ids = string.Join(',', requiredOnlineIds.Skip(start).Take(query_batch_size));
+
+                        foreach (var beatmap in r.All<BeatmapInfo>().Filter(
+                                     $"{nameof(BeatmapInfo.OnlineID)} IN {{ {ids} }} AND "
+                                     + $"{nameof(BeatmapInfo.BeatmapSet)}.{nameof(BeatmapSetInfo.DeletePending)} == false AND "
+                                     + $"{nameof(BeatmapInfo.MD5Hash)} == {nameof(BeatmapInfo.OnlineMD5Hash)}"))
+                        {
+                            locallyAvailableBeatmapIds.Add(beatmap.OnlineID);
+                        }
+                    }
+                });
             }
 
             private static IBeatmapSetInfo? getBeatmapSet(PlaylistItem item)

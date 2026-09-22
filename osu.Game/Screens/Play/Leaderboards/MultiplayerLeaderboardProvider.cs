@@ -20,6 +20,7 @@ using osu.Game.Graphics;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Legacy;
 using osu.Game.Online.Multiplayer.MatchTypes.TeamVersus;
 using osu.Game.Online.Spectator;
 using osu.Game.Rulesets.Scoring;
@@ -51,6 +52,9 @@ namespace osu.Game.Screens.Play.Leaderboards
 
         [Resolved]
         private MultiplayerClient multiplayerClient { get; set; } = null!;
+
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
 
         [Resolved]
         private OsuColour colours { get; set; } = null!;
@@ -135,7 +139,20 @@ namespace osu.Game.Screens.Play.Leaderboards
 
             Scheduler.AddDelayed(sort, 1000, true);
 
+            if (stableBanchoSession != null)
+                stableBanchoSession.MatchScoreUpdated += onStableScoreFrame;
         }
+
+        private void onStableScoreFrame(StableBanchoScoreFrame frame) => Scheduler.Add(() =>
+        {
+            StableBanchoMatch? match = stableBanchoSession?.CurrentMatch.Value;
+            if (match == null || frame.PlayerSlot >= match.SlotUserIds.Length)
+                return;
+
+            int? userId = match.SlotUserIds[frame.PlayerSlot];
+            if (userId.HasValue && UserScores.TryGetValue(userId.Value, out TrackedUserData? user))
+                user.ScoreProcessor.ApplyStableFrame(frame);
+        });
 
         private void playingUsersChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
@@ -214,6 +231,9 @@ namespace osu.Game.Screens.Play.Leaderboards
                 foreach (var user in users)
                     spectatorClient.StopWatchingUser(user.UserID);
             }
+
+            if (stableBanchoSession != null)
+                stableBanchoSession.MatchScoreUpdated -= onStableScoreFrame;
         }
 
         protected class TrackedUserData

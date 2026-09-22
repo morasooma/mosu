@@ -7,10 +7,12 @@ using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Screens;
 using osu.Game.Beatmaps;
+using osu.Game.Configuration;
 using osu.Game.Database;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
@@ -19,6 +21,7 @@ using osu.Game.Overlays;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Screens.Edit;
+using osu.Game.Screens.Menu;
 using osu.Game.Screens.Play;
 using osu.Game.Users;
 using osu.Game.Utils;
@@ -29,6 +32,10 @@ namespace osu.Game.Screens.Select
     public partial class SoloSongSelect : SongSelect
     {
         protected override UserActivity InitialActivity => new UserActivity.ChoosingBeatmap();
+
+        protected override bool SupportsStableStyle => true;
+
+        public override bool AllowLegacyFooterSkinning => true;
 
         private PlayerLoader? playerLoader;
         private IReadOnlyList<Mod>? modsAtGameplayStart;
@@ -53,19 +60,30 @@ namespace osu.Game.Screens.Select
 
         private Sample? sampleConfirmSelection { get; set; }
 
+        private Bindable<ForkSongSelectStyle> songSelectStyle = null!;
+
         [BackgroundDependencyLoader]
-        private void load(AudioManager audio)
+        private void load(AudioManager audio, OsuConfigManager config)
         {
             sampleConfirmSelection = audio.Samples.Get(@"SongSelect/confirm-selection");
 
             AddInternal(new SongSelectTouchInputDetector());
+
+            // Retain the bindable for the screen lifetime so the listener remains active.
+            songSelectStyle = config.GetBindable<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle);
+            songSelectStyle.BindValueChanged(e => Schedule(() =>
+            {
+                if (!this.IsCurrentScreen() || e.NewValue.UsesV1Screen() == e.OldValue.UsesV1Screen())
+                    return;
+
+                game?.PerformFromScreen(s => s.Push(SongSelectFactory.CreateSoloSongSelect(e.NewValue)), new[] { typeof(MainMenu) });
+            }));
         }
 
         public override IEnumerable<OsuMenuItem> GetForwardActions(BeatmapInfo beatmap)
         {
             yield return new OsuMenuItem(ButtonSystemStrings.Play.ToSentence(), MenuItemType.Highlighted, () => SelectAndRun(beatmap, OnStart)) { Icon = FontAwesome.Solid.Check };
-
-            // Stable direct beatmaps are read-only — hide edit and Realm-backed actions
+            // Direct stable beatmaps are read-only: skip edit and Realm-backed actions.
             bool isStable = StablePathManager.IsStableBeatmap(beatmap.ID);
 
             if (!isStable)
@@ -93,7 +111,7 @@ namespace osu.Game.Screens.Select
                 else
                     yield return new OsuMenuItem(SongSelectStrings.RemoveFromPlayed, MenuItemType.Standard, () => beatmaps.MarkNotPlayed(beatmap)) { Icon = FontAwesome.Solid.TimesCircle };
 
-                yield return new OsuMenuItem(SongSelectStrings.ClearAllLocalScores, MenuItemType.Standard, () => dialogOverlay?.Push(new BeatmapClearScoresDialog(beatmap)))
+                yield return new OsuMenuItem(SongSelectStrings.ClearAllLocalScores, MenuItemType.Destructive, () => dialogOverlay?.Push(new BeatmapClearScoresDialog(beatmap)))
                 {
                     Icon = FontAwesome.Solid.Eraser
                 };

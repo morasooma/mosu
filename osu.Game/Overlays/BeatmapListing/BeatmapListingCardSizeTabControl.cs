@@ -7,6 +7,7 @@ using System;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
@@ -50,6 +51,7 @@ namespace osu.Game.Overlays.BeatmapListing
             private OverlayColourProvider colourProvider { get; set; }
 
             private Sample selectSample = null!;
+            private IBindable<Colour4> themeColour = null!;
 
             public TabItem(BeatmapCardSize value)
                 : base(value)
@@ -107,6 +109,14 @@ namespace osu.Game.Overlays.BeatmapListing
             protected override void LoadComplete()
             {
                 base.LoadComplete();
+
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ =>
+                {
+                    background.Colour = colourProvider.Background3;
+                    updateState();
+                });
+
                 updateState();
                 FinishTransforms(true);
             }

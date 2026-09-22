@@ -173,6 +173,12 @@ namespace osu.Game.Overlays.Rankings
         {
             base.LoadComplete();
 
+            // Best-score PP is a Morasooma-only extension. Standard third-party lazer
+            // APIs expose performance and ranked-score leaderboards, but no equivalent
+            // endpoint for this tab.
+            if (Online.MosuServerEnvironment.IsThirdPartyServer && !Online.MosuServerEnvironment.UsesStableProtocol)
+                TabControl.RemoveItem(RankingsScope.TopScorePp);
+
             Current.BindValueChanged(scope =>
             {
                 rulesetSelector.FadeTo(showRulesetSelector(scope.NewValue) ? 1 : 0, 200, Easing.OutQuint);

@@ -54,7 +54,11 @@ namespace osu.Game.Tests.Visual.Spectator
 
         public TestSpectatorClient()
         {
-            OnNewFrames += (i, bundle) => lastReceivedUserFrames[i] = bundle.Frames[^1];
+            OnNewFrames += (i, bundle) =>
+            {
+                if (bundle.Frames.Count > 0)
+                    lastReceivedUserFrames[i] = bundle.Frames[^1];
+            };
         }
 
         /// <summary>

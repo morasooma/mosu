@@ -15,6 +15,8 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
 using osu.Game.Online.API;
+using osu.Game.Online;
+using osu.Game.Online.Legacy;
 using osu.Game.Overlays.Settings;
 using osu.Game.Users;
 using osuTK;
@@ -42,6 +44,9 @@ namespace osu.Game.Overlays.Login
 
         [Resolved]
         private IAPIProvider api { get; set; } = null!;
+
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
 
         [Resolved]
         private OsuConfigManager config { get; set; } = null!;
@@ -74,6 +79,7 @@ namespace osu.Game.Overlays.Login
             apiState.BindTo(api.State);
             apiState.BindValueChanged(onlineStateChanged, true);
 
+            stableBanchoSession?.IsConnected.BindValueChanged(_ => onlineStateChanged(apiState.Value), false);
         }
 
         private void onlineStateChanged(ValueChangedEvent<APIState> state) => onlineStateChanged(state.NewValue);
@@ -81,6 +87,34 @@ namespace osu.Game.Overlays.Login
         private void onlineStateChanged(APIState state) => Schedule(() =>
         {
             form = null;
+
+            if (MosuServerEnvironment.UsesStableProtocol && stableBanchoSession?.IsConnected.Value == true)
+            {
+                Child = new FillFlowContainer
+                {
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                    Padding = new MarginPadding { Horizontal = SettingsPanel.CONTENT_MARGINS },
+                    Direction = FillDirection.Vertical,
+                    Spacing = new Vector2(0f, SettingsSection.ITEM_SPACING),
+                    Children = new Drawable[]
+                    {
+                        new OsuSpriteText
+                        {
+                            Anchor = Anchor.TopCentre,
+                            Origin = Anchor.TopCentre,
+                            Text = LoginPanelStrings.SignedIn,
+                            Font = OsuFont.GetFont(size: 18, weight: FontWeight.Bold),
+                        },
+                        new UserRankPanel(api.LocalUser.Value)
+                        {
+                            RelativeSizeAxes = Axes.X,
+                            Action = RequestHide,
+                        },
+                    },
+                };
+                return;
+            }
 
             switch (state)
             {

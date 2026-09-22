@@ -35,7 +35,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         public DodgeCameraChangePlacementBlueprint()
             : base(new DodgeCameraChange())
         {
-            InternalChild = pathPiece = new DodgeCameraPathPiece();
+            Child = pathPiece = new DodgeCameraPathPiece();
         }
 
         protected override void LoadComplete()

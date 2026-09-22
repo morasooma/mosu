@@ -52,6 +52,22 @@ namespace osu.Game.Screens.Select
 
         public const float SPACING = 3f;
 
+        /// <summary>
+        /// Whether the hosting screen supports stable-style carousel panels.
+        /// </summary>
+        public bool SupportsStableStyle { get; init; } = true;
+
+        /// <summary>
+        /// Prevents regular carousel panels from retaining and loading previews while another
+        /// presentation is using this carousel only as a filtering and selection model.
+        /// </summary>
+        internal bool SuppressPanelPreviews { get; set; }
+
+        /// <summary>
+        /// Scrolls the carousel by a raw drag delta forwarded from the empty legacy left area.
+        /// </summary>
+        public void ScrollFromDelta(float delta) => Scroll.OffsetScrollPosition(-delta);
+
         private IBindableList<BeatmapSetInfo> detachedBeatmaps = null!;
 
         private readonly LoadingLayer loading;
@@ -59,6 +75,10 @@ namespace osu.Game.Screens.Select
         private readonly BeatmapCarouselFilterGrouping grouping;
 
         private OsuConfigManager config = null!;
+
+        private readonly BindableBool carouselPerformanceMode = new BindableBool();
+
+        protected override bool UseReducedPanelMotion => carouselPerformanceMode.Value;
 
         /// <summary>
         /// Total number of beatmap difficulties displayed with the filter.
@@ -113,7 +133,7 @@ namespace osu.Game.Screens.Select
                     GetLocalUserTopRanks = GetBeatmapInfoGuidToTopRankMapping,
                     GetFavouriteBeatmapSets = GetFavouriteBeatmapSets,
                     ShowAdditionalInfo = () => this.config?.Get<bool>(OsuSetting.ForkDifficultyAdditionalInfo) ?? false,
-                    UseSkinnedLegacyCarousel = () => this.config?.Get<bool>(OsuSetting.ForkSongSelectSkinnedLegacyCarousel) ?? false,
+                    UseSkinnedLegacyCarousel = () => (this.config?.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle) ?? ForkSongSelectStyle.Modern).UsesStableStyleOn(SupportsStableStyle),
                 }
 
             };
@@ -138,8 +158,27 @@ namespace osu.Game.Screens.Select
                     Filter(Criteria, forceResetDisplay: true);
             });
 
-            var skinnedLegacyCarousel = config.GetBindable<bool>(OsuSetting.ForkSongSelectSkinnedLegacyCarousel);
-            skinnedLegacyCarousel.BindValueChanged(_ =>
+            var songSelectStyle = config.GetBindable<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle);
+            songSelectStyle.BindValueChanged(style =>
+            {
+                // The legacy renderer uses different panel heights and merges the selected
+                // difficulty into its set header. Rebuild only when crossing that boundary;
+                // presentation-only switches (for example InfiniteGlass) need no refilter.
+                if (Criteria != null && style.OldValue.UsesStableStyleOn(SupportsStableStyle) != style.NewValue.UsesStableStyleOn(SupportsStableStyle))
+                    Filter(Criteria, forceResetDisplay: true);
+            });
+
+            config.BindWith(OsuSetting.ForkSongSelectCarouselPerformanceMode, carouselPerformanceMode);
+            carouselPerformanceMode.BindValueChanged(enabled =>
+            {
+                DistanceOffscreenToPreload = enabled.NewValue ? 0 : 100;
+
+                if (Criteria != null)
+                    Filter(Criteria, forceResetDisplay: true);
+            }, true);
+
+            var carouselPreviews = config.GetBindable<bool>(OsuSetting.ForkSongSelectCarouselPreviews);
+            carouselPreviews.BindValueChanged(_ =>
             {
                 if (Criteria != null)
                     Filter(Criteria, forceResetDisplay: true);
@@ -260,6 +299,17 @@ namespace osu.Game.Screens.Select
                     break;
 
                 case NotifyCollectionChangedAction.Replace:
+                    if (changed.OldItems!.Count != 1 || changed.NewItems!.Count != 1)
+                    {
+                        // RealmDetachedBeatmapStore publishes full snapshots as one bulk replacement.
+                        // Rebuilding Items once is considerably cheaper than scheduling and applying
+                        // one collection change per beatmap set, and preserves directly loaded sets
+                        // because they remain present in the source list.
+                        Items.Clear();
+                        Items.AddRange(detachedBeatmaps.SelectMany(s => s.Beatmaps));
+                        break;
+                    }
+
                     var oldSetBeatmaps = oldItems!.Single().Beatmaps;
                     var newSetBeatmaps = newItems!.Single().Beatmaps.ToList();
 
@@ -281,20 +331,28 @@ namespace osu.Game.Screens.Select
                             newSetBeatmaps.FirstOrDefault(b => b.OnlineID > 0 && b.OnlineID == beatmap.OnlineID) ??
                             newSetBeatmaps.FirstOrDefault(b => b.DifficultyName == beatmap.DifficultyName && b.Ruleset.Equals(beatmap.Ruleset));
 
-                        // The matching beatmap may have been deleted or invalidated in some way since this event was fired.
-                        // Let's make sure we have the most up-to-date realm state.
-                        if (matchingNewBeatmap?.ID is Guid matchingID)
-                            matchingNewBeatmap = realm.Run(r => r.FindWithRefresh<BeatmapInfo>(matchingID)?.Detach());
-
                         if (matchingNewBeatmap != null)
                         {
                             // TODO: should this exist in song select instead of here?
                             // we need to ensure the global beatmap is also updated alongside changes.
                             if (CurrentBeatmap != null && beatmap.Equals(CurrentBeatmap))
-                                // we don't know in which group the matching new beatmap is, but that's fine - we can keep the previous one for now.
-                                // we are about to modify `Items`, which - if required - will trigger a re-filter,
-                                // which will pick a correct group - if one is present - via `HandleFilterCompleted()`.
-                                RequestSelection(new GroupedBeatmap(CurrentGroupedBeatmap?.Group, matchingNewBeatmap));
+                            {
+                                var id = matchingNewBeatmap.ID;
+
+                                // The matching beatmap may have been deleted or invalidated in some way since this event was fired.
+                                // Let's make sure we have the most up-to-date realm state of the current beatmap.
+                                var refreshedNewBeatmap = realm.Run(r => r.FindWithRefresh<BeatmapInfo>(id)?.Detach());
+
+                                if (refreshedNewBeatmap != null)
+                                {
+                                    matchingNewBeatmap = refreshedNewBeatmap;
+
+                                    // we don't know in which group the matching new beatmap is, but that's fine - we can keep the previous one for now.
+                                    // we are about to modify `Items`, which - if required - will trigger a re-filter,
+                                    // which will pick a correct group - if one is present - via `HandleFilterCompleted()`.
+                                    RequestSelection(new GroupedBeatmap(CurrentGroupedBeatmap?.Group, matchingNewBeatmap));
+                                }
+                            }
 
                             Items.ReplaceRange(previousIndex, 1, [matchingNewBeatmap]);
                             newSetBeatmaps.Remove(matchingNewBeatmap);
@@ -430,12 +488,6 @@ namespace osu.Game.Screens.Select
                     setExpandedGroup(groupedBeatmap.Group);
 
                     setExpandedSet(new GroupedBeatmapSet(groupedBeatmap.Group, groupedBeatmap.Beatmap.BeatmapSet!));
-
-                    // Selection state is final only after the base carousel has completed its selection update.
-                    // Reapply classic visibility on the next scheduled update so the selected difficulty is
-                    // represented by the expanded set header rather than a duplicate child panel.
-                    if (config.Get<bool>(OsuSetting.ForkSongSelectSkinnedLegacyCarousel))
-                        Scheduler.AddOnce(() => setExpansionStateOfSetItems(ExpandedBeatmapSet, true));
                     break;
             }
         }
@@ -530,6 +582,12 @@ namespace osu.Game.Screens.Select
             if (ExpandedBeatmapSet != null) setExpandedSet(ExpandedBeatmapSet);
             if (ExpandedGroup != null) setExpandedGroup(ExpandedGroup);
 
+            if (CollapseGroupsOnNextFilter)
+            {
+                CollapseGroupsOnNextFilter = false;
+                CollapseAllGroups();
+            }
+
             foreach (var item in Scroll.Panels.OfType<PanelBeatmapSet>().Where(p => p.Item != null))
                 updateVisibleBeatmaps((GroupedBeatmapSet)item.Item!.Model, item);
         }
@@ -612,6 +670,20 @@ namespace osu.Game.Screens.Select
             }
         }
 
+        /// <summary>
+        /// When set, the next completed filter collapses every group after regrouping settles.
+        /// </summary>
+        public bool CollapseGroupsOnNextFilter { get; set; }
+
+        public void CollapseAllGroups()
+        {
+            foreach (var group in grouping.GroupItems.Keys.ToArray())
+                setExpansionStateOfGroup(group, false);
+
+            ExpandedGroup = null;
+            ExpandedBeatmapSet = null;
+        }
+
         private void setExpandedGroup(GroupDefinition? group)
         {
             if (ExpandedGroup != null)
@@ -673,8 +745,6 @@ namespace osu.Game.Screens.Select
 
         private void setExpandedSet(GroupedBeatmapSet set)
         {
-            GroupedBeatmapSet? lastExpandedSet = ExpandedBeatmapSet;
-
             // It's important that we update the stored ExpandedBeatmapSet even when
             // sets are not grouped together.
             //
@@ -686,7 +756,16 @@ namespace osu.Game.Screens.Select
             if (!grouping.BeatmapSetsGroupedTogether)
                 return;
 
-            setExpansionStateOfSetItems(lastExpandedSet, false);
+            // A refilter/regroup can replace GroupedBeatmapSet model instances while leaving an
+            // older item's IsExpanded flag behind. Collapsing only ExpandedBeatmapSet therefore
+            // occasionally left both the previous and current maps visibly open. The carousel has
+            // a single expanded-set model, so enforce that invariant across every materialised set.
+            foreach (var candidate in grouping.SetItems.Keys.ToArray())
+            {
+                if (!candidate.Equals(ExpandedBeatmapSet))
+                    setExpansionStateOfSetItems(candidate, false);
+            }
+
             setExpansionStateOfSetItems(ExpandedBeatmapSet, true);
         }
 
@@ -696,22 +775,19 @@ namespace osu.Game.Screens.Select
                 return;
 
             bool canMakeVisible = !grouping.GroupItems.Any() || ExpandedGroup == set.Group;
+            bool stableStyle = (config?.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle) ?? ForkSongSelectStyle.Modern).UsesStableStyleOn(SupportsStableStyle);
 
             if (grouping.SetItems.TryGetValue(set, out var items))
             {
                 foreach (var i in items)
                 {
                     if (i.Model is GroupedBeatmapSet)
-                        i.IsExpanded = expanded;
-                    else
                     {
-                        bool mergedIntoClassicHeader = config.Get<bool>(OsuSetting.ForkSongSelectSkinnedLegacyCarousel)
-                                                       && i.Model is GroupedBeatmap candidate
-                                                       && CurrentSelection is GroupedBeatmap selected
-                                                       && CheckModelEquality(candidate.Beatmap, selected.Beatmap);
-
-                        i.IsVisible = canMakeVisible && expanded && !mergedIntoClassicHeader;
+                        i.IsExpanded = expanded;
+                        i.IsVisible = canMakeVisible && (!stableStyle || !expanded);
                     }
+                    else
+                        i.IsVisible = canMakeVisible && expanded;
                 }
             }
         }
@@ -907,13 +983,16 @@ namespace osu.Game.Screens.Select
 
         #region Drawable pooling
 
-        private readonly DrawablePool<PanelBeatmap> beatmapPanelPool = new DrawablePool<PanelBeatmap>(100);
-        private readonly DrawablePool<PanelBeatmapStandalone> standalonePanelPool = new DrawablePool<PanelBeatmapStandalone>(100);
-        private readonly DrawablePool<PanelBeatmapSet> setPanelPool = new DrawablePool<PanelBeatmapSet>(100);
-        private readonly DrawablePool<PanelGroup> groupPanelPool = new DrawablePool<PanelGroup>(100);
-        private readonly DrawablePool<PanelGroupStarDifficulty> starsGroupPanelPool = new DrawablePool<PanelGroupStarDifficulty>(11);
-        private readonly DrawablePool<PanelGroupRankDisplay> ranksGroupPanelPool = new DrawablePool<PanelGroupRankDisplay>(9);
-        private readonly DrawablePool<PanelGroupRankedStatus> statusGroupPanelPool = new DrawablePool<PanelGroupRankedStatus>(8);
+        // A viewport only needs a small number of panels. Leaving these pools unbounded means that
+        // rapid scrolling can permanently retain every panel created while older ones are still in
+        // their exit animation, along with their draw nodes, transforms and nested UI hierarchy.
+        private readonly DrawablePool<PanelBeatmap> beatmapPanelPool = new DrawablePool<PanelBeatmap>(32, 48);
+        private readonly DrawablePool<PanelBeatmapStandalone> standalonePanelPool = new DrawablePool<PanelBeatmapStandalone>(32, 48);
+        private readonly DrawablePool<PanelBeatmapSet> setPanelPool = new DrawablePool<PanelBeatmapSet>(32, 48);
+        private readonly DrawablePool<PanelGroup> groupPanelPool = new DrawablePool<PanelGroup>(24, 36);
+        private readonly DrawablePool<PanelGroupStarDifficulty> starsGroupPanelPool = new DrawablePool<PanelGroupStarDifficulty>(11, 16);
+        private readonly DrawablePool<PanelGroupRankDisplay> ranksGroupPanelPool = new DrawablePool<PanelGroupRankDisplay>(9, 16);
+        private readonly DrawablePool<PanelGroupRankedStatus> statusGroupPanelPool = new DrawablePool<PanelGroupRankedStatus>(8, 16);
 
         private void setupPools()
         {
@@ -983,6 +1062,9 @@ namespace osu.Game.Screens.Select
                     return groupPanelPool.Get();
 
                 case GroupedBeatmap:
+                    if ((config?.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle) ?? ForkSongSelectStyle.Modern).UsesStableStyleOn(SupportsStableStyle))
+                        return standalonePanelPool.Get();
+
                     if (!grouping.BeatmapSetsGroupedTogether)
                         return standalonePanelPool.Get();
 

@@ -14,12 +14,12 @@ namespace osu.Game.Scoring.Render
 
         public BindableDouble SelectedTime { get; } = new BindableDouble();
 
-        public Action<double> OnTrimChanged;
-        public Action<bool> OnDragStateChanged;
+        public Action<double>? OnTrimChanged;
+        public Action<bool>? OnDragStateChanged;
 
         private const float width = 16;
-        private Circle knob;
-        private Box line;
+        private Circle knob = null!;
+        private Box line = null!;
 
         public double TotalDuration { get; set; }
 

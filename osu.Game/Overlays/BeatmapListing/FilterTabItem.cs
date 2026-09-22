@@ -7,6 +7,7 @@ using System;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
@@ -28,6 +29,8 @@ namespace osu.Game.Overlays.BeatmapListing
         protected OsuSpriteText Text;
 
         protected Sample SelectSample { get; private set; } = null!;
+
+        private IBindable<Colour4> themeColour = null!;
 
         public FilterTabItem(T value)
             : base(value)
@@ -56,6 +59,9 @@ namespace osu.Game.Overlays.BeatmapListing
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            themeColour = ColourProvider.GetColourBindable(OverlayColour.Content1);
+            themeColour.BindValueChanged(_ => UpdateState());
 
             Enabled.BindValueChanged(_ => UpdateState());
             UpdateState();

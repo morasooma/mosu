@@ -1,17 +1,26 @@
 <!-- Contains required properties for osu!framework projects. -->
 <Project>
   <PropertyGroup Label="C#">
-    <LangVersion>12.0</LangVersion>
+    <LangVersion>14.0</LangVersion>
     <Nullable>enable</Nullable>
     <!-- Stabilises hot reload, see: https://platform.uno/docs/articles/studio/Hot%20Reload/hot-reload-overview.html?tabs=vswin%2Cwindows%2Cskia-desktop%2Ccommon-issues -->
     <GenerateAssemblyInfo Condition="'$(Configuration)'=='Debug'">false</GenerateAssemblyInfo>
     <!-- Required due to the above  -->
     <NoWarn Condition="'$(Configuration)'=='Debug'">$(NoWarn);CA1416</NoWarn>
+    <!-- https://github.com/dotnet/runtime/issues/129562 -->
+    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+    <AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationManifest>$(MSBuildThisFileDirectory)app.manifest</ApplicationManifest>
     <PathMap Condition="'$(Configuration)' == 'Release'">$(MSBuildThisFileDirectory)=/</PathMap>
   </PropertyGroup>
+  <ItemGroup Label="Security Pinning">
+    <!-- Pin transitive dependencies to secure versions to resolve NU1902/NU1903 from legacy SharpFNT/NETStandard.Library -->
+    <PackageReference Include="System.Net.Http" Version="4.3.4" />
+    <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
+    <PackageReference Include="System.Private.Uri" Version="4.3.2" />
+  </ItemGroup>
   <ItemGroup Label="License">
     <None Include="$(MSBuildThisFileDirectory)osu.licenseheader">
       <Link>osu.licenseheader</Link>
@@ -45,13 +54,13 @@
   </PropertyGroup>
   <PropertyGroup Label="Nuget">
     <IsPackable>false</IsPackable>
-    <Authors>ppy Pty Ltd</Authors>
+    <Authors>Morasooma contributors</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/ppy/osu</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/ppy/osu</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/GooGuTeam/osu</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/GooGuTeam/osu</RepositoryUrl>
     <PackageReleaseNotes>Automated release.</PackageReleaseNotes>
-    <Company>ppy Pty Ltd</Company>
-    <Copyright>Copyright (c) 2025 ppy Pty Ltd</Copyright>
-    <PackageTags>osu game</PackageTags>
+    <Company>Morasooma</Company>
+    <Copyright>Copyright (c) 2026 Morasooma contributors. Upstream portions copyright (c) ppy Pty Ltd.</Copyright>
+    <PackageTags>morasooma rhythm game</PackageTags>
   </PropertyGroup>
 </Project>

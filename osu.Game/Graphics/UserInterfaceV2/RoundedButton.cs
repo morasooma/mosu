@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
@@ -11,6 +12,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Cursor;
 using osu.Framework.Input.Events;
 using osu.Framework.Localisation;
+using osu.Game.Graphics;
 using osu.Game.Graphics.Backgrounds;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
@@ -25,6 +27,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
         protected override float HoverLayerFinalAlpha => 0;
 
         private Color4? triangleGradientSecondColour;
+        private IBindable<Colour4>? themeColour;
 
         public override Color4 BackgroundColour
         {
@@ -40,18 +43,29 @@ namespace osu.Game.Graphics.UserInterfaceV2
         [BackgroundDependencyLoader(true)]
         private void load(OverlayColourProvider? overlayColourProvider, OsuColour colours)
         {
-            // Many buttons have local colours, but this provides a sane default for all other cases.
-            DefaultBackgroundColour = overlayColourProvider?.Colour3 ?? colours.Blue3;
-            triangleGradientSecondColour ??= DefaultBackgroundColour.Lighten(0.2f);
+            void updateThemeBackground()
+            {
+                DefaultBackgroundColour = overlayColourProvider?.Colour3 ?? colours.Blue3;
+                triangleGradientSecondColour = BackgroundColour.Lighten(0.2f);
+                updateColours();
+            }
+
+            if (overlayColourProvider != null)
+            {
+                themeColour = overlayColourProvider.GetColourBindable(OverlayColour.Colour3);
+                themeColour.BindValueChanged(_ => updateThemeBackground(), true);
+            }
+            else
+            {
+                updateThemeBackground();
+            }
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
 
-            // This doesn't match the latest design spec (should be 5) but is an in-between that feels right to the eye
-            // until we move everything over to Form controls.
-            Content.CornerRadius = 10;
+            Content.CornerRadius = 5;
             Content.CornerExponent = 2.5f;
 
             Add(Triangles = new TrianglesV2
@@ -73,6 +87,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
             Debug.Assert(triangleGradientSecondColour != null);
 
             Triangles.Colour = ColourInfo.GradientVertical(triangleGradientSecondColour.Value, BackgroundColour);
+            SpriteText.Colour = OsuColour.ForegroundTextColourFor(BackgroundColour);
         }
 
         protected override bool OnHover(HoverEvent e)

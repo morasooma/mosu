@@ -49,6 +49,7 @@ namespace osu.Game.Screens.Footer
 
         public Colour4 AccentColour
         {
+            get => buttonAccentColour;
             set
             {
                 buttonAccentColour = value;
@@ -86,6 +87,8 @@ namespace osu.Game.Screens.Footer
         }
 
         private readonly Container shearedContent;
+        private readonly Container textIconContainer;
+        private readonly Container barContainer;
 
         private readonly SpriteText text;
         private readonly SpriteIcon icon;
@@ -96,6 +99,7 @@ namespace osu.Game.Screens.Footer
         private readonly Box glowBox;
         private readonly Box flashLayer;
         private IBindable<Colour4> themeColour = null!;
+        private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
         public readonly OverlayContainer? Overlay;
 
@@ -132,7 +136,7 @@ namespace osu.Game.Screens.Footer
                             RelativeSizeAxes = Axes.Both
                         },
                         // For elements that should not be sheared.
-                        new Container
+                        textIconContainer = new Container
                         {
                             Anchor = Anchor.CentreLeft,
                             Origin = Anchor.CentreLeft,
@@ -161,7 +165,7 @@ namespace osu.Game.Screens.Footer
                                 },
                             }
                         },
-                        new Container
+                        barContainer = new Container
                         {
                             Shear = -OsuGame.SHEAR,
                             Anchor = Anchor.BottomCentre,
@@ -200,7 +204,18 @@ namespace osu.Game.Screens.Footer
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ => UpdateDisplay(), true);
 
+            disableShear.BindValueChanged(_ => UpdateShear(), true);
+
             FinishTransforms(true);
+        }
+
+        protected virtual void UpdateShear()
+        {
+            shearedContent.Shear = OsuGame.SHEAR;
+            if (textIconContainer != null)
+                textIconContainer.Shear = -OsuGame.SHEAR;
+            if (barContainer != null)
+                barContainer.Shear = -OsuGame.SHEAR;
         }
 
         // account for shear and buttons temporarily hidden with DisappearToBottom.
@@ -238,9 +253,10 @@ namespace osu.Game.Screens.Footer
 
         public virtual void UpdateDisplay()
         {
+            Color4 activeForegroundColour = OsuColour.ForegroundTextColourFor(buttonAccentColour);
             Color4 backgroundColour = OverlayState.Value == Visibility.Visible ? buttonAccentColour : colourProvider.Background3;
-            Color4 textColour = OverlayState.Value == Visibility.Visible ? colourProvider.Background6 : colourProvider.Content1;
-            Color4 accentColour = OverlayState.Value == Visibility.Visible ? colourProvider.Background6 : buttonAccentColour;
+            Color4 textColour = OverlayState.Value == Visibility.Visible ? activeForegroundColour : colourProvider.Content1;
+            Color4 accentColour = OverlayState.Value == Visibility.Visible ? activeForegroundColour : buttonAccentColour;
 
             if (!Enabled.Value)
                 backgroundColour = backgroundColour.Darken(1f);

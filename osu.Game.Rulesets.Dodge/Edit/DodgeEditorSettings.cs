@@ -17,6 +17,8 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
         public Bindable<DodgeMovementType> BulletMovementType { get; } = new Bindable<DodgeMovementType>();
 
+        public Bindable<DodgeMovementEasing> BulletMovementEasing { get; } = new Bindable<DodgeMovementEasing>();
+
         public BindableFloat BulletWaveAmplitude { get; } = createWaveAmplitude();
 
         public BindableInt BulletWaveCycles { get; } = createWaveCycles();
@@ -67,6 +69,8 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
         public Bindable<DodgeMovementType> EmitterMovementType { get; } = new Bindable<DodgeMovementType>();
 
+        public Bindable<DodgeMovementEasing> EmitterMovementEasing { get; } = new Bindable<DodgeMovementEasing>();
+
         public BindableFloat EmitterWaveAmplitude { get; } = createWaveAmplitude();
 
         public BindableInt EmitterWaveCycles { get; } = createWaveCycles();
@@ -84,6 +88,13 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
         public Bindable<DodgeEmitterBeatDivisor> EmitterBurstBeatDivisor { get; }
             = new Bindable<DodgeEmitterBeatDivisor>(DodgeEmitterBeatDivisor.Quarter);
+
+        public BindableFloat EmitterBurstRotation { get; } = new BindableFloat
+        {
+            MinValue = -360,
+            MaxValue = 360,
+            Precision = 1,
+        };
 
         public Bindable<Colour4> EmitterColour { get; } = new Bindable<Colour4>(Colour4.White);
 
@@ -125,6 +136,8 @@ namespace osu.Game.Rulesets.Dodge.Edit
             Precision = 0.5f,
         };
 
+        public Bindable<DodgeCameraEasing> ArenaEasing { get; } = new Bindable<DodgeCameraEasing>();
+
         public BindableFloat BeamWidth { get; } = new BindableFloat(DodgeBeam.DEFAULT_WIDTH)
         {
             MinValue = DodgeBeam.MIN_WIDTH,
@@ -153,6 +166,26 @@ namespace osu.Game.Rulesets.Dodge.Edit
         public BindableBool CompactPlayfield { get; } = new BindableBool();
 
         public BindableBool CameraContinuousScroll { get; } = new BindableBool();
+
+        public Bindable<DodgeCameraEasing> CameraEasing { get; } = new Bindable<DodgeCameraEasing>();
+
+        public Bindable<DodgeTriggerAction> TriggerAction { get; } = new Bindable<DodgeTriggerAction>(DodgeTriggerAction.ClearBullets);
+
+        public BindableFloat TriggerStrength { get; } = new BindableFloat(0.5f)
+        {
+            MinValue = 0,
+            MaxValue = 1,
+            Precision = 0.01f,
+        };
+
+        public BindableFloat TriggerDuration { get; } = new BindableFloat(300)
+        {
+            MinValue = 0,
+            MaxValue = (float)DodgeTrigger.MAX_DURATION,
+            Precision = 10,
+        };
+
+        public Bindable<Colour4> TriggerColour { get; } = new Bindable<Colour4>(Colour4.White);
 
         public BindableBool ShowBulletCoverage { get; } = new BindableBool();
 

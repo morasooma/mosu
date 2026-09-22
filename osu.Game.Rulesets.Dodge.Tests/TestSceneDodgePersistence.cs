@@ -103,8 +103,13 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 string osuFilename = dodgeBeatmap.BeatmapInfo.Path!;
                 string sidecarFilename = CustomBeatmapFormat.GetSidecarFilename(osuFilename);
 
-                using var osuStream = dodgeBeatmap.GetStream(dodgeBeatmap.BeatmapSetInfo.GetPathForFile(osuFilename));
-                using var sidecarStream = dodgeBeatmap.GetStream(dodgeBeatmap.BeatmapSetInfo.GetPathForFile(sidecarFilename));
+                string osuStoragePath = dodgeBeatmap.BeatmapSetInfo.GetPathForFile(osuFilename)
+                                        ?? throw new InvalidOperationException("The beatmap file is missing from the beatmap set.");
+                string sidecarStoragePath = dodgeBeatmap.BeatmapSetInfo.GetPathForFile(sidecarFilename)
+                                            ?? throw new InvalidOperationException("The sidecar file is missing from the beatmap set.");
+
+                using var osuStream = dodgeBeatmap.GetStream(osuStoragePath);
+                using var sidecarStream = dodgeBeatmap.GetStream(sidecarStoragePath);
                 using var combinedStream = new System.IO.MemoryStream();
 
                 osuStream!.CopyTo(combinedStream);

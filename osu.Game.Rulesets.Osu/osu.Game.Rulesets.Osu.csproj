@@ -1,18 +1,21 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup Label="Project">
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>click the circles. to the beat.</Description>
-    <Authors>ppy Pty Ltd, Mosu contributors</Authors>
-    <Copyright>Copyright (c) 2026 ppy Pty Ltd and contributors</Copyright>
-    <PackageProjectUrl>https://morasooma.net</PackageProjectUrl>
-    <PackageReleaseNotes>osu! ruleset modified for Mosu. See NOTICE.md for attribution.</PackageReleaseNotes>
+    <Authors>Morasooma contributors, GooGuTeam, ppy Pty Ltd</Authors>
+    <Copyright>Copyright (c) 2026 Morasooma contributors and GooGuTeam. Upstream portions copyright (c) ppy Pty Ltd.</Copyright>
+    <PackageProjectUrl>https://github.com/GooGuTeam/osu</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/GooGuTeam/osu</RepositoryUrl>
+    <PackageReleaseNotes>Morasooma Standard ruleset, based on the upstream osu! ruleset and modified by GooGuTeam.
+Upstream copyright: Copyright (c) 2026 ppy Pty Ltd
+Full license text: see LICENSE file</PackageReleaseNotes>
   </PropertyGroup>
 
   <PropertyGroup Label="Nuget">
-    <Title>osu! (ruleset)</Title>
-    <PackageId>Mosu.osu.Game.Rulesets.Osu</PackageId>
+    <Title>Morasooma Standard ruleset</Title>
+    <PackageId>g0v0.osu.Game.Rulesets.Osu</PackageId>
     <IsPackable>true</IsPackable>
   </PropertyGroup>
 

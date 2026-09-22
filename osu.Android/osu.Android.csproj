@@ -13,6 +13,8 @@
          legacy Mono runtime. It is the runtime configuration used by Torii's
          Android release builds. -->
     <UseMonoRuntime>false</UseMonoRuntime>
+    <!-- CoreCLR is intentionally selected above despite still being marked experimental by the Android SDK. -->
+    <NoWarn>$(NoWarn);XA1040</NoWarn>
 
     <!-- The Android arm64 CoreCLR toolchain does not currently provide a
          ReadyToRun compiler. Leaving this enabled makes publish fail with
@@ -23,6 +25,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\osu.Game.Rulesets.Catch\osu.Game.Rulesets.Catch.csproj" />
+    <ProjectReference Include="..\osu.Game.Rulesets.Dodge\osu.Game.Rulesets.Dodge.csproj" />
     <ProjectReference Include="..\osu.Game.Rulesets.Mania\osu.Game.Rulesets.Mania.csproj" />
     <ProjectReference Include="..\osu.Game.Rulesets.Osu\osu.Game.Rulesets.Osu.csproj" />
     <ProjectReference Include="..\osu.Game.Rulesets.Taiko\osu.Game.Rulesets.Taiko.csproj" />

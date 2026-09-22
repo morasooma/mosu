@@ -95,7 +95,7 @@ namespace osu.Game.Overlays.Mods
             ModType = modType;
             this.allowIncompatibleSelection = allowIncompatibleSelection;
 
-            HeaderText = modType == ModType.Mosu ? "mosu" : ModType.Humanize(LetterCasing.Title);
+            HeaderText = modType == ModType.Mosu ? "Morasooma" : ModType.Humanize(LetterCasing.Title);
 
             if (allowIncompatibleSelection)
             {

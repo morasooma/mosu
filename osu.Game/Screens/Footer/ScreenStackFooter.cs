@@ -2,18 +2,26 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Linq;
+using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Screens;
+using osu.Game.Beatmaps;
+using osu.Game.Configuration;
 using osu.Game.Graphics.UserInterface;
+using osu.Game.Skinning;
+using osu.Game.Skinning.Select;
+using osuTK;
 
 namespace osu.Game.Screens.Footer
 {
     public partial class ScreenStackFooter : CompositeDrawable
     {
         /// <summary>
-        /// Called when logo tracking begins, intended to bring the osu! logo to the frontmost visually.
+        /// Called when logo tracking begins. The legacy footer keeps the logo behind its skinned chrome,
+        /// while the regular footer keeps the existing frontmost behaviour.
         /// </summary>
         public Action<bool>? RequestLogoInFront { private get; init; }
 
@@ -39,6 +47,23 @@ namespace osu.Game.Screens.Footer
 
         private readonly ScreenStackTracker screenTracker;
 
+        [Resolved]
+        private SkinManager skins { get; set; } = null!;
+
+        [Resolved]
+        private OsuConfigManager config { get; set; } = null!;
+
+        [Resolved]
+        private IBindable<WorkingBeatmap> beatmap { get; set; } = null!;
+
+        private readonly IBindable<Skin> currentSkin = new Bindable<Skin>();
+        private Bindable<ForkSongSelectStyle> songSelectStyle = null!;
+        private Container? legacyFooterContainer;
+        private LegacyFooter? legacyFooter;
+        private bool legacyFooterLoading;
+        private int legacyFooterGeneration;
+        private bool allowLegacyFooterSkinning;
+
         public ScreenStackFooter(ScreenStack screenStack, ScreenFooter.BackReceptor? backReceptor = null)
         {
             RelativeSizeAxes = Axes.Both;
@@ -53,7 +78,7 @@ namespace osu.Game.Screens.Footer
                 },
                 Footer = new ScreenFooter(backReceptor)
                 {
-                    RequestLogoInFront = v => RequestLogoInFront?.Invoke(v),
+                    RequestLogoInFront = v => RequestLogoInFront?.Invoke(v && !isLegacyFooterActive),
                     BackButtonPressed = () => BackButtonPressed?.Invoke()
                 }
             };
@@ -62,6 +87,109 @@ namespace osu.Game.Screens.Footer
             screenTracker.ScreenChanged += onScreenChanged;
 
             backButtonVisibility.ValueChanged += onBackButtonVisibilityChanged;
+        }
+
+        [BackgroundDependencyLoader]
+        private void load()
+        {
+            currentSkin.BindTo(skins.CurrentSkin);
+            currentSkin.BindValueChanged(_ => rebuildLegacyFooter());
+
+            songSelectStyle = config.GetBindable<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle);
+            songSelectStyle.BindValueChanged(_ => rebuildLegacyFooter());
+
+            Footer.OverlayStateChanged += updateLegacyFooter;
+        }
+
+        private void rebuildLegacyFooter()
+        {
+            legacyFooterGeneration++;
+
+            if (legacyFooterContainer != null)
+            {
+                RemoveInternal(legacyFooterContainer, true);
+                legacyFooterContainer = null;
+                legacyFooter = null;
+            }
+
+            legacyFooterLoading = false;
+            updateLegacyFooter();
+        }
+
+        private void updateLegacyFooter()
+        {
+            bool active = isLegacyFooterActive;
+
+            if (active)
+                ensureLegacyFooterLoaded();
+
+            legacyFooterContainer?.FadeTo(active ? 1 : 0, 120, Easing.OutQuint);
+            Footer.SetDefaultChromeVisible(!active);
+            RequestLogoInFront?.Invoke(!active);
+        }
+
+        private bool isLegacyFooterActive
+            => allowLegacyFooterSkinning
+               && songSelectStyle.Value.UsesStableStyle()
+               && !Footer.HasActiveOverlay;
+
+        private void ensureLegacyFooterLoaded()
+        {
+            if (legacyFooter != null || legacyFooterLoading)
+                return;
+
+            legacyFooterLoading = true;
+            int generation = legacyFooterGeneration;
+
+            var footer = new LegacyFooter
+            {
+                Anchor = Anchor.BottomLeft,
+                Origin = Anchor.BottomLeft,
+                RelativeSizeAxes = Axes.X,
+                Y = 4,
+                BackAction = () => BackButtonPressed?.Invoke(),
+                ModsAction = () => Footer.TriggerFooterButton(0),
+                RandomAction = () => Footer.TriggerFooterButton(1),
+                OptionsMenuItems = getStableOptionsMenuItems,
+            };
+
+            // Match the song-select chrome's skin coordinates even when UIScale is changed.
+            // The 4:3 minimum allows the footer to select its native 1024-wide layout.
+            var container = new DrawSizePreservingFillContainer
+            {
+                RelativeSizeAxes = Axes.Both,
+                TargetDrawSize = new Vector2(1024, 768),
+                Alpha = 0,
+                Child = footer,
+            };
+
+            LoadComponentAsync(container, loaded =>
+            {
+                if (generation != legacyFooterGeneration)
+                {
+                    loaded.Dispose();
+                    return;
+                }
+
+                legacyFooter = footer;
+                legacyFooterContainer = loaded;
+                legacyFooterLoading = false;
+                AddInternal(loaded);
+                updateLegacyFooter();
+            });
+        }
+
+        private osu.Framework.Graphics.UserInterface.MenuItem[] getStableOptionsMenuItems()
+        {
+            if (screenTracker.LeadingScreen is not Select.ISongSelect songSelect)
+                return Array.Empty<osu.Framework.Graphics.UserInterface.MenuItem>();
+
+            var beatmapInfo = beatmap.Value?.BeatmapInfo;
+
+            if (beatmapInfo == null)
+                return Array.Empty<osu.Framework.Graphics.UserInterface.MenuItem>();
+
+            return songSelect.GetForwardActions(beatmapInfo).Cast<osu.Framework.Graphics.UserInterface.MenuItem>().ToArray();
         }
 
         private void onScreenChanged(IScreen lastScreen, IScreen newScreen)
@@ -92,10 +220,16 @@ namespace osu.Game.Screens.Footer
             {
                 ((BindableBool)backButtonVisibility).Value = true;
 
+                allowLegacyFooterSkinning = false;
+                updateLegacyFooter();
+
                 Footer.SetButtons([]);
                 Footer.Hide();
                 return;
             }
+
+            allowLegacyFooterSkinning = osuScreen.ShowFooter && osuScreen.AllowLegacyFooterSkinning;
+            updateLegacyFooter();
 
             if (osuScreen.ShowFooter)
             {
@@ -138,6 +272,7 @@ namespace osu.Game.Screens.Footer
         {
             base.Dispose(isDisposing);
 
+            Footer.OverlayStateChanged -= updateLegacyFooter;
             screenTracker.Dispose();
         }
 
@@ -172,6 +307,11 @@ namespace osu.Game.Screens.Footer
             /// </summary>
             // ReSharper disable once FunctionRecursiveOnAllPaths (TODO: remove after fixed https://youtrack.jetbrains.com/issue/RIDER-135036/Incorrect-recursive-on-all-execution-paths-inspection)
             private IScreen leadingScreen => subScreenTracker?.leadingScreen ?? stack.CurrentScreen;
+
+            /// <summary>
+            /// The screen currently bound to the footer (the most nested subscreen).
+            /// </summary>
+            public IScreen? LeadingScreen => leadingScreen;
 
             public ScreenStackTracker(ScreenStack stack)
             {

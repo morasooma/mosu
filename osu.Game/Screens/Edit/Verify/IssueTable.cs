@@ -16,6 +16,7 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Input.Bindings;
 using osu.Game.Overlays;
 using osu.Game.Rulesets.Edit.Checks.Components;
+using osuTK.Graphics;
 
 namespace osu.Game.Screens.Edit.Verify
 {
@@ -99,15 +100,20 @@ namespace osu.Game.Screens.Edit.Verify
             private OsuSpriteText issueTimestampText = null!;
             private OsuSpriteText issueDetailText = null!;
             private OsuSpriteText issueCategoryText = null!;
+            private IBindable<Colour4>? themeColour;
 
-            [Resolved]
-            private EditorClock clock { get; set; } = null!;
+            internal Color4 DetailTextColour => issueDetailText.Colour;
+            internal Color4 TimestampTextColour => issueTimestampText.Colour;
+            internal Color4 CategoryTextColour => issueCategoryText.Colour;
 
-            [Resolved]
-            private EditorBeatmap editorBeatmap { get; set; } = null!;
+            [Resolved(canBeNull: true)]
+            private EditorClock? clock { get; set; }
 
-            [Resolved]
-            private Editor editor { get; set; } = null!;
+            [Resolved(canBeNull: true)]
+            private EditorBeatmap? editorBeatmap { get; set; }
+
+            [Resolved(canBeNull: true)]
+            private Editor? editor { get; set; }
 
             [Resolved]
             private OverlayColourProvider colourProvider { get; set; } = null!;
@@ -118,8 +124,8 @@ namespace osu.Game.Screens.Edit.Verify
                 set => current.Current = value;
             }
 
-            [BackgroundDependencyLoader]
-            private void load(VerifyScreen verify)
+            [BackgroundDependencyLoader(permitNulls: true)]
+            private void load(VerifyScreen? verify)
             {
                 RelativeSizeAxes = Axes.X;
                 Height = ROW_HEIGHT;
@@ -157,8 +163,9 @@ namespace osu.Game.Screens.Edit.Verify
                                     Left = 2 * (COLUMN_GAP + COLUMN_WIDTH),
                                     Right = COLUMN_GAP + COLUMN_WIDTH,
                                 },
-                                Child = issueDetailText = new OsuSpriteText
+                                Child = issueDetailText = new TruncatingSpriteText
                                 {
+                                    RelativeSizeAxes = Axes.X,
                                     Anchor = Anchor.CentreLeft,
                                     Origin = Anchor.CentreLeft,
                                     Font = OsuFont.GetFont(size: TEXT_SIZE, weight: FontWeight.Medium)
@@ -174,7 +181,22 @@ namespace osu.Game.Screens.Edit.Verify
                     }
                 };
 
-                selectedIssue.BindTo(verify.SelectedIssue);
+                if (verify != null)
+                    selectedIssue.BindTo(verify.SelectedIssue);
+
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ => updateColours(), true);
+            }
+
+            private void updateColours()
+            {
+                issueTimestampText.Colour = colourProvider.Content1;
+                issueDetailText.Colour = colourProvider.Content1;
+                issueCategoryText.Colour = colourProvider.Content2;
+                if (Current.Value != null)
+                    updateState();
+                else
+                    background.Colour = colourProvider.Background1;
             }
 
             protected override void LoadComplete()
@@ -200,15 +222,18 @@ namespace osu.Game.Screens.Edit.Verify
 
             protected override bool OnClick(ClickEvent e)
             {
+                if (current.Value == null)
+                    return false;
+
                 selectedIssue.Value = current.Value;
 
                 if (current.Value.Time != null)
                 {
-                    clock.Seek(current.Value.Time.Value);
-                    editor.OnPressed(new KeyBindingPressEvent<GlobalAction>(GetContainingInputManager()!.CurrentState, GlobalAction.EditorComposeMode));
+                    clock?.Seek(current.Value.Time.Value);
+                    editor?.OnPressed(new KeyBindingPressEvent<GlobalAction>(GetContainingInputManager()!.CurrentState, GlobalAction.EditorComposeMode));
                 }
 
-                if (current.Value.HitObjects.Any())
+                if (current.Value.HitObjects.Any() && editorBeatmap != null)
                 {
                     editorBeatmap.SelectedHitObjects.Clear();
                     editorBeatmap.SelectedHitObjects.AddRange(current.Value.HitObjects);
@@ -219,6 +244,9 @@ namespace osu.Game.Screens.Edit.Verify
 
             private void updateState()
             {
+                if (Current.Value == null)
+                    return;
+
                 issueTypeText.Text = Current.Value.Template.Type.ToString();
                 issueTypeText.Colour = Current.Value.Template.Colour;
                 issueTimestampText.Text = Current.Value.GetEditorTimestamp();

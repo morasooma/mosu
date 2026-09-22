@@ -189,6 +189,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
             protected override float HoverLayerFinalAlpha => 0;
 
             private Color4? triangleGradientSecondColour;
+            private IBindable<Colour4>? themeColour;
 
             public override Color4 BackgroundColour
             {
@@ -206,8 +207,13 @@ namespace osu.Game.Graphics.UserInterfaceV2
             [BackgroundDependencyLoader]
             private void load(OverlayColourProvider overlayColourProvider)
             {
-                DefaultBackgroundColour = overlayColourProvider.Colour3;
-                triangleGradientSecondColour ??= DefaultBackgroundColour.Lighten(0.2f);
+                themeColour = overlayColourProvider.GetColourBindable(OverlayColour.Colour3);
+                themeColour.BindValueChanged(_ =>
+                {
+                    DefaultBackgroundColour = overlayColourProvider.Colour3;
+                    triangleGradientSecondColour = BackgroundColour.Lighten(0.2f);
+                    updateColours();
+                }, true);
 
                 if (Text == default)
                 {
@@ -247,6 +253,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
                 Debug.Assert(triangleGradientSecondColour != null);
 
                 triangles.Colour = ColourInfo.GradientVertical(triangleGradientSecondColour.Value, BackgroundColour);
+                SpriteText.Colour = OsuColour.ForegroundTextColourFor(BackgroundColour);
             }
 
             protected override bool OnHover(HoverEvent e)

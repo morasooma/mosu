@@ -17,6 +17,7 @@ using osu.Game.Beatmaps.Legacy;
 using osu.Game.Extensions;
 using osu.Game.IO.Legacy;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Replays;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Catch;
@@ -663,6 +664,53 @@ namespace osu.Game.Tests.Beatmaps.Formats
             {
                 Assert.That(decodedAfterEncode.ScoreInfo.TotalScoreWithoutMods, Is.EqualTo(1_000_000));
                 Assert.That(decodedAfterEncode.ScoreInfo.TotalScore, Is.EqualTo(750_000));
+            });
+        }
+
+        [Test]
+        public void TestTagCoopReplayMetadataSurvivesEncodeDecode()
+        {
+            var ruleset = new OsuRuleset().RulesetInfo;
+            var beatmap = new TestBeatmap(ruleset);
+            var score = new Score
+            {
+                ScoreInfo = TestResources.CreateTestScoreInfo(ruleset),
+                Replay = new Replay
+                {
+                    Frames = new List<ReplayFrame>
+                    {
+                        new OsuReplayFrame(100, new Vector2(10, 20), OsuAction.LeftButton),
+                        new OsuReplayFrame(200, new Vector2(30, 40)),
+                    }
+                }
+            };
+
+            score.ScoreInfo.TagCoopReplay = new TagCoopReplayMetadata
+            {
+                Players =
+                [
+                    new TagCoopReplayPlayer { UserID = 12, Username = "first" },
+                    new TagCoopReplayPlayer { UserID = 34, Username = "second" },
+                ],
+                Frames =
+                [
+                    new TagCoopReplayFrame { UserID = 12, Sequence = 1, GameplayTime = 100, X = 0.25f, Y = 0.5f, ButtonState = 1 },
+                    new TagCoopReplayFrame { UserID = 34, Sequence = 2, GameplayTime = 100, X = 0.75f, Y = 0.5f, ButtonState = 0 },
+                ]
+            };
+
+            Score decoded = encodeThenDecode(LegacyBeatmapDecoder.LATEST_VERSION, score, beatmap);
+            TagCoopReplayMetadata metadata = decoded.ScoreInfo.TagCoopReplay;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(decoded.Replay.Frames, Is.Not.Empty);
+                Assert.That(metadata, Is.Not.Null);
+                Assert.That(metadata.Players, Has.Count.EqualTo(2));
+                Assert.That(metadata.Players[1].Username, Is.EqualTo("second"));
+                Assert.That(metadata.Frames, Has.Count.EqualTo(2));
+                Assert.That(metadata.Frames[0].X, Is.EqualTo(0.25f));
+                Assert.That(metadata.Frames[1].UserID, Is.EqualTo(34));
             });
         }
 

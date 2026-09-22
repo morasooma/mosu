@@ -32,6 +32,13 @@ namespace osu.Game.Rulesets.Scoring
         public bool HasFailed { get; private set; }
 
         /// <summary>
+        /// Whether judgements should continue to affect health after the failed state has been reached.
+        /// Multiplayer modes which continue gameplay after failure can enable this to allow the health
+        /// display to recover while preserving the fact that the score has failed.
+        /// </summary>
+        public bool ApplyNewJudgementsWhenFailed { get; set; }
+
+        /// <summary>
         /// Immediately triggers a failure for this HealthProcessor.
         /// </summary>
         public void TriggerFailure()
@@ -48,12 +55,12 @@ namespace osu.Game.Rulesets.Scoring
             result.HealthAtJudgement = Health.Value;
             result.FailedAtJudgement = HasFailed;
 
-            if (HasFailed)
+            if (HasFailed && !ApplyNewJudgementsWhenFailed)
                 return;
 
             Health.Value += GetHealthIncreaseFor(result);
 
-            if (meetsAnyFailCondition(result))
+            if (!HasFailed && meetsAnyFailCondition(result))
                 TriggerFailure();
         }
 

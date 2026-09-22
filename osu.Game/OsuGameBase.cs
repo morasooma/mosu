@@ -2,7 +2,7 @@
 // This file is partly modified by GooGuTeam.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
+#nullable disable warnings
 
 using System;
 using System.Collections.Generic;
@@ -52,6 +52,7 @@ using osu.Game.Localisation;
 using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.Chat;
+using osu.Game.Online.DodgeWorld;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Online.Metadata;
 using osu.Game.Online.Multiplayer;
@@ -79,9 +80,9 @@ namespace osu.Game
     public partial class OsuGameBase : Framework.Game, ICanAcceptFiles, IBeatSyncProvider
     {
 #if DEBUG
-        public const string GAME_NAME = "mosu (development)";
+        public const string GAME_NAME = "Morasooma (development)";
 #else
-        public const string GAME_NAME = "mosu";
+        public const string GAME_NAME = "Morasooma";
 #endif
 
         public const string OSU_PROTOCOL = "osu://";
@@ -106,6 +107,10 @@ namespace osu.Game
 
         private readonly HashSet<string> loadedCustomFontFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        private const string comfortaa_regular_font = @"Comfortaa Regular";
+        private const string comfortaa_regulare_legacy_font = @"Comfortaa Regulare";
+
+
         public const int SAMPLE_CONCURRENCY = 6;
 
         public const double SFX_STEREO_STRENGTH = 0.6;
@@ -126,28 +131,79 @@ namespace osu.Game
         /// Whether the capability-limited official osu! beatmap client should be created.
         /// Replay/video render processes override this to guarantee fully offline operation.
         /// </summary>
-        protected virtual bool EnableOfficialBeatmapIntegration => false;
+        protected virtual bool EnableOfficialBeatmapIntegration => true;
 
         public virtual EndpointConfiguration CreateEndpoints()
         {
             EndpointConfiguration config = UseDevelopmentServer ? new DevelopmentEndpointConfiguration() : new ProductionEndpointConfiguration();
-            Online.MosuServerEnvironment.IsThirdPartyServer = false;
-            Online.MosuServerEnvironment.SupportsSpecialRulesets = true;
-            Online.MosuServerEnvironment.ActiveVersion = string.Empty;
-            Online.MosuServerEnvironment.ActiveVersionHash = string.Empty;
+
+            profileManager = new Online.ServerProfileManager(Storage, LocalConfig);
+            var activeProfile = profileManager.ActiveProfile;
+
+            Online.MosuServerEnvironment.IsThirdPartyServer = activeProfile.Id != "default";
+            Online.MosuServerEnvironment.IsToriiServer = Online.MosuServerEnvironment.IsToriiServerUrl(activeProfile.ApiUrl);
+            Online.MosuServerEnvironment.UsesStableProtocol = activeProfile.UseStableProtocol;
+            Online.MosuServerEnvironment.SupportsSpecialRulesets = activeProfile.SupportsSpecialRulesets;
+            Online.MosuServerEnvironment.ActiveVersion = Online.MosuServerEnvironment.IsThirdPartyServer ? activeProfile.ClientVersion : string.Empty;
+            Online.MosuServerEnvironment.ActiveVersionHash = Online.MosuServerEnvironment.IsThirdPartyServer ? activeProfile.VersionHash : string.Empty;
             Online.MosuServerEnvironment.DisableBeatmapStatusOverwrite = LocalConfig?.Get<bool>(OsuSetting.ForkDisableBeatmapStatusOverwrite) ?? true;
 
-            string serverUrl = Online.MosuServerEnvironment.GetServerUrl(LocalConfig?.Get<bool>(OsuSetting.ForkUseConnectionProxy) ?? false);
+            if (Online.MosuServerEnvironment.IsThirdPartyServer)
+            {
+                config.APIClientID = activeProfile.ClientId;
+                config.APIClientSecret = activeProfile.ClientSecret;
 
-            config.APIUrl = serverUrl;
-            config.WebsiteUrl = serverUrl;
-            config.UpdateUrl = Online.MosuServerEnvironment.UpdateUrl;
-            config.SpectatorUrl = $"{serverUrl}/spectator";
-            config.MultiplayerUrl = $"{serverUrl}/multiplayer";
-            config.MetadataUrl = $"{serverUrl}/metadata";
-            config.BeatmapSubmissionServiceUrl = $"{serverUrl}/beatmap-submission";
-            config.APIClientID = Online.MosuClientAuthentication.OAuthClientId;
-            config.APIClientSecret = Online.MosuClientAuthentication.OAuthClientSecret;
+                string customUrl = activeProfile.ApiUrl;
+                if (!string.IsNullOrEmpty(customUrl))
+                {
+                    customUrl = customUrl.TrimEnd('/');
+                    if (!customUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !customUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        customUrl = "https://" + customUrl;
+                    }
+                    config.APIUrl = customUrl;
+                }
+
+                string customWebUrl = activeProfile.WebsiteUrl;
+                if (!string.IsNullOrEmpty(customWebUrl))
+                {
+                    customWebUrl = customWebUrl.TrimEnd('/');
+                    if (!customWebUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !customWebUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        customWebUrl = "https://" + customWebUrl;
+                    }
+                    config.WebsiteUrl = customWebUrl;
+                }
+                else
+                {
+                    config.WebsiteUrl = config.APIUrl;
+                }
+
+                config.UpdateUrl = $"{config.APIUrl}{Online.MosuServerEnvironment.UpdateFeedPath}";
+                config.SpectatorUrl = $"{config.APIUrl}/signalr/spectator";
+                config.MultiplayerUrl = $"{config.APIUrl}/signalr/multiplayer";
+                config.MetadataUrl = $"{config.APIUrl}/signalr/metadata";
+                config.DodgeWorldUrl = $"{config.APIUrl}/signalr/dodge-world";
+                config.BeatmapSubmissionServiceUrl = $"{config.APIUrl}/beatmap-submission";
+            }
+            else
+            {
+                var connectionRoute = LocalConfig?.Get<Online.MosuConnectionRoute>(OsuSetting.ForkConnectionRoute) ?? Online.MosuConnectionRoute.Direct;
+                string serverUrl = Online.MosuServerEnvironment.GetServerUrl(connectionRoute);
+
+                config.APIUrl = serverUrl;
+                config.WebsiteUrl = serverUrl;
+                // Updates always use the canonical feed. The optional connection proxy is
+                // only for gameplay/API traffic and may be unavailable independently.
+                config.UpdateUrl = Online.MosuServerEnvironment.UpdateUrl;
+                config.SpectatorUrl = $"{serverUrl}/spectator";
+                config.MultiplayerUrl = $"{serverUrl}/multiplayer";
+                config.MetadataUrl = $"{serverUrl}/metadata";
+                config.DodgeWorldUrl = $"{serverUrl}/dodge-world";
+                config.BeatmapSubmissionServiceUrl = $"{serverUrl}/beatmap-submission";
+                config.APIClientID = Online.MosuClientAuthentication.OAuthClientId;
+                config.APIClientSecret = Online.MosuClientAuthentication.OAuthClientSecret;
+            }
 
             return config;
         }
@@ -223,6 +279,8 @@ namespace osu.Game
         protected MusicController MusicController { get; private set; }
 
         protected IAPIProvider API { get; set; }
+        private Online.Legacy.StableScoreSubmissionClient? stableScoreSubmissionClient;
+        private Online.Legacy.StableBanchoSession? stableBanchoSession;
         private IBeatmapApiProvider beatmapApi;
         protected OfficialOsuBeatmapApi? OfficialOsuBeatmapApi { get; private set; }
 
@@ -261,6 +319,7 @@ namespace osu.Game
 
         private BeatmapDifficultyCache difficultyCache;
         private IBeatmapUpdater beatmapUpdater;
+        private OnlineAssetCachingStore onlineAssetStore;
 
         private UserLookupCache userCache;
         private BeatmapLookupCache beatmapCache;
@@ -276,7 +335,20 @@ namespace osu.Game
 
         private MetadataClient metadataClient;
 
+        protected DodgeWorldClient DodgeWorldClient { get; private set; }
+
+        private Online.ServerProfileManager profileManager;
+
         private RealmAccess realm;
+
+        private TabletFilterSettingsStore? tabletFilterSettingsStore;
+
+        /// <summary>
+        /// Access to the realm for subclasses, which cannot resolve it via dependency injection during game
+        /// bootstrap (the dependency is cached while the base game loads, after derived [Resolved] members).
+        /// Only access this after the base game has finished loading.
+        /// </summary>
+        protected RealmAccess MainRealm => realm ?? throw new InvalidOperationException(@"Realm was not initialised.");
 
         protected SafeAreaContainer SafeAreaContainer { get; private set; }
 
@@ -297,6 +369,7 @@ namespace osu.Game
         private Bindable<string> frameworkLocale = null!;
 
         private IBindable<LocalisationParameters> localisationParameters = null!;
+        private IBindable<ForkRelaxPpSystem> relaxPpSystem = null!;
         private ModSettingChangeTracker selectedModSettingChangeTracker;
 
         /// <summary>
@@ -331,11 +404,26 @@ namespace osu.Game
                 VersionHash = $"{Version}-{RuntimeInfo.OS}".ComputeMD5Hash();
             }
 
+            // Fork-specific resources take precedence over upstream resources so public-facing
+            // branding can be replaced without modifying the upstream dependency checkout.
+            Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(OsuGameBase).Assembly), @"Resources"));
             Resources.AddStore(new DllResourceStore(OsuResources.ResourceAssembly));
 
-            dependencies.Cache(realm = new RealmAccess(Storage, CLIENT_DATABASE_FILENAME, Host.UpdateThread));
+            profileManager ??= new Online.ServerProfileManager(Storage, LocalConfig);
+            profileManager.Initialize(Storage, LocalConfig);
+
+            if (profileManager.ActiveProfile.UseStableProtocol)
+            {
+                Online.ServerProfileManager.EnsureStableIdentity(profileManager.ActiveProfile);
+                profileManager.SaveProfiles();
+            }
+
+            dependencies.Cache(profileManager);
+            dependencies.CacheAs(stableScoreSubmissionClient = new Online.Legacy.StableScoreSubmissionClient(profileManager.ActiveProfile));
 
             dependencies.CacheAs(new ForkDataStore(Storage));
+
+            dependencies.Cache(realm = new RealmAccess(Storage, CLIENT_DATABASE_FILENAME, Host.UpdateThread));
 
             dependencies.CacheAs<RulesetStore>(RulesetStore = new RealmRulesetStore(realm, Storage));
             dependencies.CacheAs<IRulesetStore>(RulesetStore);
@@ -350,6 +438,8 @@ namespace osu.Game
             largeStore.AddTextureSource(Host.CreateTextureLoaderStore(CreateOnlineStore()));
             dependencies.Cache(largeStore);
 
+            dependencies.Cache(onlineAssetStore = new OnlineAssetCachingStore(Host, realm));
+
             dependencies.CacheAs(LocalConfig);
             dependencies.CacheAs<IGameplaySettings>(LocalConfig);
 
@@ -358,11 +448,36 @@ namespace osu.Game
                 Online.MosuServerEnvironment.DisableBeatmapStatusOverwrite = e.NewValue;
             }, true);
 
+            // Publish the selected Relax PP system to calculators without DI access and
+            // recalculate the affected caches when it changes. This must live here (not in
+            // BackgroundDataStoreProcessor) so the flag is correct regardless of component
+            // load order and the subscription exists before any settings UI is created.
+            relaxPpSystem = LocalConfig.GetBindable<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem);
+            RelaxPpSystemSelection.Current = relaxPpSystem.Value;
+            Logger.Log($"Relax PP system on startup: {RelaxPpSystemSelection.Current}");
+
+            // Keep the bound copy alive for the lifetime of the game. Configuration bindables are
+            // weakly linked; an unreferenced temporary copy can be collected, silently dropping
+            // this callback while the settings control continues to update the config itself.
+            relaxPpSystem.BindValueChanged(e =>
+            {
+                Logger.Log($"Relax PP system setting changed: {e.OldValue} -> {e.NewValue}");
+                RelaxPpSystemSelection.Current = e.NewValue;
+                difficultyCache.InvalidateAll();
+                BackgroundDataStoreProcessor.QueueRelaxPpRecalculation();
+            });
+
             InitialiseFonts();
 
             addFilesWarning();
 
             Audio.Samples.PlaybackConcurrency = SAMPLE_CONCURRENCY;
+
+            // Fork tablet filters persist in a fork-owned file (mosu-tablet-filters.json),
+            // never in the framework's input.json, so restores/backups from other clients
+            // cannot overwrite the user's filter tuning.
+            tabletFilterSettingsStore = TabletFilterSettingsStore.AttachTo(
+                Storage, Host.AvailableInputHandlers.OfType<ITabletHandler>().FirstOrDefault());
 
             dependencies.Cache(SkinManager = new SkinManager(Storage, realm, Host, Resources, Audio, Scheduler));
             dependencies.CacheAs<ISkinSource>(SkinManager);
@@ -381,6 +496,12 @@ namespace osu.Game
             CurrentLanguage.BindValueChanged(val => frameworkLocale.Value = val.NewValue.ToCultureCode());
 
             dependencies.CacheAs(API ??= CreateAPIProvider(endpoints));
+
+            if (profileManager.ActiveProfile.UseStableProtocol)
+            {
+                stableBanchoSession = new Online.Legacy.StableBanchoSession(stableScoreSubmissionClient!, API, profileManager.ActiveProfile);
+                dependencies.CacheAs(stableBanchoSession);
+            }
 
             if (EnableOfficialBeatmapIntegration)
                 OfficialOsuBeatmapApi = new OfficialOsuBeatmapApi(LocalConfig);
@@ -406,8 +527,11 @@ namespace osu.Game
             // TODO: OsuGame or OsuGameBase?
             dependencies.CacheAs(beatmapUpdater = CreateBeatmapUpdater());
             dependencies.CacheAs(SpectatorClient = new OnlineSpectatorClient(endpoints));
-            dependencies.CacheAs(MultiplayerClient = new OnlineMultiplayerClient(endpoints));
+            dependencies.CacheAs(MultiplayerClient = stableBanchoSession != null
+                ? new Online.Legacy.StableMultiplayerClient(stableBanchoSession)
+                : new OnlineMultiplayerClient(endpoints));
             dependencies.CacheAs(metadataClient = new OnlineMetadataClient(endpoints));
+            dependencies.CacheAs(DodgeWorldClient = new OnlineDodgeWorldClient(endpoints));
 
             base.Content.Add(new BeatmapOnlineChangeIngest(beatmapUpdater, realm, metadataClient));
 
@@ -444,6 +568,10 @@ namespace osu.Game
             configuredTheme.BindValueChanged(_ => applyEffectiveTheme(), true);
             API.LocalUser.BindValueChanged(_ => applyEffectiveTheme(), true);
 
+            LocalConfig.GetBindable<bool>(OsuSetting.ForkOverlayTransparency).BindValueChanged(e => OverlayTransparency.Enabled.Value = e.NewValue, true);
+            LocalConfig.GetBindable<double>(OsuSetting.ForkOverlayBlurStrength).BindValueChanged(e => OverlayTransparency.BlurStrength.Value = e.NewValue, true);
+            LocalConfig.GetBindable<double>(OsuSetting.ForkOverlayDimAmount).BindValueChanged(e => OverlayTransparency.DimAmount.Value = e.NewValue, true);
+
             IReadOnlyList<Mod>? pendingNormalisedMods = null;
 
             void applyPendingNormalisedMods()
@@ -470,7 +598,34 @@ namespace osu.Game
 
             SelectedMods.BindValueChanged(mods =>
             {
-                if (Online.MosuServerEnvironment.IsThirdPartyServer && mods.NewValue.Any(m => m.Type == ModType.Mosu))
+                if (Online.MosuServerEnvironment.UsesStableProtocol)
+                {
+                    var normalised = mods.NewValue.Where(Online.Legacy.StableModCompatibility.IsSupported).ToList();
+                    bool changed = normalised.Count != mods.NewValue.Count;
+
+                    foreach (var mod in normalised)
+                    {
+                        if (!mod.UsesDefaultConfiguration)
+                        {
+                            mod.ResetSettingsToDefaults();
+                            changed = true;
+                        }
+                    }
+
+                    if (normalised.All(m => m.Acronym != "CL"))
+                    {
+                        var classic = Ruleset.Value?.CreateInstance().CreateModFromAcronym("CL");
+                        if (classic != null)
+                        {
+                            normalised.Add(classic);
+                            changed = true;
+                        }
+                    }
+
+                    if (changed)
+                        queueNormalisedMods(normalised);
+                }
+                else if (Online.MosuServerEnvironment.IsThirdPartyServer && mods.NewValue.Any(m => m.Type == ModType.Mosu))
                 {
                     queueNormalisedMods(mods.NewValue.Where(m => m.Type != ModType.Mosu).ToList());
                 }
@@ -497,12 +652,16 @@ namespace osu.Game
             if (API is APIAccess apiAccess)
                 base.Content.Add(apiAccess);
 
+            if (stableBanchoSession != null)
+                base.Content.Add(stableBanchoSession);
+
             if (OfficialOsuBeatmapApi != null)
                 base.Content.Add(OfficialOsuBeatmapApi);
 
             base.Content.Add(SpectatorClient);
             base.Content.Add(MultiplayerClient);
             base.Content.Add(metadataClient);
+            base.Content.Add(DodgeWorldClient);
 
             base.Content.Add(rulesetConfigCache);
 
@@ -664,9 +823,78 @@ namespace osu.Game
                 var customFontsStorage = Storage.GetStorageForDirectory("Fonts");
                 var customFontsStore = new ResourceStore<byte[]>(new StorageBackedResourceStore(customFontsStorage));
 
+                string customFontsDir = customFontsStorage.GetFullPath(string.Empty);
+                if (!System.IO.Directory.Exists(customFontsDir))
+                {
+                    System.IO.Directory.CreateDirectory(customFontsDir);
+                }
+
+                // Extract default fonts if they are missing.
+                // Comfortaa Regular is always refreshed from embedded resources to pick up bundled updates.
+                string[] defaultFonts = new string[]
+                {
+                    comfortaa_regular_font,
+                    "Cormorant Garamond",
+                    "Great Vibes Regular",
+                    "Kablammo Regular",
+                    "Rubik Glitch Regular",
+                    "danc"
+                };
+
+                var assembly = typeof(OsuGameBase).Assembly;
+                foreach (var dFont in defaultFonts)
+                {
+                    bool forceOverwrite = dFont == comfortaa_regular_font;
+
+                    foreach (var ext in new[] { ".fnt", ".png" })
+                    {
+                        string fileName = dFont + ext;
+                        string matchName = "CustomFonts." + fileName;
+                        string? resourceName = assembly.GetManifestResourceNames().FirstOrDefault(n => n.EndsWith(matchName, StringComparison.Ordinal));
+
+                        if (resourceName != null)
+                        {
+                            string targetPath = System.IO.Path.Combine(customFontsDir, fileName);
+
+                            if (!System.IO.File.Exists(targetPath) || forceOverwrite)
+                            {
+                                using (var stream = assembly.GetManifestResourceStream(resourceName))
+                                {
+                                    if (stream != null)
+                                    {
+                                        using (var fileStream = System.IO.File.Create(targetPath))
+                                        {
+                                            stream.CopyTo(fileStream);
+                                        }
+
+                                        // GlyphStore expects BMFont page files to use the
+                                        // `<font>.fnt_0.png` name. Refresh this alias too;
+                                        // otherwise a partially downloaded page can be
+                                        // kept forever and cause EndOfStreamException.
+                                        if (forceOverwrite && ext == @".png")
+                                        {
+                                            string pagePath = System.IO.Path.Combine(customFontsDir, dFont + @".fnt_0.png");
+                                            System.IO.File.Copy(targetPath, pagePath, overwrite: true);
+                                        }
+                                    }
+                                }
+
+                                if (forceOverwrite && ext == @".fnt")
+                                    loadedCustomFontFiles.Remove(fileName);
+                            }
+                        }
+                        else
+                        {
+                            osu.Framework.Logging.Logger.Log($"Could not find embedded resource for {fileName}");
+                        }
+                    }
+                }
+
+                migrateLegacyComfortaaRegulareFont(customFontsStorage, customFontsDir);
+
                 foreach (var file in customFontsStorage.GetFiles(string.Empty, "*.fnt"))
                 {
-                    if (!loadedCustomFontFiles.Add(file))
+                    if (loadedCustomFontFiles.Contains(file))
                         continue;
 
                     string baseName = System.IO.Path.GetFileNameWithoutExtension(file);
@@ -681,15 +909,31 @@ namespace osu.Game
                             System.IO.File.Move(customFontsStorage.GetFullPath($"{baseName}_0.png"), customFontsStorage.GetFullPath(expectedPng));
                     }
 
-                    // Inject font directly into framework cache to bypass FormatHint.Binary restriction
+                    // Validate all texture pages before registering the glyph store. RawCachingGlyphStore assumes
+                    // that GetStream() never returns null and would otherwise crash while hashing a missing page.
                     try
                     {
                         string fntPath = customFontsStorage.GetFullPath(file);
                         var fontFile = SharpFNT.BitmapFont.FromFile(fntPath);
 
+                        if (!HasCompleteCustomFontPages(customFontsStorage, file, fontFile.Pages.Count, out string missingPage))
+                        {
+                            string reason = string.IsNullOrEmpty(missingPage)
+                                ? "the font does not define any texture pages"
+                                : $"required texture page '{missingPage}' is missing or empty";
+
+                            osu.Framework.Logging.Logger.Log($"Skipping custom UI font '{file}': {reason}.", LoggingTarget.Runtime, LogLevel.Error);
+                            AvailableCustomUIFonts.RemoveAll(name => string.Equals(name, file, StringComparison.OrdinalIgnoreCase));
+                            continue;
+                        }
+
+                        // Inject font directly into framework cache to bypass FormatHint.Binary restriction.
                         string md5;
                         using (var stream = customFontsStorage.GetStream(file))
                         {
+                            if (stream == null)
+                                throw new FileNotFoundException("The custom font definition could not be opened.", file);
+
                             md5 = stream.ComputeMD5Hash();
                         }
 
@@ -704,6 +948,8 @@ namespace osu.Game
                     catch (Exception ex)
                     {
                         osu.Framework.Logging.Logger.Error(ex, "Failed to parse/inject font " + file);
+                        AvailableCustomUIFonts.RemoveAll(name => string.Equals(name, file, StringComparison.OrdinalIgnoreCase));
+                        continue;
                     }
 
                     string fontName = file;
@@ -718,7 +964,7 @@ namespace osu.Game
                     }
                     Fonts.AddTextureSource(new CustomWeightGlyphStore(customFontsStore, fontName, fontName + "-Italic", store));
 
-
+                    loadedCustomFontFiles.Add(file);
 
                     if (!AvailableCustomUIFonts.Contains(fontName))
                         AvailableCustomUIFonts.Add(fontName);
@@ -742,6 +988,75 @@ namespace osu.Game
             {
                 osu.Framework.Logging.Logger.Error(ex, "Failed to load custom UI fonts from Fonts directory");
             }
+        }
+
+        internal static bool HasCompleteCustomFontPages(osu.Framework.Platform.Storage storage, string fontFile, int pageCount, out string missingPage)
+        {
+            missingPage = string.Empty;
+
+            if (pageCount <= 0)
+                return false;
+
+            int pageNumberWidth = (pageCount - 1).ToString().Length;
+
+            for (int page = 0; page < pageCount; page++)
+            {
+                string pageFile = $"{fontFile}_{page.ToString().PadLeft(pageNumberWidth, '0')}.png";
+                using var stream = storage.GetStream(pageFile);
+
+                if (stream == null || (stream.CanSeek && stream.Length == 0))
+                {
+                    missingPage = pageFile;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Migrates manually dropped <c>Comfortaa Regulare</c> assets to the canonical <see cref="comfortaa_regular_font"/> naming.
+        /// </summary>
+        private void migrateLegacyComfortaaRegulareFont(osu.Framework.Platform.Storage customFontsStorage, string customFontsDir)
+        {
+            const string legacy_fnt = comfortaa_regulare_legacy_font + @".fnt";
+
+            if (!customFontsStorage.Exists(legacy_fnt))
+                return;
+
+            string regularFntPath = System.IO.Path.Combine(customFontsDir, comfortaa_regular_font + @".fnt");
+            // The canonical bundled font is authoritative. Do not replace it with
+            // stale legacy files which may contain an incomplete texture page.
+            bool canonicalFontExists = System.IO.File.Exists(regularFntPath);
+            if (!canonicalFontExists)
+                System.IO.File.Copy(customFontsStorage.GetFullPath(legacy_fnt), regularFntPath, overwrite: true);
+
+            string? legacyTexture = new[] { comfortaa_regulare_legacy_font + @".fnt_0.png", comfortaa_regulare_legacy_font + @".png" }
+                .FirstOrDefault(customFontsStorage.Exists);
+
+            if (!canonicalFontExists && legacyTexture != null)
+            {
+                string legacyTexturePath = customFontsStorage.GetFullPath(legacyTexture);
+                System.IO.File.Copy(legacyTexturePath, System.IO.Path.Combine(customFontsDir, comfortaa_regular_font + @".fnt_0.png"), overwrite: true);
+                System.IO.File.Copy(legacyTexturePath, System.IO.Path.Combine(customFontsDir, comfortaa_regular_font + @".png"), overwrite: true);
+            }
+
+            foreach (string legacyFile in new[]
+                     {
+                         legacy_fnt,
+                         comfortaa_regulare_legacy_font + @".fnt_0.png",
+                         comfortaa_regulare_legacy_font + @".png",
+                     })
+            {
+                if (!customFontsStorage.Exists(legacyFile))
+                    continue;
+
+                System.IO.File.Delete(customFontsStorage.GetFullPath(legacyFile));
+            }
+
+            AvailableCustomUIFonts.RemoveAll(name => name.StartsWith(comfortaa_regulare_legacy_font, StringComparison.OrdinalIgnoreCase));
+            loadedCustomFontFiles.Remove(comfortaa_regular_font + @".fnt");
+            loadedCustomFontFiles.Remove(legacy_fnt);
         }
 
         protected override void LoadComplete()
@@ -793,6 +1108,11 @@ namespace osu.Game
             LocalConfig ??= UseDevelopmentServer
                 ? new DevelopmentOsuConfigManager(Storage)
                 : new OsuConfigManager(Storage);
+
+            // Standalone public build note: Configurable MaximumAtlasSize is an optional Mosu framework extension.
+
+            Environment.SetEnvironmentVariable("OSU_DISABLE_ERROR_REPORTING",
+                LocalConfig.Get<bool>(OsuSetting.ForkDisableRemoteLogging) ? "1" : null);
 
             host.ExceptionThrown += onExceptionThrown;
         }
@@ -990,6 +1310,12 @@ namespace osu.Game
                                                          // ReSharper disable once ConditionIsAlwaysTrueOrFalse
                                                          .Where(mod => mod != null);
 
+                    if (Online.MosuServerEnvironment.UsesStableProtocol)
+                        available = available.SelectMany(ModUtils.FlattenMod).Where(Online.Legacy.StableModCompatibility.IsSupported);
+
+                    if (!Online.MosuServerEnvironment.IsToriiServer)
+                        available = available.Where(mod => mod is not IToriiServerMod);
+
                     dict[type] = available.ToList();
                 }
             }
@@ -1008,14 +1334,17 @@ namespace osu.Game
             var convertedMods = SelectedMods.Value.Select(mod =>
             {
                 var newMod = instance.CreateModFromAcronym(mod.Acronym);
-                newMod?.CopyCommonSettingsFrom(mod);
+                if (!Online.MosuServerEnvironment.UsesStableProtocol)
+                    newMod?.CopyCommonSettingsFrom(mod);
                 return newMod;
-            }).Where(newMod => newMod != null).ToList();
+            }).Where(newMod => newMod != null
+                                 && (Online.MosuServerEnvironment.IsToriiServer || newMod is not IToriiServerMod)).ToList();
 
             if (!ModUtils.CheckValidForGameplay(convertedMods, out var invalid))
                 invalid.ForEach(newMod => convertedMods.Remove(newMod));
 
-            if (!convertedMods.Any() && LocalConfig.Get<bool>(OsuSetting.ForkClassicModDefault))
+            if ((Online.MosuServerEnvironment.UsesStableProtocol && convertedMods.All(m => m.Acronym != "CL"))
+                || (!convertedMods.Any() && LocalConfig.Get<bool>(OsuSetting.ForkClassicModDefault)))
             {
                 var classic = instance.CreateModFromAcronym("CL");
                 if (classic != null)
@@ -1060,6 +1389,8 @@ namespace osu.Game
 
             beatmapUpdater?.Dispose();
 
+            onlineAssetStore?.Dispose();
+
             realm?.Dispose();
 
             if (Host != null)
@@ -1087,8 +1418,11 @@ namespace osu.Game
 
             private string mapName(string name)
             {
-                if (name.StartsWith(customFontName + "/"))
-                    return originalFontName + "/" + name.Substring(customFontName.Length + 1);
+                string customPrefix = customFontName + "/";
+
+                if (name.StartsWith(customPrefix, StringComparison.Ordinal))
+                    return string.Concat(originalFontName.AsSpan(), "/".AsSpan(), name.AsSpan(customPrefix.Length));
+
                 return name;
             }
 
@@ -1122,7 +1456,13 @@ namespace osu.Game
                 return base.GetAsync(mapName(name), cancellationToken);
             }
 
-            System.Collections.Generic.IEnumerable<string> osu.Framework.IO.Stores.IResourceStore<osu.Framework.Graphics.Textures.TextureUpload>.GetAvailableResources() => base.GetAvailableResources().Select(r => r.StartsWith(originalFontName + "/") ? customFontName + "/" + r.Substring(originalFontName.Length + 1) : r);
+            System.Collections.Generic.IEnumerable<string> osu.Framework.IO.Stores.IResourceStore<osu.Framework.Graphics.Textures.TextureUpload>.GetAvailableResources()
+            {
+                string originalPrefix = originalFontName + "/";
+                return base.GetAvailableResources().Select(r => r.StartsWith(originalPrefix, StringComparison.Ordinal)
+                    ? string.Concat(customFontName.AsSpan(), "/".AsSpan(), r.AsSpan(originalPrefix.Length))
+                    : r);
+            }
         }
     }
 }

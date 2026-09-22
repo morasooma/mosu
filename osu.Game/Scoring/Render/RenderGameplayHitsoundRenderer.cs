@@ -19,16 +19,18 @@ namespace osu.Game.Scoring.Render
 
         public Func<ISkinSource?>? SkinSourceProvider { get; set; }
 
+        public int MissingSampleCount { get; private set; }
+
         private readonly AudioManager audio;
+        private readonly bool ownsCaptureMixer;
 
         public RenderGameplayHitsoundRenderer(AudioManager audio, AudioMixer? preferredMixer = null)
         {
             this.audio = audio;
-            // Always capture/play hitsounds on the main SampleMixer.
-            // We force Audio.VolumeSample = 1 early in ReplayRenderGame, so this path will always
-            // have full volume for hitsounds, even if the client had the volume slider at 0.
-            // The remove adjustments below strips any 0-gain that leaked from pre-render skin stores.
-            CaptureMixer = audio.SampleMixer;
+            // Offline capture must use the dedicated mixer. The global sample mixer may already be
+            // attached to a parent BASS mixer and cannot then be read via ChannelGetData.
+            CaptureMixer = preferredMixer ?? audio.SampleMixer;
+            ownsCaptureMixer = preferredMixer != null;
         }
 
         public void PlaySamples(ISampleInfo[] samples, double balance = 0, int minimumSampleVolume = 0)
@@ -48,14 +50,20 @@ namespace osu.Game.Scoring.Render
             ISkinSource? skinSource = SkinSourceProvider?.Invoke();
 
             if (skinSource == null)
+            {
+                MissingSampleCount += samples.Length;
                 return;
+            }
 
             foreach (ISampleInfo sampleInfo in samples)
             {
                 var sample = skinSource.GetSample(sampleInfo);
 
                 if (sample == null)
+                {
+                    MissingSampleCount++;
                     continue;
+                }
 
                 var channel = sample.GetChannel();
 
@@ -75,6 +83,8 @@ namespace osu.Game.Scoring.Render
 
         public void Dispose()
         {
+            if (ownsCaptureMixer)
+                CaptureMixer.Dispose();
         }
     }
 }

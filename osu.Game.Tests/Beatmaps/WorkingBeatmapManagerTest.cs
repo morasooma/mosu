@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
@@ -61,6 +62,49 @@ namespace osu.Game.Tests.Beatmaps
         public void TestGetWorkingBeatmap() => AddStep("run test", () =>
         {
             Assert.That(beatmaps.GetWorkingBeatmap(importedSet.Beatmaps.First()), Is.Not.Null);
+        });
+
+        [Test]
+        public void TestQueryOnlineBeatmapFallsBackToChecksumVerifiedStableBeatmap() => AddStep("run test", () =>
+        {
+            string beatmapPath = Path.GetTempFileName();
+
+            try
+            {
+                File.WriteAllText(beatmapPath, "stable-only beatmap");
+                string checksum;
+                using (var stream = File.OpenRead(beatmapPath))
+                    checksum = stream.ComputeMD5Hash();
+
+                var set = new BeatmapSetInfo { OnlineID = 654321 };
+                var stableBeatmap = new BeatmapInfo
+                {
+                    OnlineID = 7654321,
+                    MD5Hash = checksum,
+                    BeatmapSet = set,
+                    Ruleset = rulesetStore.AvailableRulesets.First(),
+                };
+                set.Beatmaps.Add(stableBeatmap);
+
+                StablePathManager.Replace(
+                    new Dictionary<Guid, string> { [stableBeatmap.ID] = beatmapPath },
+                    new Dictionary<Guid, string>(),
+                    [set]);
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(beatmaps.QueryOnlineBeatmapId(stableBeatmap.OnlineID, checksum)?.ID, Is.EqualTo(stableBeatmap.ID));
+                    Assert.That(beatmaps.QueryOnlineBeatmapId(stableBeatmap.OnlineID, new string('0', 32)), Is.Null);
+                });
+
+                File.Delete(beatmapPath);
+                Assert.That(beatmaps.QueryOnlineBeatmapId(stableBeatmap.OnlineID, checksum), Is.Null);
+            }
+            finally
+            {
+                StablePathManager.Replace(new Dictionary<Guid, string>(), new Dictionary<Guid, string>());
+                File.Delete(beatmapPath);
+            }
         });
 
         [Test]

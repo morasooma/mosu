@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
+using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
@@ -21,10 +22,10 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Carousel;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
 using osu.Game.Resources.Localisation.Web;
 using osu.Game.Rulesets;
-using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Mania;
 
 using osu.Game.Rulesets.Mods;
@@ -71,6 +72,7 @@ namespace osu.Game.Screens.Select
 
         private PanelSetBackground beatmapBackground = null!;
         private Box classicSelectionBackground = null!;
+
         private ScheduledDelegate? scheduledBackgroundRetrieval;
 
         private FillFlowContainer contentFlow = null!;
@@ -82,6 +84,7 @@ namespace osu.Game.Screens.Select
 
         private ConstrainedIconContainer difficultyIcon = null!;
         private StarRatingDisplay starRatingDisplay = null!;
+        private StarCounter legacyStarCounter = null!;
         private SpreadDisplay spreadDisplay = null!;
         private PanelLocalRankDisplay localRank = null!;
         private OsuSpriteText keyCountText = null!;
@@ -98,6 +101,19 @@ namespace osu.Game.Screens.Select
         internal bool ContentClearsLegacyPreview
             => contentFlow.Margin.Left >= PanelSetBackground.GetLegacyPreviewWidth(Content.DrawWidth, Content.DrawHeight);
 
+        internal bool LegacyRankVisible => !useSkinnedLegacyCarousel.Value || localRank.Alpha > 0;
+
+        internal bool LegacyStarsVisible => !useSkinnedLegacyCarousel.Value || legacyStarCounter.Alpha > 0;
+
+        internal bool UsesLegacyDifficultyInactiveTint
+            => !useSkinnedLegacyCarousel.Value || Selected.Value || beatmapBackground.Colour == new Color4(0, 150, 236, 255);
+
+        internal float LegacySelectionOverlayAlpha => classicSelectionBackground.Alpha;
+
+        internal Color4 TitleTextColour => titleText.Colour;
+        internal Color4 ArtistTextColour => artistText.Colour;
+        internal Color4 DifficultyTextColour => difficultyText.Colour;
+
         public PanelBeatmapStandalone()
         {
             PanelXOffset = 20;
@@ -107,7 +123,7 @@ namespace osu.Game.Screens.Select
         private void load(OsuConfigManager config)
         {
             config.BindWith(OsuSetting.ForkSongSelectOldCarouselPreviews, useLegacyPreviewLayout);
-            config.BindWith(OsuSetting.ForkSongSelectSkinnedLegacyCarousel, useSkinnedLegacyCarousel);
+            ForkSongSelectStyleBinding.BindSkinnedLegacyCarousel(config, useSkinnedLegacyCarousel, () => songSelect is SoloSongSelect);
             useLegacyPreviewLayout.BindValueChanged(_ => ScheduleAfterChildren(updatePreviewLayoutState));
             useSkinnedLegacyCarousel.BindValueChanged(_ => ScheduleAfterChildren(updatePreviewLayoutState));
 
@@ -128,6 +144,7 @@ namespace osu.Game.Screens.Select
             Content.Children = new Drawable[]
             {
                 beatmapBackground = new PanelSetBackground(),
+
                 classicSelectionBackground = new Box
                 {
                     Anchor = Anchor.CentreRight,
@@ -227,6 +244,13 @@ namespace osu.Game.Screens.Select
                                         }
                                     }
                                 },
+                                legacyStarCounter = new StarCounter
+                                {
+                                    Anchor = Anchor.TopLeft,
+                                    Origin = Anchor.TopLeft,
+                                    Scale = new Vector2(0.42f),
+                                    Alpha = 0,
+                                },
                                 additionalStatsText = new OsuSpriteText
                                 {
                                     Colour = colourProvider.Content2,
@@ -236,6 +260,8 @@ namespace osu.Game.Screens.Select
                                 },
                                 new FillFlowContainer
                                 {
+                                    Anchor = Anchor.TopLeft,
+                                    Origin = Anchor.TopLeft,
                                     Direction = FillDirection.Horizontal,
                                     Spacing = new Vector2(3),
                                     AutoSizeAxes = Axes.Both,
@@ -270,11 +296,11 @@ namespace osu.Game.Screens.Select
 
         private void updateThemeColours()
         {
-            artistText.Colour = authorText.Colour = additionalStatsText.Colour = colourProvider.Content2;
-            keyCountText.Colour = colourProvider.Content1;
+            artistText.Colour = authorText.Colour = additionalStatsText.Colour = Color4.White.Opacity(0.85f);
+            keyCountText.Colour = Color4.White;
 
             if (!useSkinnedLegacyCarousel.Value)
-                titleText.Colour = difficultyText.Colour = colourProvider.Content1;
+                titleText.Colour = difficultyText.Colour = Color4.White;
 
             updateClassicSelectionState();
         }
@@ -285,11 +311,13 @@ namespace osu.Game.Screens.Select
             difficultyIcon.Size = useSkinnedLegacyCarousel.Value ? Vector2.Zero : new Vector2(12);
             difficultyIcon.Margin = useSkinnedLegacyCarousel.Value ? new MarginPadding() : new MarginPadding { Left = 4f, Right = 3f };
             backgroundBorder.Alpha = useSkinnedLegacyCarousel.Value ? 0 : 1;
+
             statusPill.Alpha = useSkinnedLegacyCarousel.Value ? 0 : 1;
             importedPill.Alpha = useSkinnedLegacyCarousel.Value ? 0 : 1;
             updateButton.Alpha = useSkinnedLegacyCarousel.Value ? 0 : 1;
-            localRank.Alpha = useSkinnedLegacyCarousel.Value ? 0 : 1;
+            localRank.Alpha = 1;
             starRatingDisplay.Alpha = useSkinnedLegacyCarousel.Value ? 0 : 1;
+            legacyStarCounter.Alpha = useSkinnedLegacyCarousel.Value ? 1 : 0;
 
             if (!useSkinnedLegacyCarousel.Value && starDifficultyBindable != null)
                 updateAdditionalInfoText(starDifficultyBindable.Value);
@@ -311,6 +339,9 @@ namespace osu.Game.Screens.Select
             {
                 Expanded.Value = s.NewValue;
                 updateClassicSelectionState();
+
+                if (starDifficultyBindable != null)
+                    computeStarRating();
             }, true);
 
             config.GetBindable<bool>(OsuSetting.ForkDifficultyAdditionalInfo).BindValueChanged(_ =>
@@ -328,7 +359,8 @@ namespace osu.Game.Screens.Select
 
             var beatmapSet = beatmap.BeatmapSet!;
 
-            scheduledBackgroundRetrieval = Scheduler.AddDelayed(b => beatmapBackground.Beatmap = beatmaps.GetWorkingBeatmap(b), beatmap, 50);
+            if (CarouselPreviews.Value)
+                scheduledBackgroundRetrieval = Scheduler.AddDelayed(b => beatmapBackground.Beatmap = beatmaps.GetWorkingBeatmap(b), beatmap, 50);
 
             titleText.Text = new RomanisableString(beatmapSet.Metadata.TitleUnicode, beatmapSet.Metadata.Title);
             artistText.Text = new RomanisableString(beatmapSet.Metadata.ArtistUnicode, beatmapSet.Metadata.Artist);
@@ -348,6 +380,7 @@ namespace osu.Game.Screens.Select
             spreadDisplay.Beatmap.Value = beatmap;
             Height = Item?.DrawHeight ?? HEIGHT;
             updateManiaDisplay();
+            updateThemeColours();
         }
 
         protected override void FreeAfterUse()
@@ -375,10 +408,12 @@ namespace osu.Game.Screens.Select
             if (Item == null)
                 return;
 
-            starDifficultyBindable = difficultyCache.GetBindableDifficulty(beatmap, starDifficultyCancellationSource.Token, SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE);
+            starDifficultyBindable = difficultyCache.GetBindableDifficulty(beatmap, starDifficultyCancellationSource.Token,
+                SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE, calculatePerformance: Selected.Value, usePersistedAdditionalInfo: true);
             starDifficultyBindable.BindValueChanged(starDifficulty =>
             {
                 starRatingDisplay.Current.Value = starDifficulty.NewValue;
+                legacyStarCounter.Current = (float)starDifficulty.NewValue.Stars;
                 spreadDisplay.StarDifficulty.Value = starDifficulty.NewValue;
                 updateAdditionalInfoText(starDifficulty.NewValue);
             }, true);
@@ -394,13 +429,15 @@ namespace osu.Game.Screens.Select
             if (useSkinnedLegacyCarousel.Value)
             {
                 Color4 textColour = Selected.Value ? beatmapBackground.LegacyActiveTextColour : beatmapBackground.LegacyInactiveTextColour;
+
                 classicSelectionBackground.Colour = beatmapBackground.LegacyMenuGlowColour;
                 statusPill.Hide();
                 importedPill.Hide();
                 updateButton.Hide();
-                localRank.Hide();
                 starRatingDisplay.Hide();
                 additionalStatsText.Hide();
+                legacyStarCounter.Colour = textColour;
+                legacyStarCounter.Show();
                 titleText.Colour = textColour;
                 artistText.Colour = textColour;
                 difficultyText.Colour = textColour;
@@ -424,6 +461,10 @@ namespace osu.Game.Screens.Select
             AccentColour = diffColour;
             spreadDisplay.Current.Colour = diffColour;
 
+            beatmapBackground.Colour = useSkinnedLegacyCarousel.Value && !Selected.Value
+                ? new Color4(0, 150, 236, 255)
+                : Color4.White;
+
             backgroundBorder.Colour = diffColour;
             difficultyIcon.Colour = starRatingDisplay.DisplayedDifficultyTextColour;
 
@@ -442,13 +483,13 @@ namespace osu.Game.Screens.Select
 
             classicSelectionBackground.Colour = beatmapBackground.LegacyMenuGlowColour;
             double duration = OverlayColourProvider.ThemeTransitionDuration(DURATION / 2);
-            classicSelectionBackground.FadeTo(classicSelected ? beatmapBackground.LegacySelectedOverlayAlpha : 0, duration, Easing.OutQuint);
+            classicSelectionBackground.FadeTo(0, duration, Easing.OutQuint);
             Color4 textColour = classicSelected ? beatmapBackground.LegacyActiveTextColour : beatmapBackground.LegacyInactiveTextColour;
-            titleText.FadeColour(useSkinnedLegacyCarousel.Value ? textColour : colourProvider.Content1, duration, Easing.OutQuint);
-            artistText.FadeColour(useSkinnedLegacyCarousel.Value ? textColour : colourProvider.Content2, duration, Easing.OutQuint);
-            keyCountText.FadeColour(useSkinnedLegacyCarousel.Value ? textColour : colourProvider.Content1, duration, Easing.OutQuint);
-            difficultyText.FadeColour(useSkinnedLegacyCarousel.Value ? textColour : colourProvider.Content1, duration, Easing.OutQuint);
-            authorText.FadeColour(useSkinnedLegacyCarousel.Value ? textColour : colourProvider.Content2, duration, Easing.OutQuint);
+            titleText.FadeColour(useSkinnedLegacyCarousel.Value ? textColour : Color4.White, duration, Easing.OutQuint);
+            artistText.FadeColour(useSkinnedLegacyCarousel.Value ? textColour : Color4.White.Opacity(0.85f), duration, Easing.OutQuint);
+            keyCountText.FadeColour(useSkinnedLegacyCarousel.Value ? textColour : Color4.White, duration, Easing.OutQuint);
+            difficultyText.FadeColour(useSkinnedLegacyCarousel.Value ? textColour : Color4.White, duration, Easing.OutQuint);
+            authorText.FadeColour(useSkinnedLegacyCarousel.Value ? textColour : Color4.White.Opacity(0.85f), duration, Easing.OutQuint);
         }
 
         private void updateKeyCount()
@@ -458,7 +499,7 @@ namespace osu.Game.Screens.Select
 
             var rulesetInstance = ruleset.Value.CreateInstance();
 
-            if (rulesetInstance.AvailableVariants.Count() > 1)
+            if (rulesetInstance.GameplayVariants.Count() > 1)
             {
                 int variant = rulesetInstance.GetVariantForBeatmap(beatmap, mods.Value);
                 var variantName = rulesetInstance.GetVariantName(variant);
@@ -483,26 +524,7 @@ namespace osu.Game.Screens.Select
                 return;
             }
 
-            var perfAttrs = starDiff.PerformanceAttributes;
-            if (perfAttrs != null)
-            {
-                var displayAttrs = perfAttrs.GetAttributesForDisplay().ToList();
-                double maxPP = perfAttrs.Total;
-
-                var aspects = displayAttrs.Where(a => a.PropertyName != nameof(PerformanceAttributes.Total))
-                                          .Select(a => $"{a.DisplayName}: {Math.Round(a.Value):0}pp");
-
-                string aspectsStr = string.Join(", ", aspects);
-                if (!string.IsNullOrEmpty(aspectsStr))
-                    additionalStatsText.Text = $"Combo: {starDiff.MaxCombo}x | PP: {Math.Round(maxPP):0} pp ({aspectsStr})";
-                else
-                    additionalStatsText.Text = $"Combo: {starDiff.MaxCombo}x | PP: {Math.Round(maxPP):0} pp";
-            }
-            else
-            {
-                additionalStatsText.Text = $"Combo: {starDiff.MaxCombo}x | PP: -";
-            }
-
+            additionalStatsText.Text = BeatmapAdditionalInfoFormatter.Format(starDiff);
             additionalStatsText.Alpha = 1;
         }
 

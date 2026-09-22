@@ -42,7 +42,7 @@ namespace osu.Game.Rulesets.Edit.Checks
             {
                 if (audioFiles.Contains(file)) continue;
 
-                using (Stream data = context.CurrentDifficulty.Working.GetStream(file.File.GetStoragePath()))
+                using (Stream? data = context.CurrentDifficulty.Working.GetStream(file.File.GetStoragePath()))
                 {
                     if (data == null)
                         continue;

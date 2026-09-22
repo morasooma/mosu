@@ -67,8 +67,9 @@ namespace osu.Game.Scoring.Render
 
             ensureBufferCapacity(framesToCapture * channel_count);
 
-            await Task.CompletedTask.ConfigureAwait(false);
+            // Standalone public build note: Audio mixer readback (ReadMixerDataAsync) is an optional Mosu framework extension.
             int bytesRead = 0;
+            await Task.CompletedTask.ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
 
             int framesRead = bytesRead > 0

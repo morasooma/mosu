@@ -178,6 +178,29 @@ namespace osu.Game.Tests.Visual.Online
         }
 
         [Test]
+        public void TestLastVisitSortPrioritisesOnlineFriends()
+        {
+            AddStep("set friends", () =>
+            {
+                DummyAPIAccess api = (DummyAPIAccess)API;
+                api.LocalUserState.Friends.Clear();
+                api.LocalUserState.Friends.AddRange(getUsers().Select(u => new APIRelation
+                {
+                    RelationType = RelationType.Friend,
+                    TargetID = u.OnlineID,
+                    TargetUser = u
+                }));
+            });
+
+            waitForLoad();
+            AddStep("sort by last activity", () => this.ChildrenOfType<UserListToolbar>().Single().SortCriteria.Value = UserSortCriteria.LastVisit);
+            AddUntilStep("recent offline friend first", () => getOrderedUserPanels().First().User.Username, () => Is.EqualTo("Evast"));
+
+            AddStep("bring older friend online", () => metadataClient.FriendPresenceUpdated(2, new UserPresence { Status = UserStatus.Online }));
+            AddUntilStep("online friend moves first", () => getOrderedUserPanels().First().User.Username, () => Is.EqualTo("peppy"));
+        }
+
+        [Test]
         public void TestLoadFriendsBeforeDisplay()
         {
             AddStep("set friends", () =>
@@ -219,6 +242,13 @@ namespace osu.Game.Tests.Visual.Online
 
         private void waitForLoad()
             => AddUntilStep("wait for panels to load", () => this.ChildrenOfType<UserPanel>().Any());
+
+        private IEnumerable<UserPanel> getOrderedUserPanels()
+            => this.ChildrenOfType<FriendsList>().Last().ChildrenOfType<FriendsList.FilterableUserPanel>()
+                   .Where(panel => panel.IsPresent)
+                   .OrderBy(panel => panel.DrawPosition.Y)
+                   .ThenBy(panel => panel.DrawPosition.X)
+                   .Select(panel => panel.ChildrenOfType<UserPanel>().Single());
 
         private void assertVisiblePanelCount<T>(int expectedVisible)
             where T : UserPanel

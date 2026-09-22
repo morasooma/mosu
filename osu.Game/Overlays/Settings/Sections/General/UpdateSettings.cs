@@ -1,5 +1,4 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
-// This file is partly modified by GooGuTeam.
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Threading.Tasks;
@@ -11,6 +10,7 @@ using osu.Framework.Localisation;
 using osu.Game.Configuration;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Localisation;
+using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Overlays.Dialog;
 using osu.Game.Overlays.Notifications;
@@ -38,6 +38,9 @@ namespace osu.Game.Overlays.Settings.Sections.General
         [Resolved]
         private OsuGame? game { get; set; }
 
+        [Resolved(canBeNull: true)]
+        private IAPIProvider? api { get; set; }
+
         [Resolved]
         private IDialogOverlay? dialogOverlay { get; set; }
 
@@ -46,17 +49,19 @@ namespace osu.Game.Overlays.Settings.Sections.General
         {
             config.BindWith(OsuSetting.ReleaseStream, configReleaseStream);
 
-            bool isDesktop = RuntimeInfo.IsDesktop;
-
-            Add(new SettingsCheckbox
+            Add(new SettingsItemV2(new FormCheckBox
             {
-                LabelText = "Disable automatic updates (mosu)",
+                Caption = "Disable automatic updates (Morasooma)",
                 Current = config.GetBindable<bool>(OsuSetting.DisableAutomaticUpdates),
-                Keywords = new[] { "update", "automatic", "disable", "mosu" },
+            })
+            {
+                Keywords = new[] { "update", "automatic", "disable", "morasooma", "mosu" },
             });
 
+            bool isDesktop = RuntimeInfo.IsDesktop;
+
             // For simplicity, hide the concept of release streams from mobile users.
-            if (isDesktop)
+            if (isDesktop && updateManager != null)
             {
                 Add(new SettingsItemV2(releaseStreamDropdown = new FormEnumDropdown<ReleaseStream>
                 {
@@ -65,15 +70,26 @@ namespace osu.Game.Overlays.Settings.Sections.General
                 })
                 {
                     Keywords = new[] { @"version" },
-                    ShowRevertToDefaultButton = updateManager!.FixedReleaseStream == null
+                    Note = { BindTarget = releaseStreamDropdownNote },
+                    ShowRevertToDefaultButton = updateManager.FixedReleaseStream == null
                 });
 
-                if (updateManager!.FixedReleaseStream != null)
+                if (updateManager.FixedReleaseStream != null)
                 {
                     configReleaseStream.Value = updateManager.FixedReleaseStream.Value;
 
                     releaseStreamDropdown.Items = [updateManager.FixedReleaseStream.Value];
-                    releaseStreamDropdownNote.Value = new SettingsNote.Data(GeneralSettingsStrings.ChangeReleaseStreamPackageManagerWarning, SettingsNote.Type.Warning);
+                    releaseStreamDropdownNote.Value = new SettingsNote.Data(GeneralSettingsStrings.ChangeReleaseStreamPackageManagerWarning, SettingsNote.Type.Informational);
+                    releaseStreamDropdown.Current.Disabled = true;
+                }
+                else
+                {
+                    configReleaseStream.BindValueChanged(s =>
+                    {
+                        releaseStreamDropdownNote.Value = s.NewValue != ReleaseStream.Lazer
+                            ? new SettingsNote.Data(GeneralSettingsStrings.ReleaseStreamNonStableUpgradeInformation, SettingsNote.Type.Informational)
+                            : null;
+                    }, true);
                 }
 
                 releaseStreamDropdown.Current.BindValueChanged(releaseStreamChanged);
@@ -82,26 +98,39 @@ namespace osu.Game.Overlays.Settings.Sections.General
             Add(checkForUpdatesButton = new SettingsButtonV2
             {
                 Text = GeneralSettingsStrings.CheckUpdate,
-                Action = () => checkForUpdates().FireAndForget()
+                Action = () => checkForUpdates().FireAndForget(),
+                Enabled = { Value = updateManager != null },
             });
         }
 
         private void releaseStreamChanged(ValueChangedEvent<ReleaseStream> stream)
         {
-            if (stream.NewValue == ReleaseStream.Tachyon)
+            switch (stream.NewValue)
             {
-                dialogOverlay?.Push(
-                    new ConfirmDialog(GeneralSettingsStrings.ChangeReleaseStreamConfirmation,
-                        () => configReleaseStream.Value = ReleaseStream.Tachyon,
-                        () => releaseStreamDropdown.Current.Value = ReleaseStream.Lazer)
+                case ReleaseStream.Lazer:
+                    configReleaseStream.Value = stream.NewValue;
+                    break;
+
+                case ReleaseStream.DevBuild when RuntimeInfo.OS != RuntimeInfo.Platform.Windows || api?.IsLoggedIn != true || api.LocalUser.Value is not { Active: true, IsSupporter: true }:
+                    notifications?.Post(new SimpleNotification
                     {
-                        BodyText = GeneralSettingsStrings.ChangeReleaseStreamConfirmationInfo
+                        Text = "Dev Build is available to active supporters on Windows only.",
+                        Icon = FontAwesome.Solid.Lock,
                     });
+                    releaseStreamDropdown.Current.Value = stream.OldValue;
+                    configReleaseStream.Value = stream.OldValue;
+                    break;
 
-                return;
+                default:
+                    dialogOverlay?.Push(
+                        new ConfirmDialog(GeneralSettingsStrings.ChangeReleaseStreamConfirmation,
+                            () => configReleaseStream.Value = stream.NewValue,
+                            () => releaseStreamDropdown.Current.Value = stream.OldValue)
+                        {
+                            BodyText = GeneralSettingsStrings.ChangeReleaseStreamConfirmationInfo
+                        });
+                    break;
             }
-
-            configReleaseStream.Value = stream.NewValue;
         }
 
         private async Task checkForUpdates()

@@ -8,6 +8,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
+using osu.Game.Configuration;
 using osu.Game.Graphics.Backgrounds;
 using osu.Game.Overlays;
 using osuTK;
@@ -22,7 +23,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Card
         }
 
         [BackgroundDependencyLoader]
-        private void load(OverlayColourProvider colourProvider, TextureStore textures)
+        private void load(OverlayColourProvider colourProvider, TextureStore textures, OsuConfigManager config)
         {
             Masking = true;
             CornerRadius = RankedPlayCard.CORNER_RADIUS;
@@ -46,7 +47,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Card
                 },
                 new Sprite
                 {
-                    Texture = textures.Get(@"Menu/logo"),
+                    Texture = textures.Get(config.Get<ForkMenuLogo>(OsuSetting.ForkMenuLogo).GetTextureName()),
                     Size = new Vector2(32),
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,

@@ -3,15 +3,13 @@
 
 using System;
 using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
-using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.ExceptionExtensions;
 using osu.Framework.Extensions.TypeExtensions;
 using osu.Framework.Logging;
+using osu.Game.Utils;
 
 namespace osu.Game.Online.Multiplayer
 {
@@ -29,7 +27,7 @@ namespace osu.Game.Online.Multiplayer
 
                     // OnlineStatusNotifier is already letting users know about interruptions to connections.
                     // Silence these because it gets very spammy otherwise.
-                    if (isLocalUserConnectivityException(exception))
+                    if (SentryLogger.IsLocalUserConnectivityException(exception))
                         return;
 
                     if (exception.GetHubExceptionMessage() is string message)
@@ -46,18 +44,6 @@ namespace osu.Game.Online.Multiplayer
                     onSuccess?.Invoke();
                 }
             });
-
-        private static bool isLocalUserConnectivityException(Exception exception)
-        {
-            return exception switch
-            {
-                TimeoutException timeout => timeout.Message.Contains(@"elapsed without receiving a message from the server"),
-                WebException webException => webException.Status == WebExceptionStatus.Timeout,
-                WebSocketException => true,
-                SocketException => true,
-                _ => false,
-            };
-        }
 
         /// <summary>
         /// Start a background process to disconnect/reconnect as soon as a specific condition is met.

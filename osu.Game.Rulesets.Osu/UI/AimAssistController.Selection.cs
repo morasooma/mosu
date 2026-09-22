@@ -24,6 +24,7 @@ namespace osu.Game.Rulesets.Osu.UI
             bool hasPrevious = false;
             bool requiresSort = false;
             double currentTime = Time.Current;
+            exitedMotionTargets.RemoveWhere(target => currentTime > target.StartTime + scaleRealTimeWindow(1000));
 
             foreach (Drawable drawable in playfield!.HitObjectContainer.Objects)
             {
@@ -41,7 +42,7 @@ namespace osu.Game.Rulesets.Osu.UI
                 if (osuDrawable is DrawableSliderHead || osuDrawable is DrawableSliderTail || osuDrawable is DrawableSliderTick || osuDrawable is DrawableSliderRepeat)
                     continue;
 
-                if (osuDrawable.AllJudged)
+                if (osuDrawable.AllJudged || exitedMotionTargets.Contains(osuDrawable.HitObject))
                     continue;
 
                 TargetDescriptor target = createTargetDescriptor(osuDrawable);
@@ -361,7 +362,7 @@ namespace osu.Game.Rulesets.Osu.UI
         {
             Vector2 query = CurrentOutputPosition;
             ProjectionResult handoffProjection = projectionPointBuffer.Count >= 2
-                ? projectOntoPolyline(projectionPointBuffer, query)
+                ? projectOntoCurrentRail(query, current.StartTime)
                 : new ProjectionResult(query, next.ScreenSpacePosition - current.ScreenSpacePosition);
             Vector2 evaluationPoint = handoffProjection.Point;
             Vector2 segment = next.ScreenSpacePosition - current.ScreenSpacePosition;
@@ -429,6 +430,18 @@ namespace osu.Game.Rulesets.Osu.UI
             if (!lastReleasedTargetPosition.HasValue)
                 return false;
 
+            // Новая нота плотной цепочки должна получать помощь сразу после предыдущей.
+            // Пространственное перекрытие не означает повторный захват того же объекта.
+            if (isRelaxAwaitingPress(target)
+                || currentTime >= target.StartTime - scaleRealTimeWindow(Math.Clamp(getGreatWindow(target.Drawable), 24, 70)))
+                return false;
+
+            if (hasLastResolvedTarget
+                && !ReferenceEquals(target.HitObject, lastResolvedTarget.HitObject)
+                && target.StartTime >= lastResolvedTarget.StartTime
+                && target.StartTime - lastResolvedTarget.StartTime <= scaleRealTimeWindow(200))
+                return false;
+
             float overlapRadius = Math.Max(target.Radius * 0.72f, 18f);
 
             if ((target.ScreenSpacePosition - lastReleasedTargetPosition.Value).Length > overlapRadius)
@@ -476,11 +489,12 @@ namespace osu.Game.Rulesets.Osu.UI
 
             CurrentTargetPosition = getDisplayCentre(context.Value.Drawable);
             CurrentBaseTargetRadius = getDrawableTargetRadius(context.Value.Drawable, context.Value.Drawable.HitObject);
-            CurrentTargetRadius = context.Value.Radius;
+            CurrentTargetRadius = CurrentBaseTargetRadius;
+            CurrentAssistRadius = getTargetGravityRadius(context.Value);
             CurrentAdaptiveRadiusScale = CurrentBaseTargetRadius > 0
                 ? CurrentTargetRadius / CurrentBaseTargetRadius
                 : 1;
-            bool suppressAssistPoint = !context.Value.AllowPassiveAssist;
+            bool suppressAssistPoint = !context.Value.AllowPassiveAssist || context.Value.ModeName is @"point" or @"stream";
             CurrentAssistPointPosition = suppressAssistPoint || CurrentTargetPosition.HasValue && (context.Value.DesiredPoint - CurrentTargetPosition.Value).Length <= 2f
                 ? null
                 : context.Value.DesiredPoint;
@@ -499,6 +513,7 @@ namespace osu.Game.Rulesets.Osu.UI
             CurrentTargetPosition = null;
             CurrentBaseTargetRadius = 0;
             CurrentTargetRadius = 0;
+            CurrentAssistRadius = 0;
             CurrentAdaptiveRadiusScale = 1;
             CurrentAssistPointPosition = null;
             CurrentNextTargetPosition = null;
@@ -575,17 +590,21 @@ namespace osu.Game.Rulesets.Osu.UI
                 return;
 
             TargetDescriptor previewCurrent = targets[previewIndex];
-            TargetDescriptor? previewNext = previewIndex + 1 < targets.Count ? targets[previewIndex + 1] : null;
             OsuPatternState previewState = patternStates[previewIndex];
-            List<TargetDescriptor> previewRailTargets = buildRailTargets(previewCurrent, previewNext, targets, previewIndex, previewState);
-
-            if (previewRailTargets.Count < 2)
-                return;
-
             TargetDescriptor? previewPrevious = previewIndex > 0 ? targets[previewIndex - 1] : previousTarget;
-            fillRailProjectionPointBuffer(previewPrevious, previewRailTargets, previewState.PatternInfo);
 
-            if (projectionPointBuffer.Count < 2)
+            // Превью читает точки объектов, не перезаписывая рабочий путь ассиста.
+            debugPreviewPointBuffer.Clear();
+
+            if (previewPrevious.HasValue && isRailSegment(previewPrevious.Value, previewCurrent))
+                debugPreviewPointBuffer.Add(previewPrevious.Value.ScreenSpacePosition);
+
+            int previewEnd = Math.Min(targets.Count - 1, previewState.SegmentEndIndex);
+
+            for (int i = previewIndex; i <= previewEnd && debugPreviewPointBuffer.Count < 24; i++)
+                debugPreviewPointBuffer.Add(targets[i].ScreenSpacePosition);
+
+            if (debugPreviewPointBuffer.Count < 2)
                 return;
 
             CurrentFlowDebugModeName = previewState.Candidate switch
@@ -597,11 +616,9 @@ namespace osu.Game.Rulesets.Osu.UI
                 _ => @"point"
             };
             CurrentPatternDebugLabel = describePattern(previewState);
-            CurrentFlowDebugAnchorPosition = previewRailTargets[0].ScreenSpacePosition;
-            debugFlowPathPoints = projectionPointBuffer.ToArray();
-
-            if (railSourcePointBuffer.Count > 0)
-                debugFlowSourcePoints = railSourcePointBuffer.ToArray();
+            CurrentFlowDebugAnchorPosition = previewCurrent.ScreenSpacePosition;
+            debugFlowPathPoints = debugPreviewPointBuffer.ToArray();
+            debugFlowSourcePoints = debugFlowPathPoints;
         }
 
         private static bool shouldExposeFlowDebug(AimAssistContext context)

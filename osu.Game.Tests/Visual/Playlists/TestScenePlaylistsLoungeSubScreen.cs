@@ -6,7 +6,12 @@ using NUnit.Framework;
 using osu.Framework.Screens;
 using osu.Framework.Testing;
 using osu.Game.Graphics.Containers;
+using osu.Game.Graphics.Sprites;
+using osu.Game.Localisation;
 using osu.Game.Online.Rooms;
+using osu.Game.Rulesets.Catch;
+using osu.Game.Rulesets.Mania;
+using osu.Game.Rulesets.Osu;
 using osu.Game.Screens.OnlinePlay.Lounge.Components;
 using osu.Game.Screens.OnlinePlay.Playlists;
 using osu.Game.Tests.Visual.OnlinePlay;
@@ -22,6 +27,7 @@ namespace osu.Game.Tests.Visual.Playlists
         {
             base.SetUpSteps();
 
+            AddStep("select default mode", () => Ruleset.Value = new OsuRuleset().RulesetInfo);
             AddStep("push screen", () => LoadScreen(loungeScreen = new PlaylistsLoungeSubScreen()));
             AddUntilStep("wait for present", () => loungeScreen.IsCurrentScreen());
         }
@@ -32,6 +38,26 @@ namespace osu.Game.Tests.Visual.Playlists
         public void TestManyRooms()
         {
             createRooms(GenerateRooms(500));
+        }
+
+        [Test]
+        public void TestRulesetFiltering()
+        {
+            AddStep("select osu! mode", () => Ruleset.Value = new OsuRuleset().RulesetInfo);
+            createRooms(GenerateRooms(2, new OsuRuleset().RulesetInfo)
+                        .Concat(GenerateRooms(3, new CatchRuleset().RulesetInfo))
+                        .ToArray());
+
+            AddUntilStep("only osu! playlists visible", () => roomListing.DrawableRooms.Count(r => r.IsPresent) == 2);
+
+            AddStep("select catch mode", () => Ruleset.Value = new CatchRuleset().RulesetInfo);
+            AddUntilStep("only catch playlists visible", () => roomListing.DrawableRooms.Count(r => r.IsPresent) == 3);
+
+            AddStep("select mania mode", () => Ruleset.Value = new ManiaRuleset().RulesetInfo);
+            AddUntilStep("no playlists visible", () => roomListing.DrawableRooms.All(r => !r.IsPresent));
+            AddUntilStep("empty state visible", () => roomListing.ChildrenOfType<OsuSpriteText>()
+                                                                    .Single(t => t.Text.ToString() == OnlinePlayStrings.NoPlaylistsForSelectedMode.ToString()).IsPresent);
+            AddStep("restore osu! mode", () => Ruleset.Value = new OsuRuleset().RulesetInfo);
         }
 
         [Test]

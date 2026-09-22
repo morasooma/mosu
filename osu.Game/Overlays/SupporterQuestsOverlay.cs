@@ -8,265 +8,171 @@ using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
-using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Effects;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
-using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Graphics.UserInterfaceV2;
-using osu.Game.Online.API;
+using osu.Game.Localisation;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
 using osuTK;
-using osuTK.Graphics;
-using osu.Game.Localisation;
 
 namespace osu.Game.Overlays
 {
-    public partial class SupporterQuestsOverlay : WaveOverlayContainer, INamedOverlayComponent
+    public partial class SupporterQuestsOverlay : OnlineOverlay<SupporterQuestsHeader>
     {
-        public IconUsage Icon => FontAwesome.Solid.Crown;
-        public LocalisableString Title => ForkSettingsStrings.SupporterQuestTitle;
-        public LocalisableString Description => ForkSettingsStrings.SupporterQuestDescription;
-
-        [Resolved]
-        private IAPIProvider api { get; set; } = null!;
-
         [Resolved]
         private OsuGame game { get; set; } = null!;
 
-        [Cached]
-        private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Purple);
-
+        private FillFlowContainer layout = null!;
+        private FillFlowContainer sidebar = null!;
+        private FillFlowContainer taskColumn = null!;
+        private FillFlowContainer questList = null!;
         private OsuSpriteText overallProgressText = null!;
         private OsuSpriteText overallProgressDetailText = null!;
-        private Box overallProgressBarFill = null!;
-        private Box background = null!;
-        private Container panel = null!;
-        private Box progressBackground = null!;
-        private FillFlowContainer benefits = null!;
-        private OsuSpriteText headerText = null!;
-        private FillFlowContainer<Drawable> questListFlow = null!;
-        private LoadingLayer loadingLayer = null!;
+        private SupporterQuestProgressBar overallProgress = null!;
+        private IconButton closeButton = null!;
         private IBindable<Colour4> themeColour = null!;
+        private GetSupporterQuestsRequest? request;
 
         public event Action<int>? QuestsLoaded;
 
         public SupporterQuestsOverlay()
+            : base(OverlayColourScheme.Purple, false)
         {
-            RelativeSizeAxes = Axes.Both;
         }
+
+        protected override SupporterQuestsHeader CreateHeader() => new SupporterQuestsHeader();
 
         [BackgroundDependencyLoader]
         private void load()
         {
-            Add(background = new Box
+            Header.Add(closeButton = new IconButton
             {
-                RelativeSizeAxes = Axes.Both,
+                Anchor = Anchor.TopRight,
+                Origin = Anchor.TopRight,
+                Position = new Vector2(-12, 8),
+                Size = new Vector2(40),
+                Icon = FontAwesome.Solid.Times,
+                TooltipText = ForkSettingsStrings.AboutMorasoomaClose,
+                Action = Hide,
             });
 
-            Add(panel = new Container
+            Child = layout = new FillFlowContainer
             {
-                RelativeSizeAxes = Axes.Both,
-                Width = 0.85f,
-                Height = 0.85f,
-                Anchor = Anchor.Centre,
-                Origin = Anchor.Centre,
-                Masking = true,
-                CornerRadius = 15,
-                BorderThickness = 2,
-                EdgeEffect = new EdgeEffectParameters
-                {
-                    Colour = Color4.Black.Opacity(0.5f),
-                    Type = EdgeEffectType.Shadow,
-                    Radius = 15,
-                },
+                RelativeSizeAxes = Axes.X,
+                AutoSizeAxes = Axes.Y,
+                Direction = FillDirection.Full,
+                Spacing = new Vector2(24),
+                Padding = new MarginPadding(32),
                 Children = new Drawable[]
                 {
-                    new GridContainer
+                    sidebar = new FillFlowContainer
                     {
-                        RelativeSizeAxes = Axes.Both,
-                        ColumnDimensions = new[]
+                        AutoSizeAxes = Axes.Y,
+                        Direction = FillDirection.Vertical,
+                        Spacing = new Vector2(0, 16),
+                        Children = new Drawable[]
                         {
-                            new Dimension(GridSizeMode.Relative, 0.35f),
-                            new Dimension(GridSizeMode.Relative, 0.65f),
-                        },
-                        Content = new[]
-                        {
-                            new Drawable[]
+                            new SupporterQuestPanel(new FillFlowContainer
                             {
-                                // Left Panel (Overall progress and Telegram button)
-                                new Container
+                                RelativeSizeAxes = Axes.X,
+                                AutoSizeAxes = Axes.Y,
+                                Direction = FillDirection.Vertical,
+                                Spacing = new Vector2(0, 12),
+                                Children = new Drawable[]
                                 {
-                                    RelativeSizeAxes = Axes.Both,
-                                    Padding = new MarginPadding { Horizontal = 30, Vertical = 40 },
-                                    Child = new FillFlowContainer
+                                    new SupporterQuestText(ForkSettingsStrings.SupporterQuestHeader, 20, FontWeight.Bold),
+                                    overallProgressText = new OsuSpriteText
                                     {
-                                        Direction = FillDirection.Vertical,
-                                        RelativeSizeAxes = Axes.X,
-                                        AutoSizeAxes = Axes.Y,
-                                        Spacing = new Vector2(0, 30),
-                                        Anchor = Anchor.Centre,
-                                        Origin = Anchor.Centre,
-                                        Children = new Drawable[]
-                                        {
-                                            headerText = new OsuSpriteText
-                                            {
-                                                Text = ForkSettingsStrings.SupporterQuestHeader,
-                                                Font = OsuFont.GetFont(size: 16, weight: FontWeight.Bold),
-                                                Anchor = Anchor.TopCentre,
-                                                Origin = Anchor.TopCentre,
-                                            },
-                                            overallProgressText = new OsuSpriteText
-                                            {
-                                                Text = "0%",
-                                                Font = OsuFont.GetFont(size: 36, weight: FontWeight.Bold),
-                                                Colour = colourProvider.Content1,
-                                                Anchor = Anchor.TopCentre,
-                                                Origin = Anchor.TopCentre,
-                                            },
-                                            overallProgressDetailText = new OsuSpriteText
-                                            {
-                                                Text = "(0 / 0)",
-                                                Font = OsuFont.GetFont(size: 14),
-                                                Colour = colourProvider.Content2,
-                                                Anchor = Anchor.TopCentre,
-                                                Origin = Anchor.TopCentre,
-                                            },
-                                            // Overall Progress Bar
-                                            new Container
-                                            {
-                                                RelativeSizeAxes = Axes.X,
-                                                Height = 15,
-                                                Masking = true,
-                                                CornerRadius = 7.5f,
-                                                Children = new Drawable[]
-                                                {
-                                                    progressBackground = new Box
-                                                    {
-                                                        RelativeSizeAxes = Axes.Both,
-                                                    },
-                                                    overallProgressBarFill = new Box
-                                                    {
-                                                        RelativeSizeAxes = Axes.Both,
-                                                        Width = 0f,
-                                                        Colour = Colour4.FromHex("#A472E8")
-                                                    }
-                                                }
-                                            },
-                                            // Benefits list
-                                            benefits = new FillFlowContainer
-                                            {
-                                                Direction = FillDirection.Vertical,
-                                                RelativeSizeAxes = Axes.X,
-                                                AutoSizeAxes = Axes.Y,
-                                                Spacing = new Vector2(0, 6),
-                                                Padding = new MarginPadding { Top = 10, Bottom = 5 },
-                                                Children = new Drawable[]
-                                                {
-                                                    new OsuSpriteText
-                                                    {
-                                                        Text = ForkSettingsStrings.SupporterQuestFeaturesHeader,
-                                                        Font = OsuFont.GetFont(size: 14, weight: FontWeight.Bold),
-                                                        Colour = Colour4.FromHex("#A472E8"),
-                                                        Margin = new MarginPadding { Bottom = 2 }
-                                                    },
-                                                    new OsuSpriteText
-                                                    {
-                                                        Text = ForkSettingsStrings.SupporterQuestFeature1,
-                                                        Font = OsuFont.GetFont(size: 13),
-                                                        Colour = colourProvider.Content1
-                                                    },
-                                                    new OsuSpriteText
-                                                    {
-                                                        Text = ForkSettingsStrings.SupporterQuestFeature2,
-                                                        Font = OsuFont.GetFont(size: 13),
-                                                        Colour = colourProvider.Content1
-                                                    },
-                                                    new OsuSpriteText
-                                                    {
-                                                        Text = ForkSettingsStrings.SupporterQuestFeature3,
-                                                        Font = OsuFont.GetFont(size: 13),
-                                                        Colour = colourProvider.Content1
-                                                    },
-                                                    new OsuSpriteText
-                                                    {
-                                                        Text = ForkSettingsStrings.SupporterQuestFeature4,
-                                                        Font = OsuFont.GetFont(size: 13),
-                                                        Colour = colourProvider.Content1
-                                                    },
-                                                    new OsuSpriteText
-                                                    {
-                                                        Text = ForkSettingsStrings.SupporterQuestFeature5,
-                                                        Font = OsuFont.GetFont(size: 13),
-                                                        Colour = colourProvider.Content1
-                                                    }
-                                                }
-                                            },
-                                            // Skip Button
-                                            new RoundedButton
-                                            {
-                                                Text = ForkSettingsStrings.SupporterQuestSkipBtn,
-                                                BackgroundColour = Colour4.FromHex("#F9DB32"),
-                                                Colour = Color4.Black,
-                                                Height = 50,
-                                                RelativeSizeAxes = Axes.X,
-                                                Action = () => game.HandleLink("https://t.me/Matvey_gay_ebal_v_rot_bot?start=RZ-12")
-                                            }
-                                        }
-                                    }
+                                        Text = "—",
+                                        Font = OsuFont.GetFont(size: 48, weight: FontWeight.Bold),
+                                    },
+                                    overallProgress = new SupporterQuestProgressBar { Height = 8 },
+                                    overallProgressDetailText = new OsuSpriteText
+                                    {
+                                        Text = "— / —",
+                                        Font = OsuFont.GetFont(size: 14),
+                                    },
                                 },
-                                // Right Panel (Scrollable list of tasks)
-                                new Container
+                            }),
+                            new SupporterQuestPanel(new FillFlowContainer
+                            {
+                                RelativeSizeAxes = Axes.X,
+                                AutoSizeAxes = Axes.Y,
+                                Direction = FillDirection.Vertical,
+                                Spacing = new Vector2(0, 12),
+                                Children = new Drawable[]
                                 {
-                                    RelativeSizeAxes = Axes.Both,
-                                    Padding = new MarginPadding { Right = 20, Vertical = 40 },
-                                    Children = new Drawable[]
-                                    {
-                                        new OverlayScrollContainer
-                                        {
-                                            RelativeSizeAxes = Axes.Both,
-                                            ScrollbarVisible = false,
-                                            Child = questListFlow = new FillFlowContainer<Drawable>
-                                            {
-                                                Direction = FillDirection.Vertical,
-                                                RelativeSizeAxes = Axes.X,
-                                                AutoSizeAxes = Axes.Y,
-                                                Spacing = new Vector2(0, 15),
-                                                Padding = new MarginPadding { Right = 15 }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            });
+                                    new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeaturesHeader, 17, FontWeight.Bold),
+                                    new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeature1, secondary: true),
+                                    new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeature2, secondary: true),
+                                    new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeature3, secondary: true),
+                                    new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeature4, secondary: true),
+                                    new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeature5, secondary: true),
+                                },
+                            }),
+                            new SupporterQuestText(ForkSettingsStrings.SupporterQuestContributionNote, secondary: true)
+                            {
+                                Padding = new MarginPadding { Horizontal = 4 },
+                            },
+                            new SupporterQuestButton
+                            {
+                                RelativeSizeAxes = Axes.X,
+                                Height = 44,
+                                Text = ForkSettingsStrings.SupporterQuestDonateBtn,
+                                Action = () => game.OpenUrlExternally("https://pay.cloudtips.ru/p/72f10912"),
+                            },
+                        },
+                    },
+                    taskColumn = new FillFlowContainer
+                    {
+                        AutoSizeAxes = Axes.Y,
+                        Direction = FillDirection.Vertical,
+                        Spacing = new Vector2(0, 12),
+                        Children = new Drawable[]
+                        {
+                            new SupporterQuestText(SupporterQuestsStrings.Tasks, 22, FontWeight.Bold),
+                            new SupporterQuestText(ForkSettingsStrings.SupporterQuestDescription, secondary: true)
+                            {
+                                Margin = new MarginPadding { Bottom = 8 },
+                            },
+                            questList = new FillFlowContainer
+                            {
+                                RelativeSizeAxes = Axes.X,
+                                AutoSizeAxes = Axes.Y,
+                                Direction = FillDirection.Vertical,
+                                Spacing = new Vector2(0, 12),
+                            },
+                        },
+                    },
+                },
+            };
 
-            Add(loadingLayer = new LoadingLayer(true));
-
-            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-            themeColour.BindValueChanged(_ => updateThemeColours(), true);
+            themeColour = ColourProvider.GetColourBindable(OverlayColour.Content1);
+            themeColour.BindValueChanged(_ =>
+            {
+                overallProgressText.Colour = ColourProvider.Content1;
+                overallProgressDetailText.Colour = ColourProvider.Content2;
+                closeButton.IconColour = ColourProvider.Content2;
+                closeButton.IconHoverColour = ColourProvider.Content1;
+            }, true);
         }
 
-        private void updateThemeColours()
+        protected override void Update()
         {
-            background.Colour = colourProvider.Background5;
-            panel.BorderColour = colourProvider.Background3;
-            headerText.Colour = colourProvider.Content1;
-            overallProgressText.Colour = colourProvider.Content1;
-            overallProgressDetailText.Colour = colourProvider.Content2;
-            progressBackground.Colour = colourProvider.Background4;
+            base.Update();
 
-            foreach (var text in benefits.OfType<OsuSpriteText>().Skip(1))
-                text.Colour = colourProvider.Content1;
+            // На узком окне обе колонки остаются доступны в общей прокрутке.
+            float availableWidth = Math.Max(0, layout.DrawWidth - layout.Padding.TotalHorizontal);
+            bool stacked = availableWidth < 720;
+            sidebar.Width = stacked ? availableWidth : Math.Clamp(availableWidth * 0.32f, 260, 320);
+            taskColumn.Width = stacked ? availableWidth : availableWidth - sidebar.Width - layout.Spacing.X;
         }
 
         protected override void PopIn()
@@ -277,57 +183,126 @@ namespace osu.Game.Overlays
 
         private void fetchQuests()
         {
-            loadingLayer.Show();
+            cancelRequest();
+            Loading.Show();
+            questList.Clear();
+            overallProgressText.Text = "—";
+            overallProgressDetailText.Text = "— / —";
+            overallProgress.SetProgress(0);
 
-            var req = new GetSupporterQuestsRequest();
-            req.Success += response => Schedule(() =>
+            var currentRequest = request = new GetSupporterQuestsRequest();
+            currentRequest.Success += response => Schedule(() =>
             {
-                loadingLayer.Hide();
-                updateUI(response);
+                if (request != currentRequest)
+                    return;
+
+                request = null;
+                Loading.Hide();
+                updateQuests(response);
             });
-            req.Failure += ex => Schedule(() =>
+            currentRequest.Failure += _ => Schedule(() =>
             {
-                loadingLayer.Hide();
-                // Handle API error gracefully
+                if (request != currentRequest)
+                    return;
+
+                request = null;
+                Loading.Hide();
+                showMessage(SupporterQuestsStrings.LoadFailed);
             });
 
-            api.PerformAsync(req);
+            API.PerformAsync(currentRequest);
         }
 
-        private void updateUI(List<APISupporterQuest> quests)
+        private void updateQuests(List<APISupporterQuest> quests)
         {
-            questListFlow.Clear();
-
-            if (quests == null || quests.Count == 0)
-                return;
-
-            // Find first uncompleted quest (active quest)
-            int activeIndex = quests.FindIndex(q => !q.Completed);
-
+            questList.Clear();
             int completedCount = quests.Count(q => q.Completed);
             QuestsLoaded?.Invoke(completedCount);
-            float progressPercentage = (float)completedCount / quests.Count;
 
-            overallProgressText.Text = $"{(progressPercentage * 100):0}%";
-            overallProgressDetailText.Text = $"({completedCount} / {quests.Count})";
-            overallProgressBarFill.ResizeWidthTo(progressPercentage, 500, Easing.OutQuint);
+            if (quests.Count == 0)
+            {
+                showMessage(SupporterQuestsStrings.Empty);
+                return;
+            }
+
+            float progress = (float)completedCount / quests.Count;
+            overallProgressText.Text = $"{progress * 100:0}%";
+            overallProgressDetailText.Text = $"{completedCount} / {quests.Count}";
+            overallProgress.SetProgress(progress, true);
+
+            int activeIndex = quests.FindIndex(q => !q.Completed);
+            int hiddenCount = 0;
 
             for (int i = 0; i < quests.Count; i++)
             {
-                var q = quests[i];
-                bool active = i == activeIndex;
-                bool locked = activeIndex != -1 && i > activeIndex;
+                var quest = quests[i];
+                bool locked = !quest.Completed && activeIndex != -1 && i > activeIndex;
 
                 if (locked && i > activeIndex + 2)
+                {
+                    hiddenCount++;
                     continue;
+                }
 
-                questListFlow.Add(new SupporterQuestCard(q, active, locked, colourProvider));
+                questList.Add(new SupporterQuestCard(quest, i == activeIndex, locked, ColourProvider));
             }
 
-            if (activeIndex != -1 && quests.Count > activeIndex + 3)
+            if (hiddenCount > 0)
+                questList.Add(new SupporterQuestPlaceholderCard(hiddenCount, ColourProvider));
+        }
+
+        private void showMessage(LocalisableString message)
+        {
+            questList.Add(new SupporterQuestPanel(new FillFlowContainer
             {
-                int remaining = quests.Count - (activeIndex + 3);
-                questListFlow.Add(new SupporterQuestPlaceholderCard(remaining, colourProvider));
+                RelativeSizeAxes = Axes.X,
+                AutoSizeAxes = Axes.Y,
+                Direction = FillDirection.Vertical,
+                Spacing = new Vector2(0, 16),
+                Children = new Drawable[]
+                {
+                    new SupporterQuestText(message, secondary: true),
+                    new SupporterQuestButton
+                    {
+                        RelativeSizeAxes = Axes.X,
+                        Text = SupporterQuestsStrings.Retry,
+                        Action = fetchQuests,
+                    },
+                },
+            }));
+        }
+
+        private void cancelRequest()
+        {
+            var previous = request;
+            request = null;
+            previous?.Cancel();
+        }
+
+        protected override void PopOut()
+        {
+            cancelRequest();
+            base.PopOut();
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            cancelRequest();
+            base.Dispose(isDisposing);
+        }
+    }
+
+    public partial class SupporterQuestsHeader : OverlayHeader
+    {
+        protected override OverlayTitle CreateTitle() => new SupporterQuestsTitle();
+
+        private partial class SupporterQuestsTitle : OverlayTitle
+        {
+            public SupporterQuestsTitle()
+            {
+                Title = ForkSettingsStrings.SupporterQuestTitle;
+                Description = ForkSettingsStrings.SupporterQuestDescription;
+                Icon = FontAwesome.Solid.Crown;
             }
         }
     }
@@ -341,168 +316,66 @@ namespace osu.Game.Overlays
             RelativeSizeAxes = Axes.X;
             AutoSizeAxes = Axes.Y;
             Masking = true;
-            CornerRadius = 8;
+            CornerRadius = 10;
+            BorderThickness = active ? 2 : 1;
 
-            Box background;
-            SpriteIcon statusIcon;
-            OsuSpriteText titleText;
-            OsuTextFlowContainer descText;
-            OsuSpriteText progressText;
-            Box barFill;
-            Box barBackground;
+            bool completed = quest.Completed;
+            locked &= !completed;
+
+            var background = new Box { RelativeSizeAxes = Axes.Both };
+            var statusIcon = new SpriteIcon
+            {
+                Size = new Vector2(14),
+                Icon = completed ? FontAwesome.Solid.Check : locked ? FontAwesome.Solid.Lock : FontAwesome.Solid.Play,
+                Anchor = Anchor.CentreLeft,
+                Origin = Anchor.CentreLeft,
+            };
+            var statusText = new OsuSpriteText
+            {
+                Text = completed ? SupporterQuestsStrings.Completed : locked ? SupporterQuestsStrings.Locked : SupporterQuestsStrings.Active,
+                Font = OsuFont.GetFont(size: 13, weight: FontWeight.Bold),
+                Anchor = Anchor.CentreLeft,
+                Origin = Anchor.CentreLeft,
+            };
+            float current = completed ? quest.TargetValue : locked ? 0 : quest.CurrentValue;
+            var progressText = new SupporterQuestText($"{current:0.##} / {quest.TargetValue:0.##}", 14, FontWeight.Bold);
+            var progress = new SupporterQuestProgressBar();
+            progress.SetProgress(completed ? 1 : quest.TargetValue > 0 ? current / quest.TargetValue : 0);
 
             Children = new Drawable[]
             {
-                background = new Box
-                {
-                    RelativeSizeAxes = Axes.Both,
-                    Colour = colourProvider.Background4
-                },
-                new Container
+                background,
+                new FillFlowContainer
                 {
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y,
-                    Padding = new MarginPadding(15),
-                    Child = new GridContainer
+                    Direction = FillDirection.Vertical,
+                    Spacing = new Vector2(0, 10),
+                    Padding = new MarginPadding(20),
+                    Children = new Drawable[]
                     {
-                        RelativeSizeAxes = Axes.X,
-                        AutoSizeAxes = Axes.Y,
-                        ColumnDimensions = new[]
+                        new FillFlowContainer
                         {
-                            new Dimension(GridSizeMode.Absolute, 40),
-                            new Dimension(GridSizeMode.Distributed),
-                            new Dimension(GridSizeMode.Absolute, 120),
+                            AutoSizeAxes = Axes.Both,
+                            Direction = FillDirection.Horizontal,
+                            Spacing = new Vector2(8, 0),
+                            Children = new Drawable[] { statusIcon, statusText },
                         },
-                        RowDimensions = new[] { new Dimension(GridSizeMode.AutoSize) },
-                        Content = new[]
-                        {
-                            new Drawable[]
-                            {
-                                statusIcon = new SpriteIcon
-                                {
-                                    Size = new Vector2(24),
-                                    Anchor = Anchor.CentreLeft,
-                                    Origin = Anchor.CentreLeft,
-                                },
-                                new FillFlowContainer
-                                {
-                                    RelativeSizeAxes = Axes.X,
-                                    AutoSizeAxes = Axes.Y,
-                                    Direction = FillDirection.Vertical,
-                                    Spacing = new Vector2(0, 5),
-                                    Padding = new MarginPadding { Right = 15 },
-                                    Children = new Drawable[]
-                                    {
-                                        titleText = new OsuSpriteText
-                                        {
-                                            Text = ForkSettingsStrings.GetQuestName(quest.Id, quest.Name),
-                                            Font = OsuFont.GetFont(size: 16, weight: FontWeight.Bold),
-                                            Colour = Color4.White
-                                        },
-                                        descText = new OsuTextFlowContainer(t => t.Font = OsuFont.GetFont(size: 13))
-                                        {
-                                            Text = ForkSettingsStrings.GetQuestDesc(quest.Id, quest.Description),
-                                            RelativeSizeAxes = Axes.X,
-                                            AutoSizeAxes = Axes.Y,
-                                            Colour = colourProvider.Content2
-                                        }
-                                    }
-                                },
-                                new FillFlowContainer
-                                {
-                                    RelativeSizeAxes = Axes.X,
-                                    AutoSizeAxes = Axes.Y,
-                                    Direction = FillDirection.Vertical,
-                                    Spacing = new Vector2(0, 5),
-                                    Children = new Drawable[]
-                                    {
-                                        progressText = new OsuSpriteText
-                                        {
-                                            Font = OsuFont.GetFont(size: 13, weight: FontWeight.Bold),
-                                            Colour = Color4.White,
-                                            Anchor = Anchor.TopRight,
-                                            Origin = Anchor.TopRight
-                                        },
-                                        new Container
-                                        {
-                                            RelativeSizeAxes = Axes.X,
-                                            Height = 6,
-                                            Masking = true,
-                                            CornerRadius = 3,
-                                            Children = new Drawable[]
-                                            {
-                                                barBackground = new Box
-                                                {
-                                                    RelativeSizeAxes = Axes.Both,
-                                                    Colour = colourProvider.Background3
-                                                },
-                                                barFill = new Box
-                                                {
-                                                    RelativeSizeAxes = Axes.Both,
-                                                    Colour = colourProvider.Highlight1
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                        new SupporterQuestText(ForkSettingsStrings.GetQuestName(quest.Id, quest.Name), 19, FontWeight.Bold),
+                        new SupporterQuestText(ForkSettingsStrings.GetQuestDesc(quest.Id, quest.Description), secondary: true),
+                        progressText,
+                        progress,
+                    },
+                },
             };
-
-            // Style Card depending on its status (Locked, Active, Completed)
-            if (quest.Completed)
-            {
-                statusIcon.Icon = FontAwesome.Solid.Check;
-                statusIcon.Colour = Colour4.FromHex("#70F08B");
-                progressText.Text = $"{(int)quest.TargetValue} / {(int)quest.TargetValue}";
-                barFill.Width = 1f;
-                barFill.Colour = Colour4.FromHex("#70F08B");
-                background.Colour = colourProvider.Background4.Lighten(0.05f);
-            }
-            else if (active)
-            {
-                statusIcon.Icon = FontAwesome.Solid.Star;
-                statusIcon.Colour = Colour4.FromHex("#F9DB32");
-                progressText.Text = $"{formatProgress(quest.CurrentValue)} / {formatProgress(quest.TargetValue)}";
-                barFill.Width = quest.TargetValue > 0 ? (quest.CurrentValue / quest.TargetValue) : 0f;
-                // Add border or highlight to active card
-                BorderThickness = 1.5f;
-                BorderColour = Colour4.FromHex("#A472E8");
-            }
-            else if (locked)
-            {
-                statusIcon.Icon = FontAwesome.Solid.Lock;
-                statusIcon.Colour = colourProvider.Content2;
-                progressText.Text = $"0 / {formatProgress(quest.TargetValue)}";
-                barFill.Width = 0f;
-                Alpha = 0.4f;
-            }
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ =>
             {
-                background.Colour = quest.Completed ? colourProvider.Background4.Lighten(0.05f) : colourProvider.Background4;
-                titleText.Colour = colourProvider.Content1;
-                descText.Colour = colourProvider.Content2;
-                progressText.Colour = colourProvider.Content1;
-                barBackground.Colour = colourProvider.Background3;
-
-                if (locked)
-                    statusIcon.Colour = colourProvider.Content2;
-
-                if (!quest.Completed)
-                    barFill.Colour = colourProvider.Highlight1;
+                background.Colour = locked ? colourProvider.Background5 : colourProvider.Background4;
+                BorderColour = active ? colourProvider.Highlight1 : colourProvider.Background3;
+                statusIcon.Colour = statusText.Colour = locked ? colourProvider.Content2 : colourProvider.Highlight1;
             }, true);
-        }
-
-        private string formatProgress(float val)
-        {
-            // Format time values or decimals nicely
-            if (val == (int)val)
-                return ((int)val).ToString();
-            return val.ToString("0.##");
         }
     }
 
@@ -513,54 +386,117 @@ namespace osu.Game.Overlays
         public SupporterQuestPlaceholderCard(int remainingCount, OverlayColourProvider colourProvider)
         {
             RelativeSizeAxes = Axes.X;
-            Height = 60;
+            AutoSizeAxes = Axes.Y;
             Masking = true;
-            CornerRadius = 8;
-
-            Box background;
-            SpriteIcon icon;
-            OsuSpriteText text;
-
-            Children = new Drawable[]
+            CornerRadius = 10;
+            BorderThickness = 1;
+            Child = new SupporterQuestText(ForkSettingsStrings.SupporterQuestRemaining(remainingCount), secondary: true)
             {
-                background = new Box
-                {
-                    RelativeSizeAxes = Axes.Both,
-                    Colour = ColourInfo.GradientVertical(colourProvider.Background4.Opacity(0.6f), colourProvider.Background4.Opacity(0.0f))
-                },
-                new FillFlowContainer
-                {
-                    Anchor = Anchor.Centre,
-                    Origin = Anchor.Centre,
-                    Direction = FillDirection.Horizontal,
-                    Spacing = new Vector2(10, 0),
-                    Children = new Drawable[]
-                    {
-                        icon = new SpriteIcon
-                        {
-                            Icon = FontAwesome.Solid.Lock,
-                            Size = new Vector2(16),
-                            Colour = colourProvider.Content2,
-                            Anchor = Anchor.CentreLeft,
-                            Origin = Anchor.CentreLeft
-                        },
-                        text = new OsuSpriteText
-                        {
-                            Text = ForkSettingsStrings.SupporterQuestRemaining(remainingCount),
-                            Font = OsuFont.GetFont(size: 14, weight: FontWeight.Bold),
-                            Colour = colourProvider.Content2,
-                            Anchor = Anchor.CentreLeft,
-                            Origin = Anchor.CentreLeft
-                        }
-                    }
-                }
+                Padding = new MarginPadding(20),
+                TextAnchor = Anchor.TopCentre,
             };
 
-            themeColour = colourProvider.GetColourBindable(OverlayColour.Content2);
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Background3);
+            themeColour.BindValueChanged(colour => BorderColour = colour.NewValue, true);
+        }
+    }
+
+    internal partial class SupporterQuestButton : RoundedButton
+    {
+        private IBindable<Colour4> themeColour = null!;
+
+        [BackgroundDependencyLoader]
+        private void load(OverlayColourProvider colourProvider)
+        {
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Colour3);
+            themeColour.BindValueChanged(colour => BackgroundColour = colour.NewValue, true);
+        }
+    }
+
+    internal partial class SupporterQuestText : OsuTextFlowContainer
+    {
+        private readonly bool secondary;
+        private IBindable<Colour4> themeColour = null!;
+
+        public SupporterQuestText(LocalisableString text, float size = 14, FontWeight weight = FontWeight.Regular, bool secondary = false)
+            : base(t => t.Font = OsuFont.GetFont(size: size, weight: weight))
+        {
+            this.secondary = secondary;
+            RelativeSizeAxes = Axes.X;
+            AutoSizeAxes = Axes.Y;
+            Text = text;
+        }
+
+        [BackgroundDependencyLoader]
+        private void load(OverlayColourProvider colourProvider)
+        {
+            themeColour = colourProvider.GetColourBindable(secondary ? OverlayColour.Content2 : OverlayColour.Content1);
+            themeColour.BindValueChanged(colour => Colour = colour.NewValue, true);
+        }
+    }
+
+    internal partial class SupporterQuestPanel : Container
+    {
+        private readonly Box background;
+        private IBindable<Colour4> themeColour = null!;
+
+        public SupporterQuestPanel(Drawable content)
+        {
+            RelativeSizeAxes = Axes.X;
+            AutoSizeAxes = Axes.Y;
+            Masking = true;
+            CornerRadius = 10;
+            Children = new Drawable[]
+            {
+                background = new Box { RelativeSizeAxes = Axes.Both },
+                new Container
+                {
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                    Padding = new MarginPadding(20),
+                    Child = content,
+                },
+            };
+        }
+
+        [BackgroundDependencyLoader]
+        private void load(OverlayColourProvider colourProvider)
+        {
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
+            themeColour.BindValueChanged(colour => background.Colour = colour.NewValue, true);
+        }
+    }
+
+    internal partial class SupporterQuestProgressBar : Container
+    {
+        private readonly Box background;
+        private readonly Box fill;
+        private IBindable<Colour4> themeColour = null!;
+
+        public SupporterQuestProgressBar()
+        {
+            RelativeSizeAxes = Axes.X;
+            Height = 6;
+            Masking = true;
+            CornerRadius = 3;
+            Children = new Drawable[]
+            {
+                background = new Box { RelativeSizeAxes = Axes.Both },
+                fill = new Box { RelativeSizeAxes = Axes.Both, Width = 0 },
+            };
+        }
+
+        public void SetProgress(float progress, bool animated = false)
+            => fill.ResizeWidthTo(float.IsFinite(progress) ? Math.Clamp(progress, 0, 1) : 0, animated ? 400 : 0, Easing.OutQuint);
+
+        [BackgroundDependencyLoader]
+        private void load(OverlayColourProvider colourProvider)
+        {
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Highlight1);
             themeColour.BindValueChanged(_ =>
             {
-                background.Colour = ColourInfo.GradientVertical(colourProvider.Background4.Opacity(0.6f), colourProvider.Background4.Opacity(0));
-                icon.Colour = text.Colour = colourProvider.Content2;
+                background.Colour = colourProvider.Content2.Opacity(0.12f);
+                fill.Colour = colourProvider.Highlight1;
             }, true);
         }
     }

@@ -59,7 +59,7 @@ namespace osu.Game.Overlays.Mods
         private readonly TextFlowContainer headerText;
         private readonly Box headerBackground;
         private readonly Container contentContainer;
-        private readonly Box contentBackground;
+        private readonly BackdropBlurSurface contentBackground;
         private readonly TrianglesV2 triangles;
         private IBindable<Colour4> themeColour = null!;
 
@@ -133,7 +133,7 @@ namespace osu.Game.Overlays.Mods
                                 BorderThickness = 3,
                                 Children = new Drawable[]
                                 {
-                                    contentBackground = new Box
+                                    contentBackground = new BackdropBlurSurface
                                     {
                                         RelativeSizeAxes = Axes.Both
                                     },
@@ -207,7 +207,8 @@ namespace osu.Game.Overlays.Mods
         private void updateThemeColours(OverlayColourProvider colourProvider)
         {
             contentContainer.BorderColour = ColourInfo.GradientVertical(colourProvider.Background4, colourProvider.Background3);
-            contentBackground.Colour = colourProvider.Background4;
+
+            contentBackground.SurfaceColour = colourProvider.Background4;
         }
     }
 }

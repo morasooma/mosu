@@ -51,8 +51,14 @@ namespace osu.Game.Rulesets.Edit.Checks
 
             string? storagePath = context.CurrentDifficulty.Playable.BeatmapInfo.BeatmapSet?.GetPathForFile(backgroundFile);
 
-            using (Stream stream = context.CurrentDifficulty.Working.GetStream(storagePath))
+            if (storagePath == null)
+                yield break;
+
+            using (Stream? stream = context.CurrentDifficulty.Working.GetStream(storagePath))
             {
+                if (stream == null)
+                    yield break;
+
                 double filesizeMb = stream.Length / (1024d * 1024d);
 
                 if (filesizeMb > max_filesize_mb)

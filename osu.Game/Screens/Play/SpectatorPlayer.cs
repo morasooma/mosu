@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics;
@@ -9,6 +10,9 @@ using osu.Game.Beatmaps;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Online.Spectator;
+using osu.Game.Replays;
+using osu.Game.Replays.Legacy;
+using osu.Game.Rulesets;
 using osu.Game.Rulesets.Replays;
 using osu.Game.Rulesets.Replays.Types;
 using osu.Game.Scoring;
@@ -94,20 +98,26 @@ namespace osu.Game.Screens.Play
 
             bool isFirstBundle = score.Replay.Frames.Count == 0;
 
-            foreach (var frame in bundle.Frames)
+            AppendReplayFrames(score.Replay, GameplayState.Ruleset, GameplayState.Beatmap, bundle.Frames);
+
+            if (isFirstBundle && score.Replay.Frames.Count > 0)
+                SetGameplayStartTime(score.Replay.Frames[0].Time);
+        }
+
+        internal static void AppendReplayFrames(Replay replay, Ruleset ruleset, IBeatmap beatmap, IList<LegacyReplayFrame> frames)
+        {
+            foreach (var frame in frames)
             {
-                IConvertibleReplayFrame convertibleFrame = GameplayState.Ruleset.CreateConvertibleReplayFrame()!;
-                convertibleFrame.FromLegacy(frame, GameplayState.Beatmap);
+                ReplayFrame? previousFrame = replay.Frames.Count > 0 ? replay.Frames[^1] : null;
+                IConvertibleReplayFrame convertibleFrame = ruleset.CreateConvertibleReplayFrame()!;
+                convertibleFrame.FromLegacy(frame, beatmap, previousFrame);
 
                 var convertedFrame = (ReplayFrame)convertibleFrame;
                 convertedFrame.Time = frame.Time;
                 convertedFrame.Header = frame.Header;
 
-                score.Replay.Frames.Add(convertedFrame);
+                replay.Frames.Add(convertedFrame);
             }
-
-            if (isFirstBundle && score.Replay.Frames.Count > 0)
-                SetGameplayStartTime(score.Replay.Frames[0].Time);
         }
 
         protected override Score CreateScore(IBeatmap beatmap) => score;

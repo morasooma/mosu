@@ -1,7 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
+#nullable disable warnings
 
 using System;
 using System.Collections.Generic;
@@ -110,10 +110,11 @@ namespace osu.Game.Rulesets.UI
             set
             {
                 frameStablePlayback = value;
-                if (frameStabilityContainer != null)
-                    frameStabilityContainer.FrameStablePlayback = value;
+                frameStabilityContainer?.FrameStablePlayback = value;
             }
         }
+
+        internal override void AllowOneFrameClockSeek() => frameStabilityContainer?.AllowOneFrameClockSeek();
 
         /// <summary>
         /// Creates a ruleset visualisation for the provided ruleset and beatmap.
@@ -121,7 +122,7 @@ namespace osu.Game.Rulesets.UI
         /// <param name="ruleset">The ruleset being represented.</param>
         /// <param name="beatmap">The beatmap to create the hit renderer for.</param>
         /// <param name="mods">The <see cref="Mod"/>s to apply.</param>
-        protected DrawableRuleset(Ruleset ruleset, IBeatmap beatmap, IReadOnlyList<Mod> mods = null)
+        protected DrawableRuleset(Ruleset ruleset, IBeatmap beatmap, IReadOnlyList<Mod>? mods = null)
             : base(ruleset)
         {
             ArgumentNullException.ThrowIfNull(beatmap);
@@ -304,7 +305,7 @@ namespace osu.Game.Rulesets.UI
             void emitImportantFrame(JudgementResult judgementResult) => recordingInputManager.Recorder?.RecordFrame(true);
         }
 
-        public override void SetReplayScore(Score replayScore)
+        public override void SetReplayScore(Score? replayScore)
         {
             if (!(KeyBindingInputManager is IHasReplayHandler replayInputManager))
                 throw new InvalidOperationException($"A {nameof(KeyBindingInputManager)} which supports replay loading is not available");
@@ -316,8 +317,7 @@ namespace osu.Game.Rulesets.UI
 
             HasReplayLoaded.Value = replayInputManager.ReplayInputHandler != null;
 
-            if (replayInputManager.ReplayInputHandler != null)
-                replayInputManager.ReplayInputHandler.GamefieldToScreenSpace = Playfield.GamefieldToScreenSpace;
+            replayInputManager.ReplayInputHandler?.GamefieldToScreenSpace = Playfield.GamefieldToScreenSpace;
 
             if (!ProvidingUserCursor)
             {
@@ -335,7 +335,7 @@ namespace osu.Game.Rulesets.UI
         /// </remarks>
         /// <param name="h">The <see cref="HitObject"/> to represent.</param>
         /// <returns>The representing <see cref="DrawableHitObject{TObject}"/>.</returns>
-        public abstract DrawableHitObject<TObject> CreateDrawableRepresentation(TObject h);
+        public abstract DrawableHitObject<TObject>? CreateDrawableRepresentation(TObject h);
 
         public void Attach(InputCountController inputCountController) =>
             (KeyBindingInputManager as ICanAttachHUDPieces)?.Attach(inputCountController);
@@ -468,6 +468,13 @@ namespace osu.Game.Rulesets.UI
         internal abstract bool FrameStablePlayback { get; set; }
 
         /// <summary>
+        /// Allows the frame-stable clock to consume one externally validated clock discontinuity without catch-up.
+        /// </summary>
+        internal virtual void AllowOneFrameClockSeek()
+        {
+        }
+
+        /// <summary>
         /// The mods which are to be applied.
         /// </summary>
         public abstract IReadOnlyList<Mod> Mods { get; }
@@ -535,7 +542,7 @@ namespace osu.Game.Rulesets.UI
         /// Returns first available <see cref="HitWindows"/> provided by a <see cref="HitObject"/>.
         /// </summary>
         [CanBeNull]
-        public HitWindows FirstAvailableHitWindows
+        public HitWindows? FirstAvailableHitWindows
         {
             get
             {
@@ -560,7 +567,7 @@ namespace osu.Game.Rulesets.UI
         /// By default, returns <see cref="FirstAvailableHitWindows"/>.
         /// </summary>
         [CanBeNull]
-        public virtual HitWindows FirstAvailableVisualHitWindows => FirstAvailableHitWindows;
+        public virtual HitWindows? FirstAvailableVisualHitWindows => FirstAvailableHitWindows;
 
         /// <summary>
         /// Create an optional resume overlay, which is displayed when a player requests to resume gameplay during non-break time.
@@ -583,7 +590,7 @@ namespace osu.Game.Rulesets.UI
         /// Sets a replay to be used, overriding local input.
         /// </summary>
         /// <param name="replayScore">The replay, null for local input.</param>
-        public abstract void SetReplayScore(Score replayScore);
+        public abstract void SetReplayScore(Score? replayScore);
 
         /// <summary>
         /// Sets a replay to be used to record gameplay.

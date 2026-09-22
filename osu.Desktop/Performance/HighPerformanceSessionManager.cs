@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
@@ -35,7 +35,15 @@ namespace osu.Desktop.Performance
             Logger.Log("Starting high performance session");
 
             originalGCMode = GCSettings.LatencyMode;
-            GCSettings.LatencyMode = GCLatencyMode.LowLatency;
+            try
+            {
+                GCSettings.LatencyMode = GCLatencyMode.LowLatency;
+                Logger.Log($"GC LatencyMode set to: {GCSettings.LatencyMode} (requested: {GCLatencyMode.LowLatency}, ServerGC: {GCSettings.IsServerGC})");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Failed to set GC LatencyMode to {GCLatencyMode.LowLatency}");
+            }
 
             // Without doing this, the new GC mode won't kick in until the next GC, which could be at a more noticeable point in time.
             GC.Collect(0);
@@ -52,9 +60,20 @@ namespace osu.Desktop.Performance
             Logger.Log("Ending high performance session");
 
             if (GCSettings.LatencyMode == GCLatencyMode.LowLatency)
-                GCSettings.LatencyMode = originalGCMode;
+            {
+                try
+                {
+                    GCSettings.LatencyMode = originalGCMode;
+                    Logger.Log($"GC LatencyMode restored to: {GCSettings.LatencyMode}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, $"Failed to restore GC LatencyMode to {originalGCMode}");
+                }
+            }
 
-            // No GC.Collect() as we were already collecting at a higher frequency in the old mode.
+            // Do not force a full collection here. Gameplay-related caches must bound their own
+            // lifetimes; a blocking compacting GC causes a visible results-screen stall.
         }
     }
 }

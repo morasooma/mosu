@@ -5,7 +5,10 @@ using System;
 using MessagePack;
 using osu.Game.Online.Matchmaking.Events;
 using osu.Game.Online.Multiplayer.Countdown;
+using osu.Game.Online.Multiplayer.MatchTypes.Dodge;
+using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
 using osu.Game.Online.Multiplayer.MatchTypes.TeamVersus;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Online.RankedPlay;
 
 namespace osu.Game.Online.Multiplayer
@@ -24,6 +27,14 @@ namespace osu.Game.Online.Multiplayer
     [Union(5, typeof(SetLockStateRequest))]
     [Union(6, typeof(RollRequest))]
     [Union(7, typeof(ChangeSlotRequest))]
+    [Union(8, typeof(TagCoopCursorPositionRequest))]
+    [Union(9, typeof(TagCoopPingRequest))]
+    [Union(10, typeof(TagCoopJudgementRequest))]
+    [Union(11, typeof(DodgePlayerPositionRequest))]
+    [Union(12, typeof(DodgePingRequest))]
+    [Union(13, typeof(TagCoopReplayFramesRequest))]
+    [Union(14, typeof(RankedPlayCursorPositionRequest))]
+    [Union(15, typeof(RankedPlayPingRequest))]
     public abstract class MatchUserRequest
     {
     }

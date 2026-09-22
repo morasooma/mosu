@@ -61,9 +61,9 @@ namespace osu.Game.Localisation
         public static LocalisableString CheckingForUpdates => new TranslatableString(getKey(@"checking_for_updates"), @"Checking for updates");
 
         /// <summary>
-        /// "Open osu! folder"
+        /// "Open Morasooma folder"
         /// </summary>
-        public static LocalisableString OpenOsuFolder => new TranslatableString(getKey(@"open_osu_folder"), @"Open osu! folder");
+        public static LocalisableString OpenOsuFolder => new TranslatableString(getKey(@"open_osu_folder"), @"Open Morasooma folder");
 
         /// <summary>
         /// "Export logs"
@@ -74,6 +74,11 @@ namespace osu.Game.Localisation
         /// "Change folder location..."
         /// </summary>
         public static LocalisableString ChangeFolderLocation => new TranslatableString(getKey(@"change_folder_location"), @"Change folder location...");
+
+        /// <summary>
+        /// "Move your current data to a new folder, or point osu! to backed-up data at an existing location."
+        /// </summary>
+        public static LocalisableString ChangeFolderLocationTooltip => new TranslatableString(getKey(@"change_folder_location_tooltip"), @"Move your current data to a new folder, or point osu! to backed-up data at an existing location.");
 
         /// <summary>
         /// "Run setup wizard"
@@ -129,6 +134,11 @@ namespace osu.Game.Localisation
         /// "If you run into issues starting the game, you can usually run the installer from the official site to recover."
         /// </summary>
         public static LocalisableString ChangeReleaseStreamConfirmationInfo => new TranslatableString(getKey(@"change_release_stream_confirmation_info"), @"If you run into issues starting the game, you can usually run the installer from the official site to recover.");
+
+        /// <summary>
+        /// "Note that when using a non-stable release stream, the game may still update to a stable release if it is newer."
+        /// </summary>
+        public static LocalisableString ReleaseStreamNonStableUpgradeInformation => new TranslatableString(getKey(@"release_stream_non_stable_upgrade_information"), @"Note that when using a non-stable release stream, the game may still update to a stable release if it is newer.");
 
         /// <summary>
         /// "You are running the latest release ({0})"

@@ -120,6 +120,12 @@ namespace osu.Game.Rulesets.Dodge.Edit
                             LabelText = DodgeEditorStrings.MoveEmitter,
                             Current = settings.EmitterMoving,
                         },
+                        new ExpandableSlider<float>
+                        {
+                            ExpandedLabelText = DodgeEditorStrings.BurstRotation,
+                            Current = settings.EmitterBurstRotation,
+                            KeyboardStep = 1,
+                        },
                     },
                 },
                 new OsuCheckbox
@@ -130,6 +136,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 },
                 createEnumControl(DodgeEditorStrings.TrajectoryGuide, settings.EmitterTrajectoryGuideStyle),
                 createEnumControl(DodgeEditorStrings.MovementType, settings.EmitterMovementType),
+                createEnumControl(DodgeEditorStrings.MovementEasing, settings.EmitterMovementEasing),
                 waveControls = new FillFlowContainer
                 {
                     RelativeSizeAxes = Axes.X,
@@ -245,6 +252,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 waveControls.Alpha = type.NewValue == DodgeMovementType.Sine ? 1 : 0;
                 applyToSelection();
             }, true);
+            settings.EmitterMovementEasing.BindValueChanged(_ => applyToSelection());
             settings.EmitterWaveAmplitude.BindValueChanged(_ => applyToSelection());
             settings.EmitterWaveCycles.BindValueChanged(_ => applyToSelection());
             settings.EmitterWavePhase.BindValueChanged(_ => applyToSelection());
@@ -257,6 +265,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             settings.EmitterMoving.BindValueChanged(_ => applyToSelection());
             settings.EmitterBurstCount.BindValueChanged(_ => applyToSelection());
             settings.EmitterBurstBeatDivisor.BindValueChanged(_ => applyToSelection());
+            settings.EmitterBurstRotation.BindValueChanged(_ => applyToSelection());
             settings.EmitterColour.BindValueChanged(_ => applyToSelection());
             settings.EmitterOutlineColour.BindValueChanged(_ => applyToSelection());
             settings.EmitterOpacity.BindValueChanged(_ => applyToSelection());
@@ -279,6 +288,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             settings.EmitterContinueUntilExit.Value = emitter.ContinueUntilExit;
             settings.EmitterTrajectoryGuideStyle.Value = emitter.TrajectoryGuideStyle;
             settings.EmitterMovementType.Value = emitter.MovementType;
+            settings.EmitterMovementEasing.Value = emitter.MovementEasing;
             settings.EmitterWaveAmplitude.Value = emitter.WaveAmplitude;
             settings.EmitterWaveCycles.Value = Math.Max(1, emitter.WaveCycles);
             settings.EmitterWavePhase.Value = emitter.WavePhase;
@@ -287,6 +297,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             settings.EmitterMoving.Value = emitter.MoveSource;
             settings.EmitterBurstCount.Value = Math.Max(2, emitter.EffectiveBurstCount);
             settings.EmitterBurstBeatDivisor.Value = inferBeatDivisor(emitter);
+            settings.EmitterBurstRotation.Value = emitter.BurstRotation;
             settings.EmitterColour.Value = emitter.Colour;
             settings.EmitterOutlineColour.Value = emitter.OutlineColour;
             settings.EmitterOpacity.Value = emitter.Opacity;
@@ -314,6 +325,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 emitter.ContinueUntilExit = settings.EmitterContinueUntilExit.Value;
                 emitter.TrajectoryGuideStyle = settings.EmitterTrajectoryGuideStyle.Value;
                 emitter.MovementType = settings.EmitterMovementType.Value;
+                emitter.MovementEasing = settings.EmitterMovementEasing.Value;
                 emitter.WaveAmplitude = settings.EmitterWaveAmplitude.Value;
                 emitter.WaveCycles = settings.EmitterWaveCycles.Value;
                 emitter.WavePhase = settings.EmitterWavePhase.Value;
@@ -323,6 +335,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                     : DodgeEmitter.MIN_BURST_COUNT;
                 emitter.BurstBeatDivisor = (int)settings.EmitterBurstBeatDivisor.Value;
                 emitter.BurstInterval = intervalAt(emitter.StartTime, emitter.BurstBeatDivisor);
+                emitter.BurstRotation = settings.EmitterBurstRotation.Value;
                 emitter.MoveSource = settings.EmitterRepeating.Value && settings.EmitterMoving.Value;
                 emitter.Colour = settings.EmitterColour.Value;
                 emitter.OutlineColour = settings.EmitterOutlineColour.Value;

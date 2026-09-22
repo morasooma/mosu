@@ -45,7 +45,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             DodgeMovementType movementType,
             float waveAmplitude,
             int waveCycles,
-            float wavePhase)
+            float wavePhase,
+            DodgeMovementEasing movementEasing)
         {
             int segmentCount = Math.Max(16,
                 (int)Math.Ceiling((maximumProgress - minimumProgress) * Math.Max(1, Math.Abs(waveCycles)) * 24));
@@ -64,7 +65,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                     movementType,
                     waveAmplitude,
                     waveCycles,
-                    wavePhase);
+                    wavePhase,
+                    movementEasing);
             }
 
             vertexCount = required;

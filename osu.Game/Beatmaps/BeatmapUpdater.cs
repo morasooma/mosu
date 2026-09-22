@@ -12,6 +12,7 @@ using osu.Framework.Platform;
 using osu.Framework.Threading;
 using osu.Game.Database;
 using osu.Game.Online.API;
+using osu.Game.Rulesets;
 using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Objects.Types;
@@ -49,8 +50,9 @@ namespace osu.Game.Beatmaps
 
         public void Process(BeatmapSetInfo beatmapSet, MetadataLookupScope lookupScope = MetadataLookupScope.LocalCacheFirst)
         {
-            var ppResults = new Dictionary<Guid, double>();
+            var ppResults = new Dictionary<Guid, (double Pp, int Version)>();
             var relaxResults = new Dictionary<Guid, ForkDataStore.RelaxBeatmapData>();
+            var dodgeDifficultyResults = new Dictionary<Guid, (string Checksum, DifficultyAttributes Attributes, int Version)>();
 
             beatmapSet.Realm!.Write(_ =>
             {
@@ -71,6 +73,14 @@ namespace osu.Game.Beatmaps
 
                     var difficultyAttributes = calculator.Calculate();
                     beatmap.StarRating = difficultyAttributes.StarRating;
+
+                    if (ruleset.RulesetInfo.ShortName == RulesetInfo.DODGE_MODE_SHORTNAME)
+                    {
+                        dodgeDifficultyResults[beatmap.ID] = (
+                            beatmap.MD5Hash,
+                            difficultyAttributes,
+                            calculator.Version);
+                    }
 
                     try
                     {
@@ -96,7 +106,7 @@ namespace osu.Game.Beatmaps
                             };
 
                             var performance = performanceCalculator.Calculate(perfectScore, difficultyAttributes);
-                            ppResults[beatmap.ID] = double.IsFinite(performance.Total) ? performance.Total : 0;
+                            ppResults[beatmap.ID] = (double.IsFinite(performance.Total) ? performance.Total : 0, calculator.Version);
 
                             if (ruleset.GetModsFor(ModType.Automation).OfType<ModRelax>().FirstOrDefault() is ModRelax relaxMod)
                             {
@@ -126,7 +136,7 @@ namespace osu.Game.Beatmaps
                         }
                         else
                         {
-                            ppResults[beatmap.ID] = 0;
+                            ppResults[beatmap.ID] = (0, calculator.Version);
                         }
                     }
                     catch (Exception e)
@@ -145,11 +155,14 @@ namespace osu.Game.Beatmaps
 
             if (forkStore != null)
             {
-                foreach (var (id, pp) in ppResults)
-                    forkStore.SetPP(id, pp);
+                foreach (var (id, result) in ppResults)
+                    forkStore.SetPP(id, result.Pp, result.Version);
 
-                foreach (var (id, relaxData) in relaxResults)
-                    forkStore.SetRelaxData(id, relaxData.StarRating, relaxData.MaxPerformancePoints);
+                foreach (var (id, result) in relaxResults)
+                    forkStore.SetRelaxData(id, result.StarRating, result.MaxPerformancePoints);
+
+                foreach (var (id, result) in dodgeDifficultyResults)
+                    forkStore.SetDodgeDifficulty(id, result.Checksum, result.Attributes, result.Version);
             }
         }
 

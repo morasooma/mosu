@@ -54,6 +54,11 @@ namespace osu.Game.Online
         public string MetadataUrl { get; set; } = string.Empty;
 
         /// <summary>
+        /// The endpoint for the SignalR Dodge World server, which carries presence inside the world.
+        /// </summary>
+        public string DodgeWorldUrl { get; set; } = string.Empty;
+
+        /// <summary>
         /// The URL to a separate endpoint that serves as a "liveness probe" for online services, indicating any potential active outages.
         /// </summary>
         /// <remarks>

@@ -149,7 +149,7 @@ namespace osu.Game.Screens.Select
             iconContainer.Colour = group.Rank == ScoreRank.F ? colourProvider.Content1 : colourProvider.Background5;
             if (group.Rank != ScoreRank.SH && group.Rank != ScoreRank.XH && group.Rank != ScoreRank.X && group.Rank != ScoreRank.S && group.Rank != ScoreRank.F)
                 starRatingText.Colour = colourProvider.Content1;
-            countText.Colour = colourProvider.Content1;
+            countText.Colour = Color4.White;
         }
 
         private Color4 rankColour;

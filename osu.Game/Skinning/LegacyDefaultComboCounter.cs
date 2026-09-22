@@ -19,7 +19,7 @@ namespace osu.Game.Skinning
     {
         public Bindable<int> Current { get; } = new BindableInt { MinValue = 0 };
 
-        private uint scheduledPopOutCurrentId;
+        private double? scheduledPopOutTime;
 
         private const double big_pop_out_duration = 300;
 
@@ -149,6 +149,7 @@ namespace osu.Game.Skinning
 
             if (SkinPerformanceMode.ShouldSimplifyCounters)
             {
+                scheduledPopOutTime = null;
                 FinishTransforms(true);
                 popOutCount.Hide();
                 isRolling = false;
@@ -205,19 +206,19 @@ namespace osu.Game.Skinning
                                     .ScaleTo(1, small_pop_out_duration / 2, Easing.Out);
         }
 
-        private void scheduledPopOutSmall(uint id)
+        protected override void Update()
         {
-            // Too late; scheduled task invalidated
-            if (id != scheduledPopOutCurrentId)
+            base.Update();
+
+            if (scheduledPopOutTime == null || scheduledPopOutTime.Value > Time.Current)
                 return;
 
+            scheduledPopOutTime = null;
             DisplayedCount++;
         }
 
         private void onCountIncrement(int currentValue, int newValue)
         {
-            scheduledPopOutCurrentId++;
-
             if (DisplayedCount < currentValue)
                 DisplayedCount++;
 
@@ -225,17 +226,15 @@ namespace osu.Game.Skinning
 
             transformPopOut(newValue);
 
-            uint newTaskId = scheduledPopOutCurrentId;
-
-            Scheduler.AddDelayed(delegate
-            {
-                scheduledPopOutSmall(newTaskId);
-            }, big_pop_out_duration - 140);
+            // Do not use this drawable's scheduler for the delayed increment. Its clock is seekable,
+            // so rewinding gameplay (for example in the skin editor's endless player) can strand
+            // delayed delegates in the future and grow the scheduler queue without bound.
+            scheduledPopOutTime = Time.Current + big_pop_out_duration - 140;
         }
 
         private void onCountRolling(int currentValue, int newValue)
         {
-            scheduledPopOutCurrentId++;
+            scheduledPopOutTime = null;
 
             // Hides displayed count if was increasing from 0 to 1 but didn't finish
             if (currentValue == 0 && newValue == 0)
@@ -246,7 +245,7 @@ namespace osu.Game.Skinning
 
         private void onCountChange(int newValue)
         {
-            scheduledPopOutCurrentId++;
+            scheduledPopOutTime = null;
 
             if (newValue == 0)
                 displayedCountSpriteText.FadeOut();

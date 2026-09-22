@@ -144,9 +144,9 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                 Content.CornerRadius = 16;
                 Content.CornerExponent = 10;
 
-                Ruleset? rulesetInstance = rulesetStore.GetRuleset(pool.RulesetId)?.CreateInstance();
+                Ruleset? rulesetInstance = rulesetStore.GetRuleset(pool.RulesetId == 4 ? 0 : pool.RulesetId)?.CreateInstance();
 
-                string rulesetName = rulesetInstance?.Description ?? string.Empty;
+                string rulesetName = pool.RulesetId == 4 ? "osu!relax" : rulesetInstance?.Description ?? string.Empty;
                 if (pool.Variant != 0)
                     rulesetName += $" {pool.Variant}K";
 
@@ -259,7 +259,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
             private Drawable createIcon()
             {
-                Ruleset? rulesetInstance = rulesetStore.GetRuleset(pool.RulesetId)?.CreateInstance();
+                Ruleset? rulesetInstance = rulesetStore.GetRuleset(pool.RulesetId == 4 ? 0 : pool.RulesetId)?.CreateInstance();
                 if (rulesetInstance == null)
                     return Empty();
 

@@ -27,13 +27,24 @@ namespace osu.Game.Overlays.Settings
 
         private Box dim;
         private Box separator = null!;
-        private OsuSpriteText headerText = null!;
+        private Drawable header = null!;
         private IBindable<Colour4> themeColour = null!;
 
         private const float inactive_alpha = 0.8f;
 
         public abstract Drawable CreateIcon();
         public abstract LocalisableString Header { get; }
+
+        public bool UseSmallerSidebarButton { get; init; }
+
+        protected virtual bool HeaderUsesThemeColour => true;
+
+        protected virtual Drawable CreateHeader() => new OsuSpriteText
+        {
+            Font = OsuFont.TorusAlternate.With(size: header_size),
+            Text = Header,
+            Margin = SettingsPanel.CONTENT_PADDING,
+        };
 
         public virtual IEnumerable<LocalisableString> FilterTerms => new[] { Header };
 
@@ -114,13 +125,7 @@ namespace osu.Game.Overlays.Settings
                             },
                             Children = new Drawable[]
                             {
-                                headerText = new OsuSpriteText
-                                {
-                                    Font = OsuFont.TorusAlternate.With(size: header_size),
-                                    Text = Header,
-                                    Colour = colourProvider.Content1,
-                                    Margin = SettingsPanel.CONTENT_PADDING,
-                                },
+                                header = CreateHeader(),
                                 FlowContent
                             }
                         },
@@ -141,7 +146,8 @@ namespace osu.Game.Overlays.Settings
             themeColour.BindValueChanged(_ =>
             {
                 separator.Colour = colourProvider.Background6;
-                headerText.Colour = colourProvider.Content1;
+                if (HeaderUsesThemeColour)
+                    header.Colour = colourProvider.Content1;
                 dim.Colour = colourProvider.Background5;
             }, true);
         }

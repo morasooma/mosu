@@ -97,7 +97,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             private void load(AudioManager audio)
             {
                 // this works under the assumption that only one player can receive damage each round
-                losingDamageInfo = new[] { PlayerDamageInfo, OpponentDamageInfo }.MaxBy(it => it.Damage);
+                losingDamageInfo = PlayerDamageInfo.Damage >= OpponentDamageInfo.Damage ? PlayerDamageInfo : OpponentDamageInfo;
 
                 AddInternal(new Container
                 {
@@ -457,11 +457,9 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                     // safety timeout to ensure scoreTicks don't play forever
                     Scheduler.AddDelayed(() =>
                     {
-                        if (playerScoreTickChannel != null)
-                            playerScoreTickChannel.Looping = false;
+                        playerScoreTickChannel?.Looping = false;
 
-                        if (opponentScoreTickChannel != null)
-                            opponentScoreTickChannel.Looping = false;
+                        opponentScoreTickChannel?.Looping = false;
                     }, score_text_duration + 500);
 
                     scoreBarProgress.BindValueChanged(e =>

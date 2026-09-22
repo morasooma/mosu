@@ -52,7 +52,8 @@ namespace osu.Game.Rulesets.Mania
                 return null;
 
             double rate = ModUtils.CalculateRateWithMods(mods);
-            int keyCount = (int)method.Invoke(ruleset, new object[] { beatmapInfo, mods });
+            if (method.Invoke(ruleset, new object[] { beatmapInfo, mods }) is not int keyCount)
+                return null;
 
             return new ManiaBeatmapSummary(
                 keyCount,

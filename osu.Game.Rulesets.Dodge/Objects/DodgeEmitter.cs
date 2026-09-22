@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Rulesets.Dodge.Beatmaps;
@@ -17,7 +18,7 @@ namespace osu.Game.Rulesets.Dodge.Objects
     /// Emits several bullets from one point at the same time.
     /// The aim position controls the centre direction and travel distance.
     /// </summary>
-    public class DodgeEmitter : DodgeHitObject, IHasPosition, IHasDuration, IEditorTimelineEndTimeAdjustable
+    public class DodgeEmitter : DodgeHitObject, IHasPosition, IHasDuration, IEditorTimelineEndTimeAdjustable, IContributesToGameplayDuration
     {
         public const int DEFAULT_BULLET_COUNT = 5;
         public const int MIN_BULLET_COUNT = 2;
@@ -71,6 +72,12 @@ namespace osu.Game.Rulesets.Dodge.Objects
         public int BurstBeatDivisor { get; set; } = (int)DodgeEmitterBeatDivisor.Quarter;
 
         /// <summary>
+        /// Additional angle applied to every successive burst. A non-zero value turns a repeated fan
+        /// into a rotating spiral without requiring separate emitter objects.
+        /// </summary>
+        public float BurstRotation { get; set; }
+
+        /// <summary>
         /// Whether repeated bursts move their source along
         /// <see cref="Position"/> to <see cref="MovementEndPosition"/>.
         /// </summary>
@@ -110,10 +117,27 @@ namespace osu.Game.Rulesets.Dodge.Objects
 
         public double EmissionDuration => (EffectiveBurstCount - 1) * EffectiveBurstInterval;
 
-        public double MovementEndTime => Enumerable.Range(0, EffectiveBurstCount)
-                                                   .SelectMany(burst => Enumerable.Range(0, EffectiveBulletCount)
-                                                                                 .Select(index => ExitTimeAt(burst, index)))
-                                                   .Max();
+        public double MovementEndTime
+        {
+            get
+            {
+                double max = StartTime;
+                int bursts = EffectiveBurstCount;
+                int bullets = EffectiveBulletCount;
+
+                for (int b = 0; b < bursts; b++)
+                {
+                    for (int i = 0; i < bullets; i++)
+                    {
+                        double exit = ExitTimeAt(b, i);
+                        if (exit > max)
+                            max = exit;
+                    }
+                }
+
+                return max;
+            }
+        }
 
         public double EmissionTimeAt(int burstIndex)
         {
@@ -141,6 +165,23 @@ namespace osu.Game.Rulesets.Dodge.Objects
                 BurstInterval = IntervalForBeatLength(controlPointInfo.TimingPointAt(StartTime).BeatLength, BurstBeatDivisor);
         }
 
+        protected override void CreateNestedHitObjects(CancellationToken cancellationToken)
+        {
+            base.CreateNestedHitObjects(cancellationToken);
+
+            // Keep the final burst represented by the parent object, matching the
+            // usual nested-before-parent judgement order used by score and health.
+            for (int burstIndex = 0; burstIndex < EffectiveBurstCount - 1; burstIndex++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                AddNested(new DodgeEmitterBurst
+                {
+                    StartTime = EmissionTimeAt(burstIndex),
+                    BurstIndex = burstIndex,
+                });
+            }
+        }
+
         public static double IntervalForBeatLength(double beatLength, int beatDivisor)
             => Math.Clamp(beatLength / Math.Max(1, beatDivisor), MIN_BURST_INTERVAL, MAX_BURST_INTERVAL);
 
@@ -155,7 +196,7 @@ namespace osu.Game.Rulesets.Dodge.Objects
             if (displacement == Vector2.Zero)
                 return sourcePosition;
 
-            float angle = MathHelper.DegreesToRadians(getAngleOffset(index));
+            float angle = MathHelper.DegreesToRadians(getAngleOffset(index) + BurstRotation * burstIndex);
             float sin = MathF.Sin(angle);
             float cos = MathF.Cos(angle);
 
@@ -185,7 +226,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
                 MovementType,
                 WaveAmplitude,
                 WaveCycles,
-                WavePhase);
+                WavePhase,
+                MovementEasing);
         }
 
         public Vector2 DirectionAt(int burstIndex, int index, double time)
@@ -201,7 +243,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
                 MovementType,
                 WaveAmplitude,
                 WaveCycles,
-                WavePhase);
+                WavePhase,
+                MovementEasing);
         }
 
         public double ExitTimeAt(int index) => ExitTimeAt(0, index);
@@ -211,6 +254,10 @@ namespace osu.Game.Rulesets.Dodge.Objects
             double emissionTime = EmissionTimeAt(burstIndex);
             Vector2 sourcePosition = SourcePositionAt(burstIndex);
             Vector2 endPosition = EndPositionAt(burstIndex, index);
+
+            if (!DodgeTrajectory.RayIntersectsPlayfield(sourcePosition, endPosition, BulletSize, WaveAmplitude))
+                return emissionTime;
+
             return ContinueUntilExit
                 ? DodgeTrajectory.CalculateExitTime(
                     emissionTime,
@@ -221,7 +268,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
                     MovementType,
                     WaveAmplitude,
                     WaveCycles,
-                    WavePhase)
+                    WavePhase,
+                    MovementEasing)
                 : emissionTime + Duration;
         }
 
@@ -239,7 +287,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
                     MovementType,
                     WaveAmplitude,
                     WaveCycles,
-                    WavePhase)
+                    WavePhase,
+                    MovementEasing)
                 : endPosition;
         }
 

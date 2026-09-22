@@ -17,6 +17,7 @@ using osu.Framework.Testing;
 using osu.Framework.Threading;
 using osu.Framework.Utils;
 using osu.Game.Audio.Effects;
+using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterfaceV2;
@@ -82,6 +83,9 @@ namespace osu.Game.Overlays
 
             [Resolved]
             private TextureStore textures { get; set; } = null!;
+
+            [Resolved]
+            private OsuConfigManager config { get; set; } = null!;
 
             [BackgroundDependencyLoader]
             private void load()
@@ -335,7 +339,7 @@ namespace osu.Game.Overlays
                                     Origin = Anchor.Centre,
                                     Depth = float.MinValue,
                                     Size = new Vector2(30),
-                                    Texture = textures.Get(@"Menu/logo"),
+                                    Texture = textures.Get(config.Get<ForkMenuLogo>(OsuSetting.ForkMenuLogo).GetTextureName()),
                                     RelativePositionAxes = Axes.Both,
                                     Position = new Vector2(RNG.NextSingle(), RNG.NextSingle()),
                                     Alpha = 0,

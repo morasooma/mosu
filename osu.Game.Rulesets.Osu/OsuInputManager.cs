@@ -64,6 +64,12 @@ namespace osu.Game.Rulesets.Osu
 
         public Vector2 VirtualCursorPosition { get; private set; }
 
+        /// <summary>
+        /// Whether the currently-dispatched mouse movement came from real user input while an external virtual cursor owns gameplay movement.
+        /// Consumers which observe raw mouse movement should ignore it to avoid briefly mixing the two cursor paths.
+        /// </summary>
+        internal bool ShouldSuppressPhysicalCursorMove => externalVirtualCursorActive && syntheticCursorMoves == 0;
+
         public Vector2 ReplayCursorPosition { get; private set; }
 
         public bool HasReplayCursorPosition { get; private set; }
@@ -128,6 +134,24 @@ namespace osu.Game.Rulesets.Osu
         {
             externalVirtualCursorActive = true;
             applyCursorPosition(screenSpacePosition);
+        }
+
+        /// <summary>
+        /// Dispatches a press at a cursor sample crossed within this frame, then restores the current position.
+        /// Does not take ownership of the cursor or alter the original user input.
+        /// </summary>
+        internal void ApplyCursorSampleForPress(Vector2 screenSpacePosition, Action press)
+        {
+            Vector2 currentPosition = CurrentState.Mouse.Position;
+            try
+            {
+                applyCursorPosition(screenSpacePosition);
+                press();
+            }
+            finally
+            {
+                applyCursorPosition(currentPosition);
+            }
         }
 
         public void HandleUserCursorMovement(Vector2 screenSpacePosition)
@@ -210,9 +234,17 @@ namespace osu.Game.Rulesets.Osu
                     case MouseMoveEvent mouseMove:
                         handleOriginalCursorMovement(mouseMove.ScreenSpaceMousePosition);
 
-                        if (externalVirtualCursorActive || virtualCursorDelayEnabled.Value || !AllowUserCursorMovement)
+                        if (externalVirtualCursorActive)
                         {
-                            if (virtualCursorDelayEnabled.Value && !externalVirtualCursorActive)
+                            // The framework has already applied the physical mouse position to CurrentState before dispatching
+                            // this event. Restore virtual ownership immediately so the gameplay cursor cannot flicker between paths.
+                            applyCursorPosition(VirtualCursorPosition);
+                            return false;
+                        }
+
+                        if (virtualCursorDelayEnabled.Value || !AllowUserCursorMovement)
+                        {
+                            if (virtualCursorDelayEnabled.Value)
                                 updateDelayedCursorPosition();
 
                             return false;
@@ -423,5 +455,23 @@ namespace osu.Game.Rulesets.Osu
 
         [Description("Smoke")]
         Smoke,
+
+        [Description("Hit circle tool")]
+        EditorHitCircleTool = 10000,
+
+        [Description("Slider tool")]
+        EditorSliderTool,
+
+        [Description("Spinner tool")]
+        EditorSpinnerTool,
+
+        [Description("Grid from points tool")]
+        EditorGridFromPointsTool,
+
+        [Description("Toggle grid snap")]
+        EditorToggleGridSnap,
+
+        [Description("Toggle distance snap")]
+        EditorToggleDistanceSnap,
     }
 }

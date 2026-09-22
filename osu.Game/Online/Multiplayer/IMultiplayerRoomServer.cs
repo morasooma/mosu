@@ -117,6 +117,11 @@ namespace osu.Game.Online.Multiplayer
         Task VoteToSkipIntro();
 
         /// <summary>
+        /// Votes to skip a specific active beatmap break.
+        /// </summary>
+        Task VoteToSkipBreak(MultiplayerBreakSkipRequest request);
+
+        /// <summary>
         /// Invites a player to the current room.
         /// </summary>
         /// <param name="userId">The user to invite.</param>

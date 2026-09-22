@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using osu.Game.Beatmaps;
 using osu.Game.Online;
+using osu.Game.Online.Legacy;
 
 namespace osu.Game.Rulesets.Mods
 {
@@ -23,17 +24,36 @@ namespace osu.Game.Rulesets.Mods
         };
 
         public static bool ModsAwardPerformancePoints(IBeatmapInfo? beatmapInfo, IReadOnlyCollection<Mod> mods)
-            => mods.All(mod => ModAwardsPerformancePoints(beatmapInfo, mods, mod));
+            => MosuServerEnvironment.UsesStableProtocol
+                ? mods.All(StableModCompatibility.IsSupported)
+                : mods.All(mod => ModAwardsPerformancePoints(beatmapInfo, mods, mod));
+
+        public static bool BeatmapAwardsPerformancePoints(IRulesetInfo ruleset, IBeatmapInfo? beatmapInfo) =>
+            ruleset.ShortName != RulesetInfo.DODGE_MODE_SHORTNAME ||
+            beatmapInfo?.GetOnlineStatus() is BeatmapOnlineStatus.Ranked or BeatmapOnlineStatus.Approved;
 
         public static bool ModAwardsPerformancePoints(IBeatmapInfo? beatmapInfo, IReadOnlyCollection<Mod> mods, Mod mod)
         {
             if (!mod.UserPlayable || !mod.HasImplementation)
                 return false;
 
+            if (!MosuServerEnvironment.IsThirdPartyServer &&
+                beatmapInfo?.Ruleset.ShortName == RulesetInfo.DODGE_MODE_SHORTNAME &&
+                mod is IApplicableToRate)
+                return false;
+
             // Difficulty Adjust has fork-specific ranked ranges and is intentionally
             // evaluated separately from the mod's generic Ranked flag.
             if (mod.Acronym == "DA")
                 return isDifficultyAdjustRanked(beatmapInfo, mods);
+
+            // Mosu owns its ranked-mod policy. Most lazer mods default Ranked to false,
+            // which must not override the server catalogue used by RankedModPolicy.
+            // Flashlight is the exception: non-default settings are explicitly unranked
+            // on both the client and the Mosu API.
+            if (!MosuServerEnvironment.IsThirdPartyServer)
+                return !unrankedModAcronyms.Contains(mod.Acronym)
+                       && (mod.Acronym != "FL" || mod.Ranked);
 
             if (!mod.Ranked || unrankedModAcronyms.Contains(mod.Acronym))
                 return false;

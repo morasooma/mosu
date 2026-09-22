@@ -37,6 +37,9 @@ namespace osu.Game.Tests.Visual.Gameplay
             AddUntilStep("score above zero", () => Player.ScoreProcessor.TotalScore.Value > 0);
             AddUntilStep("key counter counted keys", () => Player.HUDOverlay.InputCountController.Triggers.Any(kc => kc.ActivationCount.Value > 2));
 
+            AddStep("reload skin components", () => Player.HUDOverlay.ReloadSkinComponents());
+            AddUntilStep("skin components reloaded", () => Player.HUDOverlay.ChildrenOfType<Skinning.ISerialisableDrawable>().Any());
+
             seekTo(referenceBeatmap.Breaks[0].StartTime);
             AddAssert("keys not counting", () => !Player.HUDOverlay.InputCountController.IsCounting.Value);
             AddAssert("overlay displays 100% accuracy", () => Player.BreakOverlay.ChildrenOfType<BreakInfo>().Single().AccuracyDisplay.Current.Value == 1);

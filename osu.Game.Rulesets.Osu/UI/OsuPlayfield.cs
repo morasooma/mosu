@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Primitives;
@@ -34,6 +35,7 @@ namespace osu.Game.Rulesets.Osu.UI
     {
         private const int max_concurrent_performance_basic_judgements = 8;
         private const int max_concurrent_performance_tick_judgements = 1;
+        private const float gameplay_render_buffer_padding = 96f;
         private readonly Container borderContainer;
         private readonly PlayfieldBorder playfieldBorder;
         private readonly ProxyContainer approachCircles;
@@ -41,6 +43,7 @@ namespace osu.Game.Rulesets.Osu.UI
         private readonly JudgementContainer<DrawableOsuJudgement> judgementLayer;
         private readonly AimAssistController aimAssistController;
         private readonly RelaxController relaxController;
+        private readonly ObservedHitObjectGraph? observedHitObjectGraph;
         private bool directChildrenLifeStable;
         private readonly List<DrawableOsuJudgement> activePerformanceBasicJudgements = new List<DrawableOsuJudgement>(max_concurrent_performance_basic_judgements + 2);
         private readonly List<DrawableOsuJudgement> activePerformanceTickJudgements = new List<DrawableOsuJudgement>(max_concurrent_performance_tick_judgements + 2);
@@ -64,10 +67,18 @@ namespace osu.Game.Rulesets.Osu.UI
 
         public RelaxController RelaxController => relaxController;
 
+        /// <summary>
+        /// The observed-hit-object anti-cheat monitor, or <c>null</c> while
+        /// <see cref="UI.ObservedHitObjectGraph.FEATURE_ENABLED"/> is <c>false</c>.
+        /// </summary>
+        public ObservedHitObjectGraph? ObservedHitObjectGraph => observedHitObjectGraph;
+
         [Resolved]
         private OsuConfigManager config { get; set; } = null!;
 
         private readonly Container judgementAboveHitObjectLayer;
+        private readonly GameplayRenderBuffer gameplayRenderBuffer;
+        private readonly Bindable<float> gameplayRenderScale = new Bindable<float>();
 
         public OsuPlayfield()
         {
@@ -98,8 +109,22 @@ namespace osu.Game.Rulesets.Osu.UI
             });
             children.Add(HitObjectContainer);
 
+            // Keep the dead anti-cheat monitor out of the scene entirely: while disabled it contributes scene
+            // nodes and a per-frame Update() callback that can never do anything useful.
+#pragma warning disable CS0162 // Unreachable code -- FEATURE_ENABLED is a compile-time master switch.
+            if (UI.ObservedHitObjectGraph.FEATURE_ENABLED)
+            {
+                children.Add(observedHitObjectGraph = new ObservedHitObjectGraph
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Name = nameof(observedHitObjectGraph),
+                });
+            }
+#pragma warning restore CS0162
+
             children.Add(aimAssistController = new AimAssistController { RelativeSizeAxes = Axes.Both });
             children.Add(relaxController = new RelaxController { RelativeSizeAxes = Axes.Both });
+            children.Add(new MorasoomaEndTagController { RelativeSizeAxes = Axes.Both });
             children.Add(judgementAboveHitObjectLayer = new Container
             {
                 Name = nameof(judgementAboveHitObjectLayer),
@@ -118,7 +143,18 @@ namespace osu.Game.Rulesets.Osu.UI
                 Depth = -9999,
             });
 
-            InternalChildren = children.ToArray();
+            InternalChild = gameplayRenderBuffer = new GameplayRenderBuffer
+            {
+                Name = nameof(gameplayRenderBuffer),
+                Anchor = Anchor.Centre,
+                Origin = Anchor.Centre,
+                Size = BASE_SIZE + new Vector2(gameplay_render_buffer_padding * 2),
+                Padding = new MarginPadding(gameplay_render_buffer_padding),
+
+                // Preserve the original direct draw path unless reduced resolution is explicitly requested.
+                BufferingEnabled = false,
+                Children = children.ToArray(),
+            };
 
             HitPolicy = new StartTimeOrderedHitPolicy();
 
@@ -177,6 +213,15 @@ namespace osu.Game.Rulesets.Osu.UI
         private void load(OsuRulesetConfigManager? config, IBeatmap? beatmap)
         {
             config?.BindWith(OsuRulesetSetting.PlayfieldBorderStyle, playfieldBorder.PlayfieldBorderStyle);
+
+            this.config.BindWith(OsuSetting.ForkGameplayRenderScale, gameplayRenderScale);
+            gameplayRenderScale.BindValueChanged(scale =>
+            {
+                gameplayRenderBuffer.FrameBufferScale = new Vector2(scale.NewValue);
+
+                // At exactly 100%, BufferedContainer draws its children directly and allocates/uses no framebuffer.
+                gameplayRenderBuffer.BufferingEnabled = scale.NewValue < 1f;
+            }, true);
 
             var osuBeatmap = (OsuBeatmap?)beatmap;
 
@@ -367,6 +412,62 @@ namespace osu.Game.Rulesets.Osu.UI
             None,
             Basic,
             Tick,
+        }
+
+        /// <summary>
+        /// Keeps the fixed gameplay layer list out of per-frame lifetime checks while providing an optional
+        /// low-resolution framebuffer. Its framebuffer path remains disabled at the default 100% scale.
+        /// </summary>
+        private partial class GameplayRenderBuffer : BufferedContainer
+        {
+            private bool directChildrenLifeStable;
+
+            // Standalone public build note: BufferingEnabled is an optional Mosu framework extension on BufferedContainer.
+            public bool BufferingEnabled { get; set; }
+
+            public GameplayRenderBuffer()
+            {
+                // Children are blended into a transparent target, leaving premultiplied RGB in the framebuffer.
+                // Use premultiplied blending for the final upscale to avoid applying alpha a second time, which
+                // otherwise darkens and discolours anti-aliased edges around hit objects.
+                EffectBlending = new BlendingParameters
+                {
+                    Source = BlendingType.One,
+                    Destination = BlendingType.OneMinusSrcAlpha,
+                    SourceAlpha = BlendingType.One,
+                    DestinationAlpha = BlendingType.One,
+                    RGBEquation = BlendingEquation.Add,
+                    AlphaEquation = BlendingEquation.Add,
+                };
+            }
+
+            protected override bool CheckChildrenLife()
+            {
+                if (directChildrenLifeStable)
+                    return false;
+
+                bool aliveChanged = base.CheckChildrenLife();
+                directChildrenLifeStable = InternalChildren.Count == AliveInternalChildren.Count;
+                return aliveChanged;
+            }
+
+            protected override void AddInternal(Drawable drawable)
+            {
+                directChildrenLifeStable = false;
+                base.AddInternal(drawable);
+            }
+
+            protected override bool RemoveInternal(Drawable drawable, bool disposeImmediately)
+            {
+                directChildrenLifeStable = false;
+                return base.RemoveInternal(drawable, disposeImmediately);
+            }
+
+            protected override void ClearInternal(bool disposeChildren = true)
+            {
+                directChildrenLifeStable = false;
+                base.ClearInternal(disposeChildren);
+            }
         }
 
         private OsuResumeOverlay.OsuResumeOverlayInputBlocker? resumeInputBlocker;

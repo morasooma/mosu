@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using MessagePack;
 using osu.Game.Online.API;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Rulesets.Scoring;
 
 namespace osu.Game.Online.Spectator
@@ -32,6 +33,13 @@ namespace osu.Game.Online.Spectator
 
         [Key(4)]
         public Dictionary<HitResult, int> MaximumStatistics { get; set; } = new Dictionary<HitResult, int>();
+
+        /// <summary>
+        /// Ordered players represented by additional Tag Co-op tracks in the replay stream.
+        /// This additive MessagePack field is ignored by older clients.
+        /// </summary>
+        [Key(5)]
+        public TagCoopReplayPlayer[] TagCoopPlayers { get; set; } = Array.Empty<TagCoopReplayPlayer>();
 
         public bool Equals(SpectatorState other)
         {

@@ -17,6 +17,8 @@ namespace osu.Game.Screens.Play
         private readonly double gameplayStartTime;
 
         private PeriodTracker breaks = new PeriodTracker(Enumerable.Empty<Period>());
+        private Dictionary<(double Start, double ActiveEnd), BreakPeriod> breakPeriods = new Dictionary<(double, double), BreakPeriod>();
+        private Dictionary<BreakPeriod, int> breakIndices = new Dictionary<BreakPeriod, int>();
 
         /// <summary>
         /// Whether the gameplay is currently in a break.
@@ -27,12 +29,25 @@ namespace osu.Game.Screens.Play
 
         public readonly Bindable<Period?> CurrentPeriod = new Bindable<Period?>();
 
+        /// <summary>
+        /// The beatmap break which is currently active, including its unmodified end time.
+        /// </summary>
+        public readonly Bindable<BreakPeriod?> CurrentBreak = new Bindable<BreakPeriod?>();
+
+        /// <summary>
+        /// Returns the stable zero-based index of a break in the effective beatmap break list.
+        /// </summary>
+        public int GetBreakIndex(BreakPeriod breakPeriod) => breakIndices.TryGetValue(breakPeriod, out int index) ? index : -1;
+
         public IReadOnlyList<BreakPeriod> Breaks
         {
             set
             {
-                breaks = new PeriodTracker(value.Where(b => b.HasEffect)
-                                                .Select(b => new Period(b.StartTime, b.EndTime - BreakOverlay.BREAK_FADE_DURATION)));
+                BreakPeriod[] effectiveBreaks = value.Where(b => b.HasEffect).Distinct().OrderBy(b => b.StartTime).ToArray();
+
+                breakPeriods = effectiveBreaks.ToDictionary(b => (b.StartTime, b.EndTime - BreakOverlay.BREAK_FADE_DURATION));
+                breakIndices = effectiveBreaks.Select((b, index) => (b, index)).ToDictionary(pair => pair.b, pair => pair.index);
+                breaks = new PeriodTracker(effectiveBreaks.Select(b => new Period(b.StartTime, b.EndTime - BreakOverlay.BREAK_FADE_DURATION)));
 
                 if (IsLoaded)
                     updateBreakTime();
@@ -58,11 +73,13 @@ namespace osu.Game.Screens.Play
             if (breaks.IsInAny(time, out var currentBreak))
             {
                 CurrentPeriod.Value = currentBreak;
+                CurrentBreak.Value = breakPeriods[(currentBreak.Value.Start, currentBreak.Value.End)];
                 isBreakTime.Value = true;
             }
             else
             {
                 CurrentPeriod.Value = null;
+                CurrentBreak.Value = null;
                 isBreakTime.Value = time < gameplayStartTime || scoreProcessor.HasCompleted.Value;
             }
         }

@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
@@ -11,23 +12,29 @@ namespace osu.Game.Graphics.UserInterface.PageSelector
 {
     internal partial class PageEllipsis : CompositeDrawable
     {
+        private IBindable<Colour4>? themeColour;
+
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
             RelativeSizeAxes = Axes.Y;
             AutoSizeAxes = Axes.X;
 
+            OsuSpriteText text;
+
             InternalChildren = new Drawable[]
             {
-                new OsuSpriteText
+                text = new OsuSpriteText
                 {
                     Font = OsuFont.GetFont(size: 12, weight: FontWeight.SemiBold),
                     Text = "...",
-                    Colour = colourProvider.Light3,
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
                 }
             };
+
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Light3);
+            themeColour.BindValueChanged(c => text.Colour = c.NewValue, true);
         }
     }
 }

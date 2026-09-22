@@ -41,6 +41,12 @@ namespace osu.Game.Screens
 
         public virtual bool ShowFooter => false;
 
+        /// <summary>
+        /// Whether this screen allows the stable-style footer to replace the default footer.
+        /// Only screens whose actions match the legacy footer should opt in.
+        /// </summary>
+        public virtual bool AllowLegacyFooterSkinning => false;
+
         public virtual bool AllowExternalScreenChange => false;
 
         public virtual bool HideOverlaysOnEnter => false;

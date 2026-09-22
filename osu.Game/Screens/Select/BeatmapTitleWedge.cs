@@ -253,7 +253,7 @@ namespace osu.Game.Screens.Select
                 Font = OsuFont.Style.Title,
                 Colour = colourProvider.Content1,
             };
-            titleLink.Action = () => songSelect?.Search(titleText.GetPreferred(localisation.CurrentParameters.Value.PreferOriginalScript));
+            titleLink.Action = () => songSelect?.AddToSearch(titleText.GetPreferred(localisation.CurrentParameters.Value.PreferOriginalScript));
             DisplayedTitle = titleText.ToString();
 
             var artistText = new RomanisableString(metadata.ArtistUnicode, metadata.Artist);
@@ -264,7 +264,7 @@ namespace osu.Game.Screens.Select
                 Font = OsuFont.Style.Heading2,
                 Colour = colourProvider.Content2,
             };
-            artistLink.Action = () => songSelect?.Search(artistText.GetPreferred(localisation.CurrentParameters.Value.PreferOriginalScript));
+            artistLink.Action = () => songSelect?.AddToSearch(artistText.GetPreferred(localisation.CurrentParameters.Value.PreferOriginalScript));
             DisplayedArtist = artistText.ToString();
 
             if (metadata.IsServerExclusive())

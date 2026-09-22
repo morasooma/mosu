@@ -29,7 +29,8 @@ namespace osu.Desktop
 {
     internal partial class DiscordRichPresence : Component
     {
-        private const string client_id = "1216669957799018608";
+        private const string client_id = "1539651886993383564";
+        private const string large_image_key = "morasooma_logo";
 
         private DiscordRpcClient client = null!;
 
@@ -57,7 +58,7 @@ namespace osu.Desktop
 
         private readonly RichPresence presence = new RichPresence
         {
-            Assets = new Assets { LargeImageKey = "osu_logo_lazer" },
+            Assets = new Assets(),
             Timestamps = Timestamps.Now,
             Secrets = new Secrets
             {
@@ -110,6 +111,7 @@ namespace osu.Desktop
             user = api.LocalUser.GetBoundCopy();
 
             ruleset.BindValueChanged(_ => schedulePresenceUpdate());
+            user.ValueChanged += onUserChanged;
             userStatus.BindValueChanged(_ => schedulePresenceUpdate());
             userActivity.BindValueChanged(_ => schedulePresenceUpdate());
             privacyMode.BindValueChanged(_ => schedulePresenceUpdate());
@@ -133,6 +135,8 @@ namespace osu.Desktop
 
         private void onStatisticsUpdated(UserStatisticsUpdate _) => schedulePresenceUpdate();
 
+        private void onUserChanged(ValueChangedEvent<APIUser> _) => schedulePresenceUpdate();
+
         private ScheduledDelegate? presenceUpdateDelegate;
 
         private void schedulePresenceUpdate()
@@ -143,13 +147,19 @@ namespace osu.Desktop
                 if (!client.IsInitialized)
                     return;
 
-                if (!api.IsLoggedIn || userStatus.Value == UserStatus.Offline || privacyMode.Value == DiscordRichPresenceMode.Off)
+                // Rich Presence describes the locally running game and must not depend on
+                // osu!web authentication. Stable Bancho and some third-party profiles can be
+                // fully connected while IAPIProvider.IsLoggedIn remains false.
+                if (userStatus.Value == UserStatus.Offline || privacyMode.Value == DiscordRichPresenceMode.Off)
                 {
                     client.ClearPresence();
                     return;
                 }
 
-                bool hideIdentifiableInformation = privacyMode.Value == DiscordRichPresenceMode.Limited || userStatus.Value == UserStatus.DoNotDisturb;
+                bool hasIdentifiableUser = user?.Value.Id > APIUser.SYSTEM_USER_ID && !string.IsNullOrWhiteSpace(user.Value.Username);
+                bool hideIdentifiableInformation = !hasIdentifiableUser
+                                                     || privacyMode.Value == DiscordRichPresenceMode.Limited
+                                                     || userStatus.Value == UserStatus.DoNotDisturb;
 
                 updatePresence(hideIdentifiableInformation);
                 client.SetPresence(presence);
@@ -164,7 +174,7 @@ namespace osu.Desktop
             // user activity
             if (userActivity.Value != null)
             {
-                presence.State = clampLength(userActivity.Value.GetStatus(hideIdentifiableInformation));
+                presence.State = clampLength($"{userActivity.Value.GetStatus(hideIdentifiableInformation)} • {getRulesetDisplayName(ruleset.Value.ShortName)}");
                 presence.Details = clampLength(userActivity.Value.GetDetails(hideIdentifiableInformation) ?? string.Empty);
 
                 if (userActivity.Value.GetBeatmapID(hideIdentifiableInformation) is int beatmapId && beatmapId > 0)
@@ -185,7 +195,7 @@ namespace osu.Desktop
             }
             else
             {
-                presence.State = "Idle";
+                presence.State = $"Idle • {getRulesetDisplayName(ruleset.Value.ShortName)}";
                 presence.Details = string.Empty;
             }
 
@@ -223,19 +233,23 @@ namespace osu.Desktop
                 presence.Secrets.JoinSecret = null;
             }
 
-            // game images:
-            // large image tooltip
-            if (privacyMode.Value == DiscordRichPresenceMode.Limited)
-                presence.Assets.LargeImageText = string.Empty;
+            presence.Assets.LargeImageKey = large_image_key;
+
+            // Show profile information in the image tooltip only when identifiable
+            // information is allowed. The selected mode itself is not identifying.
+            string rulesetDisplayName = getRulesetDisplayName(ruleset.Value.ShortName);
+
+            if (hideIdentifiableInformation)
+                presence.Assets.LargeImageText = $"Morasooma • {rulesetDisplayName}";
             else
             {
                 var statistics = statisticsProvider.GetStatisticsFor(ruleset.Value);
-                presence.Assets.LargeImageText = $"{user.Value.Username}" + (statistics?.GlobalRank > 0 ? $" (rank #{statistics.GlobalRank:N0})" : string.Empty);
+                string rank = statistics?.GlobalRank > 0 ? $" (rank #{statistics.GlobalRank:N0})" : string.Empty;
+                presence.Assets.LargeImageText = clampLength($"{user.Value.Username}{rank} • {rulesetDisplayName}");
             }
 
-            // small image
-            presence.Assets.SmallImageKey = ruleset.Value.IsLegacyRuleset() ? $"mode_{ruleset.Value.OnlineID}" : "mode_custom";
-            presence.Assets.SmallImageText = ruleset.Value.Name;
+            presence.Assets.SmallImageKey = null;
+            presence.Assets.SmallImageText = null;
         }
 
         private void onJoin(object sender, JoinMessage args) => Scheduler.AddOnce(() =>
@@ -250,9 +264,7 @@ namespace osu.Desktop
 
             Logger.Log($"Received room secret from Discord RPC Client: \"{args.Secret}\"", LoggingTarget.Network, LogLevel.Debug);
 
-            // Stable and lazer share the same Discord client ID, meaning they can accept join requests from each other.
-            // Since they aren't compatible in multi, see if stable's format is being used and log to avoid confusion.
-            if (args.Secret[0] != '{' || !tryParseRoomSecret(args.Secret, out long roomId, out string? password))
+            if (string.IsNullOrEmpty(args.Secret) || args.Secret[0] != '{' || !tryParseRoomSecret(args.Secret, out long roomId, out string? password))
             {
                 Logger.Log("Could not join multiplayer room, invitation is invalid or incompatible.", LoggingTarget.Network, LogLevel.Important);
                 return;
@@ -268,6 +280,20 @@ namespace osu.Desktop
         });
 
         private static readonly int ellipsis_length = Encoding.UTF8.GetByteCount(new[] { '…' });
+
+        private static string getRulesetDisplayName(string shortName) => shortName switch
+        {
+            RulesetInfo.OSU_MODE_SHORTNAME => "Standard",
+            RulesetInfo.OSU_RELAX_MODE_SHORTNAME => "Standard (Relax)",
+            RulesetInfo.OSU_AUTOPILOT_MODE_SHORTNAME => "Standard (Autopilot)",
+            RulesetInfo.TAIKO_MODE_SHORTNAME => "Drums",
+            RulesetInfo.TAIKO_RELAX_MODE_SHORTNAME => "Drums (Relax)",
+            RulesetInfo.CATCH_MODE_SHORTNAME => "Catch",
+            RulesetInfo.CATCH_RELAX_MODE_SHORTNAME => "Catch (Relax)",
+            RulesetInfo.DODGE_MODE_SHORTNAME => "Dodge",
+            "mania" => "Keys",
+            _ => "Custom mode",
+        };
 
         private static string clampLength(string str)
         {
@@ -332,6 +358,9 @@ namespace osu.Desktop
 
             if (statisticsProvider.IsNotNull())
                 statisticsProvider.StatisticsUpdated -= onStatisticsUpdated;
+
+            if (user != null)
+                user.ValueChanged -= onUserChanged;
 
             client.Dispose();
             base.Dispose(isDisposing);

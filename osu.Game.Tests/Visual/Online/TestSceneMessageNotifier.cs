@@ -88,6 +88,10 @@ namespace osu.Game.Tests.Visual.Online
                     joinChannelRequest.TriggerSuccess();
                     return true;
 
+                case MarkChannelAsReadRequest markReadRequest:
+                    markReadRequest.TriggerSuccess();
+                    return true;
+
                 default:
                     return false;
             }
@@ -145,6 +149,18 @@ namespace osu.Game.Tests.Visual.Online
             AddStep("receive PM", () => receiveMessage(friend, privateMessageChannel, "you're reading this, right?"));
 
             AddAssert("no notifications fired", () => testContainer.NotificationOverlay.UnreadCount.Value == 0);
+            AddUntilStep("channel marked as read", () => privateMessageChannel.LastReadId == privateMessageChannel.LastMessageId);
+        }
+
+        [Test]
+        public void TestShowingOverlayMarksCurrentChannelRead()
+        {
+            AddStep("switch to PMs", () => testContainer.ChannelManager.CurrentChannel.Value = privateMessageChannel);
+            AddStep("hide chat overlay", () => testContainer.ChatOverlay.Hide());
+            AddStep("receive PM while hidden", () => receiveMessage(friend, privateMessageChannel, "read after opening"));
+            AddAssert("channel remains unread while hidden", () => privateMessageChannel.LastReadId != privateMessageChannel.LastMessageId);
+            AddStep("show chat overlay", () => testContainer.ChatOverlay.Show());
+            AddUntilStep("channel marked as read", () => privateMessageChannel.LastReadId == privateMessageChannel.LastMessageId);
         }
 
         [Test]

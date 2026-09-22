@@ -36,6 +36,9 @@ namespace osu.Game.Rulesets.UI
         [Resolved]
         private IGameplayClock? gameplayClock { get; set; }
 
+        [Resolved]
+        private GameplayState? gameplayState { get; set; }
+
         [Resolved(CanBeNull = true)]
         private IRenderGameplaySampleTriggerRecorder? renderGameplaySampleTriggerRecorder { get; set; }
 
@@ -78,14 +81,15 @@ namespace osu.Game.Rulesets.UI
             PlaySamples(samples);
         }
 
-        protected virtual void PlaySamples(ISampleInfo[] samples)
+        protected virtual void PlaySamples(ISampleInfo[] samples) => Schedule(() =>
         {
             renderGameplaySampleTriggerRecorder?.RecordTrigger(gameplayClock?.CurrentTime ?? Clock.CurrentTime);
             renderGameplayHitsoundRenderer?.PlaySamples(samples, minimumSampleVolume: DrawableHitObject.MINIMUM_SAMPLE_VOLUME);
             var hitSound = GetNextSample();
             ApplySampleInfo(hitSound, samples);
             hitSound.Play();
-        }
+            gameplayState?.ApplySamples(samples);
+        });
 
         protected virtual void ApplySampleInfo(SkinnableSound hitSound, ISampleInfo[] samples)
         {

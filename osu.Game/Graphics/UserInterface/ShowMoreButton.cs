@@ -4,6 +4,7 @@
 #nullable disable
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
@@ -23,10 +24,18 @@ namespace osu.Game.Graphics.UserInterface
     {
         private const int duration = 200;
 
+        private LocalisableString initialText;
+
         public LocalisableString Text
         {
-            get => text.Text;
-            set => text.Text = value;
+            get => text?.Text ?? initialText;
+            set
+            {
+                if (text != null)
+                    text.Text = value;
+                else
+                    initialText = value;
+            }
         }
 
         protected override IEnumerable<Drawable> EffectTargets => new[] { background };
@@ -36,6 +45,7 @@ namespace osu.Game.Graphics.UserInterface
         private SpriteText text;
         private Box background;
         private FillFlowContainer textContainer;
+        private IBindable<Colour4> themeColour;
 
         public ShowMoreButton()
         {
@@ -45,8 +55,16 @@ namespace osu.Game.Graphics.UserInterface
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
-            IdleColour = colourProvider.Background2;
-            HoverColour = colourProvider.Background1;
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+            themeColour.BindValueChanged(_ =>
+            {
+                IdleColour = colourProvider.Background2;
+                HoverColour = colourProvider.Background1;
+                if (!IsHovered && background != null)
+                    background.Colour = colourProvider.Background2;
+                if (text != null)
+                    text.Colour = colourProvider.Foreground1;
+            }, true);
         }
 
         protected override Drawable CreateContent() => new CircularContainer
@@ -84,7 +102,7 @@ namespace osu.Game.Graphics.UserInterface
                             Anchor = Anchor.Centre,
                             Origin = Anchor.Centre,
                             Font = OsuFont.GetFont(size: 12, weight: FontWeight.SemiBold),
-                            Text = CommonStrings.ButtonsShowMore.ToUpper(),
+                            Text = !string.IsNullOrEmpty(initialText.ToString()) ? initialText : CommonStrings.ButtonsShowMore.ToUpper(),
                         },
                         rightIcon = new ChevronIcon
                         {
@@ -119,6 +137,7 @@ namespace osu.Game.Graphics.UserInterface
         {
             [Resolved]
             private OverlayColourProvider colourProvider { get; set; }
+            private IBindable<Colour4> themeColour;
 
             public ChevronIcon()
             {
@@ -129,7 +148,8 @@ namespace osu.Game.Graphics.UserInterface
             [BackgroundDependencyLoader]
             private void load()
             {
-                Colour = colourProvider.Foreground1;
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Foreground1);
+                themeColour.BindValueChanged(_ => Colour = colourProvider.Foreground1, true);
             }
 
             public void SetHoveredState(bool hovered) =>

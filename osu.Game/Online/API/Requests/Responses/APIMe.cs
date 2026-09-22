@@ -28,5 +28,9 @@ namespace osu.Game.Online.API.Requests.Responses
         [Description("E-mail")]
         [EnumMember(Value = "mail")]
         EmailMessage,
+
+        [Description("Telegram")]
+        [EnumMember(Value = "telegram")]
+        TelegramMessage,
     }
 }

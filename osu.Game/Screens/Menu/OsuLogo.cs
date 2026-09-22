@@ -9,6 +9,7 @@ using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Audio.Track;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
@@ -19,6 +20,7 @@ using osu.Framework.Graphics.Textures;
 using osu.Framework.Input.Events;
 using osu.Framework.Utils;
 using osu.Game.Beatmaps.ControlPoints;
+using osu.Game.Configuration;
 using osu.Game.Graphics.Backgrounds;
 using osu.Game.Graphics.Containers;
 using osu.Game.Overlays;
@@ -61,8 +63,15 @@ namespace osu.Game.Screens.Menu
         protected Sample SampleBeat;
         protected Sample SampleDownbeat;
 
-        private readonly Container colourAndTriangles;
+        private readonly Container logoBackground;
+        private readonly Box gradientBackground;
         private readonly TrianglesV2 triangles;
+
+        private TextureStore textures;
+        private Bindable<ForkMenuLogo> configuredLogo;
+        private Bindable<ForkMenuLogoGradient> configuredGradient;
+        private bool trianglesRequested;
+        private bool trianglesEnabled;
 
         /// <summary>
         /// Return value decides whether the logo should play its own sample for the click action.
@@ -83,7 +92,12 @@ namespace osu.Game.Screens.Menu
 
         public bool Triangles
         {
-            set => colourAndTriangles.FadeTo(value ? 1 : 0, transition_length, Easing.OutQuint);
+            set
+            {
+                trianglesRequested = value;
+                logoBackground.FadeTo(value ? 1 : 0, transition_length, Easing.OutQuint);
+                updateTriangleVisibility();
+            }
         }
 
         public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => logoContainer.ReceivePositionalInputAt(screenSpacePos);
@@ -101,7 +115,6 @@ namespace osu.Game.Screens.Menu
         private readonly Container impactContainer;
 
         private const double early_activation = 60;
-
         private const float triangles_paused_velocity = 0.5f;
 
         public override bool IsPresent => base.IsPresent || Scheduler.HasPendingTasks;
@@ -178,17 +191,16 @@ namespace osu.Game.Screens.Menu
                                                             Masking = true,
                                                             Children = new Drawable[]
                                                             {
-                                                                colourAndTriangles = new Container
+                                                                logoBackground = new Container
                                                                 {
                                                                     RelativeSizeAxes = Axes.Both,
                                                                     Anchor = Anchor.Centre,
                                                                     Origin = Anchor.Centre,
                                                                     Children = new Drawable[]
                                                                     {
-                                                                        new Box
+                                                                        gradientBackground = new Box
                                                                         {
                                                                             RelativeSizeAxes = Axes.Both,
-                                                                            Colour = ColourInfo.GradientVertical(Color4Extensions.FromHex(@"ff66ab"), Color4Extensions.FromHex(@"cc5289")),
                                                                         },
                                                                         triangles = new TrianglesV2
                                                                         {
@@ -197,10 +209,9 @@ namespace osu.Game.Screens.Menu
                                                                             Thickness = 0.009f,
                                                                             ScaleAdjust = 3,
                                                                             SpawnRatio = 1.4f,
-                                                                            Colour = ColourInfo.GradientVertical(Color4Extensions.FromHex(@"ff66ab"), Color4Extensions.FromHex(@"b6346f")),
                                                                             RelativeSizeAxes = Axes.Both,
                                                                         },
-                                                                    }
+                                                                    },
                                                                 },
                                                                 flashLayer = new Box
                                                                 {
@@ -275,16 +286,80 @@ namespace osu.Game.Screens.Menu
         }
 
         [BackgroundDependencyLoader]
-        private void load(TextureStore textures, AudioManager audio)
+        private void load(TextureStore textures, AudioManager audio, OsuConfigManager config)
         {
+            this.textures = textures;
             sampleClick = audio.Samples.Get(@"Menu/osu-logo-select");
 
             SampleBeat = audio.Samples.Get(@"Menu/osu-logo-heartbeat");
             SampleDownbeat = audio.Samples.Get(@"Menu/osu-logo-downbeat");
 
-            logo.Texture = textures.Get(@"Menu/logo");
-            ripple.Texture = textures.Get(@"Menu/logo");
+            configuredLogo = config.GetBindable<ForkMenuLogo>(OsuSetting.ForkMenuLogo);
+            configuredGradient = config.GetBindable<ForkMenuLogoGradient>(OsuSetting.ForkMenuLogoGradient);
+
+            configuredLogo.BindValueChanged(_ => applyLogo(), true);
+            configuredGradient.BindValueChanged(_ => applyGradient(), true);
+            config.GetBindable<bool>(OsuSetting.ForkMenuLogoTriangles).BindValueChanged(enabled =>
+            {
+                trianglesEnabled = enabled.NewValue;
+                updateTriangleVisibility();
+            }, true);
         }
+
+        /// <summary>
+        /// Resolves random logo settings for a newly-entered screen.
+        /// Fixed selections are simply re-applied.
+        /// </summary>
+        public void CycleAppearance() => Schedule(() =>
+        {
+            applyLogo();
+            applyGradient();
+        });
+
+        private void applyLogo()
+        {
+            ForkMenuLogo selected = configuredLogo.Value;
+
+            if (selected == ForkMenuLogo.Random)
+                selected = RNG.NextBool() ? ForkMenuLogo.Mora : ForkMenuLogo.Character;
+
+            Texture selectedTexture = textures.Get(selected.GetTextureName());
+            logo.Texture = selectedTexture;
+            ripple.Texture = selectedTexture;
+        }
+
+        private void applyGradient()
+        {
+            ForkMenuLogoGradient selected = configuredGradient.Value;
+
+            if (selected == ForkMenuLogoGradient.Random)
+                selected = (ForkMenuLogoGradient)RNG.Next((int)ForkMenuLogoGradient.Classic, (int)ForkMenuLogoGradient.Random);
+
+            ColourInfo colours = getGradientColours(selected);
+            gradientBackground.FadeColour(colours, transition_length, Easing.OutQuint);
+            // A translucent neutral overlay keeps the animated outlines readable on every palette.
+            triangles.FadeColour(Color4.White.Opacity(0.28f), transition_length, Easing.OutQuint);
+        }
+
+        private void updateTriangleVisibility() => triangles.FadeTo(trianglesRequested && trianglesEnabled ? 1 : 0, transition_length, Easing.OutQuint);
+
+        private static ColourInfo getGradientColours(ForkMenuLogoGradient gradient) => gradient switch
+        {
+            // Matches the website's purple accent and dark surface palette.
+            ForkMenuLogoGradient.Web => fourCornerGradient(@"a99aff", @"8066ff", @"302e38", @"4f3fb8"),
+            ForkMenuLogoGradient.Sunset => fourCornerGradient(@"ffb36b", @"f45b8c", @"6a2458", @"311747"),
+            ForkMenuLogoGradient.Ocean => fourCornerGradient(@"65d9ff", @"3978d4", @"102b55", @"183c73"),
+            ForkMenuLogoGradient.Aurora => fourCornerGradient(@"75f0bd", @"57b8d9", @"273c77", @"54317d"),
+            _ => fourCornerGradient(@"8b5aa0", @"59366d", @"21052f", @"76294f"),
+        };
+
+        private static ColourInfo fourCornerGradient(string topLeft, string topRight, string bottomLeft, string bottomRight) => new ColourInfo
+        {
+            TopLeft = Color4Extensions.FromHex(topLeft),
+            TopRight = Color4Extensions.FromHex(topRight),
+            BottomLeft = Color4Extensions.FromHex(bottomLeft),
+            BottomRight = Color4Extensions.FromHex(bottomRight),
+        };
 
         private int lastBeatIndex;
 
@@ -341,10 +416,7 @@ namespace osu.Game.Screens.Menu
                     .FadeTo(visualizer_default_alpha, beatLength);
             }
 
-            this.Delay(early_activation).Schedule(() =>
-            {
-                triangles.Velocity += amplitudeAdjust * (effectPoint.KiaiMode ? 6 : 3);
-            });
+            this.Delay(early_activation).Schedule(() => triangles.Velocity += amplitudeAdjust * (effectPoint.KiaiMode ? 6 : 3));
         }
 
         public void PlayIntro()
@@ -371,13 +443,10 @@ namespace osu.Game.Screens.Menu
             {
                 float maxAmplitude = lastBeatIndex >= 0 ? musicController.CurrentTrack.CurrentAmplitudes.Maximum : 0;
                 logoAmplitudeContainer.Scale = new Vector2((float)Interpolation.Damp(logoAmplitudeContainer.Scale.X, 1 - Math.Max(0, maxAmplitude - scale_adjust_cutoff) * 0.04f, 0.9f, Time.Elapsed));
-
                 triangles.Velocity = (float)Interpolation.Damp(triangles.Velocity, triangles_paused_velocity * (IsKiaiTime ? 4 : 2), 0.995f, Time.Elapsed);
             }
             else
-            {
                 triangles.Velocity = (float)Interpolation.Damp(triangles.Velocity, triangles_paused_velocity, 0.9f, Time.Elapsed);
-            }
         }
 
         public override bool HandlePositionalInput => base.HandlePositionalInput && Alpha > 0.2f;

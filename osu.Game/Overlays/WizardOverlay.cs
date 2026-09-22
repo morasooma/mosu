@@ -16,6 +16,7 @@ using osu.Framework.Localisation;
 using osu.Framework.Screens;
 using osu.Framework.Threading;
 using osu.Game.Graphics;
+using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Input.Bindings;
 using osu.Game.Localisation;
@@ -44,7 +45,7 @@ namespace osu.Game.Overlays
         private Container content = null!;
 
         private LoadingSpinner loading = null!;
-        private Box screenBackground = null!;
+        private BackdropBlurSurface screenBackground = null!;
         private IBindable<Colour4> themeColour = null!;
         private ScheduledDelegate? loadingShowDelegate;
 
@@ -89,7 +90,7 @@ namespace osu.Game.Overlays
                                     RelativeSizeAxes = Axes.Both,
                                     Children = new Drawable[]
                                     {
-                                        screenBackground = new Box
+                                        screenBackground = new BackdropBlurSurface
                                         {
                                             RelativeSizeAxes = Axes.Both,
                                         },
@@ -110,7 +111,7 @@ namespace osu.Game.Overlays
             });
 
             themeColour = ColourProvider.GetColourBindable(OverlayColour.Background6);
-            themeColour.BindValueChanged(colour => screenBackground.Colour = colour.NewValue, true);
+            themeColour.BindValueChanged(colour => screenBackground.SurfaceColour = colour.NewValue, true);
         }
 
         [Resolved]

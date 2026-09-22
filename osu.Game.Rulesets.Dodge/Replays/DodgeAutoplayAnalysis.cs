@@ -14,8 +14,26 @@ namespace osu.Game.Rulesets.Dodge.Replays
         double MeanPressure,
         double PeakPressure,
         int PeakActiveProjectiles,
+        double WeightedMovement,
+        double WeightedPressure,
         double WeightedStrain,
-        int TeleportCount)
+        double BranchDifficulty,
+        double ActionDifficulty,
+        double PathDifficulty,
+        double MovementDifficulty,
+        double ReadingDifficulty,
+        double PeakPathDifficulty,
+        double PeakMovementDifficulty,
+        double PeakReadingDifficulty,
+        double DifficultSectionCount,
+        int RelevantPatternCount,
+        double EffectiveReadingPatternCount,
+        double MeanThreatUrgency,
+        double PeakThreatUrgency,
+        int PeakConcurrentPatterns,
+        int TeleportCount,
+        int CollisionCount,
+        double PlayerSize)
     {
         public double ProjectileRate => ProjectileCount / System.Math.Max(1, Duration / 1000);
     }

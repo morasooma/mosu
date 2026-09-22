@@ -85,6 +85,8 @@ namespace osu.Game.Tests.NonVisual
             {
                 Assert.That(router.SelectProvider(new DownloadBeatmapSetRequest(normalSet, false)), Is.SameAs(official));
                 Assert.That(router.SelectProvider(new DownloadBeatmapSetRequest(serverSet, false)), Is.SameAs(primary));
+                Assert.That(router.SelectProvider(new GetBeatmapsRequest([123, 456])), Is.SameAs(official));
+                Assert.That(router.SelectProvider(new GetBeatmapsRequest([123, BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD])), Is.SameAs(primary));
                 Assert.That(router.SelectProvider(new GetMeRequest()), Is.SameAs(primary));
             });
         }

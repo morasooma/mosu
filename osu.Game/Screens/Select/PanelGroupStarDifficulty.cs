@@ -148,7 +148,8 @@ namespace osu.Game.Screens.Select
             iconContainer.Colour = Item?.Model is StarDifficultyGroupDefinition group && group.Difficulty.Stars >= 7
                 ? colourProvider.Content1
                 : colourProvider.Background5;
-            starRatingText.Colour = countText.Colour = colourProvider.Content1;
+            starRatingText.Colour = colourProvider.Content1;
+            countText.Colour = Color4.White;
         }
 
         private Color4 ratingColour;

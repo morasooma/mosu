@@ -15,6 +15,7 @@ using JetBrains.Annotations;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Bindables;
+using osu.Framework.Platform;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -26,6 +27,7 @@ using osu.Framework.Screens;
 using osu.Framework.Threading;
 using osu.Game.Audio;
 using osu.Game.Beatmaps;
+using osu.Game.Beatmaps.Timing;
 using osu.Game.Configuration;
 using osu.Game.Database;
 using osu.Game.Extensions;
@@ -33,6 +35,7 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.IO.Archives;
+using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Overlays;
 using osu.Game.Rulesets;
@@ -102,6 +105,9 @@ namespace osu.Game.Screens.Play
         private readonly BindableBool customApproachRateEnabled = new BindableBool();
         private readonly BindableFloat customApproachRate = new BindableFloat();
         private readonly Bindable<string> customUsername = new Bindable<string>();
+
+        [Cached]
+        private readonly GameplayIntegrityTracker gameplayIntegrityTracker = new GameplayIntegrityTracker();
 
         private readonly Bindable<bool> samplePlaybackDisabled = new Bindable<bool>();
 
@@ -177,6 +183,10 @@ namespace osu.Game.Screens.Play
 
         protected SkipOverlay SkipIntroOverlay { get; private set; }
         private SkipOverlay skipOutroOverlay;
+        private Container breakSkipOverlayContainer;
+        private SkipOverlay breakSkipOverlay;
+
+        protected BreakPeriod CurrentBreak => breakTracker.CurrentBreak.Value;
 
         protected ScoreProcessor ScoreProcessor { get; private set; }
 
@@ -232,6 +242,9 @@ namespace osu.Game.Screens.Play
 
         protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
             => dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
+
+        [Resolved]
+        private GameHost gameHost { get; set; } = null!;
 
         protected override void LoadComplete()
         {
@@ -320,6 +333,8 @@ namespace osu.Game.Screens.Play
                 GameplayClockContainer = CreateGameplayClockContainer(Beatmap.Value, DrawableRuleset.GameplayStartTime),
             };
 
+            gameplayIntegrityTracker.ClockReportProvider = createClockIntegrityReport;
+
             AddInternal(screenSuspension = new ScreenSuspensionHandler(GameplayClockContainer));
 
             Score = CreateScore(playableBeatmap);
@@ -342,17 +357,20 @@ namespace osu.Game.Screens.Play
 
             var rulesetSkinProvider = new RulesetSkinProvidingContainer(ruleset, playableBeatmap, Beatmap.Value.Skin);
             GameplaySkinSource = rulesetSkinProvider;
-            config.BindWith(OsuSetting.BeatmapSkins, rulesetSkinProvider.BeatmapSkins);
-            config.BindWith(OsuSetting.BeatmapColours, rulesetSkinProvider.BeatmapColours);
-            config.BindWith(OsuSetting.BeatmapHitsounds, rulesetSkinProvider.BeatmapHitsounds);
+
+            // A forced skin is only a property of this play session. Binding it to the global
+            // configuration would propagate Disabled to that configuration bindable, preventing
+            // subsequent players from changing its value.
             if (forceBeatmapSkin)
             {
-                Schedule(() =>
-                {
-                    rulesetSkinProvider.BeatmapSkins.Value = true;
-                    rulesetSkinProvider.BeatmapSkins.Disabled = true;
-                });
+                rulesetSkinProvider.BeatmapSkins.Value = true;
+                rulesetSkinProvider.BeatmapSkins.Disabled = true;
             }
+            else
+                config.BindWith(OsuSetting.BeatmapSkins, rulesetSkinProvider.BeatmapSkins);
+
+            config.BindWith(OsuSetting.BeatmapColours, rulesetSkinProvider.BeatmapColours);
+            config.BindWith(OsuSetting.BeatmapHitsounds, rulesetSkinProvider.BeatmapHitsounds);
             GameplayClockContainer.Add(new GameplayScrollWheelHandling());
 
             // needs to exist in frame stable content, but is used by underlay layers so make sure assigned early.
@@ -458,6 +476,12 @@ namespace osu.Game.Screens.Play
             // bind clock into components that require it
             ((IBindable<bool>)DrawableRuleset.IsPaused).BindTo(GameplayClockContainer.IsPaused);
 
+            // A pause is a safe window in which an inflated exclusive queue can be reset.
+            GameplayClockContainer.IsPaused.BindValueChanged(paused =>
+            {
+                // Standalone public build note: AudioThread.AllowLatencyRepair is an optional Mosu framework extension.
+            });
+
             DrawableRuleset.NewResult += r =>
             {
                 HealthProcessor.ApplyResult(r);
@@ -493,6 +517,7 @@ namespace osu.Game.Screens.Play
 
             IsBreakTime.BindTo(breakTracker.IsBreakTime);
             IsBreakTime.BindValueChanged(onBreakTimeChanged, true);
+            breakTracker.CurrentBreak.BindValueChanged(onCurrentBreakChanged);
         }
 
         protected virtual GameplayClockContainer CreateGameplayClockContainer(WorkingBeatmap beatmap, double gameplayStart) => new MasterGameplayClockContainer(beatmap, gameplayStart);
@@ -544,7 +569,7 @@ namespace osu.Game.Screens.Play
                 Children = new[]
                 {
                     DimmableStoryboard.OverlayLayerContainer.CreateProxy(),
-                    HUDOverlay = new HUDOverlay(DrawableRuleset, GameplayState.Mods, Configuration)
+                    HUDOverlay = new HUDOverlay(DrawableRuleset, GameplayState.Mods, Configuration, ScoreProcessor)
                     {
                         HoldToQuit =
                         {
@@ -567,6 +592,10 @@ namespace osu.Game.Screens.Play
                         Clock = DrawableRuleset.FrameStableClock,
                         ProcessCustomClock = false,
                         BreakTracker = breakTracker,
+                    },
+                    breakSkipOverlayContainer = new Container
+                    {
+                        RelativeSizeAxes = Axes.Both,
                     },
                     // display the cursor above some HUD elements.
                     DrawableRuleset.Cursor?.CreateProxy() ?? new Container(),
@@ -632,6 +661,42 @@ namespace osu.Game.Screens.Play
         }
 
         protected virtual SkipOverlay CreateSkipOverlay(double startTime) => new SkipOverlay(startTime);
+
+        protected virtual SkipOverlay CreateBreakSkipOverlay(BreakPeriod breakPeriod) => new SkipOverlay(breakPeriod.EndTime);
+
+        private void onCurrentBreakChanged(ValueChangedEvent<BreakPeriod> currentBreak)
+        {
+            breakSkipOverlay?.Expire();
+            breakSkipOverlay = null;
+            breakSkipOverlayContainer?.Clear(false);
+
+            BreakPeriod breakPeriod = currentBreak.NewValue;
+
+            if (breakPeriod == null
+                || breakPeriod.Duration < MasterGameplayClockContainer.MINIMUM_BREAK_DURATION_FOR_SKIP
+                || !MosuServerEnvironment.SupportsBreakSkipping
+                || !Configuration.AllowSkipping
+                || !Configuration.AllowUserInteraction
+                || !DrawableRuleset.AllowGameplayOverlays
+                || UsesSpecialGameplayRateMode
+                || DrawableRuleset.HasReplayLoaded.Value)
+                return;
+
+            SkipOverlay overlay = CreateBreakSkipOverlay(breakPeriod);
+            overlay.RequestSkip = () => RequestBreakSkip(breakPeriod);
+
+            LoadComponentAsync(overlay, loaded =>
+            {
+                if (breakTracker.CurrentBreak.Value?.Equals(breakPeriod) != true)
+                {
+                    loaded.Expire();
+                    return;
+                }
+
+                breakSkipOverlay = loaded;
+                breakSkipOverlayContainer.Add(loaded);
+            });
+        }
 
         private void onBreakTimeChanged(ValueChangedEvent<bool> isBreakTime)
         {
@@ -726,6 +791,7 @@ namespace osu.Game.Screens.Play
                     }
 
                     playable = Beatmap.Value.GetPlayableBeatmap(ruleset.RulesetInfo, beatmapMods, cancellationToken);
+                    gameplayIntegrityTracker.SetDifficulty(Beatmap.Value.Beatmap.Difficulty, playable.Difficulty, customApproachRateEnabled.Value);
                 }
                 catch (BeatmapInvalidForRulesetException)
                 {
@@ -752,6 +818,27 @@ namespace osu.Game.Screens.Play
             }
 
             return playable;
+        }
+
+        private GameplayClockIntegrityReport createClockIntegrityReport()
+        {
+            if (GameplayClockContainer is not MasterGameplayClockContainer masterClock)
+                return new GameplayClockIntegrityReport { SpecialRateMode = UsesSpecialGameplayRateMode };
+
+            return new GameplayClockIntegrityReport
+            {
+                ValidationEnabled = masterClock.PlaybackValidationEnabled,
+                PlaybackRateValid = masterClock.PlaybackRateValid.Value,
+                DiscrepancyCount = masterClock.PlaybackDiscrepancyCount,
+                MaxDriftMilliseconds = masterClock.MaxPlaybackDriftMilliseconds,
+                GameplayElapsedMilliseconds = masterClock.ElapsedGameplayClockTimeExcludingSeeks,
+                RawGameplayElapsedMilliseconds = masterClock.ElapsedGameplayClockTime,
+                SeekCount = masterClock.GameplaySeekCount,
+                SeekDeltaMilliseconds = masterClock.GameplaySeekDeltaMilliseconds,
+                WallElapsedMilliseconds = masterClock.ElapsedWallClockTime,
+                SpecialRateMode = UsesSpecialGameplayRateMode,
+                AuthorisedSkips = masterClock.AuthorisedSkips.ToArray(),
+            };
         }
 
         /// <summary>
@@ -841,6 +928,40 @@ namespace osu.Game.Screens.Play
         protected virtual void RequestIntroSkip()
         {
             PerformIntroSkip();
+        }
+
+        protected virtual void RequestBreakSkip(BreakPeriod breakPeriod)
+        {
+            if (!MosuServerEnvironment.SupportsBreakSkipping)
+                return;
+
+            PerformBreakSkip(breakPeriod, false);
+        }
+
+        protected int GetBreakIndex(BreakPeriod breakPeriod) => breakTracker.GetBreakIndex(breakPeriod);
+
+        /// <summary>
+        /// Performs a locally validated break skip.
+        /// </summary>
+        protected bool PerformBreakSkip(BreakPeriod breakPeriod, bool multiplayerServerAuthorised)
+        {
+            if (!MosuServerEnvironment.SupportsBreakSkipping
+                || breakTracker.CurrentBreak.Value?.Equals(breakPeriod) != true)
+                return false;
+
+            samplePlaybackDisabled.Value = true;
+
+            bool skipped = (GameplayClockContainer as MasterGameplayClockContainer)?.SkipBreak(
+                breakPeriod, breakTracker.GetBreakIndex(breakPeriod), multiplayerServerAuthorised) == true;
+
+            // A break skip is a large seek after gameplay has already started. Explicitly allow
+            // the frame-stable clock to consume this validated discontinuity in one frame;
+            // otherwise release builds reject it as an invalid audio-clock value indefinitely.
+            if (skipped)
+                DrawableRuleset.AllowOneFrameClockSeek();
+
+            updateSampleDisabledState();
+            return skipped;
         }
 
         /// <summary>
@@ -1223,6 +1344,8 @@ namespace osu.Game.Screens.Play
         {
             if (!canResume) return;
 
+            // Standalone public build note: AudioThread.FlushExclusiveQueueNow is an optional Mosu framework extension.
+
             IsResuming = true;
             PauseOverlay.Hide();
 
@@ -1234,6 +1357,10 @@ namespace osu.Game.Screens.Play
 
             void completeResume()
             {
+                // The audio clock may continue moving while the gameplay clock is paused. Allow the
+                // frame-stable clock to resynchronise directly on the first resumed frame rather than
+                // rejecting the multi-second discontinuity and freezing the playfield update subtree.
+                DrawableRuleset.AllowOneFrameClockSeek();
                 GameplayClockContainer.Start();
                 IsResuming = false;
             }
@@ -1246,6 +1373,8 @@ namespace osu.Game.Screens.Play
         public override void OnEntering(ScreenTransitionEvent e)
         {
             base.OnEntering(e);
+
+            // Standalone public build note: FreezeDetector is an optional Mosu framework extension.
 
             if (!LoadedBeatmapSuccessfully)
                 return;
@@ -1465,6 +1594,7 @@ namespace osu.Game.Screens.Play
 
         public override bool OnExiting(ScreenExitEvent e)
         {
+            // Standalone public build note: FreezeDetector is an optional Mosu framework extension.
 
             screenSuspension?.RemoveAndDisposeImmediately();
 
@@ -1622,7 +1752,6 @@ namespace osu.Game.Screens.Play
 
             public override string Name => @"Forced AR";
             public override string Acronym => @"FAR";
-            public override double ScoreMultiplier => 1;
             public override LocalisableString Description => @"Applies a fork-configured approach rate.";
             public override ModType Type => ModType.System;
             public override bool UserPlayable => false;

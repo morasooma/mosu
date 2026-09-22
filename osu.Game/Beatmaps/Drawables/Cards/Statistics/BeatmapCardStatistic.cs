@@ -4,6 +4,7 @@
 #nullable disable
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Cursor;
@@ -37,6 +38,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards.Statistics
 
         private readonly SpriteIcon spriteIcon;
         private readonly OsuSpriteText spriteText;
+        private IBindable<Colour4> themeColour = null!;
 
         protected BeatmapCardStatistic()
         {
@@ -69,7 +71,12 @@ namespace osu.Game.Beatmaps.Drawables.Cards.Statistics
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
-            spriteIcon.Colour = colourProvider.Content2;
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Content2);
+            themeColour.BindValueChanged(c =>
+            {
+                spriteIcon.Colour = c.NewValue;
+                spriteText.Colour = c.NewValue;
+            }, true);
         }
 
         #region Tooltip implementation

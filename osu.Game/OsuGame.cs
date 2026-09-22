@@ -25,6 +25,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Performance;
 using osu.Framework.Graphics.Rendering.Deferred;
+using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Veldrid;
 using osu.Framework.Input;
@@ -60,10 +61,13 @@ using osu.Game.Overlays;
 using osu.Game.Overlays.BeatmapListing;
 using osu.Game.Overlays.Mods;
 using osu.Game.Overlays.Music;
+using osu.Game.Overlays.Dialog;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Overlays.OSD;
 using osu.Game.Overlays.SkinEditor;
 using osu.Game.Overlays.Toolbar;
+using osu.Game.Performance;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Scoring;
 using osu.Game.Scoring.Legacy;
@@ -86,6 +90,7 @@ using osu.Game.Users;
 using osu.Game.Utils;
 using osuTK;
 using osuTK.Graphics;
+using Sentry;
 using IntroScreen = osu.Game.Screens.Menu.IntroScreen;
 using MatchType = osu.Game.Online.Rooms.MatchType;
 
@@ -127,6 +132,17 @@ namespace osu.Game
         private const int uncapped_frame_limit = int.MaxValue;
 
         public Toolbar Toolbar { get; private set; }
+
+        private readonly PerformanceDebugService performanceDebugService = new PerformanceDebugService();
+
+        // Ported from Torii: keep the top toolbar out of the way, reveal it at the top edge,
+        // and hide it again after the cursor leaves it.
+        private Bindable<bool> autoHideToolbar;
+        private double? toolbarAutoHideTime;
+        private InputManager autoHideInputManager;
+
+        private const float toolbar_reveal_edge = 5;
+        private const double toolbar_auto_hide_delay = 1500;
 
         private ChatOverlay chatOverlay;
 
@@ -170,6 +186,9 @@ namespace osu.Game
 
         private Container overlayOffsetContainer;
 
+        private BackdropBlurContainer backdropBlurContainer;
+        private Box blockingOverlayDim;
+
         private OnScreenDisplay onScreenDisplay;
 
         private DialogOverlay dialogOverlay;
@@ -193,6 +212,8 @@ namespace osu.Game
 
         [Cached]
         private readonly ScreenshotManager screenshotManager = new ScreenshotManager();
+
+        private SentryLogger sentryLogger;
 
         public virtual StableStorage GetStorageForStableInstall() => null;
 
@@ -292,7 +313,7 @@ namespace osu.Game
         IBindable<OverlayActivation> IOverlayManager.OverlayActivationMode => OverlayActivationMode;
 
         private void updateBlockingOverlayFade() =>
-            ScreenContainer.FadeColour(visibleBlockingOverlays.Any() ? OsuColour.Gray(0.5f) : Color4.White, 500, Easing.OutQuint);
+            blockingOverlayDim?.FadeTo(visibleBlockingOverlays.Any() ? 0.5f : 0, 500, Easing.OutQuint);
 
         IDisposable IOverlayManager.RegisterBlockingOverlay(OverlayContainer overlayContainer)
         {
@@ -374,6 +395,12 @@ namespace osu.Game
         private readonly List<string> dragDropFiles = new List<string>();
         private ScheduledDelegate dragDropImportSchedule;
 
+        public override void SetupLogging(Storage gameStorage, Storage cacheStorage)
+        {
+            base.SetupLogging(gameStorage, cacheStorage);
+            sentryLogger = new SentryLogger(this, cacheStorage, LocalConfig?.Get<bool>(OsuSetting.ForkDisableRemoteLogging) == true);
+        }
+
         public override void SetHost(GameHost host)
         {
             base.SetHost(host);
@@ -406,6 +433,14 @@ namespace osu.Game
             if (path.StartsWith(OSU_PROTOCOL, StringComparison.Ordinal))
             {
                 HandleLink(path);
+                return;
+            }
+
+            // A screen that takes files itself gets them before the importers do. The claim is answered
+            // from the path alone because this runs on the window's thread; the handling is scheduled.
+            if (ScreenStack?.CurrentScreen is IAcceptDroppedFiles receiver && receiver.ClaimsDroppedFile(path))
+            {
+                Schedule(() => receiver.HandleDroppedFile(path));
                 return;
             }
 
@@ -445,6 +480,17 @@ namespace osu.Game
             uncappedFrameRate.BindValueChanged(_ => updateBenchmarkUnlimitedFrameState(), true);
             limitMenuFps2x.BindValueChanged(_ => updateBenchmarkUnlimitedFrameState(), true);
 
+            LocalConfig.GetBindable<bool>(OsuSetting.ForkDisableRemoteLogging).BindValueChanged(v =>
+            {
+                Environment.SetEnvironmentVariable("OSU_DISABLE_ERROR_REPORTING", v.NewValue ? "1" : null);
+
+                if (v.NewValue && sentryLogger?.IsEnabled == true)
+                {
+                    sentryLogger.Dispose();
+                    sentryLogger = null;
+                }
+            }, true);
+
             bool skinPerformanceSettingsInitialised = false;
 
             void reloadSkinPerformanceSettings()
@@ -478,8 +524,18 @@ namespace osu.Game
             bindSkinPerformanceSetting(OsuSetting.ForkSkinPerformanceBlackBackground, value => SkinPerformanceMode.BlackBackground = value);
             bindSkinPerformanceSetting(OsuSetting.ForkArgonFollowRing, value => SkinPerformanceMode.ArgonFollowRing = value);
             skinPerformanceSettingsInitialised = true;
+
+            // Standalone public build note: Custom rendering, audio, and threading performance hooks
+            // (DeferredRendererPerformanceSettings, VeldridRendererPerformanceSettings, GraphicsPerformanceSettings,
+            // Host.AllowTearing, Host.UpdateThreadSpinWait, ThreadRunner.Use8kInputRate, exclusive WASAPI)
+            // are optional Mosu framework extensions. In standalone public builds using upstream
+            // ppy.osu.Framework, these runtime toggles are unavailable.
+
             disableShear = LocalConfig.GetBindable<bool>(OsuSetting.ForkDisableInterfaceShear);
             DisableShear.BindTo(disableShear);
+
+            if (sentryLogger?.IsEnabled == true)
+                sentryLogger.AttachUser(API.LocalUser);
 
             if (SeasonalUIConfig.ENABLED)
                 dependencies.CacheAs(osuLogo = new OsuLogoChristmas { Alpha = 0 });
@@ -569,11 +625,25 @@ namespace osu.Game
                 BeatmapManager.PauseImports = p.NewValue != LocalUserPlayingState.NotPlaying;
                 SkinManager.PauseImports = p.NewValue != LocalUserPlayingState.NotPlaying;
                 ScoreManager.PauseImports = p.NewValue != LocalUserPlayingState.NotPlaying;
+
+                // Resetting an inflated exclusive audio queue can create a very short skip.
+                // In standalone public builds using upstream ppy.osu.Framework,
+                // audio latency repair and exclusive WASAPI are unavailable.
             }, true);
 
-            IsActive.BindValueChanged(active => updateActiveState(active.NewValue), true);
+            exclusiveAudio = LocalConfig.GetBindable<bool>(OsuSetting.ForkExclusiveAudio);
+            exclusiveAudioGameplayOnly = LocalConfig.GetBindable<bool>(OsuSetting.ForkExclusiveAudioGameplayOnly);
+
+            IsActive.BindValueChanged(active =>
+            {
+                updateActiveState(active.NewValue);
+            }, true);
 
             Audio.AddAdjustment(AdjustableProperty.Volume, inactiveVolumeFade);
+
+            reduceVolumeOutsideGameplay = LocalConfig.GetBindable<bool>(OsuSetting.ForkReduceVolumeOutsideGameplay);
+            reduceVolumeOutsideGameplay.BindValueChanged(_ => updateOutsideGameplayVolume(ScreenStack?.CurrentScreen as IOsuScreen), true);
+            Audio.AddAdjustment(AdjustableProperty.Volume, outsideGameplayVolume);
 
             SelectedMods.BindValueChanged(modsChanged);
             Beatmap.BindValueChanged(beatmapChanged, true);
@@ -1272,6 +1342,8 @@ namespace osu.Game
 
             base.Dispose(isDisposing);
 
+            sentryLogger?.Dispose();
+
             if (Host?.Window != null)
                 Host.Window.DragDrop -= onWindowDragDrop;
 
@@ -1293,9 +1365,47 @@ namespace osu.Game
             };
         }
 
+        private void offerNewerVersionDatabaseConversion()
+        {
+            ulong? schemaVersion = MainRealm.NewerVersionDatabaseSchemaVersion;
+            string databaseFilename = MainRealm.NewerVersionDatabaseFilename;
+
+            if (schemaVersion == null || databaseFilename == null)
+                return;
+
+            Logger.Log($"Offering conversion of newer version database {databaseFilename} (schema version {schemaVersion}).", LoggingTarget.Database);
+
+            dialogOverlay.Push(new NewerVersionDatabaseDialog(
+                @"Database created by a newer version of osu!",
+                $"The local database ({databaseFilename}) was created by osu!lazer tachyon or another newer osu! version "
+                + $"(schema version {schemaVersion}), which this client cannot open (supported schema version {MainRealm.SupportedSchemaVersion}). "
+                + @"You can convert it for use with this client. Unknown data from the newer version will be dropped, and the original file will be kept as a backup.",
+                onConvert: () =>
+                {
+                    if (!MainRealm.TryConvertNewerVersionedDatabase())
+                    {
+                        Notifications.Post(new SimpleErrorNotification
+                        {
+                            Text = @"The database conversion failed. The original database was not modified.",
+                        });
+                        return;
+                    }
+
+                    dialogOverlay.Push(new ConfirmDialog(@"Conversion complete. Restart osu! to load the converted database.", () =>
+                    {
+                        RestartAppWhenExited();
+                        AttemptExit();
+                    }));
+                }));
+        }
+
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            // If a foreign database created by a newer osu! version (e.g. osu!lazer tachyon) was moved aside at
+            // startup, offer the user a conversion to the schema version supported by this client.
+            Schedule(offerNewerVersionDatabaseConversion);
 
             // The next time this is updated is in UpdateAfterChildren, which occurs too late and results
             // in the cursor being shown for a few frames during the intro.
@@ -1344,40 +1454,54 @@ namespace osu.Game
                 ScreenOffsetContainer = new Container
                 {
                     RelativeSizeAxes = Axes.Both,
-                    Children = new Drawable[]
+                    Child = ScreenContainer = new ScalingContainer(ScalingMode.ExcludeOverlays)
                     {
-                        ScreenContainer = new ScalingContainer(ScalingMode.ExcludeOverlays)
+                        RelativeSizeAxes = Axes.Both,
+                        Anchor = Anchor.Centre,
+                        Origin = Anchor.Centre,
+                        Children = new Drawable[]
                         {
-                            RelativeSizeAxes = Axes.Both,
-                            Anchor = Anchor.Centre,
-                            Origin = Anchor.Centre,
-                            Children = new Drawable[]
+                            backdropBlurContainer = new BackdropBlurContainer
                             {
-                                backReceptor = new ScreenFooter.BackReceptor(),
-                                ScreenStack = new OsuScreenStack { RelativeSizeAxes = Axes.Both },
-                                logoContainer = new Container { RelativeSizeAxes = Axes.Both },
-                                // TODO: what is this? why is this?
-                                // TODO: this is being screen scaled even though it's probably AN OVERLAY.
-                                footerBasedOverlayContent = new Container
+                                SceneContent = new Container
                                 {
-                                    Depth = -1,
                                     RelativeSizeAxes = Axes.Both,
-                                },
-                                new PopoverContainer
-                                {
-                                    // Ensure the footer is displayed above any content and/or overlays.
-                                    Depth = -1,
-                                    RelativeSizeAxes = Axes.Both,
-                                    Child = screenStackFooter = new ScreenStackFooter(ScreenStack, backReceptor)
+                                    Children = new Drawable[]
                                     {
-                                        // TODO: this is really really weird and should not exist.
-                                        RequestLogoInFront = inFront => ScreenContainer.ChangeChildDepth(logoContainer, inFront ? float.MinValue : 0),
-                                        BackButtonPressed = handleBackButton
-                                    },
+                                        backReceptor = new ScreenFooter.BackReceptor(),
+                                        ScreenStack = new OsuScreenStack { RelativeSizeAxes = Axes.Both },
+                                    }
+                                }
+                            },
+                            // Keep the global logo outside the captured scene, matching the original layer hierarchy.
+                            // This allows its tracked state to move above footer and overlay content.
+                            logoContainer = new Container { RelativeSizeAxes = Axes.Both },
+                            // Footer-based overlays share the screen coordinate space but stay outside
+                            // the captured backdrop, preventing them from sampling themselves.
+                            footerBasedOverlayContent = new Container
+                            {
+                                Depth = -1,
+                                RelativeSizeAxes = Axes.Both,
+                            },
+                            new PopoverContainer
+                            {
+                                // The footer must remain above footer-based overlays so its visible controls can receive input.
+                                Depth = -2,
+                                RelativeSizeAxes = Axes.Both,
+                                Child = screenStackFooter = new ScreenStackFooter(ScreenStack, backReceptor)
+                                {
+                                    RequestLogoInFront = inFront => ScreenContainer.ChangeChildDepth(logoContainer, inFront ? float.MinValue : 0),
+                                    BackButtonPressed = handleBackButton
                                 },
-                            }
-                        },
+                            },
+                        }
                     }
+                },
+                blockingOverlayDim = new Box
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Colour = Color4.Black,
+                    Alpha = 0,
                 },
                 overlayOffsetContainer = new Container
                 {
@@ -1395,6 +1519,8 @@ namespace osu.Game
             });
 
             dependencies.Cache(ScreenFooter);
+            dependencies.CacheAs<IBackdropBlurSource>(backdropBlurContainer);
+            loadComponentSingleFile(performanceDebugService, Add, true);
 
             ScreenStack.ScreenPushed += screenPushed;
             ScreenStack.ScreenExited += screenExited;
@@ -1406,7 +1532,14 @@ namespace osu.Game
                 Margin = new MarginPadding(5),
             }, topMostOverlayContent.Add);
 
-            if (!IsDeployedBuild)
+            loadComponentSingleFile(new PerformanceDebugOverlay
+            {
+                Anchor = Anchor.BottomRight,
+                Origin = Anchor.BottomRight,
+                Margin = new MarginPadding { Right = 5, Bottom = 36 },
+            }, topMostOverlayContent.Add);
+
+            if (!IsDeployedBuild || LocalConfig.Get<ReleaseStream>(OsuSetting.ReleaseStream) == ReleaseStream.DevBuild)
                 loadComponentSingleFile(devBuildBanner = new DevBuildBanner(), ScreenContainer.Add);
 
             loadComponentSingleFile(osuLogo, _ =>
@@ -1433,6 +1566,8 @@ namespace osu.Game
                 },
             }, topMostOverlayContent.Add);
 
+            loadComponentSingleFile(new AccountRestrictionBanner(), topMostOverlayContent.Add);
+
             loadComponentSingleFile(volume = new VolumeOverlay(), leftFloatingOverlayContent.Add, true);
 
             onScreenDisplay = new OnScreenDisplay();
@@ -1447,6 +1582,18 @@ namespace osu.Game
                 d.Anchor = Anchor.TopRight;
                 d.Origin = Anchor.TopRight;
             }), rightFloatingOverlayContent.Add, true);
+
+            if (frameworkConfig.Get<ExecutionMode>(FrameworkSetting.ExecutionMode) == ExecutionMode.SingleThread)
+            {
+                waitForReady(() => Notifications, _ =>
+                {
+                    var warning = MosuPerformanceConfigurationWarnings.CreateExecutionModeWarning(
+                        frameworkConfig.Get<ExecutionMode>(FrameworkSetting.ExecutionMode));
+
+                    if (warning != null)
+                        Notifications.Post(warning);
+                });
+            }
 
             loadComponentSingleFile(legacyImportManager, Add);
 
@@ -1677,13 +1824,19 @@ namespace osu.Game
         {
             if (entry.Level < LogLevel.Important || entry.Target > LoggingTarget.Database || entry.Target == null) return;
 
+            if (entry.Exception is SentryOnlyDiagnosticsException)
+                return;
+
             const int short_term_display_limit = 3;
 
             if (generalLogRecentCount < short_term_display_limit)
             {
                 LocalisableString message;
 
-                message = entry.Message.Truncate(256);
+                if (entry.Exception != null && sentryLogger?.IsEnabled == true)
+                    message = LocalisableString.Interpolate($"{entry.Message.Truncate(256)}\n\n{NotificationsStrings.ErrorAutomaticallyReported}");
+                else
+                    message = entry.Message.Truncate(256);
 
                 Schedule(() => Notifications.Post(new SimpleErrorNotification
                 {
@@ -1950,9 +2103,16 @@ namespace osu.Game
             return base.OnPressed(e);
         }
 
-        #region Inactive audio dimming
+        #region Audio dimming
 
+        private const double outside_gameplay_volume_multiplier = 0.5;
         private readonly BindableDouble inactiveVolumeFade = new BindableDouble();
+
+        private Bindable<bool> reduceVolumeOutsideGameplay;
+        private readonly BindableDouble outsideGameplayVolume = new BindableDouble(1);
+        private Bindable<bool> exclusiveAudio;
+        private Bindable<bool> exclusiveAudioGameplayOnly;
+        private bool exclusiveAudioGameplayScreenActive;
 
         private void updateActiveState(bool isActive)
         {
@@ -1960,6 +2120,16 @@ namespace osu.Game
                 this.TransformBindableTo(inactiveVolumeFade, 1, 400, Easing.OutQuint);
             else
                 this.TransformBindableTo(inactiveVolumeFade, LocalConfig.Get<double>(OsuSetting.VolumeInactive), 4000, Easing.OutQuint);
+        }
+
+        private void updateOutsideGameplayVolume(IOsuScreen screen)
+        {
+            outsideGameplayVolume.Value = reduceVolumeOutsideGameplay?.Value == true && screen is not Player ? outside_gameplay_volume_multiplier : 1;
+        }
+
+        private void updateExclusiveAudioSuspension()
+        {
+            // Standalone public build note: Exclusive WASAPI is an optional Mosu framework extension.
         }
 
         #endregion
@@ -1989,12 +2159,61 @@ namespace osu.Game
         {
             base.UpdateAfterChildren();
 
-            ScreenOffsetContainer.Padding = new MarginPadding { Top = toolbarOffset };
+            // In auto-hide mode the toolbar overlays the screen instead of changing its layout.
+            // This prevents song select from jumping when the toolbar appears or disappears.
+            ScreenOffsetContainer.Padding = new MarginPadding { Top = autoHideToolbar?.Value == true ? 0 : toolbarOffset };
             overlayOffsetContainer.Padding = new MarginPadding { Top = toolbarOffset };
 
             adjustGlobalScreenOffset();
 
             GlobalCursorDisplay.ShowCursor = (ScreenStack.CurrentScreen as IOsuScreen)?.CursorVisible ?? false;
+
+            updateAutoHideToolbar();
+        }
+
+        private void updateAutoHideToolbar()
+        {
+            if (autoHideToolbar == null)
+            {
+                autoHideToolbar = LocalConfig.GetBindable<bool>(OsuSetting.ForkAutoHideToolbar);
+                autoHideToolbar.BindValueChanged(change =>
+                {
+                    Toolbar.AutoHideActive = change.NewValue;
+
+                    if (!change.NewValue)
+                    {
+                        toolbarAutoHideTime = null;
+                        Toolbar.Show();
+                    }
+                }, true);
+            }
+
+            if (!autoHideToolbar.Value)
+                return;
+
+            autoHideInputManager ??= GetContainingInputManager();
+            float mouseY = autoHideInputManager?.CurrentState.Mouse.Position.Y ?? float.MaxValue;
+
+            if (mouseY <= toolbar_reveal_edge)
+            {
+                toolbarAutoHideTime = null;
+                Toolbar.Show();
+            }
+            else if (Toolbar.State.Value == Visibility.Visible)
+            {
+                if (mouseY <= Toolbar.HEIGHT || Toolbar.IsHovered)
+                    toolbarAutoHideTime = null;
+                else
+                {
+                    toolbarAutoHideTime ??= Time.Current + toolbar_auto_hide_delay;
+
+                    if (Time.Current >= toolbarAutoHideTime)
+                    {
+                        toolbarAutoHideTime = null;
+                        Toolbar.Hide();
+                    }
+                }
+            }
         }
 
         private float horizontalOffsetAdjust;
@@ -2022,6 +2241,27 @@ namespace osu.Game
 
         protected virtual void ScreenChanged([CanBeNull] IOsuScreen current, [CanBeNull] IOsuScreen newScreen)
         {
+            updateOutsideGameplayVolume(newScreen);
+            exclusiveAudioGameplayScreenActive = newScreen is PlayerLoader or Player;
+            updateExclusiveAudioSuspension();
+
+            if (newScreen != null && newScreen != current)
+                osuLogo?.CycleAppearance();
+
+            if (sentryLogger?.IsEnabled == true)
+            {
+                SentrySdk.ConfigureScope(scope =>
+                {
+                    scope.Contexts[@"screen stack"] = new
+                    {
+                        Current = newScreen?.GetType().ReadableName(),
+                        Previous = current?.GetType().ReadableName(),
+                    };
+
+                    scope.SetTag(@"screen", newScreen?.GetType().ReadableName() ?? @"none");
+                });
+            }
+
             switch (current)
             {
                 case Player player:

@@ -3,12 +3,14 @@
 
 using System;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input;
 using osu.Framework.Input.Events;
+using osu.Framework.Extensions;
 using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
@@ -16,6 +18,7 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Online.API;
 using osu.Game.Online;
+using osu.Game.Online.Legacy;
 using osu.Game.Overlays.Settings;
 using osu.Game.Resources.Localisation.Web;
 using osuTK;
@@ -29,9 +32,17 @@ namespace osu.Game.Overlays.Login
         private TextBox password = null!;
         private ShakeContainer shakeSignIn = null!;
         private ErrorTextFlowContainer errorText = null!;
+        private OsuSpriteText accountTitleText = null!;
+        private IBindable<Colour4>? themeColour;
 
         [Resolved]
         private IAPIProvider api { get; set; } = null!;
+
+        [Resolved]
+        private ServerProfileManager profileManager { get; set; } = null!;
+
+        [Resolved(CanBeNull = true)]
+        private StableBanchoSession? stableBanchoSession { get; set; }
 
         [Resolved]
         private osu.Framework.Platform.GameHost? host { get; set; }
@@ -41,7 +52,7 @@ namespace osu.Game.Overlays.Login
         public override bool AcceptsFocus => true;
 
         [BackgroundDependencyLoader(permitNulls: true)]
-        private void load(OsuConfigManager config, AccountCreationOverlay accountCreation)
+        private void load(OsuConfigManager config, OverlayColourProvider? colourProvider = null)
         {
             RelativeSizeAxes = Axes.X;
             AutoSizeAxes = Axes.Y;
@@ -61,7 +72,7 @@ namespace osu.Game.Overlays.Login
                     Spacing = new Vector2(0f, SettingsSection.ITEM_SPACING),
                     Children = new Drawable[]
                     {
-                        new OsuSpriteText
+                        accountTitleText = new OsuSpriteText
                         {
                             Text = LoginPanelStrings.Account.ToUpper(),
                             Font = OsuFont.GetFont(weight: FontWeight.Bold),
@@ -121,26 +132,12 @@ namespace osu.Game.Overlays.Login
                             },
                         }
                     }
-                },
-                new SettingsButton
-                {
-                    Text = LoginPanelStrings.Register,
-                    Action = () =>
-                    {
-                        if (!MosuServerEnvironment.IsThirdPartyServer)
-                        {
-                            host?.OpenUrlExternally($"{MosuServerEnvironment.PublicServerUrl}/");
-                        }
-                        else
-                        {
-                            RequestHide?.Invoke();
-                            accountCreation.Show();
-                        }
-                    }
                 }
             };
 
-            string websiteUrl = api.Endpoints.WebsiteUrl;
+            string websiteUrl = MosuServerEnvironment.UsesStableProtocol
+                ? profileManager.ActiveProfile.WebsiteUrl
+                : api.Endpoints.WebsiteUrl;
             forgottenPasswordLink.AddLink(LayoutStrings.PopupLoginLoginForgot, $"{websiteUrl.TrimEnd('/')}/home/password-reset");
 
             password.OnCommit += (_, _) => performLogin();
@@ -150,9 +147,15 @@ namespace osu.Game.Overlays.Login
                 errorText.Alpha = 1;
                 errorText.AddErrors(new[] { error });
             }
+
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ => accountTitleText.Colour = colourProvider.Content1, true);
+            }
         }
 
-        private void performLogin()
+        private async void performLogin()
         {
             if (string.IsNullOrEmpty(username.Text) || string.IsNullOrEmpty(password.Text))
             {
@@ -160,7 +163,34 @@ namespace osu.Game.Overlays.Login
                 return;
             }
 
-            api.Login(username.Text, password.Text);
+            if (!MosuServerEnvironment.UsesStableProtocol)
+            {
+                api.Login(username.Text, password.Text);
+                return;
+            }
+
+            if (stableBanchoSession == null)
+                return;
+
+            var profile = profileManager.ActiveProfile;
+            profile.Username = username.Text;
+            profile.StablePasswordHash = password.Text.ComputeMD5Hash();
+            profileManager.SaveProfiles();
+
+            try
+            {
+                await stableBanchoSession.LoginNowAsync().ConfigureAwait(false);
+                Schedule(() => RequestHide?.Invoke());
+            }
+            catch (Exception exception)
+            {
+                Schedule(() =>
+                {
+                    errorText.Alpha = 1;
+                    errorText.AddErrors(new[] { exception.Message });
+                    shakeSignIn.Shake();
+                });
+            }
         }
 
         protected override bool OnClick(ClickEvent e) => true;

@@ -23,6 +23,8 @@ using osu.Game.Configuration;
 using osu.Game.IO;
 using osu.Game.IPC;
 using osu.Game.Performance;
+using osu.Game.Performance.Diagnostics;
+using osu.Game.Screens.Menu;
 using osu.Game.Utils;
 
 namespace osu.Desktop
@@ -31,16 +33,41 @@ namespace osu.Desktop
     {
         private OsuSchemeLinkIPCChannel? osuSchemeLinkIPCChannel;
         private ArchiveImportIPCChannel? archiveImportIPCChannel;
+        private readonly string[] launchArgs;
+        private bool performanceRunnersLoaded;
+
         [Cached(typeof(IHighPerformanceSessionManager))]
         private readonly HighPerformanceSessionManager highPerformanceSessionManager = new HighPerformanceSessionManager();
+
+        [Cached(typeof(IPerformanceDiagnosticsManager))]
+        [Cached(typeof(PerformanceDiagnosticsManager))]
+        private readonly PerformanceDiagnosticsManager performanceDiagnosticsManager = new PerformanceDiagnosticsManager();
 
         public bool IsFirstRun { get; init; }
 
         public bool EnableWebSocketServer { get; init; }
 
+        /// <summary>
+        /// Whether a staged server configuration backup should be applied during startup.
+        /// Secondary processes must not mutate the primary installation's configuration.
+        /// </summary>
+        public bool ApplyPendingConfigurationRestore { get; init; }
+
         public OsuGameDesktop(string[]? args = null)
             : base(args)
         {
+            launchArgs = args ?? Array.Empty<string>();
+        }
+
+        public override void SetupLogging(Storage gameStorage, Storage cacheStorage)
+        {
+            // GameHost.Storage is first created inside GameHost.Run(). This is the earliest callback
+            // at which it is guaranteed to exist, and it still runs before SetHost() constructs the
+            // framework, input, game and Mosu configuration managers.
+            if (ApplyPendingConfigurationRestore)
+                ConfigurationBackupManager.ApplyPendingRestore(gameStorage);
+
+            base.SetupLogging(gameStorage, cacheStorage);
         }
 
         public override StableStorage? GetStorageForStableInstall()
@@ -113,10 +140,10 @@ namespace osu.Desktop
         protected override UpdateManager CreateUpdateManager()
         {
             // If this is the first time we've run the game, ie it is being installed,
-            // reset the user's release stream to "lazer".
+            // reset the user's release stream specified by the installation target.
             //
-            // This ensures that if a user is trying to recover from a failed startup on an unstable release stream,
-            // the game doesn't immediately try and update them back to the release stream after starting up.
+            // This ensures that if a user is trying to recover from a failed startup, it will keep them
+            // on the stream which is imminently being reinstalled.
             if (IsFirstRun)
                 LocalConfig.SetValue(OsuSetting.ReleaseStream, ReleaseStream.Lazer);
 
@@ -141,13 +168,18 @@ namespace osu.Desktop
             if (OperatingSystem.IsWindows())
             {
                 LoadComponentAsync(new WindowsPerformanceMode(), Add);
-                LoadComponentAsync(new GameplayWinKeyBlocker(), Add);
             }
             else if (RuntimeInfo.OS == RuntimeInfo.Platform.macOS && !IsPackageManaged && IsDeployedBuild)
             {
                 LoadComponentAsync(new MacOSAppLocationChecker(), Add);
             }
 
+            LoadComponentAsync(new MosuPerformanceLogger(), Add);
+            LoadComponentAsync(performanceDiagnosticsManager, manager =>
+            {
+                Add(manager);
+                loadPerformanceRunnersWhenReady();
+            });
             LoadComponentAsync(new ElevatedPrivilegesChecker(), Add);
 
             osuSchemeLinkIPCChannel = new OsuSchemeLinkIPCChannel(Host, this);
@@ -155,6 +187,51 @@ namespace osu.Desktop
 
             if (EnableWebSocketServer)
                 Add(new OsuWebSocketProvider());
+        }
+
+        private void loadPerformanceRunnersWhenReady()
+        {
+            bool benchmarkLaunch = Array.Exists(
+                launchArgs,
+                arg => arg.StartsWith("--mosu-replay-benchmark", StringComparison.Ordinal));
+
+            if (!benchmarkLaunch)
+            {
+                loadPerformanceRunners();
+                return;
+            }
+
+            // Benchmark configuration can change process/thread/window policies. Applying it while
+            // osu!'s base UI components are still loading races the update and load threads, and has
+            // intermittently stalled startup before FPSCounter completed. Wait for the main menu,
+            // which is the lifecycle boundary the replay benchmark actually requires.
+            ScreenStack.ScreenPushed += loadPerformanceRunnersOnMainMenu;
+
+            if (ScreenStack.CurrentScreen is MainMenu)
+                loadPerformanceRunners();
+        }
+
+        private void loadPerformanceRunnersOnMainMenu(IScreen? previous, IScreen next)
+        {
+            if (next is MainMenu)
+                loadPerformanceRunners();
+        }
+
+        private void loadPerformanceRunners()
+        {
+            if (performanceRunnersLoaded)
+                return;
+
+            performanceRunnersLoaded = true;
+            ScreenStack.ScreenPushed -= loadPerformanceRunnersOnMainMenu;
+
+            Logger.Log("Loading performance diagnostic runners after main menu readiness.", LoggingTarget.Runtime, LogLevel.Verbose);
+
+            LoadComponentAsync(new MosuPerformanceDiagnosticsRunner(launchArgs), diagnosticsRunner =>
+            {
+                Add(diagnosticsRunner);
+                LoadComponentAsync(new MosuReplayBenchmarkRunner(launchArgs), Add);
+            });
         }
 
         public override void SetHost(GameHost host)
@@ -183,6 +260,9 @@ namespace osu.Desktop
 
         protected override void Dispose(bool isDisposing)
         {
+            if (ScreenStack != null)
+                ScreenStack.ScreenPushed -= loadPerformanceRunnersOnMainMenu;
+
             base.Dispose(isDisposing);
             osuSchemeLinkIPCChannel?.Dispose();
             archiveImportIPCChannel?.Dispose();

@@ -112,6 +112,10 @@ namespace osu.Game.Updater
             catch (Exception e)
             {
                 Logger.Log($"{nameof(PerformUpdateCheck)} failed ({e.Message})");
+                // A manual check has a caller waiting to display the failure; scheduled
+                // checks remain fire-and-forget and must not leak an unobserved exception.
+                if (cancellationToken.CanBeCanceled)
+                    throw;
                 return true;
             }
         }, cancellationToken).ConfigureAwait(false);

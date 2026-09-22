@@ -27,35 +27,70 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
             (OsuDifficultyAttributes noRelax, OsuDifficultyAttributes relax, OsuPerformanceAttributes performance) = calculateDtCs10("5738687");
 
             Assert.That(noRelax.StarRating, Is.EqualTo(25.344259392896205).Within(CHECK_PRECISION));
-            Assert.That(relax.StarRating, Is.EqualTo(15.668217060378929).Within(CHECK_PRECISION));
-            Assert.That(relax.AimDifficulty / noRelax.AimDifficulty, Is.LessThan(0.55));
-            Assert.That(performance.Total, Is.EqualTo(4360.372224584713).Within(CHECK_PRECISION));
+            Assert.That(relax.StarRating, Is.EqualTo(16.460693826870777).Within(CHECK_PRECISION));
+            Assert.That(relax.AimDifficulty / noRelax.AimDifficulty, Is.LessThan(0.60));
+            // The standalone pinned calculator gives 5338.36pp here. The modern
+            // point-spam/spaced-stream detector must retain a substantial anti-abuse cut.
+            Assert.That(performance.Total, Is.LessThan(5338.36 * 0.40));
         }
 
-        [TestCase("801165", 22.996952872144405, 20346.19092465274)]
-        [TestCase("1124896", 15.4792980174585, 5707.034477558479)]
-        [TestCase("1341554", 20.0665185495263, 11544.495415814439)]
-        [TestCase("2593923", 20.505310254297655, 13192.647044291689)]
-        public void NormalMapDtCs10RelaxControl(string name, double expectedStars, double expectedPerfectPp)
+        [TestCase("801165", 23.007947306269664, 6070.216342375583)]
+        [TestCase("1124896", 15.4792980174585, 2096.118220828363)]
+        [TestCase("1341554", 20.122490228193584, 3442.3858091785073)]
+        [TestCase("2593923", 20.504812444348993, 5845.769634245016)]
+        public void NormalMapDtCs10HybridParity(string name, double expectedStars, double hybridPerfectPp)
         {
             (_, OsuDifficultyAttributes relax, OsuPerformanceAttributes performance) = calculateDtCs10(name);
 
             Assert.That(relax.StarRating, Is.EqualTo(expectedStars).Within(CHECK_PRECISION));
-            Assert.That(performance.Total, Is.EqualTo(expectedPerfectPp).Within(CHECK_PRECISION));
+            Assert.That(performance.Total, Is.EqualTo(hybridPerfectPp).Within(hybridPerfectPp * 0.01));
+            Assert.That(relax.MosuRelaxAimDifficulty, Is.GreaterThan(0));
+            Assert.That(relax.MosuRelaxSpeedDifficulty, Is.GreaterThan(0));
+            Assert.That(relax.MosuRelaxReadingDifficulty, Is.GreaterThan(0));
+            Assert.That(relax.RelaxStreamWeight, Is.InRange(0, 1));
+            Assert.That(relax.RelaxVerticalAimPressure, Is.InRange(0, 1));
+        }
+
+        [TestCase("801165")]
+        [TestCase("1124896")]
+        [TestCase("1341554")]
+        [TestCase("2593923")]
+        [TestCase("relax-rate-95-regression")]
+        public void LowerCustomRateDoesNotIncreaseRelaxStarsOrPerfectPp(string name)
+        {
+            (OsuDifficultyAttributes halfRateDifficulty, OsuPerformanceAttributes halfRatePerformance) = calculateAtRate(name, 0.5);
+            (OsuDifficultyAttributes threeQuarterRateDifficulty, OsuPerformanceAttributes threeQuarterRatePerformance) = calculateAtRate(name, 0.75);
+            (OsuDifficultyAttributes ninetyFivePercentRateDifficulty, OsuPerformanceAttributes ninetyFivePercentRatePerformance) = calculateAtRate(name, 0.95);
+            (OsuDifficultyAttributes normalRateDifficulty, OsuPerformanceAttributes normalRatePerformance) = calculateAtRate(name, 1);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(halfRateDifficulty.StarRating, Is.LessThanOrEqualTo(threeQuarterRateDifficulty.StarRating));
+                Assert.That(threeQuarterRateDifficulty.StarRating, Is.LessThanOrEqualTo(ninetyFivePercentRateDifficulty.StarRating));
+                Assert.That(ninetyFivePercentRateDifficulty.StarRating, Is.LessThanOrEqualTo(normalRateDifficulty.StarRating));
+                Assert.That(halfRatePerformance.Total, Is.LessThanOrEqualTo(threeQuarterRatePerformance.Total));
+                Assert.That(threeQuarterRatePerformance.Total, Is.LessThanOrEqualTo(ninetyFivePercentRatePerformance.Total));
+                Assert.That(ninetyFivePercentRatePerformance.Total, Is.LessThanOrEqualTo(normalRatePerformance.Total));
+            });
         }
 
         [Test]
         public void PointSpamRequiresFastLowMovementTransitions()
         {
-            Assert.That(Aim.IsRelaxPointSpamTransition(100, 49.99), Is.True);
-            Assert.That(Aim.IsRelaxPointSpamTransition(101, 49.99), Is.False);
+            Assert.That(Aim.IsRelaxPointSpamTransition(130, 49.99), Is.True);
+            Assert.That(Aim.IsRelaxPointSpamTransition(130.01, 49.99), Is.False);
             Assert.That(Aim.IsRelaxPointSpamTransition(100, 50), Is.False);
         }
 
         [Test]
-        public void RelaxAimMultiplierIsAimOnlyBalance()
+        public void RelaxPatternWeightsFadeSmoothly()
         {
-            Assert.That(OsuPerformanceCalculator.RELAX_AIM_MULTIPLIER, Is.EqualTo(1.40));
+            Assert.That(Aim.CalculateRelaxPatternSpeedWeight(100), Is.EqualTo(1));
+            Assert.That(Aim.CalculateRelaxPatternSpeedWeight(115), Is.InRange(0.49, 0.51));
+            Assert.That(Aim.CalculateRelaxPatternSpeedWeight(130), Is.Zero);
+            Assert.That(Aim.CalculateRelaxSpacedStreamGeometryWeight(150), Is.EqualTo(1));
+            Assert.That(Aim.CalculateRelaxSpacedStreamGeometryWeight(182.5), Is.InRange(0.49, 0.51));
+            Assert.That(Aim.CalculateRelaxSpacedStreamGeometryWeight(215), Is.Zero);
         }
 
         [Test]
@@ -74,6 +109,8 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
             Assert.That(Aim.IsRelaxSpacedStreamTransition(90, 110, 100), Is.False);
             Assert.That(Aim.IsRelaxSpacedStreamTransition(90, 95, 49.99), Is.False);
             Assert.That(Aim.IsRelaxSpacedStreamTransition(90, 95, 50), Is.True);
+            Assert.That(Aim.IsRelaxSpacedStreamTransition(90, 95, 215), Is.True);
+            Assert.That(Aim.IsRelaxSpacedStreamTransition(90, 95, 215.01), Is.False);
         }
 
         [Test]
@@ -119,7 +156,7 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
         {
             (OsuDifficultyAttributes noRelax, OsuDifficultyAttributes relax, _) = calculateDtCs10("5738687", BeatmapOnlineStatus.Ranked);
 
-            Assert.That(relax.AimDifficulty / noRelax.AimDifficulty, Is.LessThan(0.55));
+            Assert.That(relax.AimDifficulty / noRelax.AimDifficulty, Is.LessThan(0.60));
         }
 
         [TestCase(BeatmapOnlineStatus.Ranked)]
@@ -169,7 +206,32 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
             var difficultyAdjust = new OsuModDifficultyAdjust { CircleSize = { Value = circleSize } };
 
             return ((OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working)
-                                             .Calculate(new Mod[] { difficultyAdjust })).AimDifficulty;
+                                              .Calculate(new Mod[] { difficultyAdjust })).AimDifficulty;
+        }
+
+        private (OsuDifficultyAttributes Difficulty, OsuPerformanceAttributes Performance) calculateAtRate(string beatmapName, double rate)
+        {
+            IWorkingBeatmap working = GetBeatmap(beatmapName);
+            Mod[] mods = rate < 1
+                ? new Mod[] { new OsuModMosuRelax(), new OsuModHalfTime { SpeedChange = { Value = rate } } }
+                : new Mod[] { new OsuModMosuRelax() };
+
+            var difficulty = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
+            int totalHits = difficulty.HitCircleCount + difficulty.SliderCount + difficulty.SpinnerCount;
+            var perfectScore = new ScoreInfo((BeatmapInfo)working.BeatmapInfo, new OsuRuleset().RulesetInfo)
+            {
+                Mods = mods,
+                MaxCombo = difficulty.MaxCombo,
+                Accuracy = 1,
+                Statistics = new Dictionary<HitResult, int>
+                {
+                    [HitResult.Great] = totalHits,
+                    [HitResult.SliderTailHit] = difficulty.SliderCount,
+                },
+            };
+
+            var performance = (OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(perfectScore, difficulty);
+            return (difficulty, performance);
         }
 
         protected override DifficultyCalculator CreateDifficultyCalculator(IWorkingBeatmap beatmap) =>

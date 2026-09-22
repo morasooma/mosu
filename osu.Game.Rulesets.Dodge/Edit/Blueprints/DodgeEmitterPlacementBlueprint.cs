@@ -40,7 +40,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         public DodgeEmitterPlacementBlueprint()
             : base(new DodgeEmitter())
         {
-            InternalChild = pathPiece = new DodgeEmitterPathPiece();
+            Child = pathPiece = new DodgeEmitterPathPiece();
         }
 
         protected override void LoadComplete()
@@ -97,6 +97,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             HitObject.ContinueUntilExit = settings.EmitterContinueUntilExit.Value;
             HitObject.TrajectoryGuideStyle = settings.EmitterTrajectoryGuideStyle.Value;
             HitObject.MovementType = settings.EmitterMovementType.Value;
+            HitObject.MovementEasing = settings.EmitterMovementEasing.Value;
             HitObject.WaveAmplitude = settings.EmitterWaveAmplitude.Value;
             HitObject.WaveCycles = settings.EmitterWaveCycles.Value;
             HitObject.WavePhase = settings.EmitterWavePhase.Value;
@@ -105,6 +106,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 ? settings.EmitterBurstCount.Value
                 : DodgeEmitter.MIN_BURST_COUNT;
             HitObject.BurstBeatDivisor = (int)settings.EmitterBurstBeatDivisor.Value;
+            HitObject.BurstRotation = settings.EmitterBurstRotation.Value;
             HitObject.BurstInterval = DodgeEmitter.IntervalForBeatLength(
                 editorBeatmap.ControlPointInfo.TimingPointAt(HitObject.StartTime).BeatLength,
                 HitObject.BurstBeatDivisor);

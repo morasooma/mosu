@@ -8,17 +8,21 @@ namespace osu.Game.Rulesets.Dodge.Mods
 {
     public class DodgeModHalfTime : ModHalfTime
     {
+        public override bool Ranked => false;
     }
 
     public class DodgeModDaycore : ModDaycore
     {
+        public override bool Ranked => false;
     }
 
     public class DodgeModDoubleTime : ModDoubleTime
     {
+        public override bool Ranked => false;
     }
 
     public class DodgeModNightcore : ModNightcore<DodgeHitObject>
     {
+        public override bool Ranked => false;
     }
 }

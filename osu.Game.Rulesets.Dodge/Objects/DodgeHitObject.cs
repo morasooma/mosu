@@ -53,6 +53,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
         /// </summary>
         public DodgeMovementType MovementType { get; set; }
 
+        public DodgeMovementEasing MovementEasing { get; set; }
+
         public float WaveAmplitude { get; set; } = DEFAULT_WAVE_AMPLITUDE;
 
         public int WaveCycles { get; set; } = DEFAULT_WAVE_CYCLES;

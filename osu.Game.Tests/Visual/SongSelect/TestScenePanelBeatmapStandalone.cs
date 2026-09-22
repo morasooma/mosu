@@ -99,6 +99,18 @@ namespace osu.Game.Tests.Visual.SongSelect
             AddStep("disable old previews", () => config.SetValue(OsuSetting.ForkSongSelectOldCarouselPreviews, false));
         }
 
+        [Test]
+        public void TestStableDifficultyCardComposition()
+        {
+            AddStep("enable stable style", () => config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.LegacySkinned));
+            AddStep("display", () => CreateThemedContent(OverlayColourScheme.Aquamarine));
+            AddUntilStep("stable cards loaded", () => this.ChildrenOfType<PanelBeatmapStandalone>().Any());
+            AddAssert("rank remains visible in stable layout", () => this.ChildrenOfType<PanelBeatmapStandalone>().All(panel => panel.LegacyRankVisible));
+            AddAssert("star row remains visible in stable layout", () => this.ChildrenOfType<PanelBeatmapStandalone>().All(panel => panel.LegacyStarsVisible));
+            AddAssert("inactive expanded difficulty is cyan", () => this.ChildrenOfType<PanelBeatmapStandalone>().Where(panel => !panel.Selected.Value).All(panel => panel.UsesLegacyDifficultyInactiveTint));
+            AddAssert("selected difficulty is not covered by white overlay", () => this.ChildrenOfType<PanelBeatmapStandalone>().Where(panel => panel.Selected.Value).All(panel => panel.LegacySelectionOverlayAlpha == 0));
+        }
+
         protected override Drawable CreateContent()
         {
             return new OsuContextMenuContainer

@@ -32,6 +32,12 @@ namespace osu.Game.Overlays.Toolbar
         /// </summary>
         private bool hiddenByUser;
 
+        /// <summary>
+        /// Whether visibility is currently controlled by the edge-reveal auto-hide behaviour.
+        /// While active, a previous manual Ctrl+T hide must not prevent revealing the toolbar.
+        /// </summary>
+        public bool AutoHideActive { get; set; }
+
         public Action OnHome;
 
         private ToolbarUserButton userButton;
@@ -176,6 +182,7 @@ namespace osu.Game.Overlays.Toolbar
                                             userButton = new ToolbarUserButton(),
                                             new ToolbarClock(),
                                             new ToolbarNotificationButton(),
+                                            new ToolbarMemoryDisplay(),
                                         }
                                     },
                                 }
@@ -272,7 +279,7 @@ namespace osu.Game.Overlays.Toolbar
 
         protected override void UpdateState(ValueChangedEvent<Visibility> state)
         {
-            bool blockShow = hiddenByUser || OverlayActivationMode.Value == OverlayActivation.Disabled;
+            bool blockShow = (hiddenByUser && !AutoHideActive) || OverlayActivationMode.Value == OverlayActivation.Disabled;
 
             if (state.NewValue == Visibility.Visible && blockShow)
             {

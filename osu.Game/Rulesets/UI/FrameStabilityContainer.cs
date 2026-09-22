@@ -38,6 +38,13 @@ namespace osu.Game.Rulesets.UI
         /// </summary>
         internal bool FrameStablePlayback { get; set; } = true;
 
+        private bool allowOneFrameClockSeek;
+
+        /// <summary>
+        /// Allows the next update to synchronise directly to the reference clock after a validated seek.
+        /// </summary>
+        internal void AllowOneFrameClockSeek() => allowOneFrameClockSeek = true;
+
         private readonly Bindable<bool> isCatchingUp = new Bindable<bool>();
 
         private readonly Bindable<bool> waitingOnFrames = new Bindable<bool>();
@@ -144,7 +151,7 @@ namespace osu.Game.Rulesets.UI
 
             double proposedTime = referenceClock.CurrentTime;
 
-            if (FrameStablePlayback)
+            if (FrameStablePlayback && !allowOneFrameClockSeek)
                 // if we require frame stability, the proposed time will be adjusted to move at most one known
                 // frame interval in the current direction.
                 applyFrameStability(ref proposedTime);
@@ -158,7 +165,7 @@ namespace osu.Game.Rulesets.UI
             }
 
             // TODO: replace IsDebugBuild with a framework flag which asserts we are in a test scene, interactively or otherwise.
-            bool allowReferenceClockSeeks = hasReplayAttached || DebugUtils.IsNUnitRunning || DebugUtils.IsDebugBuild || !FrameStablePlayback;
+            bool allowReferenceClockSeeks = hasReplayAttached || DebugUtils.IsNUnitRunning || DebugUtils.IsDebugBuild || !FrameStablePlayback || allowOneFrameClockSeek;
 
             // This is a hotfix for ongoing bass issues we are trying to resolve (see https://www.un4seen.com/forum/?topic=20482.msg145474#msg145474)
             //
@@ -203,6 +210,7 @@ namespace osu.Game.Rulesets.UI
             // The manual clock time has changed in the above code. The framed clock now needs to be updated
             // to ensure that the its time is valid for our children before input is processed
             framedClock.ProcessFrame();
+            allowOneFrameClockSeek = false;
 
             if (framedClock.ElapsedFrameTime != 0)
             {

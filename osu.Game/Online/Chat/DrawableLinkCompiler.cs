@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.ListExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -29,6 +30,9 @@ namespace osu.Game.Online.Chat
 
         [Resolved]
         private OverlayColourProvider? overlayColourProvider { get; set; }
+
+        private IBindable<Colour4>? themeColour;
+        private bool isDefaultIdleColour;
 
         public override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
         {
@@ -56,7 +60,29 @@ namespace osu.Game.Online.Chat
         [BackgroundDependencyLoader]
         private void load(OsuColour colours)
         {
-            IdleColour ??= overlayColourProvider?.Light2 ?? colours.Blue;
+            if (overlayColourProvider != null)
+            {
+                if (IdleColour == null)
+                    isDefaultIdleColour = true;
+
+                themeColour = overlayColourProvider.GetColourBindable(OverlayColour.Light2);
+                themeColour.BindValueChanged(c =>
+                {
+                    if (isDefaultIdleColour)
+                    {
+                        IdleColour = c.NewValue;
+                        if (IsLoaded && !IsHovered)
+                        {
+                            foreach (var part in Parts)
+                                part.FadeColour(c.NewValue);
+                        }
+                    }
+                }, true);
+            }
+            else
+            {
+                IdleColour ??= colours.Blue;
+            }
         }
 
         protected override IEnumerable<Drawable> EffectTargets => Parts;

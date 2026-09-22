@@ -222,9 +222,8 @@ namespace osu.Game.Online.API.Requests.Responses
         [JsonProperty(@"playmode")]
         public string PlayMode;
 
-        // Legacy wire name retained for compatibility with the Mosu API.
         [JsonProperty(@"g0v0_playmode")]
-        public string ServerPlayMode;
+        public string G0v0PlayMode;
 
         [JsonProperty(@"profile_hue")]
         public int? ProfileHue;

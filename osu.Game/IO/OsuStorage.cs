@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using osu.Framework.Logging;
 using osu.Framework.Platform;
@@ -61,59 +60,10 @@ namespace osu.Game.IO
             this.host = host;
             this.defaultStorage = defaultStorage;
 
-            storageConfig = createStorageConfigWithFallback(defaultStorage);
+            storageConfig = new StorageConfigManager(defaultStorage);
 
             if (!string.IsNullOrEmpty(CustomStoragePath))
                 TryChangeToCustomStorage(out Error);
-        }
-
-        private StorageConfigManager createStorageConfigWithFallback(Storage defaultStorage)
-        {
-#if DEBUG
-            Logger.Log($"Using debug-local storage path configuration from mosu storage directory: {defaultStorage.GetFullPath(string.Empty)}");
-            return new StorageConfigManager(defaultStorage);
-#else
-            Storage lazerStorage = tryGetLazerStorage(defaultStorage);
-
-            if (lazerStorage != null)
-            {
-                var lazerConfig = new StorageConfigManager(lazerStorage);
-
-                if (!string.IsNullOrEmpty(lazerConfig.Get<string>(StorageConfig.FullPath)))
-                {
-                    Logger.Log($"Using storage path configuration from lazer storage directory: {lazerStorage.GetFullPath(string.Empty)}");
-                    return lazerConfig;
-                }
-            }
-
-            Logger.Log($"Using storage path configuration from mosu storage directory: {defaultStorage.GetFullPath(string.Empty)}");
-            return new StorageConfigManager(defaultStorage);
-#endif
-        }
-
-        private static Storage? tryGetLazerStorage(Storage defaultStorage)
-        {
-            try
-            {
-                string currentStoragePath = defaultStorage.GetFullPath(string.Empty);
-                var currentDirectory = new DirectoryInfo(currentStoragePath);
-                DirectoryInfo? parent = currentDirectory.Parent;
-
-                if (parent == null)
-                    return null;
-
-                string lazerPath = Path.Combine(parent.FullName, "osu");
-
-                if (Path.GetFullPath(lazerPath).TrimEnd(Path.DirectorySeparatorChar)
-                    == Path.GetFullPath(currentStoragePath).TrimEnd(Path.DirectorySeparatorChar))
-                    return null;
-
-                return new NativeStorage(lazerPath);
-            }
-            catch
-            {
-                return null;
-            }
         }
 
         /// <summary>

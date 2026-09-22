@@ -25,5 +25,14 @@ namespace osu.Game.Online.Matchmaking
 
         [Key(3)]
         public RankedPlayRoomState State { get; set; } = new RankedPlayRoomState();
+
+        /// <summary>
+        /// Whether <see cref="State"/> contains the final life and round-win values persisted at the end of the match.
+        /// </summary>
+        /// <remarks>
+        /// Older history entries predate final-state persistence and must not display synthetic values as real results.
+        /// </remarks>
+        [Key(4)]
+        public bool HasFinalState { get; set; }
     }
 }

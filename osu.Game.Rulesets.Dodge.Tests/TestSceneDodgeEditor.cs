@@ -8,6 +8,7 @@ using osu.Framework.Extensions;
 using osu.Framework.Testing;
 using osu.Framework.Utils;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Cursor;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.ControlPoints;
@@ -433,6 +434,53 @@ namespace osu.Game.Rulesets.Dodge.Tests
             AddAssert("emitter appearance starts collapsed", () => !emitterToolbox.AppearanceControlsVisible);
             AddStep("show emitter appearance", () => emitterToolbox.ShowAppearance = true);
             AddAssert("emitter appearance can be expanded", () => emitterToolbox.AppearanceControlsVisible);
+        }
+
+        [Test]
+        public void TestVisualPatternBrowserPreviewsAndInsertsPattern()
+        {
+            DodgePatternToolboxGroup patternToolbox = null!;
+            DodgeSavedPatternPreviewCard emptyLocalSlot = null!;
+
+            AddStep("get pattern browser", () => patternToolbox = this.ChildrenOfType<DodgePatternToolboxGroup>().Single());
+            AddAssert("six visual pattern cards", () => patternToolbox.PatternPreviewCardCount, () => Is.EqualTo(6));
+            AddAssert("every preview type is unique", () =>
+                this.ChildrenOfType<DodgePatternPreviewCard>().Select(card => card.PatternType).Distinct().Count(),
+                () => Is.EqualTo(6));
+            AddAssert("preview coordinates start at card origin", () =>
+                this.ChildrenOfType<DodgePatternPreviewCard>()
+                    .SelectMany(card => card.ChildrenOfType<CircularContainer>())
+                    .All(dot => dot.Anchor == Anchor.TopLeft));
+            AddAssert("ring preview has central emitter", () =>
+            {
+                DodgePatternPreviewSample source = DodgePatternPreviewLayout.Sample(DodgePatternType.Ring, 0, 0.5f);
+                return source.Element == DodgePatternPreviewElement.Emitter && source.Position == new Vector2(0.5f);
+            });
+            AddAssert("ring preview has eight projectiles", () =>
+                Enumerable.Range(1, 8).All(index => DodgePatternPreviewLayout.Sample(DodgePatternType.Ring, index, 0.5f).Element == DodgePatternPreviewElement.Projectile));
+            AddAssert("wall preview has real safe gap", () =>
+                DodgePatternPreviewLayout.Sample(DodgePatternType.Wall, 4, 0.5f).Element,
+                () => Is.EqualTo(DodgePatternPreviewElement.Hidden));
+            AddAssert("cross preview has four projectiles", () =>
+                Enumerable.Range(0, 9).Count(index => DodgePatternPreviewLayout.Sample(DodgePatternType.Cross, index, 0.5f).Element == DodgePatternPreviewElement.Projectile),
+                () => Is.EqualTo(4));
+            AddAssert("eight local pattern cards", () => patternToolbox.SavedPatternPreviewCardCount, () => Is.EqualTo(8));
+            AddAssert("every local slot is unique", () =>
+                this.ChildrenOfType<DodgeSavedPatternPreviewCard>().Select(card => card.Slot).Distinct().Count(),
+                () => Is.EqualTo(8));
+            AddStep("insert ring from browser", () => patternToolbox.InsertPattern(DodgePatternType.Ring));
+            AddAssert("ring creates one emitter", () => EditorBeatmap.HitObjects.OfType<DodgeEmitter>().Count(), () => Is.EqualTo(1));
+            AddAssert("ring covers full circle", () => EditorBeatmap.HitObjects.OfType<DodgeEmitter>().Single().SpreadAngle, () => Is.EqualTo(360));
+            AddStep("prepare empty local slot", () =>
+            {
+                emptyLocalSlot = this.ChildrenOfType<DodgeSavedPatternPreviewCard>().Single(card => card.Slot == 8);
+                emptyLocalSlot.SetPattern(null);
+                EditorBeatmap.SelectedHitObjects.Clear();
+                EditorBeatmap.SelectedHitObjects.Add(EditorBeatmap.HitObjects.OfType<DodgeEmitter>().Single());
+            });
+            AddAssert("one object selected for local pattern", () => EditorBeatmap.SelectedHitObjects.OfType<DodgeHitObject>().Count(), () => Is.EqualTo(1));
+            AddStep("click empty slot to save selection", () => patternToolbox.ActivateSavedPatternSlot(emptyLocalSlot.Slot));
+            AddAssert("empty slot saved immediately", () => emptyLocalSlot.HasPattern);
         }
 
         [Test]

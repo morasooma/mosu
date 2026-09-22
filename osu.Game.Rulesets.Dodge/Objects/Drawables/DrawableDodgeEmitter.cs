@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -10,6 +11,7 @@ using osu.Game.Audio;
 using osu.Game.Rulesets.Judgements;
 using osu.Game.Rulesets.Dodge.UI;
 using osu.Game.Rulesets.Objects.Drawables;
+using osu.Game.Rulesets.Objects;
 using osuTK;
 using osuTK.Graphics;
 
@@ -34,6 +36,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
         private DodgeBulletVisual?[] activeBulletVisuals = Array.Empty<DodgeBulletVisual?>();
         private DodgeDirectionIndicator?[] activeArrows = Array.Empty<DodgeDirectionIndicator?>();
         private readonly BulletLifetimeContainer bulletContainer;
+        private readonly Container nestedBurstContainer;
         private readonly DodgeEmitterBulletBatch bulletBatch;
         private readonly DodgeBulletVisual batchingProbe;
         private EmitterState cachedEmitterState;
@@ -51,6 +54,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
         private bool activeCollisionBoundsValid;
         private double activeCollisionBoundsTime = double.NaN;
         private bool usesBatchedBulletVisuals;
+        private DrawableDodgeEmitterBurst?[] burstDrawables = Array.Empty<DrawableDodgeEmitterBurst?>();
 
         public bool ShowFullTrajectories { get; set; }
 
@@ -121,7 +125,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
 
         public double CollisionEndTime => getEffectiveMovementEndTime();
 
-        public bool CollisionProcessingComplete => Result.HasResult;
+        public bool CollisionProcessingComplete => allBurstsJudged() && nextActivationIndex >= bulletStates.Length && allActiveBulletsCollidedOrExited();
 
         protected override double InitialLifetimeOffset => Emitter.TimePreempt;
 
@@ -129,6 +133,10 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             : base(hitObject)
         {
             RelativeSizeAxes = Axes.Both;
+            AddInternal(nestedBurstContainer = new Container
+            {
+                RelativeSizeAxes = Axes.Both,
+            });
             AddInternal(bulletContainer = new BulletLifetimeContainer
             {
                 RelativeSizeAxes = Axes.Both,
@@ -151,7 +159,25 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
         protected override void LoadComplete()
         {
             base.LoadComplete();
+            updateEmitterCache();
             playfield.RegisterCollisionSource(this);
+        }
+
+        protected override DrawableHitObject CreateNestedHitObject(HitObject hitObject)
+            => hitObject is DodgeEmitterBurst burst
+                ? new DrawableDodgeEmitterBurst(burst)
+                : base.CreateNestedHitObject(hitObject);
+
+        protected override void AddNestedHitObject(DrawableHitObject hitObject)
+        {
+            base.AddNestedHitObject(hitObject);
+            nestedBurstContainer.Add(hitObject);
+        }
+
+        protected override void ClearNestedHitObjects()
+        {
+            base.ClearNestedHitObjects();
+            nestedBurstContainer.Clear(false);
         }
 
         protected override void Update()
@@ -181,6 +207,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             double currentTime = Time.Current;
             Vector2 cameraOffsetNow = playfield.CameraOffsetAt(currentTime);
             updateActiveSet(currentTime);
+            finishExitedBullets(currentTime);
             LastFrameSimulatedBulletCount = activeBulletIndices.Count;
             LastFrameDynamicDirectionUpdateCount = 0;
             activeCollisionBoundsMin = new Vector2(float.PositiveInfinity);
@@ -192,7 +219,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 int i = activeBulletIndices[activeIndex];
                 ref BulletRuntimeState state = ref bulletStates[i];
                 CachedBullet cachedBullet = state.Geometry;
-                double exitTime = Math.Min(cachedBullet.ExitTime, playfield.ContinuedBulletEndTime);
+                bool bulletCleared = !playfield.ProjectileExists(cachedBullet.EmissionTime, currentTime);
+                double exitTime = cachedBullet.ExitTime;
                 double timeFromEmission = currentTime - cachedBullet.EmissionTime;
                 float bulletAppearanceProgress = timeFromEmission < 0
                     ? (float)Math.Clamp(1 + timeFromEmission / Math.Max(1, cachedEmitterState.TimePreempt), 0, 1)
@@ -215,7 +243,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 Vector2 bulletDirection = cachedBullet.MovementDelta;
                 updatePositionSample(ref state, currentTime, bulletPosition);
 
-                if (!state.Collided && currentTime >= cachedBullet.EmissionTime)
+                if (!state.Collided && !bulletCleared && currentTime >= cachedBullet.EmissionTime)
                 {
                     includeInCollisionBounds(state.CurrentPosition);
                     includeInCollisionBounds(state.PreviousPosition);
@@ -230,7 +258,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                         LastFrameDynamicDirectionUpdateCount++;
                 }
 
-                float bulletAlpha = !state.Collided
+                float bulletAlpha = !state.Collided && !bulletCleared
                     ? bulletAppearanceProgress * cachedEmitterState.Opacity
                     : 0;
                 float bulletScale = 0.85f + 0.15f * bulletAppearanceProgress;
@@ -314,7 +342,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                     bool visible = showFullTrajectories
                         ? withinPreempt && currentTime <= effectiveExitTime(state.Geometry)
                         : withinPreempt && currentTime < state.Geometry.EmissionTime;
-                    trajectoryGuides[rayIndex].Alpha = !state.Collided && visible
+                    bool bulletCleared = !playfield.ProjectileExists(state.Geometry.EmissionTime, currentTime);
+                    trajectoryGuides[rayIndex].Alpha = !state.Collided && !bulletCleared && visible
                         ? Math.Max(0.08f, appearanceProgress * 0.24f) * cachedEmitterState.Opacity
                         : 0;
                 }
@@ -350,15 +379,33 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                                                 && activeCollisionBoundsTime == currentTime
                                                 && !collisionBoundsOverlapPlayer(previousPlayerPosition, currentPlayerPosition);
 
+            float maxGrazeDistance = (cachedEmitterState.BulletSize + playfield.PlayerSize) / 2 + Math.Max(0, playfield.GrazeDistance);
+            Vector2 playerBoxMin = Vector2.ComponentMin(previousPlayerPosition, currentPlayerPosition) - new Vector2(maxGrazeDistance);
+            Vector2 playerBoxMax = Vector2.ComponentMax(previousPlayerPosition, currentPlayerPosition) + new Vector2(maxGrazeDistance);
+
             for (int activeIndex = 0; !emitterOutsideCollisionRange && activeIndex < activeBulletIndices.Count; activeIndex++)
             {
                 int index = activeBulletIndices[activeIndex];
                 ref BulletRuntimeState state = ref bulletStates[index];
                 CachedBullet bullet = state.Geometry;
+                bool bulletCleared = !playfield.ProjectileExists(bullet.EmissionTime, currentTime);
                 double exitTime = effectiveExitTime(bullet);
 
                 if (currentTime < bullet.EmissionTime || frameStartTime > exitTime)
                     continue;
+
+                if (!state.Collided && playfield.CollisionEnabled && state.PositionSampleValid && !bulletCleared)
+                {
+                    float bulletMinX = Math.Min(state.PreviousPosition.X, state.CurrentPosition.X);
+                    float bulletMaxX = Math.Max(state.PreviousPosition.X, state.CurrentPosition.X);
+                    if (bulletMaxX < playerBoxMin.X || bulletMinX > playerBoxMax.X)
+                        continue;
+
+                    float bulletMinY = Math.Min(state.PreviousPosition.Y, state.CurrentPosition.Y);
+                    float bulletMaxY = Math.Max(state.PreviousPosition.Y, state.CurrentPosition.Y);
+                    if (bulletMaxY < playerBoxMin.Y || bulletMinY > playerBoxMax.Y)
+                        continue;
+                }
 
                 double sampleEndTime = Math.Min(currentTime, exitTime);
                 double sampleStartTime = allowSweptCollision
@@ -367,7 +414,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 bool withinGrazeRange = false;
                 bool intersects = false;
 
-                if (!state.Collided && playfield.CollisionEnabled)
+                if (!state.Collided && playfield.CollisionEnabled && !bulletCleared)
                 {
                     Vector2 currentPosition = allowSweptCollision
                         ? default
@@ -422,8 +469,9 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                     if (!state.GrazeJudged)
                         judgeGraze(ref state, currentTime, false);
 
-                    if (!Result.HasResult)
-                        collided = true;
+                    int burstIndex = index / cachedEmitterState.BulletCount;
+                    judgeBurst(burstIndex, false);
+                    collided = true;
                 }
                 else if (withinGrazeRange)
                 {
@@ -435,23 +483,15 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             }
 
             if (collided)
-            {
-                // The emitter itself is judged by the first collision. Resolve the
-                // remaining graze slots at the same time so the score processor
-                // cannot wait for bullets which may outlive the end of the map.
-                judgeRemainingGrazes(false);
                 playfield.TriggerMissFeedback();
-                completionPending = false;
-                ApplyMinResult();
-            }
 
             finishExitedBullets(currentTime);
+            judgeCompletedBursts(currentTime);
 
-            if (!Result.HasResult && completionPending)
+            if (completionPending && nextActivationIndex >= bulletStates.Length && activeBulletIndices.Count == 0)
             {
-                judgeRemainingGrazes(false);
                 completionPending = false;
-                ApplyMaxResult();
+                completeRemainingSuccessfully();
             }
         }
 
@@ -544,6 +584,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 Emitter.EffectiveSpreadAngle,
                 Emitter.EffectiveBurstCount,
                 Emitter.EffectiveBurstInterval,
+                Emitter.BurstRotation,
                 Emitter.Position,
                 Emitter.AimPosition,
                 Emitter.MovementEndPosition,
@@ -556,6 +597,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 Math.Clamp(Emitter.OutlineThickness, 0, 8),
                 Math.Clamp(Emitter.Opacity, 0, 1),
                 Emitter.MovementType,
+                Emitter.MovementEasing,
                 Emitter.WaveAmplitude,
                 Math.Max(1, Emitter.WaveCycles),
                 Emitter.WavePhase,
@@ -571,6 +613,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             }
 
             cachedEmitterState = state;
+            syncBurstDrawables();
             rebuildBulletCache();
             cameraAnchorVersion = playfield.CameraStateVersion;
             applyCachedVisualProperties();
@@ -591,37 +634,60 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             {
                 double emissionTime = Emitter.EmissionTimeAt(burstIndex);
                 Vector2 sourcePosition = Emitter.SourcePositionAt(burstIndex);
+                // The scroll-drift anchor only depends on the emission time, which
+                // is shared by every bullet in this burst; evaluate it once instead
+                // of once per ray.
+                Vector2 emissionCameraOffset = playfield.CameraOffsetAt(emissionTime);
 
                 for (int rayIndex = 0; rayIndex < cachedEmitterState.BulletCount; rayIndex++)
                 {
                     Vector2 endPosition = Emitter.EndPositionAt(burstIndex, rayIndex);
                     Vector2 movementDelta = endPosition - sourcePosition;
-                    double exitTime = cachedEmitterState.ContinueUntilExit
-                        ? DodgeTrajectory.CalculateExitTime(
+
+                    double exitTime = playfield.HasCameraChanges
+                        ? DodgeTrajectory.CalculateExitTimeWithCamera(
                             emissionTime,
                             cachedEmitterState.Duration,
                             sourcePosition,
-                            cameraAdjustedEndForExit(endPosition, emissionTime, cachedEmitterState.Duration),
+                            endPosition,
                             cachedEmitterState.BulletSize,
                             cachedEmitterState.MovementType,
                             cachedEmitterState.WaveAmplitude,
                             cachedEmitterState.WaveCycles,
-                            cachedEmitterState.WavePhase)
+                            cachedEmitterState.WavePhase,
+                            playfield.CameraOffsetAt,
+                            playfield.ContinuedBulletEndTime,
+                            cachedEmitterState.MovementEasing)
+                        : DodgeTrajectory.CalculateExitTime(
+                            emissionTime,
+                            cachedEmitterState.Duration,
+                            sourcePosition,
+                            endPosition,
+                            cachedEmitterState.BulletSize,
+                            cachedEmitterState.MovementType,
+                            cachedEmitterState.WaveAmplitude,
+                            cachedEmitterState.WaveCycles,
+                            cachedEmitterState.WavePhase,
+                            cachedEmitterState.MovementEasing);
+
+                    double finalExitTime = cachedEmitterState.ContinueUntilExit
+                        ? exitTime
                         : emissionTime + cachedEmitterState.Duration;
+
                     float maximumProgress = cachedEmitterState.Duration > 0
-                        ? (float)((exitTime - emissionTime) / cachedEmitterState.Duration)
+                        ? (float)((finalExitTime - emissionTime) / cachedEmitterState.Duration)
                         : 0;
                     bulletStates[index++].Geometry = new CachedBullet(
                         emissionTime,
-                        exitTime,
+                        finalExitTime,
                         sourcePosition,
                         endPosition,
                         movementDelta,
                         maximumProgress,
                         // Scroll drift anchor: the bullet rides the field scroll
                         // accumulated since its own emission.
-                        playfield.CameraOffsetAt(emissionTime));
-                    cachedMovementEndTime = Math.Max(cachedMovementEndTime, exitTime);
+                        emissionCameraOffset);
+                    cachedMovementEndTime = Math.Max(cachedMovementEndTime, finalExitTime);
                 }
             }
         }
@@ -665,12 +731,12 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 {
                     int bulletIndex = burstIndex * cachedEmitterState.BulletCount + rayIndex;
                     LastFrameTrajectoryGuideCandidateChecks++;
+                    double exit = effectiveExitTime(bulletStates[bulletIndex].Geometry);
 
-                    if (currentTime <= effectiveExitTime(bulletStates[bulletIndex].Geometry))
+                    if (exit > bulletStates[bulletIndex].Geometry.EmissionTime && currentTime <= exit)
                         return bulletIndex;
                 }
             }
-
 
             int upcomingBurst = latestEmittedBurst + 1;
 
@@ -680,7 +746,9 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             int upcomingBulletIndex = upcomingBurst * cachedEmitterState.BulletCount + rayIndex;
             CachedBullet upcoming = bulletStates[upcomingBulletIndex].Geometry;
             LastFrameTrajectoryGuideCandidateChecks++;
-            return currentTime >= visualStartTime(upcoming) && currentTime < upcoming.EmissionTime
+            return effectiveExitTime(upcoming) > upcoming.EmissionTime
+                   && currentTime >= visualStartTime(upcoming)
+                   && currentTime < upcoming.EmissionTime
                 ? upcomingBulletIndex
                 : -1;
         }
@@ -696,7 +764,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 cachedEmitterState.MovementType,
                 cachedEmitterState.WaveAmplitude,
                 cachedEmitterState.WaveCycles,
-                cachedEmitterState.WavePhase);
+                cachedEmitterState.WavePhase,
+                cachedEmitterState.MovementEasing);
         }
 
         private float trajectoryStartProgress(CachedBullet bullet, double currentTime, bool showFullTrajectories)
@@ -728,8 +797,17 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                    && visualStartTime(bulletStates[nextActivationIndex].Geometry) <= currentTime)
             {
                 int index = nextActivationIndex++;
-                activeBulletIndices.Add(index);
-                earliestActiveExitTime = Math.Min(earliestActiveExitTime, effectiveExitTime(bulletStates[index].Geometry));
+                double exit = effectiveExitTime(bulletStates[index].Geometry);
+
+                if (exit > bulletStates[index].Geometry.EmissionTime)
+                {
+                    activeBulletIndices.Add(index);
+                    earliestActiveExitTime = Math.Min(earliestActiveExitTime, exit);
+                }
+                else
+                {
+                    judgeGraze(ref bulletStates[index], exit, false);
+                }
             }
         }
 
@@ -746,14 +824,17 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                    && visualStartTime(bulletStates[nextActivationIndex].Geometry) <= currentTime)
             {
                 ref BulletRuntimeState state = ref bulletStates[nextActivationIndex];
+                double exit = effectiveExitTime(state.Geometry);
 
-                if (effectiveExitTime(state.Geometry) >= currentTime)
+                if (exit > state.Geometry.EmissionTime && exit >= currentTime)
                 {
                     activeBulletIndices.Add(nextActivationIndex);
-                    earliestActiveExitTime = Math.Min(earliestActiveExitTime, effectiveExitTime(state.Geometry));
+                    earliestActiveExitTime = Math.Min(earliestActiveExitTime, exit);
                 }
                 else if (!state.GrazeJudged)
-                    judgeGraze(ref state, effectiveExitTime(state.Geometry), false);
+                {
+                    judgeGraze(ref state, exit, false);
+                }
 
                 nextActivationIndex++;
             }
@@ -839,6 +920,97 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                    && activeCollisionBoundsMin.Y <= playerMax.Y;
         }
 
+        private bool allActiveBulletsCollidedOrExited()
+        {
+            for (int i = 0; i < activeBulletIndices.Count; i++)
+            {
+                if (!bulletStates[activeBulletIndices[i]].Collided)
+                    return false;
+            }
+
+            return true;
+        }
+
+        private void syncBurstDrawables()
+        {
+            burstDrawables = new DrawableDodgeEmitterBurst?[Emitter.EffectiveBurstCount];
+
+            foreach (DrawableDodgeEmitterBurst drawable in NestedHitObjects.OfType<DrawableDodgeEmitterBurst>())
+            {
+                if (drawable.HitObject.BurstIndex >= 0 && drawable.HitObject.BurstIndex < burstDrawables.Length - 1)
+                    burstDrawables[drawable.HitObject.BurstIndex] = drawable;
+            }
+        }
+
+        private bool isBurstJudged(int burstIndex)
+        {
+            if (burstIndex == cachedEmitterState.BurstCount - 1)
+                return Result.HasResult;
+
+            // Hand-authored test beatmaps may not have gone through ApplyDefaults(),
+            // and therefore have no generated nested objects. There is no matching
+            // score slot to wait for in that case.
+            return burstIndex >= burstDrawables.Length
+                   || burstDrawables[burstIndex] == null
+                   || burstDrawables[burstIndex]!.Result.HasResult;
+        }
+
+        private void judgeBurst(int burstIndex, bool successful)
+        {
+            if (isBurstJudged(burstIndex))
+                return;
+
+            if (burstIndex == cachedEmitterState.BurstCount - 1)
+            {
+                if (successful)
+                    ApplyMaxResult();
+                else
+                    ApplyMinResult();
+
+                return;
+            }
+
+            if (burstIndex < burstDrawables.Length)
+                burstDrawables[burstIndex]?.Judge(successful);
+        }
+
+        private void judgeCompletedBursts(double currentTime)
+        {
+            for (int burstIndex = 0; burstIndex < cachedEmitterState.BurstCount; burstIndex++)
+            {
+                if (isBurstJudged(burstIndex))
+                    continue;
+
+                int firstBulletIndex = burstIndex * cachedEmitterState.BulletCount;
+                bool complete = true;
+
+                for (int rayIndex = 0; rayIndex < cachedEmitterState.BulletCount; rayIndex++)
+                {
+                    ref BulletRuntimeState state = ref bulletStates[firstBulletIndex + rayIndex];
+
+                    if (!state.Collided && currentTime <= effectiveExitTime(state.Geometry))
+                    {
+                        complete = false;
+                        break;
+                    }
+                }
+
+                if (complete)
+                    judgeBurst(burstIndex, true);
+            }
+        }
+
+        private bool allBurstsJudged()
+        {
+            for (int burstIndex = 0; burstIndex < cachedEmitterState.BurstCount; burstIndex++)
+            {
+                if (!isBurstJudged(burstIndex))
+                    return false;
+            }
+
+            return true;
+        }
+
         private void rewindState(double time)
         {
             // See DrawableDodgeHitObject: rewinding before the recorded result
@@ -886,7 +1058,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 bullet.EmissionTime,
                 cachedEmitterState.Duration,
                 cachedEmitterState.MovementType,
-                cachedEmitterState.WaveCycles);
+                cachedEmitterState.WaveCycles,
+                cachedEmitterState.MovementEasing);
             double exitTime = effectiveExitTime(bullet);
 
             for (int i = 0; i < subdivisions; i++)
@@ -926,7 +1099,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             => bullet.EmissionTime - cachedEmitterState.TimePreempt;
 
         private double effectiveExitTime(CachedBullet bullet)
-            => Math.Min(bullet.ExitTime, playfield.ContinuedBulletEndTime);
+            => bullet.ExitTime;
 
         private DodgeBulletVisual acquireBulletVisual(int index)
         {
@@ -1026,8 +1199,30 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             if (!emitterCacheValid)
                 updateEmitterCache();
 
-            if (Time.Current >= getEffectiveMovementEndTime())
-                completionPending = true;
+            if (!DodgeGameplayTiming.HasReachedJudgementTime(
+                    Time.Current,
+                    getEffectiveMovementEndTime(),
+                    playfield.GameplayEndTime))
+            {
+                return;
+            }
+
+            if (nextActivationIndex < bulletStates.Length || activeBulletIndices.Count > 0)
+            {
+                if (Time.Current < getEffectiveMovementEndTime())
+                    return;
+            }
+
+            completionPending = false;
+            completeRemainingSuccessfully();
+        }
+
+        private void completeRemainingSuccessfully()
+        {
+            judgeRemainingGrazes(false);
+
+            for (int burstIndex = 0; burstIndex < cachedEmitterState.BurstCount; burstIndex++)
+                judgeBurst(burstIndex, true);
         }
 
         private void judgeRemainingGrazes(bool successful)
@@ -1050,7 +1245,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             switch (state)
             {
                 case ArmedState.Hit:
-                    this.FadeOut(120).Expire();
+                    this.Delay(Math.Max(0, getEffectiveMovementEndTime() - Time.Current)).FadeOut(120).Expire();
                     break;
 
                 case ArmedState.Miss:
@@ -1060,15 +1255,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
         }
 
         private double getEffectiveMovementEndTime()
-            => Math.Min(cachedMovementEndTime, playfield.ContinuedBulletEndTime);
+            => cachedMovementEndTime;
 
-        /// <summary>
-        /// Returns the authored end position adjusted for camera scroll accumulated between
-        /// <paramref name="emissionTime"/> and <paramref name="emissionTime"/> + <paramref name="duration"/>.
-        /// Emitter bullets visually drift with the field scroll, so the playfield-exit
-        /// intersection must be computed against the effective arena-relative trajectory
-        /// endpoint rather than the raw authored one.
-        /// </summary>
         private Vector2 cameraAdjustedEndForExit(Vector2 authoredEnd, double emissionTime, double duration)
         {
             if (duration <= 0)
@@ -1087,6 +1275,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             float SpreadAngle,
             int BurstCount,
             double BurstInterval,
+            float BurstRotation,
             Vector2 Position,
             Vector2 AimPosition,
             Vector2 MovementEndPosition,
@@ -1099,6 +1288,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             float OutlineThickness,
             float Opacity,
             DodgeMovementType MovementType,
+            DodgeMovementEasing MovementEasing,
             float WaveAmplitude,
             int WaveCycles,
             float WavePhase,
@@ -1135,7 +1325,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                         emitter.MovementType,
                         emitter.WaveAmplitude,
                         emitter.WaveCycles,
-                        emitter.WavePhase);
+                        emitter.WavePhase,
+                        emitter.MovementEasing);
                 }
 
                 return trajectoryPosition + cameraOffset - CameraAnchor;
@@ -1156,7 +1347,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                     emitter.MovementType,
                     emitter.WaveAmplitude,
                     emitter.WaveCycles,
-                    emitter.WavePhase);
+                    emitter.WavePhase,
+                    emitter.MovementEasing);
             }
         }
 

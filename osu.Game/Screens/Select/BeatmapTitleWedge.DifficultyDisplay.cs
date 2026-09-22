@@ -59,6 +59,11 @@ namespace osu.Game.Screens.Select
             private GridContainer ratingAndNameContainer = null!;
             private DifficultyStatisticsDisplay countStatisticsDisplay = null!;
             private DifficultyStatisticsDisplay difficultyStatisticsDisplay = null!;
+            private Box statContainerBackground = null!;
+            private IBindable<Colour4> themeColour = null!;
+            private OverlayColourProvider colourProvider = null!;
+
+            internal Color4 MappedByTextColour => mappedByText.Colour;
 
             private CancellationTokenSource? cancellationSource;
 
@@ -71,6 +76,7 @@ namespace osu.Game.Screens.Select
             [BackgroundDependencyLoader]
             private void load(OverlayColourProvider colourProvider)
             {
+                this.colourProvider = colourProvider;
                 Masking = true;
                 CornerRadius = 10;
                 Shear = OsuGame.SHEAR;
@@ -164,7 +170,7 @@ namespace osu.Game.Screens.Select
                                     Shear = OsuGame.SHEAR,
                                     Children = new Drawable[]
                                     {
-                                        new Box
+                                        statContainerBackground = new Box
                                         {
                                             RelativeSizeAxes = Axes.Both,
                                             Colour = colourProvider.Background5.Opacity(0.8f),
@@ -201,6 +207,9 @@ namespace osu.Game.Screens.Select
                         }
                     },
                 };
+
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Background5);
+                themeColour.BindValueChanged(c => statContainerBackground.Colour = c.NewValue.Opacity(0.8f), true);
             }
 
             protected override void LoadComplete()
@@ -330,18 +339,34 @@ namespace osu.Game.Screens.Select
                 Color4 col = starRatingDisplay.DisplayedStars.Value >= OsuColour.STAR_DIFFICULTY_DEFINED_COLOUR_CUTOFF ? starRatingDisplay.DisplayedDifficultyTextColour : starRatingDisplay.DisplayedDifficultyColour;
 
                 difficultyText.Colour = col;
-                mappedByText.Colour = col;
+                mappedByText.Colour = OverlayColourProvider.IsLightTheme ? colourProvider.Content2 : col;
                 countStatisticsDisplay.AccentColour = col;
                 difficultyStatisticsDisplay.AccentColour = col;
             }
 
             private partial class MapperLinkContainer : OsuHoverContainer
             {
+                private IBindable<Colour4>? themeColour;
+
                 [BackgroundDependencyLoader]
                 private void load(OverlayColourProvider? overlayColourProvider, OsuColour colours)
                 {
                     TooltipText = ContextMenuStrings.ViewProfile;
-                    IdleColour = overlayColourProvider?.Light2 ?? colours.Blue;
+
+                    if (overlayColourProvider != null)
+                    {
+                        themeColour = overlayColourProvider.GetColourBindable(OverlayColour.Light2);
+                        themeColour.BindValueChanged(c =>
+                        {
+                            IdleColour = c.NewValue;
+                            if (IsLoaded && !IsHovered)
+                                ((Drawable)Content).FadeColour(c.NewValue);
+                        }, true);
+                    }
+                    else
+                    {
+                        IdleColour = colours.Blue;
+                    }
                 }
             }
         }

@@ -6,6 +6,7 @@
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics.Shapes;
 using osu.Game.Graphics.Containers;
 using osu.Framework.Input.Events;
@@ -22,6 +23,7 @@ namespace osu.Game.Graphics.UserInterface.PageSelector
         protected OverlayColourProvider ColourProvider { get; private set; }
 
         protected Box Background;
+        private IBindable<Colour4> themeColour;
 
         protected PageSelectorButton()
         {
@@ -66,6 +68,17 @@ namespace osu.Game.Graphics.UserInterface.PageSelector
         {
             base.OnHoverLost(e);
             UpdateHoverState();
+        }
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+            themeColour = ColourProvider.GetColourBindable(OverlayColour.Content1);
+            themeColour.BindValueChanged(_ => UpdateColours(), true);
+        }
+
+        protected virtual void UpdateColours()
+        {
         }
 
         protected abstract void UpdateHoverState();

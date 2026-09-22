@@ -45,6 +45,7 @@ namespace osu.Game.Performance.Diagnostics
         DeferredDirectUniformUpload,
         VeldridPipelineLookupCache,
         StaticChildLifetimeCache,
+        AtlasRegionAllocator,
         AllowTearing,
         UpdateThreadSpinWait,
         SkinPerformanceMode,
@@ -101,6 +102,7 @@ namespace osu.Game.Performance.Diagnostics
         public bool DeferredDirectUniformUpload { get; set; }
         public bool VeldridPipelineLookupCache { get; set; }
         public bool StaticChildLifetimeCache { get; set; }
+        public bool AtlasRegionAllocator { get; set; }
         public bool Use8kPollingRate { get; set; }
         public bool AllowTearing { get; set; }
         public bool UpdateThreadSpinWait { get; set; }
@@ -123,6 +125,7 @@ namespace osu.Game.Performance.Diagnostics
             OsuSetting.ForkDeferredDirectUniformUpload => DeferredDirectUniformUpload,
             OsuSetting.ForkVeldridPipelineLookupCache => VeldridPipelineLookupCache,
             OsuSetting.ForkStaticChildLifetimeCache => StaticChildLifetimeCache,
+            OsuSetting.ForkAtlasRegionAllocator => AtlasRegionAllocator,
             OsuSetting.ForkUse8kPollingRate => Use8kPollingRate,
             OsuSetting.ForkAllowTearing => AllowTearing,
             OsuSetting.ForkUpdateThreadSpinWait => UpdateThreadSpinWait,
@@ -197,6 +200,10 @@ namespace osu.Game.Performance.Diagnostics
                     StaticChildLifetimeCache = value;
                     break;
 
+                case OsuSetting.ForkAtlasRegionAllocator:
+                    AtlasRegionAllocator = value;
+                    break;
+
                 case OsuSetting.ForkUse8kPollingRate:
                     Use8kPollingRate = value;
                     break;
@@ -224,6 +231,7 @@ namespace osu.Game.Performance.Diagnostics
             MosuDiagnosticsProfile.DeferredDirectUniformUpload,
             MosuDiagnosticsProfile.VeldridPipelineLookupCache,
             MosuDiagnosticsProfile.StaticChildLifetimeCache,
+            MosuDiagnosticsProfile.AtlasRegionAllocator,
             MosuDiagnosticsProfile.AllowTearing,
             MosuDiagnosticsProfile.UpdateThreadSpinWait,
             MosuDiagnosticsProfile.SkinPerformanceMode,
@@ -293,6 +301,7 @@ namespace osu.Game.Performance.Diagnostics
                 MosuDiagnosticsProfile.DeferredDirectUniformUpload => OsuSetting.ForkDeferredDirectUniformUpload,
                 MosuDiagnosticsProfile.VeldridPipelineLookupCache => OsuSetting.ForkVeldridPipelineLookupCache,
                 MosuDiagnosticsProfile.StaticChildLifetimeCache => OsuSetting.ForkStaticChildLifetimeCache,
+                MosuDiagnosticsProfile.AtlasRegionAllocator => OsuSetting.ForkAtlasRegionAllocator,
                 MosuDiagnosticsProfile.AllowTearing => OsuSetting.ForkAllowTearing,
                 MosuDiagnosticsProfile.UpdateThreadSpinWait => OsuSetting.ForkUpdateThreadSpinWait,
                 MosuDiagnosticsProfile.SkinPerformanceMode => OsuSetting.ForkSkinPerformanceMode,

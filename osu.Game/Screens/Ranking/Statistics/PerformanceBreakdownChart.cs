@@ -47,7 +47,7 @@ namespace osu.Game.Screens.Ranking.Statistics
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
 
-        public PerformanceBreakdownChart(ScoreInfo score, IBeatmap playableBeatmap)
+        public PerformanceBreakdownChart(ScoreInfo score)
         {
             this.score = score;
         }
@@ -55,9 +55,6 @@ namespace osu.Game.Screens.Ranking.Statistics
         [BackgroundDependencyLoader]
         private void load()
         {
-            Colour4 achievedColour = OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : Color4Extensions.FromHex("#66FFCC");
-            Colour4 maximumColour = OverlayColourProvider.IsLightTheme ? colourProvider.Content2 : OsuColour.Gray(0.7f);
-
             Children = new[]
             {
                 spinner = new LoadingSpinner(true)
@@ -123,14 +120,12 @@ namespace osu.Game.Screens.Ranking.Statistics
                                             Anchor = Anchor.CentreLeft,
                                             Font = OsuFont.GetFont(weight: FontWeight.Regular, size: StatisticItem.FONT_SIZE),
                                             Text = "Achieved PP",
-                                            Colour = achievedColour
                                         },
                                         achievedPerformance = new OsuSpriteText
                                         {
                                             Origin = Anchor.CentreRight,
                                             Anchor = Anchor.CentreRight,
                                             Font = OsuFont.GetFont(weight: FontWeight.Regular, size: StatisticItem.FONT_SIZE),
-                                            Colour = achievedColour
                                         }
                                     },
                                     new Drawable[]
@@ -141,14 +136,12 @@ namespace osu.Game.Screens.Ranking.Statistics
                                             Anchor = Anchor.CentreLeft,
                                             Font = OsuFont.GetFont(weight: FontWeight.Regular, size: StatisticItem.FONT_SIZE),
                                             Text = "Maximum",
-                                            Colour = maximumColour
                                         },
                                         maximumPerformance = new OsuSpriteText
                                         {
                                             Origin = Anchor.CentreLeft,
                                             Anchor = Anchor.CentreLeft,
                                             Font = OsuFont.GetFont(weight: FontWeight.Regular, size: StatisticItem.FONT_SIZE),
-                                            Colour = maximumColour
                                         }
                                     }
                                 }

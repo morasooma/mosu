@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using osu.Framework.Allocation;
@@ -12,7 +13,9 @@ using osu.Framework.Logging;
 using osu.Framework.Timing;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.ControlPoints;
+using osu.Game.Beatmaps.Timing;
 using osu.Game.Overlays;
+using osu.Game.Scoring;
 using osu.Game.Storyboards;
 
 namespace osu.Game.Screens.Play
@@ -33,6 +36,11 @@ namespace osu.Game.Screens.Play
         /// Duration before gameplay start time required before skip button displays.
         /// </summary>
         public const double MINIMUM_SKIP_TIME = 1000;
+
+        /// <summary>
+        /// Minimum break duration for which skipping is useful and can retain the resume lead-in.
+        /// </summary>
+        public const double MINIMUM_BREAK_DURATION_FOR_SKIP = 2 * MINIMUM_SKIP_TIME;
 
         public readonly BindableNumber<double> UserPlaybackRate = new BindableDouble(1)
         {
@@ -142,7 +150,57 @@ namespace osu.Game.Screens.Play
                 // double skip exception for storyboards with very long intros
                 skipTarget = 0;
 
-            Seek(skipTarget);
+            seekAsAuthorisedSkip(skipTarget, GameplaySkipIntegrityEvent.INTRO, StartTime, GameplayStartTime, null, false);
+        }
+
+        /// <summary>
+        /// Safely skips the currently active beatmap break while retaining a short lead-in before gameplay resumes.
+        /// </summary>
+        /// <returns><c>true</c> if a seek was performed.</returns>
+        public bool SkipBreak(BreakPeriod breakPeriod, int breakIndex, bool multiplayerServerAuthorised)
+        {
+            double currentTime = GameplayClock.CurrentTime;
+            double skipTarget = breakPeriod.EndTime - MINIMUM_SKIP_TIME;
+
+            if (breakIndex < 0
+                || !double.IsFinite(currentTime)
+                || !double.IsFinite(breakPeriod.StartTime)
+                || !double.IsFinite(breakPeriod.EndTime)
+                || !breakPeriod.HasEffect
+                || breakPeriod.Duration < MINIMUM_BREAK_DURATION_FOR_SKIP
+                || !breakPeriod.Contains(currentTime)
+                || skipTarget <= breakPeriod.StartTime
+                || currentTime >= skipTarget)
+                return false;
+
+            return seekAsAuthorisedSkip(skipTarget, GameplaySkipIntegrityEvent.BREAK, breakPeriod.StartTime, breakPeriod.EndTime,
+                breakIndex, multiplayerServerAuthorised);
+        }
+
+        private bool seekAsAuthorisedSkip(double target, string kind, double periodStart, double periodEnd, int? breakIndex, bool multiplayerServerAuthorised)
+        {
+            bool shouldRecord = GameplayClock.IsRunning;
+            double timeBeforeSeek = GameplayClock.CurrentTime;
+
+            Seek(target);
+
+            double timeAfterSeek = GameplayClock.CurrentTime;
+            if (!shouldRecord || !double.IsFinite(timeAfterSeek) || timeAfterSeek - timeBeforeSeek < 0.001)
+                return false;
+
+            authorisedSkips.Add(new GameplaySkipIntegrityEvent
+            {
+                Sequence = authorisedSkips.Count,
+                Kind = kind,
+                FromMilliseconds = timeBeforeSeek,
+                ToMilliseconds = timeAfterSeek,
+                PeriodStartMilliseconds = periodStart,
+                PeriodEndMilliseconds = periodEnd,
+                BreakIndex = breakIndex,
+                MultiplayerServerAuthorised = multiplayerServerAuthorised,
+            });
+
+            return true;
         }
 
         /// <summary>
@@ -192,6 +250,7 @@ namespace osu.Game.Screens.Play
         private double maxPlaybackDriftMilliseconds;
         private int gameplaySeekCount;
         private double gameplaySeekDeltaMilliseconds;
+        private readonly List<GameplaySkipIntegrityEvent> authorisedSkips = new List<GameplaySkipIntegrityEvent>();
 
         public bool PlaybackValidationEnabled => ShouldValidatePlaybackRate;
 
@@ -206,6 +265,8 @@ namespace osu.Game.Screens.Play
         public int GameplaySeekCount => gameplaySeekCount;
 
         public double GameplaySeekDeltaMilliseconds => gameplaySeekDeltaMilliseconds;
+
+        public IReadOnlyList<GameplaySkipIntegrityEvent> AuthorisedSkips => authorisedSkips;
 
         public double ElapsedWallClockTime => elapsedWallClockTime;
 

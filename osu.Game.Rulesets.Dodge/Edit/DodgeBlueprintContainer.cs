@@ -29,6 +29,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 DodgeArenaChange arenaChange => new DodgeArenaChangeSelectionBlueprint(arenaChange),
                 DodgeBeam beam => new DodgeBeamSelectionBlueprint(beam),
                 DodgeCameraChange cameraChange => new DodgeCameraChangeSelectionBlueprint(cameraChange),
+                DodgeTrigger trigger => new DodgeTriggerSelectionBlueprint(trigger),
                 _ => null,
             };
 

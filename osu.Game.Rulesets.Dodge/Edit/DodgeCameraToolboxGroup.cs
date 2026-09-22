@@ -44,6 +44,12 @@ namespace osu.Game.Rulesets.Dodge.Edit
                     Current = settings.CameraContinuousScroll,
                     TooltipText = DodgeEditorStrings.CameraContinuousScrollHint,
                 },
+                new SettingsEnumDropdown<DodgeCameraEasing>
+                {
+                    LabelText = DodgeEditorStrings.CameraEasing,
+                    Current = settings.CameraEasing,
+                    TooltipText = DodgeEditorStrings.CameraEasingHint,
+                },
             };
         }
 
@@ -52,6 +58,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             base.LoadComplete();
 
             settings.CameraContinuousScroll.BindValueChanged(_ => applyToSelection());
+            settings.CameraEasing.BindValueChanged(_ => applyToSelection());
             selectedHitObjects.BindTo(editorBeatmap.SelectedHitObjects);
             selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection());
         }
@@ -65,6 +72,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
             syncingSelection = true;
             settings.CameraContinuousScroll.Value = change.Continuous;
+            settings.CameraEasing.Value = change.Easing;
             syncingSelection = false;
         }
 
@@ -83,6 +91,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             foreach (DodgeCameraChange change in changes)
             {
                 change.Continuous = settings.CameraContinuousScroll.Value;
+                change.Easing = settings.CameraEasing.Value;
                 editorBeatmap.Update(change);
             }
 

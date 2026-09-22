@@ -158,6 +158,41 @@ namespace osu.Game.Tests.Visual.Navigation
         }
 
         [Test]
+        public void TestChangingSongSelectStyleImmediatelyReplacesScreen()
+        {
+            ForkSongSelectStyle originalStyle = default;
+
+            AddStep("start with modern song select", () =>
+            {
+                originalStyle = Game.LocalConfig.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle);
+                Game.LocalConfig.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.Modern);
+            });
+
+            PushAndConfirm(() => new SoloSongSelect());
+
+            AddStep("collect unreferenced bindables", () =>
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            });
+
+            AddStep("switch to 2024 song select", () =>
+                Game.LocalConfig.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.Classic2024));
+            AddUntilStep("2024 song select becomes current", () =>
+                Game.ScreenStack.CurrentScreen is Screens.SelectLegacy.PlaySongSelect { IsLoaded: true });
+
+            AddStep("switch back to modern song select", () =>
+                Game.LocalConfig.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.Modern));
+            AddUntilStep("modern song select becomes current", () =>
+                Game.ScreenStack.CurrentScreen is SoloSongSelect { IsLoaded: true });
+
+            exitViaEscapeAndConfirm();
+            AddStep("restore song select style", () =>
+                Game.LocalConfig.SetValue(OsuSetting.ForkSongSelectStyle, originalStyle));
+        }
+
+        [Test]
         public void TestEnterGameplayWhileFilteringToNoSelection()
         {
             SoloSongSelect songSelect = null;
@@ -876,6 +911,7 @@ namespace osu.Game.Tests.Visual.Navigation
         public void TestToolbarHiddenByUser()
         {
             AddUntilStep("Wait for toolbar to load", () => Game.Toolbar.IsLoaded);
+            AddStep("disable toolbar auto-hide", () => Game.LocalConfig.SetValue(OsuSetting.ForkAutoHideToolbar, false));
 
             AddStep("Enter menu", () => InputManager.Key(Key.Enter));
             AddUntilStep("Toolbar is visible", () => Game.Toolbar.State.Value == Visibility.Visible);
@@ -903,6 +939,22 @@ namespace osu.Game.Tests.Visual.Navigation
         }
 
         [Test]
+        public void TestToolbarAutoHideAndEdgeReveal()
+        {
+            AddUntilStep("Wait for toolbar to load", () => Game.Toolbar.IsLoaded);
+            AddStep("enable toolbar auto-hide", () => Game.LocalConfig.SetValue(OsuSetting.ForkAutoHideToolbar, true));
+
+            AddStep("Enter menu", () => InputManager.Key(Key.Enter));
+            AddUntilStep("Toolbar is visible", () => Game.Toolbar.State.Value == Visibility.Visible);
+
+            AddStep("move cursor away from toolbar", () => InputManager.MoveMouseTo(new Vector2(Game.ScreenSpaceDrawQuad.Centre.X, Game.ScreenSpaceDrawQuad.BottomLeft.Y)));
+            AddUntilStep("Toolbar hides after delay", () => Game.Toolbar.State.Value == Visibility.Hidden);
+
+            AddStep("move cursor to top edge", () => InputManager.MoveMouseTo(new Vector2(Game.ScreenSpaceDrawQuad.Centre.X, Game.ScreenSpaceDrawQuad.TopLeft.Y)));
+            AddUntilStep("Toolbar is revealed", () => Game.Toolbar.State.Value == Visibility.Visible);
+        }
+
+        [Test]
         public void TestPushMatchSubScreenAndPressBackButtonImmediately()
         {
             TestMultiplayerComponents multiplayerComponents = null;
@@ -920,27 +972,6 @@ namespace osu.Game.Tests.Visual.Navigation
             AddStep("clean up multiplayer request handler", () => ((DummyAPIAccess)API).HandleRequest = null);
         }
 
-        [Test]
-        public void TestFeaturedArtistDisclaimerDialog()
-        {
-            BeatmapListingOverlay getBeatmapListingOverlay() => Game.ChildrenOfType<BeatmapListingOverlay>().FirstOrDefault();
-
-            AddStep("Wait for notifications to load", () => Game.SearchBeatmapSet(string.Empty));
-            AddUntilStep("wait for dialog overlay", () => Game.ChildrenOfType<DialogOverlay>().SingleOrDefault() != null);
-
-            AddUntilStep("Wait for beatmap overlay to load", () => getBeatmapListingOverlay()?.State.Value == Visibility.Visible);
-            AddAssert("featured artist filter is on", () => getBeatmapListingOverlay().ChildrenOfType<BeatmapSearchGeneralFilterRow>().First().Current.Contains(SearchGeneral.FeaturedArtists));
-            AddStep("toggle featured artist filter",
-                () => getBeatmapListingOverlay().ChildrenOfType<FilterTabItem<SearchGeneral>>().First(i => i.Value == SearchGeneral.FeaturedArtists).TriggerClick());
-
-            AddAssert("disclaimer dialog is shown", () => Game.ChildrenOfType<DialogOverlay>().Single().CurrentDialog != null);
-            AddAssert("featured artist filter is still on", () => getBeatmapListingOverlay().ChildrenOfType<BeatmapSearchGeneralFilterRow>().First().Current.Contains(SearchGeneral.FeaturedArtists));
-
-            AddStep("confirm", () => InputManager.Key(Key.Enter));
-            AddAssert("dialog dismissed", () => Game.ChildrenOfType<DialogOverlay>().Single().CurrentDialog == null);
-
-            AddUntilStep("featured artist filter is off", () => !getBeatmapListingOverlay().ChildrenOfType<BeatmapSearchGeneralFilterRow>().First().Current.Contains(SearchGeneral.FeaturedArtists));
-        }
 
         [Test]
         public void TestBeatmapListingLinkSearchOnInitialOpen()

@@ -14,6 +14,7 @@ using osu.Framework.Testing;
 using osu.Framework.Utils;
 using osu.Game.Beatmaps;
 using osu.Game.Database;
+using osu.Game.Configuration;
 using osu.Game.Online.Rooms;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
@@ -21,6 +22,7 @@ using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Screens.OnlinePlay;
 using osu.Game.Screens.OnlinePlay.Playlists;
+using osu.Game.Screens.Select;
 using osu.Game.Tests.Resources;
 using osu.Game.Tests.Visual.OnlinePlay;
 using osuTK.Input;
@@ -73,6 +75,15 @@ namespace osu.Game.Tests.Visual.Multiplayer
         public void TestShowScreen()
         {
             AddStep("show screen", () => { });
+        }
+
+        [Test]
+        public void TestLegacySkinStyleDoesNotChangeOnlinePanels()
+        {
+            AddStep("enable stable style", () => Dependencies.Get<OsuConfigManager>().SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.LegacySkinned));
+            AddUntilStep("beatmap panel loaded", () => songSelect.ChildrenOfType<PanelBeatmapSet>().FirstOrDefault(), () => Is.Not.Null);
+            AddAssert("online panel keeps modern height", () => songSelect.ChildrenOfType<PanelBeatmapSet>().First().Item?.DrawHeight, () => Is.EqualTo(PanelBeatmapSet.HEIGHT));
+            AddAssert("online panel has no selected difficulty header", () => songSelect.ChildrenOfType<PanelBeatmapSet>().First().ShowsSelectedDifficulty, () => Is.False);
         }
 
         [Test]

@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Rulesets.Scoring;
 
 namespace osu.Game.Scoring.Legacy
@@ -52,6 +53,12 @@ namespace osu.Game.Scoring.Legacy
         [JsonProperty("pauses")]
         public int[] Pauses { get; set; } = [];
 
+        /// <summary>
+        /// Fork extension. It is an optional additive JSON field, so default clients safely ignore it.
+        /// </summary>
+        [JsonProperty("tag_coop_replay", NullValueHandling = NullValueHandling.Ignore)]
+        public TagCoopReplayMetadata? TagCoopReplay { get; set; }
+
         public static LegacyReplaySoloScoreInfo FromScore(ScoreInfo score) => new LegacyReplaySoloScoreInfo
         {
             OnlineID = score.OnlineID,
@@ -63,6 +70,7 @@ namespace osu.Game.Scoring.Legacy
             UserID = score.User.OnlineID,
             TotalScoreWithoutMods = score.TotalScoreWithoutMods > 0 ? score.TotalScoreWithoutMods : null,
             Pauses = score.Pauses.ToArray(),
+            TagCoopReplay = score.TagCoopReplay,
         };
     }
 }

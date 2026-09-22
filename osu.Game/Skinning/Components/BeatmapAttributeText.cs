@@ -82,6 +82,7 @@ namespace osu.Game.Skinning.Components
             beatmap.BindValueChanged(b =>
             {
                 difficultyCancellationSource?.Cancel();
+                difficultyCancellationSource?.Dispose();
                 difficultyCancellationSource = new CancellationTokenSource();
 
                 difficultyBindable?.UnbindAll();
@@ -90,9 +91,7 @@ namespace osu.Game.Skinning.Components
                 {
                     starDifficulty = d.NewValue;
                     updateText();
-                });
-
-                updateText();
+                }, true);
             }, true);
 
             mods.BindValueChanged(m =>

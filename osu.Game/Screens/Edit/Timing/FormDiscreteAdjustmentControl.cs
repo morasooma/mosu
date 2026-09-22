@@ -258,7 +258,7 @@ namespace osu.Game.Screens.Edit.Timing
             valueLabel.Alpha = TextBox.Focused.Value ? 0 : 1;
 
             captionText.Colour = Current.Disabled ? colourProvider.Background1 : colourProvider.Content2;
-            TextBox.Colour = Current.Disabled ? colourProvider.Background1 : colourProvider.Content1;
+            TextBox.Colour = Colour4.White;
             valueLabel.Colour = Current.Disabled ? colourProvider.Background1 : colourProvider.Content1;
 
             if (Current.Disabled)

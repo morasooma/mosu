@@ -31,13 +31,13 @@ namespace osu.Game.Tests.Skins
         {
             var component = new TextElement();
             component.Font.Value = Typeface.Torus;
-            component.CustomFontFamily.Value = @"Example Custom Font";
+            component.CustomFontFamily.Value = @"Comfortaa Regular";
             component.TextWeight.Value = FontWeight.Bold;
 
             var overrides = SkinCustomFontSerializer.ExtractOverrides(GlobalSkinnableContainers.MainHUDComponents, null, new Drawable[] { component });
 
             Assert.That(overrides, Has.Count.EqualTo(1));
-            Assert.That(overrides[0].FontFamily, Is.EqualTo(@"Example Custom Font"));
+            Assert.That(overrides[0].FontFamily, Is.EqualTo(@"Comfortaa Regular"));
             Assert.That(overrides[0].TextWeight, Is.EqualTo(FontWeight.Bold));
             Assert.That(overrides[0].Path, Is.EqualTo(new[] { 0 }));
 
@@ -58,7 +58,7 @@ namespace osu.Game.Tests.Skins
                     Container = GlobalSkinnableContainers.MainHUDComponents.ToString(),
                     Ruleset = @"global",
                     Path = new[] { 0 },
-                    FontFamily = @"Example Custom Font",
+                    FontFamily = @"Comfortaa Regular",
                     TextWeight = FontWeight.SemiBold,
                 }
             });
@@ -74,7 +74,7 @@ namespace osu.Game.Tests.Skins
                 new[] { instance });
 
             var fontComponent = (FontAdjustableSkinComponent)instance;
-            Assert.That(fontComponent.CustomFontFamily.Value, Is.EqualTo(@"Example Custom Font"));
+            Assert.That(fontComponent.CustomFontFamily.Value, Is.EqualTo(@"Comfortaa Regular"));
             Assert.That(fontComponent.TextWeight.Value, Is.EqualTo(FontWeight.SemiBold));
         }
 

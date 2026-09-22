@@ -91,6 +91,9 @@ namespace osu.Game.Online.API.Requests.Responses
         [JsonProperty("pauses")]
         public int[] Pauses { get; set; } = [];
 
+        [JsonProperty("gameplay_integrity")]
+        public GameplayIntegrityReport? GameplayIntegrity { get; set; }
+
         #region osu-web API additions (not stored to database).
 
         [JsonProperty("id")]
@@ -265,6 +268,7 @@ namespace osu.Game.Online.API.Requests.Responses
             Statistics = score.Statistics.Where(kvp => kvp.Value != 0).ToDictionary(),
             MaximumStatistics = score.MaximumStatistics.Where(kvp => kvp.Value != 0).ToDictionary(),
             Pauses = score.Pauses.ToArray(),
+            GameplayIntegrity = score.GameplayIntegrityReport,
         };
     }
 }

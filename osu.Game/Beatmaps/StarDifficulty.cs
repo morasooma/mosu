@@ -31,6 +31,18 @@ namespace osu.Game.Beatmaps
         public readonly PerformanceAttributes? PerformanceAttributes;
 
         /// <summary>
+        /// Previously calculated additional info loaded from the local fork database.
+        /// </summary>
+        public readonly string? CachedAdditionalInfo;
+
+        public StarDifficulty(double stars, int maxCombo, string cachedAdditionalInfo)
+        {
+            Stars = double.IsFinite(stars) ? stars : 0;
+            MaxCombo = maxCombo;
+            CachedAdditionalInfo = cachedAdditionalInfo;
+        }
+
+        /// <summary>
         /// Creates a <see cref="StarDifficulty"/> structure.
         /// </summary>
         public StarDifficulty(DifficultyAttributes difficulty, PerformanceAttributes performance)
@@ -40,6 +52,16 @@ namespace osu.Game.Beatmaps
             DifficultyAttributes = difficulty;
             PerformanceAttributes = performance;
             // Todo: Add more members (BeatmapInfo.DifficultyRating? Attributes? Etc...)
+        }
+
+        /// <summary>
+        /// Creates a <see cref="StarDifficulty"/> without calculating performance attributes.
+        /// </summary>
+        public StarDifficulty(DifficultyAttributes difficulty)
+        {
+            Stars = double.IsFinite(difficulty.StarRating) ? difficulty.StarRating : 0;
+            MaxCombo = difficulty.MaxCombo;
+            DifficultyAttributes = difficulty;
         }
 
         /// <summary>

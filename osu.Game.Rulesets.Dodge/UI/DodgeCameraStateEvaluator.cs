@@ -31,33 +31,54 @@ namespace osu.Game.Rulesets.Dodge.UI
                 startOffsets[i] = evaluate(this.changes[i].StartTime, i);
         }
 
-        public Vector2 Evaluate(double time) => evaluate(time, changes.Length);
+        public bool HasChanges => changes.Length > 0;
+
+        public Vector2 Evaluate(double time) => changes.Length > 0 ? evaluate(time, changes.Length) : Vector2.Zero;
 
         private Vector2 evaluate(double time, int count)
         {
-            for (int i = count - 1; i >= 0; i--)
+            // `changes[0..count)` is sorted ascending by StartTime. Find the latest
+            // keyframe that is already active at `time` with a binary search. The
+            // previous O(N) backwards scan is hit once per sample by
+            // DodgeTrajectory.CalculateExitTimeWithCamera, so this is the hot path
+            // that spikes when many ContinueUntilExit bullets spawn at once.
+            int low = 0;
+            int high = count - 1;
+            int activeIndex = -1;
+
+            while (low <= high)
             {
-                DodgeCameraChange change = changes[i];
+                int middle = (low + high) / 2;
 
-                if (change.StartTime > time)
-                    continue;
-
-                Vector2 vector = change.EndPosition - change.Position;
-
-                if (change.Continuous)
+                if (changes[middle].StartTime <= time)
                 {
-                    double elapsed = Math.Max(0, time - change.StartTime) / 1000;
-                    return startOffsets[i] + vector * (float)elapsed;
+                    activeIndex = middle;
+                    low = middle + 1;
                 }
-
-                if (change.Duration <= 0)
-                    return startOffsets[i] + vector;
-
-                float progress = (float)Math.Clamp((time - change.StartTime) / change.Duration, 0, 1);
-                return startOffsets[i] + vector * progress;
+                else
+                {
+                    high = middle - 1;
+                }
             }
 
-            return Vector2.Zero;
+            if (activeIndex < 0)
+                return Vector2.Zero;
+
+            DodgeCameraChange change = changes[activeIndex];
+            Vector2 vector = change.EndPosition - change.Position;
+
+            if (change.Continuous)
+            {
+                double elapsed = Math.Max(0, time - change.StartTime) / 1000;
+                return startOffsets[activeIndex] + vector * (float)elapsed;
+            }
+
+            if (change.Duration <= 0)
+                return startOffsets[activeIndex] + vector;
+
+            float progress = (float)Math.Clamp((time - change.StartTime) / change.Duration, 0, 1);
+            progress = change.Easing.Apply(progress);
+            return startOffsets[activeIndex] + vector * progress;
         }
     }
 }

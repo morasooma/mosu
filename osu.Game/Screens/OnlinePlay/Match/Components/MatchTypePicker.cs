@@ -21,6 +21,33 @@ namespace osu.Game.Screens.OnlinePlay.Match.Components
     {
         private const float height = 40;
         private const float selection_width = 3;
+        private bool tagCoopAvailable = true;
+
+        /// <summary>
+        /// Whether Tag Co-op can be selected for the current playlist. Tag Co-op is intentionally
+        /// restricted to osu!standard (online ruleset ID 0).
+        /// </summary>
+        public bool TagCoopAvailable
+        {
+            get => tagCoopAvailable;
+            set
+            {
+                if (tagCoopAvailable == value)
+                    return;
+
+                tagCoopAvailable = value;
+
+                if (value)
+                    AddItem(MatchType.TagCoop);
+                else
+                {
+                    if (Current.Value == MatchType.TagCoop)
+                        Current.Value = MatchType.HeadToHead;
+
+                    RemoveItem(MatchType.TagCoop);
+                }
+            }
+        }
 
         protected override TabItem<MatchType> CreateTabItem(MatchType value) => new GameTypePickerItem(value);
 
@@ -33,6 +60,7 @@ namespace osu.Game.Screens.OnlinePlay.Match.Components
 
             AddItem(MatchType.HeadToHead);
             AddItem(MatchType.TeamVersus);
+            AddItem(MatchType.TagCoop);
         }
 
         private partial class GameTypePickerItem : DisableableTabItem

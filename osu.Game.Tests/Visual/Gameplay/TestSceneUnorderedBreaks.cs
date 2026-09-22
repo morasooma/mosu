@@ -59,6 +59,18 @@ namespace osu.Game.Tests.Visual.Gameplay
             AddAssert("break overlay hidden", () => !this.ChildrenOfType<BreakOverlay>().Single().Child.IsPresent);
         }
 
+        [Test]
+        public void TestBreakSkipSynchronisesFrameStableClock()
+        {
+            addSeekStep(2000);
+            AddUntilStep("break skip visible", () => this.ChildrenOfType<SkipOverlay>().Any(o => o.IsButtonVisible));
+            AddStep("request break skip", () => this.ChildrenOfType<SkipOverlay>().Single(o => o.IsButtonVisible).RequestSkip());
+            AddAssert("master clock seeked", () => Player.GameplayClockContainer.CurrentTime, () => Is.EqualTo(3000).Within(100));
+            AddAssert("playfield clock synchronised", () =>
+                Player.DrawableRuleset.FrameStableClock.CurrentTime,
+                () => Is.EqualTo(Player.GameplayClockContainer.CurrentTime).Within(100));
+        }
+
         private void addSeekStep(double time)
         {
             AddStep($"seek to {time}", () => Beatmap.Value.Track.Seek(time));

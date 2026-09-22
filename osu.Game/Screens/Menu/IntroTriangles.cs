@@ -15,6 +15,7 @@ using osu.Framework.Graphics.Textures;
 using osu.Framework.Screens;
 using osu.Framework.Timing;
 using osu.Framework.Utils;
+using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
@@ -205,7 +206,7 @@ namespace osu.Game.Screens.Menu
 
                     using (BeginDelayedSequence(text_4))
                     {
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome to osu!");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome to Morasooma");
                         welcomeText.TransformTo(nameof(welcomeText.Spacing), new Vector2(50, 0), 5000);
                     }
 
@@ -299,20 +300,22 @@ namespace osu.Game.Screens.Menu
                 }
 
                 [BackgroundDependencyLoader]
-                private void load(LargeTextureStore textures)
+                private void load(LargeTextureStore textures, OsuConfigManager config)
                 {
+                    string logoTexture = config.Get<ForkMenuLogo>(OsuSetting.ForkMenuLogo).GetTextureName();
+
                     InternalChildren = new Drawable[]
                     {
                         highlight = new LogoAnimation
                         {
                             RelativeSizeAxes = Axes.Both,
-                            Texture = textures.Get(@"Intro/Triangles/logo-highlight"),
+                            Texture = textures.Get(logoTexture),
                             Colour = Color4.White,
                         },
                         background = new LogoAnimation
                         {
                             RelativeSizeAxes = Axes.Both,
-                            Texture = textures.Get(@"Intro/Triangles/logo-background"),
+                            Texture = textures.Get(logoTexture),
                             Colour = OsuColour.Gray(0.6f),
                         },
                     };

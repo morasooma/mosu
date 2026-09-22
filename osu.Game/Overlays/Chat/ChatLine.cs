@@ -2,22 +2,22 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
-using osu.Framework.Extensions;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Graphics;
+using osu.Framework.Testing;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
-using osu.Framework.Graphics.UserInterface;
 using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Localisation;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Chat;
@@ -26,7 +26,7 @@ using osuTK.Graphics;
 
 namespace osu.Game.Overlays.Chat
 {
-    public partial class ChatLine : CompositeDrawable, IHasPopover
+    public partial class ChatLine : CompositeDrawable
     {
         private Message message = null!;
 
@@ -55,10 +55,16 @@ namespace osu.Game.Overlays.Chat
         protected virtual float UsernameWidth => 150;
 
         [Resolved]
-        private ChannelManager? chatManager { get; set; }
+        private Bindable<Channel?>? currentChannel { get; set; }
+
+        [Resolved]
+        private ChannelManager? channelManager { get; set; }
 
         [Resolved]
         private OverlayColourProvider? colourProvider { get; set; }
+
+        [Resolved]
+        private IDialogOverlay? dialogOverlay { get; set; }
 
         private OsuSpriteText drawableTimestamp = null!;
 
@@ -133,6 +139,11 @@ namespace osu.Game.Overlays.Chat
                 ? Color4Extensions.FromHex(message.Sender.Colour)
                 : default_username_colours[message.SenderId % default_username_colours.Length];
         }
+
+        private IBindable<Colour4>? themeColour;
+
+        internal Color4 TimestampColour => drawableTimestamp.Colour;
+        internal IEnumerable<SpriteText> ContentSpriteTexts => drawableContentFlow.ChildrenOfType<SpriteText>();
 
         [BackgroundDependencyLoader]
         private void load(OsuConfigManager configManager)
@@ -214,24 +225,39 @@ namespace osu.Game.Overlays.Chat
         {
             base.LoadComplete();
 
-            drawableTimestamp.Colour = colourProvider?.Background1 ?? Colour4.White;
-
             updateMessageContent();
+
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ => updateColours(), true);
+            }
+            else
+            {
+                updateColours();
+            }
+
             FinishTransforms(true);
 
-            if (this.FindClosestParent<PopoverContainer>() != null)
+            drawableUsername.ReportRequested = () => dialogOverlay?.Push(new ReportChatDialog(message)
             {
-                // This guards against cases like in-game chat where there's no available popover container.
-                // There may be a future where a global one becomes available, at which point this code may be unnecessary.
-                //
-                // See:
-                // https://github.com/ppy/osu/pull/23698
-                // https://github.com/ppy/osu/pull/14554
-                drawableUsername.ReportRequested = this.ShowPopover;
-            }
-        }
+                Success = () =>
+                {
+                    Debug.Assert(currentChannel?.Value != null);
 
-        public Popover GetPopover() => new ReportChatPopover(message);
+                    switch (currentChannel.Value.Type)
+                    {
+                        case ChannelType.PM:
+                            currentChannel.Value.AddNewMessages(new InfoMessage(ChatStrings.ReportConfirmationPM));
+                            break;
+
+                        default:
+                            currentChannel.Value.AddNewMessages(new InfoMessage(ChatStrings.ReportConfirmation));
+                            break;
+                    }
+                }
+            });
+        }
 
         /// <summary>
         /// Performs a highlight animation on this <see cref="ChatLine"/>.
@@ -258,7 +284,7 @@ namespace osu.Game.Overlays.Chat
         private void styleMessageContent(SpriteText text)
         {
             text.Shadow = false;
-            text.Font = text.Font.With(size: font_size, italics: Message.IsAction, weight: isMention ? FontWeight.SemiBold : FontWeight.Medium);
+            text.Font = OsuFont.Inter.With(size: font_size, italics: Message.IsAction, weight: isMention ? FontWeight.SemiBold : FontWeight.Regular);
 
             Color4 messageColour = colourProvider?.Content1 ?? Colour4.White;
 
@@ -268,6 +294,33 @@ namespace osu.Game.Overlays.Chat
                 messageColour = Color4Extensions.FromHex(message.Sender.Colour);
 
             text.Colour = messageColour;
+        }
+
+        private void updateColours()
+        {
+            drawableTimestamp.Colour = colourProvider != null
+                ? (OverlayColourProvider.IsLightTheme ? colourProvider.Content2 : colourProvider.Background1)
+                : Colour4.White;
+
+            Color4 messageColour = colourProvider?.Content1 ?? Colour4.White;
+
+            if (isMention)
+                messageColour = colourProvider?.Highlight1 ?? Color4.Orange;
+            else if (Message.IsAction && !string.IsNullOrEmpty(message.Sender.Colour))
+                messageColour = Color4Extensions.FromHex(message.Sender.Colour);
+
+            var linkParts = new HashSet<Drawable>();
+            foreach (var compiler in drawableContentFlow.ChildrenOfType<DrawableLinkCompiler>())
+            {
+                foreach (var part in compiler.Parts)
+                    linkParts.Add(part);
+            }
+
+            foreach (var text in drawableContentFlow.ChildrenOfType<SpriteText>())
+            {
+                if (!linkParts.Contains(text))
+                    text.Colour = messageColour;
+            }
         }
 
         [Resolved]
@@ -290,12 +343,15 @@ namespace osu.Game.Overlays.Chat
             drawableUsername.Text = $@"{message.Sender.Username}";
 
             // remove non-existent channels from the link list
-            message.Links.RemoveAll(link => link.Action == LinkAction.OpenChannel && chatManager?.AvailableChannels.Any(c => c.Name == link.Argument.ToString()) != true);
+            message.Links.RemoveAll(link => link.Action == LinkAction.OpenChannel && channelManager?.AvailableChannels.Any(c => c.Name == link.Argument.ToString()) != true);
 
             isMention = MessageNotifier.MatchUsername(message.DisplayContent, api.LocalUser.Value.Username).Success;
 
             drawableContentFlow.Clear();
             drawableContentFlow.AddLinks(message.DisplayContent, message.Links);
+
+            if (IsLoaded)
+                updateColours();
         }
 
         private void updateTimestamp()
@@ -344,8 +400,7 @@ namespace osu.Game.Overlays.Chat
 
         private void updateBackground()
         {
-            if (background != null)
-                background.Alpha = alternatingBackground ? 0.2f : 0;
+            background?.Alpha = alternatingBackground ? 0.2f : 0;
         }
     }
 }

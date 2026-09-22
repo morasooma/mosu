@@ -1,24 +1,31 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using osu.Framework.Graphics;
-using osu.Game.Graphics.Sprites;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
+using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Game.Extensions;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
+using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
 using osuTK;
+using osuTK.Graphics;
 
 namespace osu.Game.Screens.Edit.Components
 {
     public partial class TimeInfoContainer : BottomBarContainer
     {
+        private TimestampControl timestampControl = null!;
         private OsuSpriteText bpm = null!;
         private OsuSpriteText progress = null!;
+        private IBindable<Colour4>? themeBackgroundColour;
+
+        internal Color4 BackgroundColour => Background.Colour;
+        internal Color4 TrackTimerColour => timestampControl.TrackTimerColour;
 
         [Resolved]
         private EditorBeatmap editorBeatmap { get; set; } = null!;
@@ -30,10 +37,12 @@ namespace osu.Game.Screens.Edit.Components
         private void load(OsuColour colours, OverlayColourProvider colourProvider)
         {
             Background.Colour = colourProvider.Background5;
+            themeBackgroundColour = colourProvider.GetColourBindable(OverlayColour.Background5);
+            themeBackgroundColour.BindValueChanged(c => Background.Colour = c.NewValue);
 
             Children = new Drawable[]
             {
-                new TimestampControl(),
+                timestampControl = new TimestampControl(),
                 bpm = new OsuSpriteText
                 {
                     Colour = colours.Orange1,
@@ -82,6 +91,9 @@ namespace osu.Game.Screens.Edit.Components
             private Container hoverLayer = null!;
             private OsuSpriteText trackTimer = null!;
             private OsuTextBox inputTextBox = null!;
+            private IBindable<Colour4>? themeColour;
+
+            internal Color4 TrackTimerColour => trackTimer.Colour;
 
             [Resolved]
             private Editor? editor { get; set; }
@@ -95,7 +107,7 @@ namespace osu.Game.Screens.Edit.Components
             }
 
             [BackgroundDependencyLoader]
-            private void load()
+            private void load(OverlayColourProvider colourProvider)
             {
                 AutoSizeAxes = Axes.Both;
 
@@ -128,6 +140,7 @@ namespace osu.Game.Screens.Edit.Components
                         Origin = Anchor.CentreLeft,
                         Spacing = new Vector2(-2, 0),
                         Font = OsuFont.Torus.With(size: 32, fixedWidth: true, weight: FontWeight.Light),
+                        Colour = colourProvider.Content1,
                     },
                     inputTextBox = new TimestampTextBox
                     {
@@ -138,6 +151,9 @@ namespace osu.Game.Screens.Edit.Components
                         CommitOnFocusLost = true,
                     },
                 });
+
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(c => trackTimer.Colour = c.NewValue);
 
                 Action = () =>
                 {
