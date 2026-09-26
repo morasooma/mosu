@@ -19,7 +19,7 @@ namespace osu.Game.Database
 {
     public class ForkDataStore : IDisposable
     {
-        private const int schema_version = 10;
+        private const int schema_version = 11; // 11: RelaxMosuPp* fields (MosuPp relax PP system).
 
         /// <summary>
         /// Calculator revision of the Mosu/Realistik relax PP system
@@ -33,19 +33,32 @@ namespace osu.Game.Database
         /// </summary>
         public const int RELAX_VANILLA_PERFORMANCE_CALCULATION_VERSION = 2026082201;
 
+        /// <summary>
+        /// Calculator revision of the MosuPp relax PP system (fields <c>RelaxMosuPp*</c> in <see cref="ForkBeatmapData"/>).
+        /// Bump whenever a MosuPp rule changes (see MOSUPP_CHANGELOG.md).
+        /// </summary>
+        public const int RELAX_MOSU_PP_PERFORMANCE_CALCULATION_VERSION = 15;
+
         private readonly Storage storage;
         private readonly ConcurrentDictionary<Guid, double> ppCache = new ConcurrentDictionary<Guid, double>();
         private readonly ConcurrentDictionary<Guid, RelaxBeatmapData> relaxCache = new ConcurrentDictionary<Guid, RelaxBeatmapData>();
         private readonly ConcurrentDictionary<Guid, RelaxBeatmapData> relaxVanillaCache = new ConcurrentDictionary<Guid, RelaxBeatmapData>();
+        private readonly ConcurrentDictionary<Guid, RelaxBeatmapData> relaxMosuPpCache = new ConcurrentDictionary<Guid, RelaxBeatmapData>();
         private readonly ConcurrentDictionary<Guid, int> ppVersions = new ConcurrentDictionary<Guid, int>();
         private readonly ConcurrentDictionary<Guid, int> relaxVersions = new ConcurrentDictionary<Guid, int>();
         private readonly ConcurrentDictionary<Guid, int> relaxVanillaVersions = new ConcurrentDictionary<Guid, int>();
+        private readonly ConcurrentDictionary<Guid, int> relaxMosuPpVersions = new ConcurrentDictionary<Guid, int>();
         private readonly ConcurrentDictionary<Guid, DodgeDifficultyData> dodgeDifficultyCache = new ConcurrentDictionary<Guid, DodgeDifficultyData>();
         private readonly ConcurrentDictionary<Guid, string> tagCoopReplays = new ConcurrentDictionary<Guid, string>();
         private readonly ConcurrentDictionary<(Guid BeatmapId, string Ruleset), AdditionalInfoData> additionalInfoCache = new ConcurrentDictionary<(Guid, string), AdditionalInfoData>();
 
         public static int GetRelaxCalculationVersion(ForkRelaxPpSystem system)
-            => system == ForkRelaxPpSystem.LazerVanilla ? RELAX_VANILLA_PERFORMANCE_CALCULATION_VERSION : RELAX_PERFORMANCE_CALCULATION_VERSION;
+            => system switch
+            {
+                ForkRelaxPpSystem.LazerVanilla => RELAX_VANILLA_PERFORMANCE_CALCULATION_VERSION,
+                ForkRelaxPpSystem.MosuPp => RELAX_MOSU_PP_PERFORMANCE_CALCULATION_VERSION,
+                _ => RELAX_PERFORMANCE_CALCULATION_VERSION,
+            };
 
         public static ForkDataStore? Instance { get; private set; }
 
@@ -82,6 +95,7 @@ namespace osu.Game.Database
                     ppCache[data.BeatmapID] = data.MaxPerformancePoints;
                     relaxCache[data.BeatmapID] = new RelaxBeatmapData(data.RelaxStarRating, data.RelaxMaxPerformancePoints);
                     relaxVanillaCache[data.BeatmapID] = new RelaxBeatmapData(data.RelaxVanillaStarRating, data.RelaxVanillaMaxPerformancePoints);
+                    relaxMosuPpCache[data.BeatmapID] = new RelaxBeatmapData(data.RelaxMosuPpStarRating, data.RelaxMosuPpMaxPerformancePoints);
 
                     if (data.DodgeDifficultyVersion > 0 && data.DodgeStarRating >= 0)
                     {
@@ -121,6 +135,9 @@ namespace osu.Game.Database
 
                     if (data.RelaxVanillaPerformancePointsCalculated)
                         relaxVanillaVersions[data.BeatmapID] = data.RelaxVanillaPerformancePointsVersion;
+
+                    if (data.RelaxMosuPpPerformancePointsCalculated)
+                        relaxMosuPpVersions[data.BeatmapID] = data.RelaxMosuPpPerformancePointsVersion;
                 }
 
                 foreach (var data in realm.All<ForkScoreData>())
@@ -261,10 +278,20 @@ namespace osu.Game.Database
                && storedVersion == GetRelaxCalculationVersion(RelaxPpSystemSelection.Current);
 
         private ConcurrentDictionary<Guid, RelaxBeatmapData> getRelaxCache()
-            => RelaxPpSystemSelection.Current == ForkRelaxPpSystem.LazerVanilla ? relaxVanillaCache : relaxCache;
+            => RelaxPpSystemSelection.Current switch
+            {
+                ForkRelaxPpSystem.LazerVanilla => relaxVanillaCache,
+                ForkRelaxPpSystem.MosuPp => relaxMosuPpCache,
+                _ => relaxCache,
+            };
 
         private ConcurrentDictionary<Guid, int> getRelaxVersions()
-            => RelaxPpSystemSelection.Current == ForkRelaxPpSystem.LazerVanilla ? relaxVanillaVersions : relaxVersions;
+            => RelaxPpSystemSelection.Current switch
+            {
+                ForkRelaxPpSystem.LazerVanilla => relaxVanillaVersions,
+                ForkRelaxPpSystem.MosuPp => relaxMosuPpVersions,
+                _ => relaxVersions,
+            };
 
         public DodgeDifficultyData GetDodgeDifficulty(Guid beatmapId)
             => dodgeDifficultyCache.GetValueOrDefault(beatmapId, new DodgeDifficultyData());
@@ -429,10 +456,10 @@ namespace osu.Game.Database
 
         public void SetRelaxData(Guid beatmapId, double starRating, double pp)
         {
-            bool vanilla = RelaxPpSystemSelection.Current == ForkRelaxPpSystem.LazerVanilla;
-            int calculationVersion = GetRelaxCalculationVersion(RelaxPpSystemSelection.Current);
+            ForkRelaxPpSystem system = RelaxPpSystemSelection.Current;
+            int calculationVersion = GetRelaxCalculationVersion(system);
 
-            (vanilla ? relaxVanillaCache : relaxCache)[beatmapId] = new RelaxBeatmapData(starRating, pp);
+            getRelaxCache()[beatmapId] = new RelaxBeatmapData(starRating, pp);
 
             try
             {
@@ -448,7 +475,14 @@ namespace osu.Game.Database
                         realm.Add(existing);
                     }
 
-                    if (vanilla)
+                    if (system == ForkRelaxPpSystem.MosuPp)
+                    {
+                        existing.RelaxMosuPpStarRating = starRating;
+                        existing.RelaxMosuPpMaxPerformancePoints = pp;
+                        existing.RelaxMosuPpPerformancePointsCalculated = true;
+                        existing.RelaxMosuPpPerformancePointsVersion = calculationVersion;
+                    }
+                    else if (system == ForkRelaxPpSystem.LazerVanilla)
                     {
                         existing.RelaxVanillaStarRating = starRating;
                         existing.RelaxVanillaMaxPerformancePoints = pp;
@@ -464,7 +498,7 @@ namespace osu.Game.Database
                     }
                 });
 
-                (vanilla ? relaxVanillaVersions : relaxVersions)[beatmapId] = calculationVersion;
+                getRelaxVersions()[beatmapId] = calculationVersion;
             }
             catch (Exception e)
             {

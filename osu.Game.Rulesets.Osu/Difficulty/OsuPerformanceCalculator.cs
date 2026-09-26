@@ -103,7 +103,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty
         }
 
         public override bool RequiresBackgroundLivePerformanceCalculation(ScoreInfo score)
-            => RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuRealistik
+            => RelaxPpSystemSelection.UsesManagedRealistik
                && ManagedRealistikRelaxCalculator.IsRelax(score.Mods);
 
         protected override PerformanceAttributes CreatePerformanceAttributes(ScoreInfo score, DifficultyAttributes attributes)
@@ -148,6 +148,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
             // The pinned Mosu/Realistik RX calculator owns relax PP under the fork system;
             // LazerVanilla falls through to the upstream lazer relax formula below.
+            // MosuPp: the self-contained MosuPp calculator (Relax/MosuPpRelax), identical to the MosuPp development build.
+            if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuPp
+                && ManagedRealistikRelaxCalculator.IsRelax(score.Mods))
+                return Relax.MosuPpRelax.MosuPpRelaxCalculator.CalculatePerformance(score);
+
             if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuRealistik
                 && ManagedRealistikRelaxCalculator.IsRelax(score.Mods))
                 return ManagedRealistikRelaxCalculator.CalculatePerformance(score, osuAttributes);

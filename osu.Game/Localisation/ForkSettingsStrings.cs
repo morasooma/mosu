@@ -1760,6 +1760,10 @@ namespace osu.Game.Localisation
         /// "Lazer (vanilla)"
         /// </summary>
         public static LocalisableString RelaxPpSystemLazerVanilla => new TranslatableString(getKey(@"relax_pp_system_lazer_vanilla"), @"Lazer (vanilla)");
+        /// <summary>
+        /// "MosuPp"
+        /// </summary>
+        public static LocalisableString RelaxPpSystemMosuPp => new TranslatableString(getKey(@"relax_pp_system_mosu_pp"), @"MosuPp");
 
         /// <summary>
         /// "Dynamic drift"
