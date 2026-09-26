@@ -11,5 +11,10 @@ namespace osu.Game.Configuration
     public static class RelaxPpSystemSelection
     {
         public static ForkRelaxPpSystem Current { get; set; } = ForkRelaxPpSystem.MosuRealistik;
+
+        /// <summary>
+        /// Whether relax PP goes through the managed Mosu/Realistik calculator (MosuRealistik and MosuPp).
+        /// </summary>
+        public static bool UsesManagedRealistik => Current is ForkRelaxPpSystem.MosuRealistik or ForkRelaxPpSystem.MosuPp;
     }
 }

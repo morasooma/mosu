@@ -26,6 +26,17 @@ namespace osu.Game.Database
 
         public double RelaxVanillaMaxPerformancePoints { get; set; }
 
+        /// <summary>
+        /// Relax data for the MosuPp system, stored separately like the vanilla fields (fork.realm schema 11).
+        /// </summary>
+        public double RelaxMosuPpStarRating { get; set; }
+
+        public double RelaxMosuPpMaxPerformancePoints { get; set; }
+
+        public bool RelaxMosuPpPerformancePointsCalculated { get; set; }
+
+        public int RelaxMosuPpPerformancePointsVersion { get; set; }
+
         public bool PerformancePointsCalculated { get; set; }
 
         public bool RelaxPerformancePointsCalculated { get; set; }
