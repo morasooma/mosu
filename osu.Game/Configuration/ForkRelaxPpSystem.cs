@@ -12,6 +12,14 @@ namespace osu.Game.Configuration
         MosuRealistik,
 
         [LocalisableDescription(typeof(ForkSettingsStrings), nameof(ForkSettingsStrings.RelaxPpSystemLazerVanilla))]
-        LazerVanilla
+        LazerVanilla,
+
+        /// <summary>
+        /// MosuPp: the Mosu/Realistik RX calculator plus the MosuPp rules (see MOSUPP_CHANGELOG.md):
+        /// CS PP Buff, Length Bonus, Spike Nerf, Low Accuracy Nerf, Point Variety Nerf, Aim-Focused Flow Guard,
+        /// Stream-Only Guard, Simple Stream Nerf, One-Point Map Guard, Short Aim Nerf and Traceable = Hidden.
+        /// </summary>
+        [LocalisableDescription(typeof(ForkSettingsStrings), nameof(ForkSettingsStrings.RelaxPpSystemMosuPp))]
+        MosuPp
     }
 }

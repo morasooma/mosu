@@ -59,6 +59,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.Realistik
                 // Only callers which explicitly requested performance preparation reach here.
                 // Star-rating-only carousel panels skip Prepare entirely.
                 beatmapsByAttributes.AddOrUpdate(attributes, converted);
+
+                // MosuPp keeps its own converted beatmap (separate calculator, see Relax/MosuPpRelax).
+                MosuPpRelax.MosuPpRelaxCalculator.Prepare(beatmap, mods);
             }
             catch (Exception exception)
             {
@@ -86,6 +89,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.Realistik
 
                 foreach (OsuDifficultyAttributes attribute in attributes)
                     beatmapsByAttributes.AddOrUpdate(attribute, converted);
+
+                // MosuPp keeps its own converted beatmap (separate calculator, see Relax/MosuPpRelax).
+                MosuPpRelax.MosuPpRelaxCalculator.Prepare(beatmap, mods);
             }
             catch (Exception exception)
             {
