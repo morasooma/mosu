@@ -39,6 +39,24 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         // BeforeFlowGuard: ratio where the Aim-Focused Flow Guard runs; Final: after all aim/speed rules (Simple Stream Nerf, Stream-Only Guard).
         private readonly record struct ReferenceRatios(double BeforeFlowGuard, double Final);
 
+        /// <summary>
+        /// MosuPp "RP Balance (RX)": respect points of the prepared beatmap (computed in <see cref="Prepare"/> from the playable beatmap,
+        /// which has the stacking, slider paths and mods the RX representation does not keep).
+        /// </summary>
+        private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<RxRespectPoints.Result>> respect_points =
+            new ConditionalWeakTable<RxBeatmap, StrongBox<RxRespectPoints.Result>>();
+
+        /// <summary>MosuPp "Aim Control (RX)": control PP of the prepared beatmap per clock rate.</summary>
+        private static readonly ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<double, double>> control_pp =
+            new ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<double, double>>();
+
+        /// <summary>MosuPp "RP Balance (RX)": total PP of an SS on the same prepared beatmap + mods (the RP multiplier reference).</summary>
+        private static readonly ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, double>> ss_totals =
+            new ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, double>>();
+
+        private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<RxArles.Analysis>> arles =
+            new ConditionalWeakTable<RxBeatmap, StrongBox<RxArles.Analysis>>();
+
         public static bool IsRelax(IEnumerable<Mod> mods) => RealistikRelaxBalance.IsRelax(mods);
 
         public static void Prepare(IBeatmap beatmap, Mod[] mods)
@@ -48,7 +66,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 
             try
             {
-                beatmaps[createCacheKey(beatmap.BeatmapInfo, mods)] = RealistikBeatmapConverter.Convert(beatmap);
+                RxBeatmap converted = RealistikBeatmapConverter.Convert(beatmap);
+                respect_points.AddOrUpdate(converted, new StrongBox<RxRespectPoints.Result>(RxRespectPoints.Calculate(beatmap, mods)));
+                arles.AddOrUpdate(converted, new StrongBox<RxArles.Analysis>(RxArles.Analyze(beatmap)));
+                beatmaps[createCacheKey(beatmap.BeatmapInfo, mods)] = converted;
             }
             catch (Exception exception)
             {
@@ -75,114 +96,43 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 
             try
             {
-                RxScoreState scoreState = createScoreState(score);
-                bool mosuPp = RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuPp;
+                OsuPerformanceAttributes attributes = calculate(beatmap, createScoreState(score), score.Mods);
 
-                // MosuPp "Traceable = Hidden (RX)": Traceable (TC) is calculated exactly like Hidden (HD) — reading bonus,
-                // HD reading guard and every mod check below see HD. MosuRealistik keeps the original mods.
-                Mod[] ppMods = mosuPp
-                    ? score.Mods.Select(m => m.Acronym == "TC" ? new OsuModHidden() : m).ToArray()
-                    : score.Mods.ToArray();
+                if (RelaxPpSystemSelection.Current != ForkRelaxPpSystem.MosuPp)
+                    return attributes;
 
-                RxMods performanceMods = getPerformanceMods(ppMods);
-                double clockRate = ModUtils.CalculateRateWithMods(ppMods);
-                RxNativePerformanceResult result = MosuRxCalculator.Calculate(new RxCalculationRequest
+                double ssTotal = getSsTotal(beatmap, score.Mods);
+
+                // MosuPp "Aim Control (RX)": fast direction changes at small / medium spacing join the total as a third skill
+                // (one multiplier per map + mods, from an SS, same for every accuracy).
+                double controlPp = getControlPp(beatmap, ModUtils.CalculateRateWithMods(score.Mods)) * MosuPpBalance.Current.ControlScale;
+                double controlMultiplier = RxAimControl.Multiplier(controlPp, ssTotal);
+                scale(attributes, controlMultiplier);
+                attributes.MosuPpControlPp = controlPp;
+                attributes.MosuPpControlMultiplier = controlMultiplier;
+
+                // MosuPp "RP Balance (RX)": the total moves to the map's RP, within ±20% (one multiplier per map + mods, from an SS).
+                if (respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? respectPoints))
                 {
-                    Beatmap = beatmap,
-                    Mods = performanceMods,
-                    Score = scoreState,
-                    EffectiveAr = beatmap.ApproachRate,
-                    EffectiveOd = beatmap.OverallDifficulty,
-                    EffectiveCs = beatmap.CircleSize,
-                    EffectiveHp = beatmap.HpDrainRate,
-                    ClockRate = clockRate,
-                });
-
-                double nativeMultiplier = calculateNativeMultiplier(result, scoreState);
-                RealistikRelaxBalance.ApplyComponentGuards(
-                    result,
-                    ppMods,
-                    scoreState,
-                    beatmap,
-                    (float)result.Difficulty.Cs,
-                    clockRate);
-
-                double patternMultiplier = RealistikRelaxBalance.PatternMultiplier(ppMods, result);
-                double lengthAimMultiplier = RealistikRelaxBalance.LengthAimMultiplier(ppMods, result);
-                result.PpAim *= lengthAimMultiplier;
-
-                ReferenceRatios reference = mosuPp
-                    ? getReferenceRatios(beatmap, performanceMods, ppMods, clockRate)
-                    : default;
-
-                if (mosuPp)
-                {
-                    // MosuPp "Aim-Focused Flow Guard (RX)": no flow bonus for aim-focused maps (flow comes from their spaced streams).
-                    RxAimFocusedFlowGuard.Apply(result, reference.BeforeFlowGuard);
-
-                    // MosuPp "Length Bonus (RX)" + "Spike Nerf (RX)": many hard moments are worth more than one short spike.
-                    RxLengthBonus.Apply(result);
-
-                    // MosuPp "Point Variety Nerf (RX)": 2–4 spot back-and-forth spam loses most aim/speed PP.
-                    RxPointVarietyNerf.Apply(result, beatmap);
-
-                    // MosuPp "Extreme Jump Nerf (RX)": maps with 80+ jumps faster than 4.5 px/ms (glass beach) lose up to 31% aim PP.
-                    RxExtremeJumpNerf.Apply(result, beatmap);
+                    double multiplier = Math.Pow(RxRespectPoints.Multiplier(respectPoints.Value.Value, ssTotal * controlMultiplier), MosuPpBalance.Current.RpStrength);
+                    scale(attributes, multiplier);
+                    attributes.MosuPpRespectPoints = respectPoints.Value.Value;
+                    attributes.MosuPpRespectPointsMultiplier = multiplier;
                 }
 
-                result.Pp = RealistikRelaxBalance.RebuildTotal(result, scoreState, nativeMultiplier);
-
-                if (RealistikRelaxBalance.IsVerticalBalanceEligible(ppMods))
+                // Applied after RP so its clamp cannot absorb the new bonus. The shape reference is independent of
+                // accuracy/misses and rate; existing reading, precision and miss penalties remain in force.
+                if (arles.TryGetValue(beatmap, out StrongBox<RxArles.Analysis>? shape))
                 {
-                    double verticalPressure = RealistikRelaxBalance.VerticalPressure(
-                        beatmap,
-                        (float)result.Difficulty.Cs,
-                        scoreState.PassedObjects,
-                        clockRate);
-                    if (verticalPressure > 0)
-                    {
-                        result.PpAim *= 1 - 0.06 * verticalPressure;
-                        result.Pp = RealistikRelaxBalance.RebuildTotal(result, scoreState, nativeMultiplier);
-                    }
+                    scale(attributes, shape.Value.Multiplier);
+                    attributes.MosuPpArlesConfidence = shape.Value.Confidence;
+                    attributes.MosuPpArlesMultiplier = shape.Value.Multiplier;
                 }
 
-                double odMultiplier = RealistikRelaxBalance.OdMultiplier(result.Difficulty.Od);
-
-                // Product of the MosuPp total-PP rules below (1 for MosuRealistik).
-                double mosuPpMultiplier = 1.0;
-
-                if (mosuPp)
-                {
-                    // MosuPp "Stream Map Nerf (RX)": stream maps (speed PP ≥ 1.0–1.3× aim PP, ≥ 30–60% stream notes) lose up to 50%.
-                    mosuPpMultiplier *= RxStreamMapNerf.Multiplier(beatmap, reference.Final);
-
-                    // MosuPp "Stream-Only Guard (RX)": speed PP ≥ 5–10× aim PP (streams into one point): speed PP stops counting
-                    // (none from 10×) and the rest keeps ≤ 10% of the PP.
-                    mosuPpMultiplier *= RxStreamOnlyGuard.Apply(result, scoreState, nativeMultiplier, reference.Final);
-
-                    // MosuPp "One-Point Map Guard (RX)": every note stacked on 1–2 spots (e.g. Iyul' [HS]) keeps ~3% of the PP.
-                    mosuPpMultiplier *= RxOnePointMapGuard.Multiplier(beatmap);
-
-                    // MosuPp "Short High CS Nerf (RX)": CS 5–6+ maps with 300–700 objects lose up to 15% (smooth in CS and length).
-                    mosuPpMultiplier *= RxShortHighCsNerf.Multiplier(beatmap);
-
-                    // MosuPp "CS PP Buff (RX)": CS 4 +5%, 5 +10%, 6 +15%, 7 +25%, 8 +50% ... (smooth, CS incl. HR/EZ/DA).
-                    mosuPpMultiplier *= RxCsPpBuff.Multiplier(beatmap.CircleSize);
-
-                    // MosuPp "Heavy Miss Penalty (RX)": every miss above 15 removes another ~10% (× e^(−0.11 · (misses − 15))).
-                    mosuPpMultiplier *= RxHeavyMissPenalty.Multiplier(scoreState.Misses);
-                }
-
-                return new OsuPerformanceAttributes
-                {
-                    Aim = result.PpAim * odMultiplier * patternMultiplier * mosuPpMultiplier,
-                    Speed = result.PpSpeed * odMultiplier * mosuPpMultiplier,
-                    Accuracy = result.PpAccuracy * odMultiplier * mosuPpMultiplier,
-                    Reading = result.PpReading * odMultiplier * mosuPpMultiplier,
-                    Flashlight = 0,
-                    EffectiveMissCount = result.EffectiveMissCount,
-                    Total = result.Pp * odMultiplier * patternMultiplier * mosuPpMultiplier,
-                };
+                double typeScale = respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? typeReference)
+                    ? MosuPpBalance.Current.TypeScale(typeReference.Value.Type) : 1;
+                scale(attributes, MosuPpBalance.Current.GlobalScale * typeScale);
+                return attributes;
             }
             catch (Exception exception) when (exception is not InvalidOperationException)
             {
@@ -192,18 +142,177 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             }
         }
 
+        private static void scale(OsuPerformanceAttributes attributes, double multiplier)
+        {
+            attributes.Aim *= multiplier;
+            attributes.Speed *= multiplier;
+            attributes.Accuracy *= multiplier;
+            attributes.Reading *= multiplier;
+            attributes.Total *= multiplier;
+        }
+
+        private static double getControlPp(RxBeatmap beatmap, double clockRate)
+            => control_pp.GetValue(beatmap, _ => new ConcurrentDictionary<double, double>())
+                         .GetOrAdd(clockRate, rate => RxAimControl.ControlPp(beatmap, rate));
+
+        private static double getSsTotal(RxBeatmap beatmap, IReadOnlyList<Mod> mods)
+        {
+            var perBeatmap = ss_totals.GetValue(beatmap, _ => new ConcurrentDictionary<string, double>());
+            // Mod settings are part of the key (rate, AR/OD lock and DA values are settings, not acronyms).
+            string modsKey = string.Join(",", mods.Select(m => $"{m.Acronym}({string.Join(";", m.SettingDescription.Select(d => $"{d.setting}={d.value}"))})")
+                                                  .OrderBy(a => a, StringComparer.Ordinal));
+
+            return perBeatmap.GetOrAdd(modsKey, _ =>
+            {
+                uint objects = (uint)beatmap.HitObjects.Count;
+                var ss = new RxScoreState { Count300 = objects, PassedObjects = objects > 0 ? objects : null };
+                return calculate(beatmap, ss, mods).Total;
+            });
+        }
+
+        /// <summary>The MosuPp / MosuRealistik pipeline for one score state (everything except "RP Balance (RX)").</summary>
+        private static OsuPerformanceAttributes calculate(RxBeatmap beatmap, RxScoreState scoreState, IEnumerable<Mod> scoreMods)
+        {
+            bool mosuPp = RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuPp;
+
+            // MosuPp "Traceable = Hidden (RX)": Traceable (TC) is calculated exactly like Hidden (HD) — reading bonus,
+            // HD reading guard and every mod check below see HD. MosuRealistik keeps the original mods.
+            Mod[] ppMods = mosuPp
+                ? scoreMods.Select(m => m.Acronym == "TC" ? new OsuModHidden() : m).ToArray()
+                : scoreMods.ToArray();
+
+            RxMods performanceMods = getPerformanceMods(ppMods);
+            double clockRate = ModUtils.CalculateRateWithMods(ppMods);
+
+            // MosuPp "AR/OD Lock (RX)": a rate mod with "Lock AR/OD" is calculated with the AR / OD really played.
+            bool lockedDifficulty = mosuPp && RxLockedDifficulty.IsLocked(ppMods);
+            float effectiveAr = lockedDifficulty ? RxLockedDifficulty.Ar(beatmap.ApproachRate, clockRate) : beatmap.ApproachRate;
+            float effectiveOd = lockedDifficulty ? RxLockedDifficulty.Od(beatmap.OverallDifficulty, clockRate) : beatmap.OverallDifficulty;
+
+            RxNativePerformanceResult result = MosuRxCalculator.Calculate(new RxCalculationRequest
+            {
+                Beatmap = beatmap,
+                Mods = performanceMods,
+                Score = scoreState,
+                EffectiveAr = effectiveAr,
+                EffectiveOd = effectiveOd,
+                EffectiveCs = beatmap.CircleSize,
+                EffectiveHp = beatmap.HpDrainRate,
+                ClockRate = clockRate,
+            });
+
+            double nativeMultiplier = calculateNativeMultiplier(result, scoreState);
+            RealistikRelaxBalance.ApplyComponentGuards(
+                result,
+                ppMods,
+                scoreState,
+                beatmap,
+                (float)result.Difficulty.Cs,
+                clockRate);
+
+            double patternMultiplier = RealistikRelaxBalance.PatternMultiplier(ppMods, result);
+
+            // MosuPp "Spike Filler Guard (RX)": maps with several hard moments are not "one spike in filler" — only the anti-farm
+            // aim part of the pattern multiplier is lifted (the spike weight also gates the speed-dominance part, which stays as it is).
+            if (mosuPp && respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? moments))
+                patternMultiplier = RxSpikeFillerGuard.Apply(patternMultiplier, result.Difficulty.JumpSpikeFillerWeight, moments.Value.HardMoments);
+            double lengthAimMultiplier = RealistikRelaxBalance.LengthAimMultiplier(ppMods, result);
+            result.PpAim *= lengthAimMultiplier;
+
+            ReferenceRatios reference = mosuPp
+                ? getReferenceRatios(beatmap, performanceMods, ppMods, clockRate, effectiveAr, effectiveOd)
+                : default;
+
+            if (mosuPp)
+            {
+                // MosuPp "Aim-Focused Flow Guard (RX)": no flow bonus for aim-focused maps (flow comes from their spaced streams).
+                RxAimFocusedFlowGuard.Apply(result, reference.BeforeFlowGuard);
+
+                // MosuPp "Length Bonus (RX)" + "Spike Nerf (RX)": many hard moments are worth more than one short spike.
+                RxLengthBonus.Apply(result);
+
+                // MosuPp "Point Variety Nerf (RX)": 2–4 spot back-and-forth spam loses most aim/speed PP.
+                RxPointVarietyNerf.Apply(result, beatmap);
+
+                // MosuPp "Extreme Jump Nerf (RX)": maps with 80+ jumps faster than 4.5 px/ms (glass beach) lose up to 31% aim PP.
+                RxExtremeJumpNerf.Apply(result, beatmap);
+            }
+
+            result.Pp = RealistikRelaxBalance.RebuildTotal(result, scoreState, nativeMultiplier);
+
+            if (RealistikRelaxBalance.IsVerticalBalanceEligible(ppMods))
+            {
+                double verticalPressure = RealistikRelaxBalance.VerticalPressure(
+                    beatmap,
+                    (float)result.Difficulty.Cs,
+                    scoreState.PassedObjects,
+                    clockRate);
+                if (verticalPressure > 0)
+                {
+                    result.PpAim *= 1 - 0.06 * verticalPressure;
+                    result.Pp = RealistikRelaxBalance.RebuildTotal(result, scoreState, nativeMultiplier);
+                }
+            }
+
+            double odMultiplier = RealistikRelaxBalance.OdMultiplier(result.Difficulty.Od);
+
+            // Product of the MosuPp total-PP rules below (1 for MosuRealistik).
+            double mosuPpMultiplier = 1.0;
+
+            if (mosuPp)
+            {
+                // MosuPp "Stream Map Nerf (RX)": stream maps (speed PP ≥ 1.0–1.3× aim PP, ≥ 30–60% stream notes) lose up to 50%.
+                mosuPpMultiplier *= RxStreamMapNerf.Multiplier(beatmap, reference.Final);
+
+                // MosuPp "Stream-Only Guard (RX)": speed PP ≥ 5–10× aim PP (streams into one point): speed PP stops counting
+                // (none from 10×) and the rest keeps ≤ 10% of the PP.
+                mosuPpMultiplier *= RxStreamOnlyGuard.Apply(result, scoreState, nativeMultiplier, reference.Final);
+
+                // MosuPp "One-Point Map Guard (RX)": every note stacked on 1–2 spots (e.g. Iyul' [HS]) keeps ~3% of the PP.
+                mosuPpMultiplier *= RxOnePointMapGuard.Multiplier(beatmap);
+
+                // MosuPp "Short High CS Nerf (RX)": CS 5–6+ maps with 300–700 objects lose up to 15% (smooth in CS and length).
+                mosuPpMultiplier *= RxShortHighCsNerf.Multiplier(beatmap);
+
+                // MosuPp "Visible Notes Reading (RX)": more spaced notes on screen at once (lower AR, higher BPM) → up to +20%.
+                mosuPpMultiplier *= RxVisibleNotesReading.Multiplier(beatmap, effectiveAr);
+
+                // MosuPp "CS PP Buff (RX)": CS 4 +5%, 5 +10%, 6 +15%, 7 +25%, 8 +50% ... (smooth, CS incl. HR/EZ/DA).
+                mosuPpMultiplier *= RxCsPpBuff.Multiplier(beatmap.CircleSize);
+
+                // MosuPp "Heavy Miss Penalty (RX)": every miss above 15 removes another ~10% (× e^(−0.11 · (misses − 15))).
+                mosuPpMultiplier *= RxHeavyMissPenalty.Multiplier(scoreState.Misses);
+            }
+
+            return new OsuPerformanceAttributes
+            {
+                Aim = result.PpAim * odMultiplier * patternMultiplier * mosuPpMultiplier,
+                Speed = result.PpSpeed * odMultiplier * mosuPpMultiplier,
+                Accuracy = result.PpAccuracy * odMultiplier * mosuPpMultiplier,
+                Reading = result.PpReading * odMultiplier * mosuPpMultiplier,
+                Flashlight = 0,
+                EffectiveMissCount = result.EffectiveMissCount,
+                Total = result.Pp * odMultiplier * patternMultiplier * mosuPpMultiplier,
+                MosuPpSpikeFillerWeight = mosuPp ? result.Difficulty.JumpSpikeFillerWeight : null,
+            };
+        }
+
         /// <summary>
         /// Runs the same pipeline as <see cref="CalculatePerformance"/> for an SS (up to the MosuPp map-type rules) and returns
         /// its speed PP / aim PP ratios.
         /// </summary>
-        private static ReferenceRatios getReferenceRatios(RxBeatmap beatmap, RxMods performanceMods, IEnumerable<Mod> mods, double clockRate)
+        private static ReferenceRatios getReferenceRatios(RxBeatmap beatmap, RxMods performanceMods, IEnumerable<Mod> mods, double clockRate,
+                                                          float effectiveAr, float effectiveOd)
         {
             var perBeatmap = reference_ratios.GetValue(beatmap, _ => new ConcurrentDictionary<string, ReferenceRatios>());
-            string modsKey = $"{(uint)performanceMods}|{clockRate:R}|{string.Join(",", mods.Select(m => m.Acronym).OrderBy(a => a, StringComparer.Ordinal))}";
-            return perBeatmap.GetOrAdd(modsKey, _ => calculateReferenceRatios(beatmap, performanceMods, mods, clockRate));
+            // AR / OD are part of the key: "Lock AR/OD" is a mod setting, not an acronym.
+            string modsKey = $"{(uint)performanceMods}|{clockRate:R}|{effectiveAr:R}|{effectiveOd:R}|"
+                             + string.Join(",", mods.Select(m => m.Acronym).OrderBy(a => a, StringComparer.Ordinal));
+            return perBeatmap.GetOrAdd(modsKey, _ => calculateReferenceRatios(beatmap, performanceMods, mods, clockRate, effectiveAr, effectiveOd));
         }
 
-        private static ReferenceRatios calculateReferenceRatios(RxBeatmap beatmap, RxMods performanceMods, IEnumerable<Mod> mods, double clockRate)
+        private static ReferenceRatios calculateReferenceRatios(RxBeatmap beatmap, RxMods performanceMods, IEnumerable<Mod> mods, double clockRate,
+                                                                float effectiveAr, float effectiveOd)
         {
             uint objects = (uint)beatmap.HitObjects.Count;
             var ss = new RxScoreState { Count300 = objects, PassedObjects = objects > 0 ? objects : null };
@@ -213,8 +322,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 Beatmap = beatmap,
                 Mods = performanceMods,
                 Score = ss,
-                EffectiveAr = beatmap.ApproachRate,
-                EffectiveOd = beatmap.OverallDifficulty,
+                EffectiveAr = effectiveAr,
+                EffectiveOd = effectiveOd,
                 EffectiveCs = beatmap.CircleSize,
                 EffectiveHp = beatmap.HpDrainRate,
                 ClockRate = clockRate,
