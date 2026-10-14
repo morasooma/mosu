@@ -42,6 +42,34 @@ namespace osu.Game.Rulesets.Osu.Difficulty
         [JsonProperty("speed_estimated_slider_breaks")]
         public double SpeedEstimatedSliderBreaks { get; set; }
 
+        /// <summary>MosuPp "RP Balance (RX)": respect points of the map + mods (diagnostics, not serialised). Null outside MosuPp.</summary>
+        [JsonIgnore]
+        public double? MosuPpRespectPoints { get; set; }
+
+        /// <summary>MosuPp "RP Balance (RX)": multiplier applied to this score's PP (diagnostics, not serialised). Null outside MosuPp.</summary>
+        [JsonIgnore]
+        public double? MosuPpRespectPointsMultiplier { get; set; }
+
+        /// <summary>MosuPp "Aim Control (RX)": control PP of the map + mods (diagnostics, not serialised). Null outside MosuPp.</summary>
+        [JsonIgnore]
+        public double? MosuPpControlPp { get; set; }
+
+        /// <summary>MosuPp "Aim Control (RX)": multiplier applied to this score's PP (diagnostics, not serialised). Null outside MosuPp.</summary>
+        [JsonIgnore]
+        public double? MosuPpControlMultiplier { get; set; }
+
+        /// <summary>MosuPp Arles content confidence (0–1), shared with the lab. Null outside MosuPp.</summary>
+        [JsonIgnore]
+        public double? MosuPpArlesConfidence { get; set; }
+
+        /// <summary>MosuPp Arles multiplier (1–1.3), independent of score accuracy and misses.</summary>
+        [JsonIgnore]
+        public double? MosuPpArlesMultiplier { get; set; }
+
+        /// <summary>MosuPp: Realistik "spike + filler" weight used by this score (diagnostics, not serialised). Null outside MosuPp.</summary>
+        [JsonIgnore]
+        public double? MosuPpSpikeFillerWeight { get; set; }
+
         public override IEnumerable<PerformanceDisplayAttribute> GetAttributesForDisplay()
         {
             foreach (var attribute in base.GetAttributesForDisplay())

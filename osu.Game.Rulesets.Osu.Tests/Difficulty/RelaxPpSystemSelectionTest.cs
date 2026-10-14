@@ -177,6 +177,45 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
             Assert.That(actual, Is.EqualTo(expected).Within(0.0001));
         }
 
+        [TestCase("801165", false)]
+        [TestCase("801165", true)]
+        [TestCase("1124896", false)]
+        [TestCase("1124896", true)]
+        [TestCase("2496318", false)]
+        [TestCase("2496318", true)]
+        public void MosuPpMapMultipliersDoNotRewardMisses(string beatmapName, bool doubleTime)
+        {
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuPp;
+            IWorkingBeatmap working = GetBeatmap(beatmapName);
+            Mod[] mods = doubleTime
+                ? new Mod[] { new OsuModMosuRelax(), new OsuModDoubleTime() }
+                : new Mod[] { new OsuModMosuRelax() };
+            var difficulty = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
+            var calculator = new OsuPerformanceCalculator();
+            ScoreInfo perfect = createPerfectScore(working, difficulty, mods);
+            var ss = (OsuPerformanceAttributes)calculator.Calculate(perfect, difficulty);
+
+            ScoreInfo imperfect = createPerfectScore(working, difficulty, mods);
+            int totalHits = imperfect.Statistics[HitResult.Great];
+            imperfect.Statistics[HitResult.Great] -= 45;
+            imperfect.Statistics[HitResult.Ok] = 30;
+            imperfect.Statistics[HitResult.Miss] = 15;
+            imperfect.MaxCombo = Math.Max(1, difficulty.MaxCombo / 2);
+            imperfect.Accuracy = 1 - (30 * 200 + 15 * 300) / (300.0 * totalHits);
+            var actual = (OsuPerformanceAttributes)calculator.Calculate(imperfect, difficulty);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(ss.Total, Is.GreaterThan(0));
+                Assert.That(double.IsFinite(actual.Total), Is.True);
+                Assert.That(actual.Total, Is.InRange(0, ss.Total));
+                Assert.That(actual.MosuPpRespectPointsMultiplier, Is.EqualTo(ss.MosuPpRespectPointsMultiplier));
+                Assert.That(actual.MosuPpControlMultiplier, Is.EqualTo(ss.MosuPpControlMultiplier));
+                Assert.That(actual.MosuPpArlesMultiplier, Is.EqualTo(ss.MosuPpArlesMultiplier));
+                Assert.That(actual.MosuPpArlesMultiplier, Is.InRange(1, 1.3));
+            });
+        }
+
         private (OsuDifficultyAttributes Difficulty, OsuPerformanceAttributes Performance) calculateRelax(string beatmapName)
             => calculateRelax(beatmapName, Array.Empty<Mod>());
 

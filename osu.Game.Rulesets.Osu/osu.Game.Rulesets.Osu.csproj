@@ -13,6 +13,10 @@ Upstream copyright: Copyright (c) 2026 ppy Pty Ltd
 Full license text: see LICENSE file</PackageReleaseNotes>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(EnableMosuPpLabTuning)' == 'true'">
+    <DefineConstants>$(DefineConstants);MOSUPP_LAB</DefineConstants>
+  </PropertyGroup>
+
   <PropertyGroup Label="Nuget">
     <Title>Morasooma Standard ruleset</Title>
     <PackageId>g0v0.osu.Game.Rulesets.Osu</PackageId>
