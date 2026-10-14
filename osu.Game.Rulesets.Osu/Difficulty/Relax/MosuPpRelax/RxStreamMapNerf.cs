@@ -17,6 +17,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
     /// Stream notes: runs of ≥ 6 notes with equal spacing in time (±10%) and ≤ 125 ms between notes (raw map time, so NM and
     /// DT use the same share), counting only movements up to 2.5 circle radii (equal-timed jumps are not streams).
     /// Multiplier on the total: 1 − 0.50 · smoothstep(speed/aim, 1.0, 1.3) · smoothstep(stream share, 30%, 60%).
+    /// Since 0.3.0 a note where the cursor turns (&lt; 120°) is not a stream note (see <see cref="TURN_ANGLE"/>).
     /// Jump maps with streams (drivers license [full]: 73% streams but speed/aim 0.96 / 0.74, Novae Ruptis 0.80 / 0.65) are
     /// not touched. Examples (SS, RX): Expurget, Worms of Soul −50% NM and DT; A Tale Of Salt And Light −28% NM (speed/aim 1.16)
     /// and −50% DT; heat −1%.
@@ -34,9 +35,16 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         public const int STREAM_MIN_NOTES = 6;
         public const double MAX_SPACING_IN_RADII = 2.5;
 
+        /// <summary>
+        /// MosuPp 0.3.0: a note where the cursor turns (angle between the move in and the move out below this) is aim control,
+        /// not streaming — fast patterns that keep changing direction (LATHI, Rubik's Cube, FEEEEVER TIME) are no longer nerfed
+        /// as stream maps. Real streams go straight or along a curve (8% of their notes turn, aim control maps 57%).
+        /// </summary>
+        public const double TURN_ANGLE = 120;
+
         // speedAimRatio: speed PP / aim PP of the SS reference (see ManagedRealistikRelaxCalculator).
         public static double Multiplier(RxBeatmap beatmap, double speedAimRatio)
-            => 1 - MAX_NERF
+            => 1 - MosuPpBalance.Current.StreamNerf
                  * smoothStep(speedAimRatio, STREAM_MAP_RATIO_START, STREAM_MAP_RATIO_FULL)
                  * smoothStep(StreamShare(beatmap), SHARE_START, SHARE_FULL);
 
@@ -73,7 +81,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 {
                     for (int i = start; i <= end; i++)
                     {
-                        if (distance(objects[i], objects[i - 1]) > maxSpacing)
+                        if (distance(objects[i], objects[i - 1]) > maxSpacing || IsTurn(objects, i))
                             continue;
 
                         inStream[i] = true;
@@ -89,6 +97,28 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 if (value) streamNotes++;
 
             return (double)streamNotes / count;
+        }
+
+        /// <summary>Whether the cursor turns at note <paramref name="i"/> (angle between the move into it and the move out of it).</summary>
+        public static bool IsTurn(List<RxHitObject> objects, int i)
+        {
+            if (i <= 0 || i + 1 >= objects.Count)
+                return false;
+
+            double angle = Angle(objects[i - 1].Position, objects[i].Position, objects[i + 1].Position);
+            return !double.IsNaN(angle) && angle < TURN_ANGLE;
+        }
+
+        /// <summary>Angle at <paramref name="middle"/> in degrees: 180 = straight on, 0 = full reversal; NaN for (almost) stacked notes.</summary>
+        public static double Angle(RxVec2 previous, RxVec2 middle, RxVec2 next)
+        {
+            double ax = previous.X - middle.X, ay = previous.Y - middle.Y;
+            double bx = next.X - middle.X, by = next.Y - middle.Y;
+            double la = Math.Sqrt(ax * ax + ay * ay), lb = Math.Sqrt(bx * bx + by * by);
+            if (la < 1 || lb < 1)
+                return double.NaN;
+
+            return Math.Acos(Math.Clamp((ax * bx + ay * by) / (la * lb), -1, 1)) * 180 / Math.PI;
         }
 
         private static double distance(RxHitObject a, RxHitObject b)
