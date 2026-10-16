@@ -53,27 +53,34 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             return 1.05;
         }
 
+        /// <summary>
+        /// The parts of <see cref="PatternMultiplier"/> (each ≤ 1): anti-farm "spike + filler" (up to −12%, Realistik −8%),
+        /// flow aim overboost (up to −25%), HR short wide streams (up to −25%).
+        /// MosuPp 0.7.0 dropped Realistik's speed dominance part (up to −32% when speed PP ≫ aim PP, full from 850 speed PP): it grew
+        /// with the map's difficulty and hit hard aim control with DT (FEEEEVER TIME, Rubik's Cube), while streams are already
+        /// balanced by <see cref="RxStreamMapNerf"/>, RP Balance and the type scale.
+        /// </summary>
+        public readonly record struct PatternParts(double AntiFarm, double FlowOverboost, double HrWideStream)
+        {
+            public double Product => AntiFarm * FlowOverboost * HrWideStream;
+        }
+
         public static double PatternMultiplier(IEnumerable<Mod> mods, RxNativePerformanceResult result)
+            => Math.Clamp(PatternBreakdown(mods, result).Product, 0.50, 1);
+
+        public static PatternParts PatternBreakdown(IEnumerable<Mod> mods, RxNativePerformanceResult result)
         {
             if (!IsRelax(mods))
-                return 1;
+                return new PatternParts(1, 1, 1);
 
             RxDifficultyAttributes difficulty = result.Difficulty;
             double aimSpike = Math.Clamp(difficulty.JumpSpikeFillerWeight, 0, 1);
-            double aimMultiplier = 1 - 0.08 * aimSpike;
+            double aimMultiplier = 1 - RxSpikeFillerGuard.ANTI_FARM_AIM_PENALTY * aimSpike;
             double ppAim = Math.Max(1, result.PpAim);
             double ppSpeed = Math.Max(0, result.PpSpeed);
             double speedAimRatio = ppSpeed / ppAim;
-            double speedDominance = smoothStep(speedAimRatio, 1.20, 1.70);
-            double speedMagnitude = smoothStep(ppSpeed, 400, 850);
-            double speedStackGuard = 1 - smoothStep(aimSpike, 0.20, 0.70);
-            double speedWeight = speedDominance * speedMagnitude * speedStackGuard;
             double wideStreamPattern = Math.Clamp(difficulty.WideFlowPatternWeight, 0, 1);
-            double shortMapWeight = 1 - smoothStep(difficulty.FlowSectionCount, 120, 225);
-            double wideStreamSpeedWeight = smoothStep(speedAimRatio, 1.50, 2.20);
             double wideStreamPatternSignal = smoothStep(wideStreamPattern, 0.08, 0.18);
-            double wideShortStreamWeight = wideStreamPatternSignal * shortMapWeight * wideStreamSpeedWeight;
-            double speedMultiplier = 1 - (0.32 - 0.17 * wideShortStreamWeight) * speedWeight;
             double flowBonus = Math.Clamp(difficulty.CustomFlowAimBonusRatio, 0, 0.17);
             double flowOverboost = smoothStep(flowBonus, 0.08, 0.15);
             double nonSpeedDominance = 1 - smoothStep(speedAimRatio, 1.30, 1.80);
@@ -83,7 +90,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             double hrWideWeight = hasHardRock ? wideStreamPatternSignal * hrShortWeight : 0;
             double hrWideMultiplier = 1 - 0.25 * hrWideWeight;
 
-            return Math.Clamp(aimMultiplier * speedMultiplier * flowMultiplier * hrWideMultiplier, 0.50, 1);
+            return new PatternParts(aimMultiplier, flowMultiplier, hrWideMultiplier);
         }
 
         public static double LengthAimMultiplier(IEnumerable<Mod> mods, RxNativePerformanceResult result)

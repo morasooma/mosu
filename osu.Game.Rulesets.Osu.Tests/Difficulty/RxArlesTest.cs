@@ -28,7 +28,7 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
 
             RxArles.Analysis result = RxArles.Analyze(beatmap);
             Assert.That(result.IsArles, Is.True);
-            Assert.That(result.Multiplier, Is.EqualTo(1.3).Within(1e-12));
+            Assert.That(result.Multiplier, Is.EqualTo(1 + MosuPpBalance.Current.ArlesBonus).Within(1e-12));
         }
 
         [TestCase(250, 300)] // Fullscreen jumps alone have no burst/control evidence.

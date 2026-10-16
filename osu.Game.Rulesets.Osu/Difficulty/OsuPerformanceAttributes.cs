@@ -70,6 +70,30 @@ namespace osu.Game.Rulesets.Osu.Difficulty
         [JsonIgnore]
         public double? MosuPpSpikeFillerWeight { get; set; }
 
+        /// <summary>MosuPp "CS Reduction (RX)": multiplier applied for bigger circles than the map has (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public double? MosuPpCsReductionMultiplier { get; set; }
+
+        /// <summary>MosuPp: multiplier of every rule in calculation order, "aim:" keys scale the aim part only (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public List<KeyValuePair<string, double>>? MosuPpBreakdown { get; set; }
+
+        /// <summary>MosuPp: RP type of the map as played (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public string? MosuPpRpType { get; set; }
+
+        /// <summary>MosuPp: share of the map's difficulty by pattern — jumps, streams, aim control, sliders (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public Dictionary<string, double>? MosuPpComposition { get; set; }
+
+        /// <summary>MosuPp: share of the map's PP earned in its streams, by section difficulty (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public double? MosuPpStreamWeight { get; set; }
+
+        /// <summary>MosuPp: type of a stream map outside its streams (Section Types; diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public string? MosuPpRpRemainderType { get; set; }
+
         public override IEnumerable<PerformanceDisplayAttribute> GetAttributesForDisplay()
         {
             foreach (var attribute in base.GetAttributesForDisplay())

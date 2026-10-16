@@ -8,28 +8,27 @@ using MosuPpRxCs;
 namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 {
     /// <summary>
-    /// MosuPp rule "Stream Map Nerf (RX)" (only for <c>ForkRelaxPpSystem.MosuPp</c>): every stream map loses up to 50% of
-    /// the total PP, whatever the shape of its streams. Replaces "Simple Stream Nerf (RX)" (v10–v24), which only hit
+    /// MosuPp rule "Stream Map Nerf (RX)" (only for <c>ForkRelaxPpSystem.MosuPp</c>): every stream map loses up to 35% (0.7.0;
+    /// 50% before) of the PP its streams earn, whatever the shape of its streams. Replaces "Simple Stream Nerf (RX)" (v10–v24), which only hit
     /// straight / one-curve streams.
     /// </summary>
     /// <remarks>
-    /// Stream map = speed PP / aim PP of the SS reference ≥ 1.0–1.3 (smooth) AND stream share ≥ 30–60% (smooth).
+    /// Stream map = speed PP / aim PP of the SS reference ≥ 1.0–1.3 (smooth); since 0.8.0 the nerf is proportional to the share of
+    /// the SS PP earned in streams (<see cref="RxSectionTypes"/>), before it was smoothstep(stream note share, 30%, 60%).
     /// Stream notes: runs of ≥ 6 notes with equal spacing in time (±10%) and ≤ 125 ms between notes (raw map time, so NM and
     /// DT use the same share), counting only movements up to 2.5 circle radii (equal-timed jumps are not streams).
-    /// Multiplier on the total: 1 − 0.50 · smoothstep(speed/aim, 1.0, 1.3) · smoothstep(stream share, 30%, 60%).
+    /// Multiplier on the total: 1 − 0.35 · smoothstep(speed/aim, 1.0, 1.3) · stream PP share.
     /// Since 0.3.0 a note where the cursor turns (&lt; 120°) is not a stream note (see <see cref="TURN_ANGLE"/>).
     /// Jump maps with streams (drivers license [full]: 73% streams but speed/aim 0.96 / 0.74, Novae Ruptis 0.80 / 0.65) are
-    /// not touched. Examples (SS, RX): Expurget, Worms of Soul −50% NM and DT; A Tale Of Salt And Light −28% NM (speed/aim 1.16)
-    /// and −50% DT; heat −1%.
+    /// not touched. Examples (SS, RX, at the 0.3.0 maximum −50%; −35% since 0.7.0): Expurget, Worms of Soul −50% NM and DT;
+    /// A Tale Of Salt And Light −28% NM (speed/aim 1.16) and −50% DT; heat −1%.
     /// When changing it, bump <c>ForkDataStore.RELAX_MOSU_PP_PERFORMANCE_CALCULATION_VERSION</c>.
     /// </remarks>
     internal static class RxStreamMapNerf
     {
-        public const double MAX_NERF = 0.50;
+        public const double MAX_NERF = 0.35; // 0.7.0: was 0.50
         public const double STREAM_MAP_RATIO_START = 1.0;
         public const double STREAM_MAP_RATIO_FULL = 1.3;
-        public const double SHARE_START = 0.30;
-        public const double SHARE_FULL = 0.60;
         public const double STREAM_MAX_DELTA_MS = 125;
         public const double STREAM_DELTA_TOLERANCE = 0.10;
         public const int STREAM_MIN_NOTES = 6;
@@ -43,20 +42,33 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         public const double TURN_ANGLE = 120;
 
         // speedAimRatio: speed PP / aim PP of the SS reference (see ManagedRealistikRelaxCalculator).
-        public static double Multiplier(RxBeatmap beatmap, double speedAimRatio)
+        // streamWeight: share of the SS PP earned in streams (RxSectionTypes, 0.8.0) — only the streams' part is nerfed.
+        // Before 0.8.0: smoothstep(stream note share, 30%, 60%), which nerfed the hard jump sections of stream maps as well.
+        public static double Multiplier(double speedAimRatio, double streamWeight)
             => 1 - MosuPpBalance.Current.StreamNerf
                  * smoothStep(speedAimRatio, STREAM_MAP_RATIO_START, STREAM_MAP_RATIO_FULL)
-                 * smoothStep(StreamShare(beatmap), SHARE_START, SHARE_FULL);
+                 * Math.Clamp(streamWeight, 0, 1);
 
         /// <summary>Share of notes that belong to streams (0–1).</summary>
-        public static double StreamShare(RxBeatmap beatmap)
+        public static double StreamShare(RxBeatmap beatmap) => share(StreamNotes(beatmap));
+
+        private static double share(bool[] inStream)
+        {
+            int streamNotes = 0;
+            foreach (bool value in inStream)
+                if (value) streamNotes++;
+
+            return inStream.Length == 0 ? 0 : (double)streamNotes / inStream.Length;
+        }
+
+        public static bool[] StreamNotes(RxBeatmap beatmap)
         {
             List<RxHitObject> objects = beatmap.HitObjects;
             int count = objects.Count;
-            if (count < STREAM_MIN_NOTES)
-                return 0;
-
             bool[] inStream = new bool[count];
+            if (count < STREAM_MIN_NOTES)
+                return inStream;
+
             double radius = 54.4 - 4.48 * beatmap.CircleSize;
             double maxSpacing = MAX_SPACING_IN_RADII * radius;
             int start = 1;
@@ -92,11 +104,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 start = end + 1;
             }
 
-            int streamNotes = 0;
-            foreach (bool value in inStream)
-                if (value) streamNotes++;
-
-            return (double)streamNotes / count;
+            return inStream;
         }
 
         /// <summary>Whether the cursor turns at note <paramref name="i"/> (angle between the move into it and the move out of it).</summary>
