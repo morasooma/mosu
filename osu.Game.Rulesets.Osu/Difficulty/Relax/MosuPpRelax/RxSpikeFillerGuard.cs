@@ -7,7 +7,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 {
     /// <summary>
     /// MosuPp rule "Spike Filler Guard (RX)" (only for <c>ForkRelaxPpSystem.MosuPp</c>): the Realistik "spike + filler" anti-farm
-    /// (aim × (1 − 0.08 · JumpSpikeFillerWeight)) does not apply to maps with several hard moments — they are not one spike in filler.
+    /// (× (1 − 0.12 · JumpSpikeFillerWeight); Realistik −8%, MosuPp 0.7.0 −14%, 0.9.0 −12%) does not apply to maps with several hard moments — they are not one spike in filler.
     /// </summary>
     /// <remarks>
     /// The Realistik check compares the 3 hardest aim sections with the 60th percentile and fires on almost every long map (about two
@@ -23,11 +23,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         public const double MOMENTS_FULL = 2.5;
 
         /// <summary>Anti-farm aim penalty of the Realistik pattern multiplier at full spike weight.</summary>
-        public const double ANTI_FARM_AIM_PENALTY = 0.08;
+        public const double ANTI_FARM_AIM_PENALTY = 0.12; // 0.9.0: 0.14 in 0.7.0–0.8.0, 0.08 in Realistik
 
         /// <summary>
-        /// Lifts the anti-farm aim part (1 − 0.08 · weight) out of <paramref name="patternMultiplier"/> by the share of the guard.
-        /// The spike weight itself is not changed: Realistik also uses it to switch off its speed-dominance penalty.
+        /// Lifts the anti-farm part (1 − 0.12 · weight) out of <paramref name="patternMultiplier"/> by the share of the guard.
         /// </summary>
         public static double Apply(double patternMultiplier, double spikeFillerWeight, int hardMoments)
         {

@@ -1,44 +1,68 @@
-# MosuPp 0.4.0 client release
+# MosuPp 1.0.0 client release
 
-Wide jumps mixed with bursts and changes of cursor speed/direction now receive an Arles bonus,
-up to 30%, in the MosuPp RX calculator. The patch also includes the polygon's AR/OD lock,
-visible-notes reading, aim control, RP balance, spike/filler guard and revised stream-map detection.
+MosuPp 1.0.0 replaces production 0.4.0 in the MosuPp RX calculator. Its main change is **Section Types**:
+rules that depend on map type now apply to the share of PP that each pattern earns, not to the whole map.
+A stream map with hard jump sections is no longer nerfed as streams in those sections.
 
-The approved settings are frozen in `MosuPpBalance`: global scale 1, Arles bonus 0.30,
-control scale 1, RP strength 1, stream-map nerf 0.50, all type scales 1. Normal client builds
-have no `ConfigureForLab` method and cannot replace `MosuPpBalance.Current`.
-The optional polygon override requires `EnableMosuPpLabTuning=true` when building the ruleset.
+## Changes since 0.4.0
 
-The rules run through `OsuDifficultyCalculator` / `OsuPerformanceCalculator` when the selected
-Relax PP system is **MosuPp**, for RX and MRX. Existing system selection is retained.
-The MosuPp cache revision moves from 25 to 29 so old client PP values are recalculated.
+Full details and examples are in `MOSUPP_CHANGELOG.md` (0.5.0–1.0.0).
+
+- **Section Types** (new, `RxSectionTypes.cs`): the stream weight is the share of the SS PP that the map's streams earn.
+  It is computed from the 400 ms section peaks of the difficulty calculator.
+  - Stream Map Nerf is proportional to the stream weight, up to −35% of that share.
+  - For stream maps, RP Balance and the type scale are blended with the map's type without its streams.
+- **CS Reduction** (new): lower CS through DA or EZ costs PP (CS 4 → 2 ≈ −45%).
+- **RP Balance**:
+  - Maps of unknown type take a content type.
+  - The tech type is recognised by sliders that move about as much as the jumps.
+  - The tech RP scale was refitted, so tech maps reach the +20% limit.
+- **Aim Control**: the window is measured in CS 4 circles. The density term only counts moved notes.
+- **Realistik pattern balance**:
+  - The speed dominance part is removed (it took up to −32% from hard aim control with DT).
+  - The "spike + filler" anti-farm is −12% (−8% in Realistik).
+- **Balance** (frozen in `MosuPpBalance`):
+  - global scale 1, Arles bonus 0.20, control scale 0.90, RP strength 1, stream nerf 0.35;
+  - type scales: streams 0.85, aim slop 0.895, tech 1.20, aim control 0.87;
+  - CS Reduction strength 1.6.
+- **Diagnostics** (`[JsonIgnore]`, not serialised): each rule's multiplier, map composition, RP type, and stream weight.
+
+Against 0.4.0 (SS, geometric mean by RP type over the 87 calibration rows):
+
+| RP type | Change |
+|---|---:|
+| Aim slop | −11% |
+| Aim control | −14% |
+| Streams | +1% |
+| Tech | +36% |
+| Reading | 0% |
+
+The rules run through `OsuDifficultyCalculator` / `OsuPerformanceCalculator` when the selected Relax PP system is
+**MosuPp**, for RX and MRX. The MosuPp cache revision moves from 29 to 35, so cached PP is recalculated.
+Normal client builds still have no `ConfigureForLab` method. The polygon override requires `EnableMosuPpLabTuning=true`.
 
 ## Validation
 
-- Release build of `osu.Desktop/osu.Desktop.csproj`: succeeded.
-- 151 relevant NUnit tests: passed, including Arles, immutable production settings,
-  NM/DT score monotonicity, system selection, managed/native parity and anti-abuse controls.
-- Production client assembly versus the saved approved polygon assembly:
+- Release build of `osu.Desktop/osu.Desktop.csproj` succeeded.
+- 162 relevant NUnit tests passed, including the new Section Types and CS Reduction tests.
+- The polygon was built against this branch with `EnableMosuPpLabTuning=false` and compared to the approved polygon
+  assembly. Every numeric output was compared: PP components, stars, RP, control, Arles, the rule breakdown and the
+  classifier.
 
 | Input group | Cases | Largest absolute numeric difference |
 |---|---:|---:|
-| calibration | 388 | 0 |
+| calibration | 348 | 0 |
 | modifiers | 310 | 0 |
 | real-rx | 63 | 0 |
 
-All 761 cases matched, including PP components, stars, RP/control/Arles diagnostics and
-classifier output. Two RX scores whose beatmaps could not be downloaded were excluded from
-this comparison; they were not replaced with synthetic scores.
-
-The Arles heuristic is calibrated on ten labelled maps and negative controls. Its limits,
-calibration examples and the preceding rules are documented in `MOSUPP_CHANGELOG.md`.
+All 721 cases matched.
 
 ## Build and tests
 
 ```sh
 dotnet build osu.Desktop/osu.Desktop.csproj -c Release -m:1
-dotnet test osu.Game.Rulesets.Osu.Tests/osu.Game.Rulesets.Osu.Tests.csproj -c Release -m:1 --filter 'FullyQualifiedName~RxArlesTest|FullyQualifiedName~MosuPpBalanceTest|FullyQualifiedName~RelaxPpSystemSelectionTest|FullyQualifiedName~RealistikRelaxManagedParityTest|FullyQualifiedName~RealistikRelaxBalanceTest|FullyQualifiedName~RelaxAimAntiAbuseTest'
+dotnet test osu.Game.Rulesets.Osu.Tests/osu.Game.Rulesets.Osu.Tests.csproj -c Release -m:1 --filter 'FullyQualifiedName~RxSectionTypesTest|FullyQualifiedName~RxCsReductionTest|FullyQualifiedName~RxArlesTest|FullyQualifiedName~MosuPpBalanceTest|FullyQualifiedName~RelaxPpSystemSelectionTest|FullyQualifiedName~RealistikRelaxManagedParityTest|FullyQualifiedName~RealistikRelaxBalanceTest|FullyQualifiedName~RelaxAimAntiAbuseTest'
 ```
 
-The calculator, client tests and release notes are included in this branch. Website code,
-deployment configuration, tokens, SSH keys and cached player data are kept outside the release.
+This branch contains the calculator, client tests and release notes. Website code, deployment configuration, tokens,
+SSH keys and cached player data are not part of the release.
