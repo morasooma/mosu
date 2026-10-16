@@ -9,7 +9,7 @@ using System.Text.Json;
 namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 {
     /// <summary>
-    /// Approved MosuPp 0.4.0 balance. Normal client builds use immutable defaults;
+    /// Approved MosuPp 0.5.0 balance (the owner's site scenario of 2026-10-15 + CS reduction). Normal client builds use immutable defaults;
     /// the polygon's process-local override is only compiled with MOSUPP_LAB.
     /// </summary>
     public sealed class MosuPpBalance
@@ -23,14 +23,17 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         } = new MosuPpBalance();
 
         public double GlobalScale { get; init; } = 1;
-        public double ArlesBonus { get; init; } = RxArles.MAX_BONUS;
-        public double ControlScale { get; init; } = 1;
+        public double ArlesBonus { get; init; } = 0.2;
+        public double ControlScale { get; init; } = 0.9;
         public double RpStrength { get; init; } = 1;
         public double StreamNerf { get; init; } = RxStreamMapNerf.MAX_NERF;
-        public double StreamScale { get; init; } = 1;
-        public double AimSlopScale { get; init; } = 1;
-        public double TechScale { get; init; } = 1;
-        public double AimControlScale { get; init; } = 1;
+        public double StreamScale { get; init; } = 0.85;
+        public double AimSlopScale { get; init; } = 0.895; // 0.9.0: was 0.87; aim slop ≈ −11% against production 0.4.0
+        public double TechScale { get; init; } = 1.2; // 0.9.0 (owner's final): 0.95 → 1.0 in 0.6.0 → 1.2
+        public double AimControlScale { get; init; } = 0.87; // 1.0.0: was 0.75 (0.5.0 patch for small-spacing control, fixed at its root)
+
+        /// <summary>"CS Reduction (RX)": exponent k of (native radius / played radius)^k when DA or EZ make the circles bigger.</summary>
+        public double CsReductionStrength { get; init; } = RxCsReduction.DEFAULT_STRENGTH;
 
         internal double TypeScale(RxRespectPoints.MapType type) => type switch
         {
@@ -51,6 +54,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             validate(value.ControlScale, 0, 2);
             validate(value.RpStrength, 0, 1);
             validate(value.StreamNerf, 0, 0.8);
+            validate(value.CsReductionStrength, 0, 4);
             foreach (double scale in new[] { value.StreamScale, value.AimSlopScale, value.TechScale, value.AimControlScale })
                 validate(scale, 0.5, 1.5);
             Current = value;

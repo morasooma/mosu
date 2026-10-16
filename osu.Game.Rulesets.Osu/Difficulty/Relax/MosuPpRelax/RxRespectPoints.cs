@@ -55,7 +55,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         /// <param name="Type">Map type.</param>
         /// <param name="HardMoments">Hard moments (≥ 60% of the hardest 20 s for ≥ 8 map seconds, gaps ≤ 3 s merged) — used by
         /// <see cref="RxSpikeFillerGuard"/>.</param>
-        public readonly record struct Result(double Value, MapType Type, int HardMoments = 0);
+        /// <param name="Composition">Share of the map's notes by pattern: "jumps", "streams", "control", "sliders", "simple";
+        /// sums to 1 (diagnostics for the site, not used by the PP).</param>
+        /// <param name="RemainderType">0.8.0 (Section Types): type of the map without its streams — the type of a stream map
+        /// (<see cref="MapType.Stream"/>) outside its streams (classification with no stream notes, aim slop when nothing fits),
+        /// <paramref name="Type"/> for every other type.</param>
+        /// <param name="RemainderValue">RP of the map rated as <paramref name="RemainderType"/>.</param>
+        public readonly record struct Result(double Value, MapType Type, int HardMoments = 0, Dictionary<string, double>? Composition = null,
+                                             MapType RemainderType = MapType.Unknown, double RemainderValue = 0);
 
         // ---------------------------------------------------------------- RP
 
@@ -63,7 +70,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         {
             MapType.Stream => 200,
             MapType.AimSlop => 340.4,
-            MapType.Tech => 147,
+            MapType.Tech => 280, // 0.6.0: was 147 (fitted on 3 tech maps); tech maps now reach the +20% limit
             MapType.AimControl => 32.3,
             MapType.Reading => 439,
             _ => 363,
@@ -84,6 +91,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         private const double repetition_start = 0.35;
         private const double repetition_full = 0.50;
         private const double fast_move_ms = 125;
+        private const double turn_angle = 120;
+        private const double unknown_control_max_spacing = 1.1;
 
         // ---------------------------------------------------------------- analysis (see tools/MosuPpLab/MapAnalyzer.cs)
 
@@ -92,7 +101,17 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         private const double stream_min_spacing = 0.2;
         private const int stream_min_notes = 5;
         private const double jump_min_spacing = 1.5;
+        // 0.6.0 tech gate: slider share 33–43%, sliders at least ~half as fast as the jumps (slider path / jump travel over the
+        // hardest 20 s 0.40–0.55; slider-jump and jump maps with slow sliders stay below 0.47), streams tolerated up to 25–45%.
+        private const double tech_slider_share_start = 0.33;
+        private const double tech_slider_share_full = 0.43;
+        private const double tech_slider_aim_start = 0.40;
+        private const double tech_slider_aim_full = 0.55;
+        private const double tech_stream_start = 0.25;
+        private const double tech_stream_full = 0.45;
         private const double density_weight = 0.5;
+        private const double density_spacing_start = 0.5;
+        private const double density_spacing_full = 1.0;
         private const int smooth_seconds = 5;
         private const int hardest_seconds = 20;
         private const double fitts_hard_share = 0.8;
@@ -227,11 +246,17 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             int bins = Math.Max(1, (int)Math.Ceiling((objects[^1].GetEndTime() - t0) / 1000) + 1);
             double[] fitts = new double[bins];
             double[] skill = new double[bins];
+            double[] jumpTravel = new double[bins];
+            double[] sliderTravel = new double[bins];
+            double[] composition = new double[5]; // jumps, streams, control, sliders, simple (note counts)
 
             for (int i = 0; i < notes.Count; i++)
             {
                 int bin = Math.Clamp((int)((notes[i].StartTime - t0) / 1000), 0, bins - 1);
-                fitts[bin] += density_weight;
+                // 0.5.0: the density term pays only for notes reached by a move (0 below 0.5 circles, full from 1 circle) —
+                // many tiny moves are not hard aim control in RX, where nothing has to be tapped.
+                if (i > 0)
+                    fitts[bin] += density_weight * smoothStep(spacing[i], density_spacing_start, density_spacing_full);
 
                 if (i > 0)
                 {
@@ -243,6 +268,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                     double velocity = moveTime > 0 ? spacing[i] * 1000 * rate / moveTime : 0;
                     double move = Math.Pow(velocity / velocity_reference, velocity_exponent);
 
+                    // Composition: a fast move that turns at small / medium spacing is aim control, straight fast runs are streams.
+                    bool fastMove = gaps[i] > 0 && gaps[i] <= fast_move_ms && spacing[i] >= stream_min_spacing;
+                    double turnAngle = noteAngle(notes, i - 1);
+                    bool turning = fastMove && spacing[i] <= stream_max_spacing && !double.IsNaN(turnAngle) && turnAngle < turn_angle;
+
                     if (inStream[i] && inStream[i - 1])
                     {
                         double bpm = 15000 * rate / gaps[i];
@@ -250,12 +280,23 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                         skill[bin] += move * Math.Max(smoothStep(effort, 0.85, 1.15), smoothStep(spacing[i], 0.8, 1.5));
                     }
                     else
+                    {
+                        jumpTravel[bin] += spacing[i];
                         skill[bin] += move;
+                    }
+
+                    // Composition: one pattern per note (sliders, then streams / bursts, aim control, jumps, simple notes).
+                    // A fast but wide move (> 2.5 circles, e.g. 1/2 jumps at 260 BPM) is a jump, not a stream.
+                    composition[notes[i] is Slider ? 3
+                        : fastMove && spacing[i] <= stream_max_spacing ? (turning ? 2 : 1)
+                        : spacing[i] >= jump_min_spacing ? 0
+                        : 4]++;
                 }
 
                 if (notes[i] is Slider slider && slider.SpanDuration > 0)
                 {
                     double spanVelocity = slider.Path.Distance / diameter * 1000 * rate / slider.SpanDuration;
+                    sliderTravel[bin] += slider.Path.Distance / diameter * (slider.RepeatCount + 1);
                     skill[bin] += slider_weight * (slider.RepeatCount + 1) * Math.Pow(spanVelocity / velocity_reference, velocity_exponent);
                 }
             }
@@ -264,6 +305,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             double skillPressure = skillSmooth.OrderByDescending(v => v).Take(hardest_seconds).Average();
             double skillHardSeconds = skillSmooth.Count(v => v >= endurance_share * skillPressure);
             int hardMoments = countHardMoments(skillSmooth, skillPressure);
+            // Rate-independent: both speeds are per played second.
+            double sliderAimRatio = hardestTravel(sliderTravel, rate) / Math.Max(hardestTravel(jumpTravel, rate), 1e-9);
 
             double[] fittsSmooth = movingAverage(fitts.Select(v => v * rate).ToArray(), smooth_seconds);
             double fittsPressure = fittsSmooth.OrderByDescending(v => v).Take(hardest_seconds).Average();
@@ -284,20 +327,48 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 
             double visibleNotesTop = visible.OrderByDescending(v => v).Take(Math.Max(1, notes.Count / 5)).Average();
 
-            MapType type = classify(streamShare, burstShare, streamBpm, jumpShare, sliderShare, sliderVelocitySpread, oddRhythmShare, preemptMapMs);
+            MapType type = classify(streamShare, burstShare, streamBpm, jumpShare, sliderShare, sliderAimRatio, sliderVelocitySpread, oddRhythmShare,
+                preemptMapMs);
+
+            // 0.5.0: maps the 0.2.0 classification does not know (dense small-spacing control, tech) were rated with the generous
+            // "unknown" scale and escaped the per-type balance. They now take the content type of the polygon's pattern classifier.
+            if (type == MapType.Unknown)
+                type = classifyUnknown(notes, gaps, spacing, streamShare, streamBpm, jumpShare, sliderShare, sliderAimRatio, sliderVelocitySpread,
+                    oddRhythmShare);
+
+            MapType remainderType = type == MapType.Stream
+                ? classifyRemainder(burstShare, streamBpm, jumpShare, sliderShare, sliderAimRatio, sliderVelocitySpread, oddRhythmShare, preemptMapMs)
+                : type;
 
             // ---------------- RP
-            bool control = type == MapType.AimControl;
-            double repetition = type == MapType.AimSlop ? 1 - repetition_penalty * smoothStep(jumpRepetition, repetition_start, repetition_full) : 1;
-            double intensity = control
-                ? Math.Pow(Math.Max(0, fittsPressure), control_intensity_exponent)
-                : Math.Pow(Math.Max(0, skillPressure), intensity_exponent);
-            double endurance = Math.Pow(1 + (control ? fittsHardSeconds : skillHardSeconds) / endurance_seconds, endurance_exponent);
             double reading = 1 + reading_per_note * Math.Max(0, visibleNotesTop - reading_notes_free)
                                + reaction_bonus * smoothStep(450 - preemptRealMs, 0, 150);
             double precision = Math.Pow(20 / Math.Max(1, hit300RealMs), precision_exponent);
 
-            return new Result(scale(type) * intensity * endurance * reading * precision * repetition, type, hardMoments);
+            double compositionTotal = composition.Sum();
+            var shares = compositionTotal <= 0
+                ? null
+                : new Dictionary<string, double>
+                {
+                    ["jumps"] = composition[0] / compositionTotal,
+                    ["streams"] = composition[1] / compositionTotal,
+                    ["control"] = composition[2] / compositionTotal,
+                    ["sliders"] = composition[3] / compositionTotal,
+                    ["simple"] = composition[4] / compositionTotal,
+                };
+
+            double rp(MapType t)
+            {
+                bool control = t == MapType.AimControl;
+                double repetition = t == MapType.AimSlop ? 1 - repetition_penalty * smoothStep(jumpRepetition, repetition_start, repetition_full) : 1;
+                double intensity = control
+                    ? Math.Pow(Math.Max(0, fittsPressure), control_intensity_exponent)
+                    : Math.Pow(Math.Max(0, skillPressure), intensity_exponent);
+                double endurance = Math.Pow(1 + (control ? fittsHardSeconds : skillHardSeconds) / endurance_seconds, endurance_exponent);
+                return scale(t) * intensity * endurance * reading * precision * repetition;
+            }
+
+            return new Result(rp(type), type, hardMoments, shares, remainderType, rp(remainderType));
         }
 
         private static int countHardMoments(double[] smooth, double hardest)
@@ -363,10 +434,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         }
 
         private static MapType classify(double streamShare, double burstShare, double streamBpm, double jumpShare, double sliderShare,
-                                        double sliderVelocitySpread, double oddRhythmShare, double preemptMapMs)
+                                        double sliderAimRatio, double sliderVelocitySpread, double oddRhythmShare, double preemptMapMs)
         {
             double notStream = 1 - smoothStep(streamShare, 0.15, 0.35);
-            double sliderHeavy = smoothStep(sliderShare, 0.45, 0.55);
+            double sliderHeavy = techSliders(sliderShare, sliderAimRatio);
             double fastStreams = smoothStep(streamBpm, 180, 200);
 
             // Low AR decides the map more than its patterns: a stream map at AR 0 is a reading map.
@@ -377,7 +448,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             {
                 (MapType.Stream, smoothStep(streamShare, 0.20, 0.45) * fastStreams),
                 (MapType.AimSlop, notStream * smoothStep(jumpShare, 0.45, 0.70) * (1 - sliderHeavy)),
-                (MapType.Tech, notStream * sliderHeavy
+                (MapType.Tech, techNotStream(streamShare) * sliderHeavy
                                * (0.7 + 0.3 * Math.Max(smoothStep(oddRhythmShare, 0.05, 0.15), smoothStep(sliderVelocitySpread, 0.15, 0.35)))),
                 (MapType.AimControl, smoothStep(burstShare + streamShare, 0.20, 0.40) * (1 - fastStreams) * (1 - sliderHeavy)),
                 (MapType.Reading, smoothStep(preemptMapMs, 700, 1000)),
@@ -392,6 +463,136 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             }
 
             return best.Item2 >= 0.25 ? best.Item1 : MapType.Unknown;
+        }
+
+        /// <summary>
+        /// 0.8.0 (Section Types): the type of a stream map outside its streams — the 0.2.0 classification with no stream notes
+        /// (the content fallback is skipped: its fast runs are the streams themselves); aim slop when nothing fits.
+        /// </summary>
+        private static MapType classifyRemainder(double burstShare, double streamBpm, double jumpShare, double sliderShare, double sliderAimRatio,
+                                                 double sliderVelocitySpread, double oddRhythmShare, double preemptMapMs)
+        {
+            MapType type = classify(0, burstShare, streamBpm, jumpShare, sliderShare, sliderAimRatio, sliderVelocitySpread, oddRhythmShare,
+                preemptMapMs);
+            return type is MapType.AimSlop or MapType.Tech or MapType.AimControl ? type : MapType.AimSlop;
+        }
+
+        /// <summary>
+        /// How much the map is made of tech sliders (0.6.0): enough sliders, and sliders that move about as much as the jumps.
+        /// Before 0.6.0 it was the slider share alone (45–55%), which missed most tech maps (39–49% sliders).
+        /// </summary>
+        private static double techSliders(double sliderShare, double sliderAimRatio)
+            => smoothStep(sliderShare, tech_slider_share_start, tech_slider_share_full)
+               * smoothStep(sliderAimRatio, tech_slider_aim_start, tech_slider_aim_full);
+
+        /// <summary>Tech maps often carry short streams between the slider sections (Lost Requiem 30%, RPG 27%).</summary>
+        private static double techNotStream(double streamShare) => 1 - smoothStep(streamShare, tech_stream_start, tech_stream_full);
+
+        /// <summary>Path in circle diameters per played second over the hardest 20 s (5 s moving average).</summary>
+        private static double hardestTravel(double[] perSecond, double rate)
+            => movingAverage(perSecond.Select(v => v * rate).ToArray(), smooth_seconds).OrderByDescending(v => v).Take(hardest_seconds).Average();
+
+        /// <summary>
+        /// Content type for maps the 0.2.0 classification leaves unknown (same as MapAnalyzer.classify of the polygon, without the
+        /// reading and Arles overrides): streams go straight, the same density with turns or in short bursts at small / medium
+        /// spacing is aim control.
+        /// </summary>
+        private static MapType classifyUnknown(List<OsuHitObject> notes, double[] gaps, double[] spacing, double streamShare, double streamBpm,
+                                               double jumpShare, double sliderShare, double sliderAimRatio, double sliderVelocitySpread,
+                                               double oddRhythmShare)
+        {
+            bool[] fastMove = new bool[notes.Count];
+            for (int i = 1; i < notes.Count; i++)
+                fastMove[i] = gaps[i] > 0 && gaps[i] <= fast_move_ms && spacing[i] >= stream_min_spacing;
+
+            int shortBurstNotes = 0, run = 0;
+            for (int i = 1; i <= notes.Count; i++)
+            {
+                if (i < notes.Count && fastMove[i])
+                {
+                    run++;
+                    continue;
+                }
+
+                if (run > 0 && run + 1 >= 3 && run + 1 <= 8)
+                    shortBurstNotes += run + 1;
+                run = 0;
+            }
+
+            int runTurns = 0, runAngles = 0, fastCount = 0;
+            var runSpacings = new List<double>();
+
+            for (int i = 1; i < notes.Count; i++)
+            {
+                if (!fastMove[i])
+                    continue;
+
+                fastCount++;
+                runSpacings.Add(spacing[i]);
+
+                if (i + 1 < notes.Count && fastMove[i + 1])
+                {
+                    double angle = noteAngle(notes, i);
+                    if (double.IsNaN(angle))
+                        continue;
+
+                    runAngles++;
+                    if (angle < turn_angle)
+                        runTurns++;
+                }
+            }
+
+            double fastShare = (double)fastCount / notes.Count;
+            double shortBurstShare = (double)shortBurstNotes / notes.Count;
+            double fastTurnShare = runAngles == 0 ? 0 : (double)runTurns / runAngles;
+            double fastRunSpacing = runSpacings.Count == 0 ? 0 : median(runSpacings);
+
+            double notStream = 1 - smoothStep(streamShare, 0.15, 0.35);
+            double sliderHeavy = techSliders(sliderShare, sliderAimRatio);
+            double fastStreams = smoothStep(streamBpm, 180, 200);
+            double turning = smoothStep(fastTurnShare, 0.20, 0.50);
+            double control = Math.Max(turning * smoothStep(fastShare, 0.20, 0.40), smoothStep(shortBurstShare, 0.20, 0.33));
+
+            var scores = new[]
+            {
+                (MapType.Stream, smoothStep(streamShare, 0.20, 0.45) * fastStreams * (1 - turning)),
+                (MapType.AimSlop, notStream * smoothStep(jumpShare, 0.45, 0.70) * (1 - sliderHeavy)),
+                (MapType.Tech, techNotStream(streamShare) * sliderHeavy
+                               * (0.7 + 0.3 * Math.Max(smoothStep(oddRhythmShare, 0.05, 0.15), smoothStep(sliderVelocitySpread, 0.15, 0.35)))),
+                (MapType.AimControl, control * (1 - smoothStep(fastRunSpacing, 1.5, 2.5)) * (1 - sliderHeavy)),
+            };
+
+            var best = scores[0];
+            foreach (var score in scores)
+            {
+                if (score.Item2 > best.Item2)
+                    best = score;
+            }
+
+            if (best.Item2 < 0.25)
+                return MapType.Unknown;
+
+            // Only small-spacing dense patterns become aim control here (Bleed 0.58, Sunless Rise 0.85, Hashire 1.07 circles);
+            // wider ones stay unknown (We Could Get More Machinegun Psystyle!, 1.13, is a jump map). Measured in the circles played,
+            // like the rest of the classification: the type is the type of the map as played with its mods (lower CS can turn weak
+            // control into streams / control, HR can turn streams into control).
+            return best.Item1 == MapType.AimControl && fastRunSpacing > unknown_control_max_spacing ? MapType.Unknown : best.Item1;
+        }
+
+        /// <summary>Angle at note <paramref name="i"/> between the move into it and the move out of it (stacked positions, slider ends); NaN if undefined.</summary>
+        private static double noteAngle(List<OsuHitObject> notes, int i)
+        {
+            if (i <= 0 || i + 1 >= notes.Count)
+                return double.NaN;
+
+            Vector2 inFrom = notes[i - 1] is Slider ps ? ps.StackedEndPosition : notes[i - 1].StackedPosition;
+            Vector2 outFrom = notes[i] is Slider cs ? cs.StackedEndPosition : notes[i].StackedPosition;
+            Vector2 a1 = inFrom - notes[i].StackedPosition;
+            Vector2 a2 = notes[i + 1].StackedPosition - outFrom;
+            if (a1.Length <= 1 || a2.Length <= 1)
+                return double.NaN;
+
+            return Math.Acos(Math.Clamp(Vector2.Dot(a1, a2) / (a1.Length * a2.Length), -1, 1)) * 180 / Math.PI;
         }
 
         private static double preemptMs(double ar) => ar < 5 ? 1800 - 120 * ar : 1950 - 150 * ar;

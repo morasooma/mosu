@@ -37,7 +37,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             new ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, ReferenceRatios>>();
 
         // BeforeFlowGuard: ratio where the Aim-Focused Flow Guard runs; Final: after all aim/speed rules (Simple Stream Nerf, Stream-Only Guard).
-        private readonly record struct ReferenceRatios(double BeforeFlowGuard, double Final);
+        private readonly record struct ReferenceRatios(double BeforeFlowGuard, double Final, double StreamWeight);
 
         /// <summary>
         /// MosuPp "RP Balance (RX)": respect points of the prepared beatmap (computed in <see cref="Prepare"/> from the playable beatmap,
@@ -108,15 +108,28 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 double controlPp = getControlPp(beatmap, ModUtils.CalculateRateWithMods(score.Mods)) * MosuPpBalance.Current.ControlScale;
                 double controlMultiplier = RxAimControl.Multiplier(controlPp, ssTotal);
                 scale(attributes, controlMultiplier);
+                attributes.MosuPpBreakdown?.Add(new("control", controlMultiplier));
                 attributes.MosuPpControlPp = controlPp;
                 attributes.MosuPpControlMultiplier = controlMultiplier;
 
                 // MosuPp "RP Balance (RX)": the total moves to the map's RP, within ±20% (one multiplier per map + mods, from an SS).
+                // MosuPp "Section Types (RX)": a stream map is a stream map only in its streams — RP and the type scale of the rest
+                // come from the type of the map without its streams, by the share of the PP the streams earn.
+                double streamWeight = attributes.MosuPpStreamWeight ?? 0;
+
                 if (respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? respectPoints))
                 {
-                    double multiplier = Math.Pow(RxRespectPoints.Multiplier(respectPoints.Value.Value, ssTotal * controlMultiplier), MosuPpBalance.Current.RpStrength);
+                    RxRespectPoints.Result rp = respectPoints.Value;
+                    double rpValue = rp.Type == RxRespectPoints.MapType.Stream
+                        ? streamWeight * rp.Value + (1 - streamWeight) * rp.RemainderValue
+                        : rp.Value;
+                    double multiplier = Math.Pow(RxRespectPoints.Multiplier(rpValue, ssTotal * controlMultiplier), MosuPpBalance.Current.RpStrength);
                     scale(attributes, multiplier);
+                    attributes.MosuPpBreakdown?.Add(new("rp", multiplier));
                     attributes.MosuPpRespectPoints = respectPoints.Value.Value;
+                    attributes.MosuPpRpType = respectPoints.Value.Type.ToString();
+                    attributes.MosuPpRpRemainderType = rp.Type == RxRespectPoints.MapType.Stream ? rp.RemainderType.ToString() : null;
+                    attributes.MosuPpComposition = respectPoints.Value.Composition;
                     attributes.MosuPpRespectPointsMultiplier = multiplier;
                 }
 
@@ -125,13 +138,30 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 if (arles.TryGetValue(beatmap, out StrongBox<RxArles.Analysis>? shape))
                 {
                     scale(attributes, shape.Value.Multiplier);
+                    attributes.MosuPpBreakdown?.Add(new("arles", shape.Value.Multiplier));
                     attributes.MosuPpArlesConfidence = shape.Value.Confidence;
                     attributes.MosuPpArlesMultiplier = shape.Value.Multiplier;
                 }
 
-                double typeScale = respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? typeReference)
-                    ? MosuPpBalance.Current.TypeScale(typeReference.Value.Type) : 1;
+                double typeScale = 1;
+
+                if (respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? typeReference))
+                {
+                    RxRespectPoints.Result rp = typeReference.Value;
+                    typeScale = rp.Type == RxRespectPoints.MapType.Stream
+                        ? streamWeight * MosuPpBalance.Current.TypeScale(rp.Type) + (1 - streamWeight) * MosuPpBalance.Current.TypeScale(rp.RemainderType)
+                        : MosuPpBalance.Current.TypeScale(rp.Type);
+                }
+
                 scale(attributes, MosuPpBalance.Current.GlobalScale * typeScale);
+                attributes.MosuPpBreakdown?.Add(new("typeScale", MosuPpBalance.Current.GlobalScale * typeScale));
+
+                // MosuPp "CS Reduction (RX)": bigger circles than the map has (DA lower CS, EZ) — applied last, so nothing absorbs it.
+                double csReduction = RxCsReduction.Multiplier(score.BeatmapInfo.Difficulty.CircleSize, beatmap.CircleSize, MosuPpBalance.Current.CsReductionStrength);
+                scale(attributes, csReduction);
+                attributes.MosuPpBreakdown?.Add(new("csReduction", csReduction));
+                attributes.MosuPpCsReductionMultiplier = csReduction;
+
                 return attributes;
             }
             catch (Exception exception) when (exception is not InvalidOperationException)
@@ -210,14 +240,32 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 (float)result.Difficulty.Cs,
                 clockRate);
 
+            // Diagnostics for the site's "why did the PP change": every rule's multiplier in calculation order (1 = no effect).
+            // Aim-scoped entries are ratios of the aim PP, the others multiply the whole total.
+            var breakdown = new List<KeyValuePair<string, double>>();
+            double aimBefore;
+
             double patternMultiplier = RealistikRelaxBalance.PatternMultiplier(ppMods, result);
+            breakdown.Add(new("pattern", patternMultiplier));
+
+            // Its parts, for the site only ("pattern" above is their product, clamped to 0.5–1).
+            var patternParts = RealistikRelaxBalance.PatternBreakdown(ppMods, result);
+            breakdown.Add(new("pattern.antiFarm", patternParts.AntiFarm));
+            breakdown.Add(new("pattern.flowOverboost", patternParts.FlowOverboost));
+            breakdown.Add(new("pattern.hrWideStream", patternParts.HrWideStream));
 
             // MosuPp "Spike Filler Guard (RX)": maps with several hard moments are not "one spike in filler" — only the anti-farm
-            // aim part of the pattern multiplier is lifted (the spike weight also gates the speed-dominance part, which stays as it is).
+            // part of the pattern multiplier is lifted.
             if (mosuPp && respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? moments))
+            {
+                double unguarded = patternMultiplier;
                 patternMultiplier = RxSpikeFillerGuard.Apply(patternMultiplier, result.Difficulty.JumpSpikeFillerWeight, moments.Value.HardMoments);
+                breakdown.Add(new("spikeFillerGuard", patternMultiplier / unguarded));
+            }
+
             double lengthAimMultiplier = RealistikRelaxBalance.LengthAimMultiplier(ppMods, result);
             result.PpAim *= lengthAimMultiplier;
+            breakdown.Add(new("aim:lengthAim", lengthAimMultiplier));
 
             ReferenceRatios reference = mosuPp
                 ? getReferenceRatios(beatmap, performanceMods, ppMods, clockRate, effectiveAr, effectiveOd)
@@ -226,16 +274,24 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             if (mosuPp)
             {
                 // MosuPp "Aim-Focused Flow Guard (RX)": no flow bonus for aim-focused maps (flow comes from their spaced streams).
+                aimBefore = result.PpAim;
                 RxAimFocusedFlowGuard.Apply(result, reference.BeforeFlowGuard);
+                breakdown.Add(new("aim:flowGuard", ratio(result.PpAim, aimBefore)));
 
                 // MosuPp "Length Bonus (RX)" + "Spike Nerf (RX)": many hard moments are worth more than one short spike.
+                aimBefore = result.PpAim;
                 RxLengthBonus.Apply(result);
+                breakdown.Add(new("aim:lengthBonus", ratio(result.PpAim, aimBefore)));
 
                 // MosuPp "Point Variety Nerf (RX)": 2–4 spot back-and-forth spam loses most aim/speed PP.
+                aimBefore = result.PpAim;
                 RxPointVarietyNerf.Apply(result, beatmap);
+                breakdown.Add(new("aim:pointVariety", ratio(result.PpAim, aimBefore)));
 
                 // MosuPp "Extreme Jump Nerf (RX)": maps with 80+ jumps faster than 4.5 px/ms (glass beach) lose up to 31% aim PP.
+                aimBefore = result.PpAim;
                 RxExtremeJumpNerf.Apply(result, beatmap);
+                breakdown.Add(new("aim:extremeJump", ratio(result.PpAim, aimBefore)));
             }
 
             result.Pp = RealistikRelaxBalance.RebuildTotal(result, scoreState, nativeMultiplier);
@@ -255,33 +311,34 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             }
 
             double odMultiplier = RealistikRelaxBalance.OdMultiplier(result.Difficulty.Od);
+            breakdown.Add(new("od", odMultiplier));
 
             // Product of the MosuPp total-PP rules below (1 for MosuRealistik).
             double mosuPpMultiplier = 1.0;
 
             if (mosuPp)
             {
-                // MosuPp "Stream Map Nerf (RX)": stream maps (speed PP ≥ 1.0–1.3× aim PP, ≥ 30–60% stream notes) lose up to 50%.
-                mosuPpMultiplier *= RxStreamMapNerf.Multiplier(beatmap, reference.Final);
+                // MosuPp "Stream Map Nerf (RX)": stream maps (speed PP ≥ 1.0–1.3× aim PP) lose up to 35% of the PP their streams earn.
+                mosuPpMultiplier *= record(breakdown, "streamMap", RxStreamMapNerf.Multiplier(reference.Final, reference.StreamWeight));
 
                 // MosuPp "Stream-Only Guard (RX)": speed PP ≥ 5–10× aim PP (streams into one point): speed PP stops counting
                 // (none from 10×) and the rest keeps ≤ 10% of the PP.
-                mosuPpMultiplier *= RxStreamOnlyGuard.Apply(result, scoreState, nativeMultiplier, reference.Final);
+                mosuPpMultiplier *= record(breakdown, "streamOnly", RxStreamOnlyGuard.Apply(result, scoreState, nativeMultiplier, reference.Final));
 
                 // MosuPp "One-Point Map Guard (RX)": every note stacked on 1–2 spots (e.g. Iyul' [HS]) keeps ~3% of the PP.
-                mosuPpMultiplier *= RxOnePointMapGuard.Multiplier(beatmap);
+                mosuPpMultiplier *= record(breakdown, "onePoint", RxOnePointMapGuard.Multiplier(beatmap));
 
                 // MosuPp "Short High CS Nerf (RX)": CS 5–6+ maps with 300–700 objects lose up to 15% (smooth in CS and length).
-                mosuPpMultiplier *= RxShortHighCsNerf.Multiplier(beatmap);
+                mosuPpMultiplier *= record(breakdown, "shortHighCs", RxShortHighCsNerf.Multiplier(beatmap));
 
                 // MosuPp "Visible Notes Reading (RX)": more spaced notes on screen at once (lower AR, higher BPM) → up to +20%.
-                mosuPpMultiplier *= RxVisibleNotesReading.Multiplier(beatmap, effectiveAr);
+                mosuPpMultiplier *= record(breakdown, "visibleNotes", RxVisibleNotesReading.Multiplier(beatmap, effectiveAr));
 
                 // MosuPp "CS PP Buff (RX)": CS 4 +5%, 5 +10%, 6 +15%, 7 +25%, 8 +50% ... (smooth, CS incl. HR/EZ/DA).
-                mosuPpMultiplier *= RxCsPpBuff.Multiplier(beatmap.CircleSize);
+                mosuPpMultiplier *= record(breakdown, "csBuff", RxCsPpBuff.Multiplier(beatmap.CircleSize));
 
                 // MosuPp "Heavy Miss Penalty (RX)": every miss above 15 removes another ~10% (× e^(−0.11 · (misses − 15))).
-                mosuPpMultiplier *= RxHeavyMissPenalty.Multiplier(scoreState.Misses);
+                mosuPpMultiplier *= record(breakdown, "heavyMiss", RxHeavyMissPenalty.Multiplier(scoreState.Misses));
             }
 
             return new OsuPerformanceAttributes
@@ -294,7 +351,17 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 EffectiveMissCount = result.EffectiveMissCount,
                 Total = result.Pp * odMultiplier * patternMultiplier * mosuPpMultiplier,
                 MosuPpSpikeFillerWeight = mosuPp ? result.Difficulty.JumpSpikeFillerWeight : null,
+                MosuPpBreakdown = mosuPp ? breakdown : null,
+                MosuPpStreamWeight = mosuPp ? reference.StreamWeight : null,
             };
+        }
+
+        private static double ratio(double after, double before) => before > 0 ? after / before : 1;
+
+        private static double record(List<KeyValuePair<string, double>> breakdown, string key, double multiplier)
+        {
+            breakdown.Add(new(key, multiplier));
+            return multiplier;
         }
 
         /// <summary>
@@ -346,7 +413,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                     result.PpAim *= 1 - 0.06 * verticalPressure;
             }
 
-            return new ReferenceRatios(beforeFlowGuard, RxStreamOnlyGuard.SpeedAimRatio(result));
+            return new ReferenceRatios(beforeFlowGuard, RxStreamOnlyGuard.SpeedAimRatio(result), RxSectionTypes.StreamShare(beatmap, result));
         }
 
         private static RxScoreState createScoreState(ScoreInfo score)

@@ -485,6 +485,9 @@ internal static class RxDifficultyCalculator
         while (second.Base.Time > currentSectionEnd)
             currentSectionEnd += sectionLength;
 
+        attributes.FirstSectionEnd = currentSectionEnd;
+        attributes.SectionLength = sectionLength;
+
         bool isSecondSpam = IsStrictPointSpamTransition(second, previous, current);
         if (isSecondSpam)
             pointSpamCircleCount++;
@@ -759,6 +762,8 @@ internal static class RxDifficultyCalculator
         attributes.SpeedDifficultStrainCountForPp = speedDifficultStrainCountForPp;
         attributes.ReadingDifficultNoteCount = readingDifficultNoteCount;
         attributes.JumpSpikeFillerWeight = jumpSpikeFillerWeight;
+        attributes.AimSectionPeaks = aim.StrainPeaksForPp.ToArray();
+        attributes.SpeedSectionPeaks = speed.StrainPeaksForPp.ToArray();
         attributes.SpeedSpikeFillerWeight = speedSpikeFillerWeight;
         attributes.AimPeakRatio = PeakToTypicalRatio(aim.StrainPeaks);
         attributes.SpeedPeakRatio = PeakToTypicalRatio(speed.StrainPeaks);
