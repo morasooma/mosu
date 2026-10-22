@@ -17,7 +17,7 @@ Examples are SS scores, RX, with all rules of that version.
 Numbering restarts after 1.13.0: **1.13.0 = 0.0.1**. Before / after numbers are made with the test polygon in
 `tools/MosuPpLab` (`./lab.sh`), which calculates the maps of `tools/MosuPpLab/maps.txt` with the baseline and the current code.
 
-## MosuPp 1.0.0 (cache 39) — release
+## MosuPp 1.0.0 (cache 40) — release
 
 First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below plus:
 - **Balance**: aim control type scale 0.75 → 0.87. 0.75 was the 0.5.0 patch for small-spacing control maps that escaped the
@@ -48,9 +48,16 @@ First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below
   has to be played. With HR the reference CS is raised by ×1.3 (at most 10), so only what DA adds is gated. HR maps are back
   at their PP without CS Gain: Smiling 984 → 1563, Preserved Valkyria 868 → 1126, Dreamin' attraction 792 → 1068, L9 1570 →
   1738; DA CS 6 rows unchanged.
+- **Accuracy Gate (RX)** (new, cache 40): accuracy PP is paid by how hard the map is. Realistik accuracy PP depends only on OD,
+  accuracy and circle count, so an easy OD 9 map paid as much accuracy PP as a hard one (≈ 34% of the PP of easy maps, 5–9% of
+  hard ones), while in RX the game clicks the notes. Accuracy PP × (0.15 + 0.85 · smoothstep(skill PP, 200, 350)), skill PP =
+  aim + speed PP of an SS on the map + mods after the MosuPp aim rules.
+  The owner's easy set is now about half of production (median −49%, −38..−55%), maps with 1000+ PP are unchanged. Other maps
+  that lose more than 3% (SS, cache 39 → 40): heat abnormal 394 → 316, Overkill 381 → 314, LATHI 482 → 408, Feelin Sky
+  463 → 407, Hashire Uma Musume 254 → 225, burn this moment 331 → 296, Arche 475 → 427.
 
-Against production 0.4.0 (SS, geometric mean by RP type over the test set): aim slop −11%, aim control −14%, streams +1%,
-tech +36%, reading 0%. Examples (0.4.0 → 1.0.0): ganbare!kumokosan (/b/2833124) 2975 → 2662; Attack (/b/5637274) 2474 → 2153,
+Against production 0.4.0 (SS, geometric mean by RP type over the test set, cache 40): aim slop −12%, aim control −19%,
+streams +11%, tech +28%, reading −11% (heat, the only reading map, is easy at NM); the examples below are from cache 35. Examples (0.4.0 → 1.0.0): ganbare!kumokosan (/b/2833124) 2975 → 2662; Attack (/b/5637274) 2474 → 2153,
 DT 6297 → 5632; glass beach (/b/5870318) 2796 → 2502, DT 7429 → 6649; Six Seven (/b/5711898) 2128 → 1904; Hills Have Eyes
 (/b/4354559) 1980 → 1772; Sendan Life (/b/2267564) 1526 → 1366; Mor 3 (/b/4654706) 2038 → 1752; VANISH (/b/4323073)
 2652 → 2277; UMMU (/b/1743443) 1191 → 994, DT 2363 → 1989; FEEEEVER TIME (/b/3446204) DT 1932 → 1681; Bleed (/b/2815425)

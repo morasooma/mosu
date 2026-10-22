@@ -19,6 +19,9 @@ Full details and examples are in `MOSUPP_CHANGELOG.md` (0.5.0–1.0.0).
     w = smoothstep(final SS PP at the reference CS, 800, 2000).
   - With DA CS 8, Hashire Uma Musume goes from 1463 to 306 (NM 304). glass beach, VANISH and ganbare!kumokosan keep the
     whole gain.
+- **Accuracy Gate** (new, `RxAccuracyGate.cs`): accuracy PP is paid by how hard the map is. It is multiplied by
+  0.15 + 0.85 · smoothstep(aim + speed PP of an SS, 200, 350). Easy maps keep 15% of their accuracy PP; maps with 350+ skill
+  PP keep all of it. With the RP bonus gate, the owner's set of easy aim slop maps is about half of production.
 - **RP Balance**:
   - The RP bonus (above 1) needs a map worth 300–600 SS PP before RP. Maps with almost no movement no longer get +20%.
   - Maps of unknown type take a content type.
@@ -39,19 +42,19 @@ Against 0.4.0 (SS, geometric mean by RP type over the 87 calibration rows):
 | RP type | Change |
 |---|---:|
 | Aim slop | −12% |
-| Aim control | −18% |
+| Aim control | −19% |
 | Streams | +11% |
-| Tech | +31% |
-| Reading | −1% |
+| Tech | +28% |
+| Reading | −11% |
 
 The rules run through `OsuDifficultyCalculator` / `OsuPerformanceCalculator` when the selected Relax PP system is
-**MosuPp**, for RX and MRX. The MosuPp cache revision moves from 29 to 39, so cached PP is recalculated.
+**MosuPp**, for RX and MRX. The MosuPp cache revision moves from 29 to 40, so cached PP is recalculated.
 Normal client builds still have no `ConfigureForLab` method. The polygon override requires `EnableMosuPpLabTuning=true`.
 
 ## Validation
 
 - Release build of `osu.Desktop/osu.Desktop.csproj` succeeded.
-- 178 relevant NUnit tests passed, including the new Section Types, CS Reduction, CS Gain and RP bonus tests.
+- 184 relevant NUnit tests passed, including the new Section Types, CS Reduction, CS Gain, RP bonus and Accuracy Gate tests.
 - The polygon was built against this branch with `EnableMosuPpLabTuning=false` and compared to the approved polygon
   assembly. Every numeric output was compared: PP components, stars, RP, control, Arles, the rule breakdown and the
   classifier.
@@ -68,7 +71,7 @@ All 721 cases matched.
 
 ```sh
 dotnet build osu.Desktop/osu.Desktop.csproj -c Release -m:1
-dotnet test osu.Game.Rulesets.Osu.Tests/osu.Game.Rulesets.Osu.Tests.csproj -c Release -m:1 --filter 'FullyQualifiedName~RxRespectPointsMultiplierTest|FullyQualifiedName~RxCsGainTest|FullyQualifiedName~RxSectionTypesTest|FullyQualifiedName~RxCsReductionTest|FullyQualifiedName~RxArlesTest|FullyQualifiedName~MosuPpBalanceTest|FullyQualifiedName~RelaxPpSystemSelectionTest|FullyQualifiedName~RealistikRelaxManagedParityTest|FullyQualifiedName~RealistikRelaxBalanceTest|FullyQualifiedName~RelaxAimAntiAbuseTest'
+dotnet test osu.Game.Rulesets.Osu.Tests/osu.Game.Rulesets.Osu.Tests.csproj -c Release -m:1 --filter 'FullyQualifiedName~RxAccuracyGateTest|FullyQualifiedName~RxRespectPointsMultiplierTest|FullyQualifiedName~RxCsGainTest|FullyQualifiedName~RxSectionTypesTest|FullyQualifiedName~RxCsReductionTest|FullyQualifiedName~RxArlesTest|FullyQualifiedName~MosuPpBalanceTest|FullyQualifiedName~RelaxPpSystemSelectionTest|FullyQualifiedName~RealistikRelaxManagedParityTest|FullyQualifiedName~RealistikRelaxBalanceTest|FullyQualifiedName~RelaxAimAntiAbuseTest'
 ```
 
 This branch contains the calculator, client tests and release notes. Website code, deployment configuration, tokens,
