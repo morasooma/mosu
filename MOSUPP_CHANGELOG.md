@@ -17,7 +17,7 @@ Examples are SS scores, RX, with all rules of that version.
 Numbering restarts after 1.13.0: **1.13.0 = 0.0.1**. Before / after numbers are made with the test polygon in
 `tools/MosuPpLab` (`./lab.sh`), which calculates the maps of `tools/MosuPpLab/maps.txt` with the baseline and the current code.
 
-## MosuPp 1.0.0 (cache 38) — release
+## MosuPp 1.0.0 (cache 39) — release
 
 First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below plus:
 - **Balance**: aim control type scale 0.75 → 0.87. 0.75 was the 0.5.0 patch for small-spacing control maps that escaped the
@@ -44,6 +44,10 @@ First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below
   DT 982 → 1214; A Tale Of Salt And Light (/b/5571670) DT 1400 → 1560; Ixion's Torment 648 → 747.
   Against production 0.4.0 (SS, geometric mean by RP type): aim slop −12%, aim control −18%, streams +11%, tech +31%,
   reading −1%.
+- **CS Gain (RX)** (cache 39): HR's own CS raise (×1.3) is not a gain — HR also mirrors the patterns and raises AR / OD, it
+  has to be played. With HR the reference CS is raised by ×1.3 (at most 10), so only what DA adds is gated. HR maps are back
+  at their PP without CS Gain: Smiling 984 → 1563, Preserved Valkyria 868 → 1126, Dreamin' attraction 792 → 1068, L9 1570 →
+  1738; DA CS 6 rows unchanged.
 
 Against production 0.4.0 (SS, geometric mean by RP type over the test set): aim slop −11%, aim control −14%, streams +1%,
 tech +36%, reading 0%. Examples (0.4.0 → 1.0.0): ganbare!kumokosan (/b/2833124) 2975 → 2662; Attack (/b/5637274) 2474 → 2153,

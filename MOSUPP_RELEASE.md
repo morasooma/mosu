@@ -14,7 +14,7 @@ Full details and examples are in `MOSUPP_CHANGELOG.md` (0.5.0–1.0.0).
   - For stream maps, RP Balance and the type scale are blended with the map's type without its streams.
 - **CS Reduction** (new): lower CS through DA or EZ costs PP (CS 4 → 2 ≈ −45%).
 - **CS Gain** (new, `RxCsGain.cs`): smaller circles pay only on maps that are hard on their own.
-  - The reference CS is the map's own CS, at most 5.
+  - The reference CS is the map's own CS, at most 5. With HR it is ×1.3, so HR keeps its CS raise and only DA is gated.
   - The gain is final SS PP at the played CS divided by final SS PP at the reference CS. The map keeps gain^w, where
     w = smoothstep(final SS PP at the reference CS, 800, 2000).
   - With DA CS 8, Hashire Uma Musume goes from 1463 to 306 (NM 304). glass beach, VANISH and ganbare!kumokosan keep the
@@ -45,13 +45,13 @@ Against 0.4.0 (SS, geometric mean by RP type over the 87 calibration rows):
 | Reading | −1% |
 
 The rules run through `OsuDifficultyCalculator` / `OsuPerformanceCalculator` when the selected Relax PP system is
-**MosuPp**, for RX and MRX. The MosuPp cache revision moves from 29 to 38, so cached PP is recalculated.
+**MosuPp**, for RX and MRX. The MosuPp cache revision moves from 29 to 39, so cached PP is recalculated.
 Normal client builds still have no `ConfigureForLab` method. The polygon override requires `EnableMosuPpLabTuning=true`.
 
 ## Validation
 
 - Release build of `osu.Desktop/osu.Desktop.csproj` succeeded.
-- 175 relevant NUnit tests passed, including the new Section Types, CS Reduction, CS Gain and RP bonus tests.
+- 178 relevant NUnit tests passed, including the new Section Types, CS Reduction, CS Gain and RP bonus tests.
 - The polygon was built against this branch with `EnableMosuPpLabTuning=false` and compared to the approved polygon
   assembly. Every numeric output was compared: PP components, stars, RP, control, Arles, the rule breakdown and the
   classifier.

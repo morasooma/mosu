@@ -13,7 +13,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
     /// hard, and DA CS 8 turns the first into a farm map and the second into an impossible one.
     /// </summary>
     /// <remarks>
-    /// Reference CS = the map's own CS, at most <see cref="REFERENCE_MAX_CS"/> (normal maps up to CS 5 keep their CS as it is).
+    /// Reference CS = the map's own CS, at most <see cref="REFERENCE_MAX_CS"/> (normal maps up to CS 5 keep their CS as it is);
+    /// with HR it is raised by HR's own ×1.3 (cache 39): HR also mirrors the patterns and raises AR / OD, it has to be played, so
+    /// only what DA adds on top is gated.
     /// Gain = final SS PP at the played CS / final SS PP at the reference CS, same mods, everything included (distances in circle
     /// radii, small circle bonus, CS PP Buff, Aim Control, RP, Arles, type scale). How hard the map is by itself = its final SS PP
     /// at the reference CS ("the star rating before the change", in PP). The map keeps gain^w, w = smoothstep(reference SS PP,
@@ -28,7 +30,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         public const double PP_START = 800;
         public const double PP_FULL = 2000;
 
-        public static float ReferenceCs(float nativeCs) => Math.Min(nativeCs, (float)REFERENCE_MAX_CS);
+        /// <summary>HR's CS multiplier (OsuModHardRock: CS × 1.3, at most 10).</summary>
+        public const float HARD_ROCK_CS_RATIO = 1.3f;
+
+        public static float ReferenceCs(float nativeCs, bool hardRock = false)
+        {
+            float reference = Math.Min(nativeCs, (float)REFERENCE_MAX_CS);
+            return hardRock ? Math.Min(reference * HARD_ROCK_CS_RATIO, 10) : reference;
+        }
 
         /// <summary>Circle diameter in osu! pixels at <paramref name="circleSize"/> (as OsuHitObject.Radius).</summary>
         public static double Diameter(float circleSize)

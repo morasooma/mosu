@@ -85,7 +85,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 respect_points.AddOrUpdate(converted, new StrongBox<RxRespectPoints.Result>(RxRespectPoints.Calculate(beatmap, mods)));
                 arles.AddOrUpdate(converted, new StrongBox<RxArles.Analysis>(RxArles.Analyze(beatmap)));
 
-                float referenceCs = RxCsGain.ReferenceCs(beatmap.BeatmapInfo.Difficulty.CircleSize);
+                float referenceCs = RxCsGain.ReferenceCs(beatmap.BeatmapInfo.Difficulty.CircleSize, mods.Any(m => m.Acronym == "HR"));
                 if (beatmap.Difficulty.CircleSize > referenceCs + 1e-6)
                 {
                     cs_reference.AddOrUpdate(converted, new StrongBox<CsReference>(new CsReference(referenceCs,

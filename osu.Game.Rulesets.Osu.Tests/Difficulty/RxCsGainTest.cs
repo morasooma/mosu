@@ -16,6 +16,12 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
         public void TestReferenceCs(float nativeCs, float expected)
             => Assert.That(RxCsGain.ReferenceCs(nativeCs), Is.EqualTo(expected));
 
+        [TestCase(4f, 5.2f)] // HR's own CS raise is not a gain
+        [TestCase(6.2f, 6.5f)] // a high-CS map with HR: CS 5 × 1.3
+        [TestCase(8f, 6.5f)]
+        public void TestReferenceCsWithHardRock(float nativeCs, float expected)
+            => Assert.That(RxCsGain.ReferenceCs(nativeCs, true), Is.EqualTo(expected).Within(1e-5));
+
         [Test]
         public void TestEasyMapKeepsItsReferencePp()
             // 300 PP at its own CS, 4.8× with DA CS 8: the gain is taken back completely.
