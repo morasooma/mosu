@@ -54,6 +54,21 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         private static readonly ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, double>> ss_totals =
             new ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, double>>();
 
+        // CS Gain: RP and Arles of the playable beatmap rated at the reference CS (prepared with it), final SS PP there per mods.
+        private readonly record struct CsReference(float Cs, RxRespectPoints.Result Rp, RxArles.Analysis Arles);
+
+        private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<CsReference>> cs_reference =
+            new ConditionalWeakTable<RxBeatmap, StrongBox<CsReference>>();
+
+        private static readonly ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, double>> cs_reference_pp =
+            new ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, double>>();
+
+        /// <summary>The map-level MosuPp multipliers of one map + mods (from an SS).</summary>
+        private readonly record struct MapLevel(double ControlPp, double Control, double Rp, double Arles, double TypeScale)
+        {
+            public double Product => Control * Rp * Arles * TypeScale;
+        }
+
         private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<RxArles.Analysis>> arles =
             new ConditionalWeakTable<RxBeatmap, StrongBox<RxArles.Analysis>>();
 
@@ -69,6 +84,13 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 RxBeatmap converted = RealistikBeatmapConverter.Convert(beatmap);
                 respect_points.AddOrUpdate(converted, new StrongBox<RxRespectPoints.Result>(RxRespectPoints.Calculate(beatmap, mods)));
                 arles.AddOrUpdate(converted, new StrongBox<RxArles.Analysis>(RxArles.Analyze(beatmap)));
+
+                float referenceCs = RxCsGain.ReferenceCs(beatmap.BeatmapInfo.Difficulty.CircleSize);
+                if (beatmap.Difficulty.CircleSize > referenceCs + 1e-6)
+                {
+                    cs_reference.AddOrUpdate(converted, new StrongBox<CsReference>(new CsReference(referenceCs,
+                        RxRespectPoints.Calculate(beatmap, mods, referenceCs), RxArles.Analyze(beatmap, referenceCs))));
+                }
                 beatmaps[createCacheKey(beatmap.BeatmapInfo, mods)] = converted;
             }
             catch (Exception exception)
@@ -103,64 +125,56 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 
                 double ssTotal = getSsTotal(beatmap, score.Mods);
 
-                // MosuPp "Aim Control (RX)": fast direction changes at small / medium spacing join the total as a third skill
-                // (one multiplier per map + mods, from an SS, same for every accuracy).
-                double controlPp = getControlPp(beatmap, ModUtils.CalculateRateWithMods(score.Mods)) * MosuPpBalance.Current.ControlScale;
-                double controlMultiplier = RxAimControl.Multiplier(controlPp, ssTotal);
-                scale(attributes, controlMultiplier);
-                attributes.MosuPpBreakdown?.Add(new("control", controlMultiplier));
-                attributes.MosuPpControlPp = controlPp;
-                attributes.MosuPpControlMultiplier = controlMultiplier;
+                // MosuPp "Aim Control (RX)", "RP Balance (RX)" (with "Section Types (RX)"), "Arles (RX)" and the type scale: one
+                // multiplier each per map + mods, from an SS (see mapLevel).
+                respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? respectPoints);
+                arles.TryGetValue(beatmap, out StrongBox<RxArles.Analysis>? shape);
+                double clockRate = ModUtils.CalculateRateWithMods(score.Mods);
+                MapLevel level = mapLevel(beatmap, clockRate, ssTotal, attributes.MosuPpStreamWeight ?? 0, respectPoints?.Value, shape?.Value);
 
-                // MosuPp "RP Balance (RX)": the total moves to the map's RP, within ±20% (one multiplier per map + mods, from an SS).
-                // MosuPp "Section Types (RX)": a stream map is a stream map only in its streams — RP and the type scale of the rest
-                // come from the type of the map without its streams, by the share of the PP the streams earn.
-                double streamWeight = attributes.MosuPpStreamWeight ?? 0;
+                scale(attributes, level.Control);
+                attributes.MosuPpBreakdown?.Add(new("control", level.Control));
+                attributes.MosuPpControlPp = level.ControlPp;
+                attributes.MosuPpControlMultiplier = level.Control;
 
-                if (respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? respectPoints))
+                if (respectPoints != null)
                 {
                     RxRespectPoints.Result rp = respectPoints.Value;
-                    double rpValue = rp.Type == RxRespectPoints.MapType.Stream
-                        ? streamWeight * rp.Value + (1 - streamWeight) * rp.RemainderValue
-                        : rp.Value;
-                    double multiplier = Math.Pow(RxRespectPoints.Multiplier(rpValue, ssTotal * controlMultiplier), MosuPpBalance.Current.RpStrength);
-                    scale(attributes, multiplier);
-                    attributes.MosuPpBreakdown?.Add(new("rp", multiplier));
-                    attributes.MosuPpRespectPoints = respectPoints.Value.Value;
-                    attributes.MosuPpRpType = respectPoints.Value.Type.ToString();
+                    scale(attributes, level.Rp);
+                    attributes.MosuPpBreakdown?.Add(new("rp", level.Rp));
+                    attributes.MosuPpRespectPoints = rp.Value;
+                    attributes.MosuPpRpType = rp.Type.ToString();
                     attributes.MosuPpRpRemainderType = rp.Type == RxRespectPoints.MapType.Stream ? rp.RemainderType.ToString() : null;
-                    attributes.MosuPpComposition = respectPoints.Value.Composition;
-                    attributes.MosuPpRespectPointsMultiplier = multiplier;
+                    attributes.MosuPpComposition = rp.Composition;
+                    attributes.MosuPpRespectPointsMultiplier = level.Rp;
                 }
 
-                // Applied after RP so its clamp cannot absorb the new bonus. The shape reference is independent of
-                // accuracy/misses and rate; existing reading, precision and miss penalties remain in force.
-                if (arles.TryGetValue(beatmap, out StrongBox<RxArles.Analysis>? shape))
+                if (shape != null)
                 {
-                    scale(attributes, shape.Value.Multiplier);
-                    attributes.MosuPpBreakdown?.Add(new("arles", shape.Value.Multiplier));
+                    scale(attributes, level.Arles);
+                    attributes.MosuPpBreakdown?.Add(new("arles", level.Arles));
                     attributes.MosuPpArlesConfidence = shape.Value.Confidence;
-                    attributes.MosuPpArlesMultiplier = shape.Value.Multiplier;
+                    attributes.MosuPpArlesMultiplier = level.Arles;
                 }
 
-                double typeScale = 1;
-
-                if (respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? typeReference))
-                {
-                    RxRespectPoints.Result rp = typeReference.Value;
-                    typeScale = rp.Type == RxRespectPoints.MapType.Stream
-                        ? streamWeight * MosuPpBalance.Current.TypeScale(rp.Type) + (1 - streamWeight) * MosuPpBalance.Current.TypeScale(rp.RemainderType)
-                        : MosuPpBalance.Current.TypeScale(rp.Type);
-                }
-
-                scale(attributes, MosuPpBalance.Current.GlobalScale * typeScale);
-                attributes.MosuPpBreakdown?.Add(new("typeScale", MosuPpBalance.Current.GlobalScale * typeScale));
+                scale(attributes, level.TypeScale);
+                attributes.MosuPpBreakdown?.Add(new("typeScale", level.TypeScale));
 
                 // MosuPp "CS Reduction (RX)": bigger circles than the map has (DA lower CS, EZ) — applied last, so nothing absorbs it.
                 double csReduction = RxCsReduction.Multiplier(score.BeatmapInfo.Difficulty.CircleSize, beatmap.CircleSize, MosuPpBalance.Current.CsReductionStrength);
                 scale(attributes, csReduction);
                 attributes.MosuPpBreakdown?.Add(new("csReduction", csReduction));
                 attributes.MosuPpCsReductionMultiplier = csReduction;
+
+                // MosuPp "CS Gain (RX)": smaller circles than the map's own CS (at most CS 5) pay only on maps that are hard there.
+                if (cs_reference.TryGetValue(beatmap, out StrongBox<CsReference>? csReference))
+                {
+                    double referencePp = getCsReferencePp(beatmap, score.Mods, clockRate, csReference.Value);
+                    double csGain = RxCsGain.Multiplier(referencePp > 0 ? ssTotal * level.Product / referencePp : 1, referencePp);
+                    scale(attributes, csGain);
+                    attributes.MosuPpBreakdown?.Add(new("csGain", csGain));
+                    attributes.MosuPpCsReferencePp = referencePp;
+                }
 
                 return attributes;
             }
@@ -184,6 +198,67 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         private static double getControlPp(RxBeatmap beatmap, double clockRate)
             => control_pp.GetValue(beatmap, _ => new ConcurrentDictionary<double, double>())
                          .GetOrAdd(clockRate, rate => RxAimControl.ControlPp(beatmap, rate));
+
+        private static MapLevel mapLevel(RxBeatmap beatmap, double clockRate, double ssTotal, double streamWeight, RxRespectPoints.Result? respectPoints,
+                                         RxArles.Analysis? shape)
+        {
+            // "Aim Control (RX)": fast direction changes at small / medium spacing join the total as a third skill.
+            double controlPp = getControlPp(beatmap, clockRate) * MosuPpBalance.Current.ControlScale;
+            double control = RxAimControl.Multiplier(controlPp, ssTotal);
+            double rpMultiplier = 1, typeScale = 1;
+
+            // "RP Balance (RX)": the total moves to the map's RP, within ±20%. "Section Types (RX)": a stream map is a stream map
+            // only in its streams — RP and the type scale of the rest come from its type without streams, by the streams' PP share.
+            if (respectPoints is RxRespectPoints.Result rp)
+            {
+                bool stream = rp.Type == RxRespectPoints.MapType.Stream;
+                double rpValue = stream ? streamWeight * rp.Value + (1 - streamWeight) * rp.RemainderValue : rp.Value;
+                rpMultiplier = Math.Pow(RxRespectPoints.Multiplier(rpValue, ssTotal * control), MosuPpBalance.Current.RpStrength);
+                typeScale = stream
+                    ? streamWeight * MosuPpBalance.Current.TypeScale(rp.Type) + (1 - streamWeight) * MosuPpBalance.Current.TypeScale(rp.RemainderType)
+                    : MosuPpBalance.Current.TypeScale(rp.Type);
+            }
+
+            // "Arles (RX)" is applied after RP so its clamp cannot absorb the bonus.
+            return new MapLevel(controlPp, control, rpMultiplier, shape?.Multiplier ?? 1, MosuPpBalance.Current.GlobalScale * typeScale);
+        }
+
+        /// <summary>CS Gain: final SS PP of the map + mods at the reference CS (before CS Reduction / CS Gain).</summary>
+        private static double getCsReferencePp(RxBeatmap beatmap, IReadOnlyList<Mod> mods, double clockRate, CsReference reference)
+        {
+            var perBeatmap = cs_reference_pp.GetValue(beatmap, _ => new ConcurrentDictionary<string, double>());
+            string key = string.Join(",", mods.Select(m => $"{m.Acronym}({string.Join(";", m.SettingDescription.Select(d => $"{d.setting}={d.value}"))})")
+                                              .OrderBy(a => a, StringComparer.Ordinal));
+
+            return perBeatmap.GetOrAdd(key, _ =>
+            {
+                RxBeatmap copy = withCircleSize(beatmap, reference.Cs);
+                respect_points.AddOrUpdate(copy, new StrongBox<RxRespectPoints.Result>(reference.Rp));
+
+                uint objects = (uint)copy.HitObjects.Count;
+                var ss = new RxScoreState { Count300 = objects, PassedObjects = objects > 0 ? objects : null };
+                OsuPerformanceAttributes ssAttributes = calculate(copy, ss, mods);
+                return ssAttributes.Total * mapLevel(copy, clockRate, ssAttributes.Total, ssAttributes.MosuPpStreamWeight ?? 0, reference.Rp, reference.Arles).Product;
+            });
+        }
+
+        private static RxBeatmap withCircleSize(RxBeatmap beatmap, float circleSize)
+        {
+            var copy = new RxBeatmap
+            {
+                Version = beatmap.Version,
+                ApproachRate = beatmap.ApproachRate,
+                CircleSize = circleSize,
+                HpDrainRate = beatmap.HpDrainRate,
+                OverallDifficulty = beatmap.OverallDifficulty,
+                SliderMultiplier = beatmap.SliderMultiplier,
+                SliderTickRate = beatmap.SliderTickRate,
+            };
+            copy.TimingPoints.AddRange(beatmap.TimingPoints);
+            copy.DifficultyPoints.AddRange(beatmap.DifficultyPoints);
+            copy.HitObjects.AddRange(beatmap.HitObjects);
+            return copy;
+        }
 
         private static double getSsTotal(RxBeatmap beatmap, IReadOnlyList<Mod> mods)
         {
