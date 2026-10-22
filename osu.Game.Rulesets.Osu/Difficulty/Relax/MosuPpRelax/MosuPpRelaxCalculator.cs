@@ -37,7 +37,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             new ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, ReferenceRatios>>();
 
         // BeforeFlowGuard: ratio where the Aim-Focused Flow Guard runs; Final: after all aim/speed rules (Simple Stream Nerf, Stream-Only Guard).
-        private readonly record struct ReferenceRatios(double BeforeFlowGuard, double Final, double StreamWeight);
+        private readonly record struct ReferenceRatios(double BeforeFlowGuard, double Final, double StreamWeight, double SkillPp);
 
         /// <summary>
         /// MosuPp "RP Balance (RX)": respect points of the prepared beatmap (computed in <see cref="Prepare"/> from the playable beatmap,
@@ -367,6 +367,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 aimBefore = result.PpAim;
                 RxExtremeJumpNerf.Apply(result, beatmap);
                 breakdown.Add(new("aim:extremeJump", ratio(result.PpAim, aimBefore)));
+
+                // MosuPp "Accuracy Gate (RX)": accuracy PP is paid by how hard the map is (aim + speed PP of an SS).
+                double accuracyGate = RxAccuracyGate.Multiplier(reference.SkillPp);
+                result.PpAccuracy *= accuracyGate;
+                breakdown.Add(new("acc:accuracyGate", accuracyGate));
             }
 
             result.Pp = RealistikRelaxBalance.RebuildTotal(result, scoreState, nativeMultiplier);
@@ -488,7 +493,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                     result.PpAim *= 1 - 0.06 * verticalPressure;
             }
 
-            return new ReferenceRatios(beforeFlowGuard, RxStreamOnlyGuard.SpeedAimRatio(result), RxSectionTypes.StreamShare(beatmap, result));
+            return new ReferenceRatios(beforeFlowGuard, RxStreamOnlyGuard.SpeedAimRatio(result), RxSectionTypes.StreamShare(beatmap, result),
+                result.PpAim + result.PpSpeed);
         }
 
         private static RxScoreState createScoreState(ScoreInfo score)
