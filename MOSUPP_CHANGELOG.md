@@ -17,7 +17,9 @@ Examples are SS scores, RX, with all rules of that version.
 Numbering restarts after 1.13.0: **1.13.0 = 0.0.1**. Before / after numbers are made with the test polygon in
 `tools/MosuPpLab` (`./lab.sh`), which calculates the maps of `tools/MosuPpLab/maps.txt` with the baseline and the current code.
 
-## MosuPp 1.0.0 (cache 40) — release
+## MosuPp 1.0.0 (cache 40) — test release
+
+Test version: the balance can still change before the final 1.0.0.
 
 First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below plus:
 - **Balance**: aim control type scale 0.75 → 0.87. 0.75 was the 0.5.0 patch for small-spacing control maps that escaped the

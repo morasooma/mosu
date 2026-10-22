@@ -1,4 +1,7 @@
-# MosuPp 1.0.0 client release
+# MosuPp 1.0.0 (test) client release
+
+> **Test version.** MosuPp 1.0.0 is published for testing on the server. The balance can still change before the final
+> 1.0.0; each change raises the cache revision, so PP is recalculated automatically.
 
 MosuPp 1.0.0 replaces production 0.4.0 in the MosuPp RX calculator. Its main change is **Section Types**:
 rules that depend on map type now apply to the share of PP that each pattern earns, not to the whole map.
