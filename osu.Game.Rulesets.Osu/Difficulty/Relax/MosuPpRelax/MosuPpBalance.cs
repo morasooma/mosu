@@ -27,7 +27,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         public double ControlScale { get; init; } = 0.9;
         public double RpStrength { get; init; } = 1;
         public double StreamNerf { get; init; } = RxStreamMapNerf.MAX_NERF;
-        public double StreamScale { get; init; } = 0.85;
+        public double StreamScale { get; init; } = 0.97; // 1.0.0 (cache 38, owner's scenario): was 0.85
         public double AimSlopScale { get; init; } = 0.895; // 0.9.0: was 0.87; aim slop ≈ −11% against production 0.4.0
         public double TechScale { get; init; } = 1.2; // 0.9.0 (owner's final): 0.95 → 1.0 in 0.6.0 → 1.2
         public double AimControlScale { get; init; } = 0.87; // 1.0.0: was 0.75 (0.5.0 patch for small-spacing control, fixed at its root)
