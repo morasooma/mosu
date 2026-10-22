@@ -13,6 +13,12 @@ Full details and examples are in `MOSUPP_CHANGELOG.md` (0.5.0–1.0.0).
   - Stream Map Nerf is proportional to the stream weight, up to −35% of that share.
   - For stream maps, RP Balance and the type scale are blended with the map's type without its streams.
 - **CS Reduction** (new): lower CS through DA or EZ costs PP (CS 4 → 2 ≈ −45%).
+- **CS Gain** (new, `RxCsGain.cs`): smaller circles pay only on maps that are hard on their own.
+  - The reference CS is the map's own CS, at most 5.
+  - The gain is final SS PP at the played CS divided by final SS PP at the reference CS. The map keeps gain^w, where
+    w = smoothstep(final SS PP at the reference CS, 800, 2000).
+  - With DA CS 8, Hashire Uma Musume goes from 1463 to 306 (NM 304). glass beach, VANISH and ganbare!kumokosan keep the
+    whole gain.
 - **RP Balance**:
   - Maps of unknown type take a content type.
   - The tech type is recognised by sliders that move about as much as the jumps.
@@ -38,13 +44,13 @@ Against 0.4.0 (SS, geometric mean by RP type over the 87 calibration rows):
 | Reading | 0% |
 
 The rules run through `OsuDifficultyCalculator` / `OsuPerformanceCalculator` when the selected Relax PP system is
-**MosuPp**, for RX and MRX. The MosuPp cache revision moves from 29 to 35, so cached PP is recalculated.
+**MosuPp**, for RX and MRX. The MosuPp cache revision moves from 29 to 36, so cached PP is recalculated.
 Normal client builds still have no `ConfigureForLab` method. The polygon override requires `EnableMosuPpLabTuning=true`.
 
 ## Validation
 
 - Release build of `osu.Desktop/osu.Desktop.csproj` succeeded.
-- 162 relevant NUnit tests passed, including the new Section Types and CS Reduction tests.
+- 171 relevant NUnit tests passed, including the new Section Types, CS Reduction and CS Gain tests.
 - The polygon was built against this branch with `EnableMosuPpLabTuning=false` and compared to the approved polygon
   assembly. Every numeric output was compared: PP components, stars, RP, control, Arles, the rule breakdown and the
   classifier.
@@ -61,7 +67,7 @@ All 721 cases matched.
 
 ```sh
 dotnet build osu.Desktop/osu.Desktop.csproj -c Release -m:1
-dotnet test osu.Game.Rulesets.Osu.Tests/osu.Game.Rulesets.Osu.Tests.csproj -c Release -m:1 --filter 'FullyQualifiedName~RxSectionTypesTest|FullyQualifiedName~RxCsReductionTest|FullyQualifiedName~RxArlesTest|FullyQualifiedName~MosuPpBalanceTest|FullyQualifiedName~RelaxPpSystemSelectionTest|FullyQualifiedName~RealistikRelaxManagedParityTest|FullyQualifiedName~RealistikRelaxBalanceTest|FullyQualifiedName~RelaxAimAntiAbuseTest'
+dotnet test osu.Game.Rulesets.Osu.Tests/osu.Game.Rulesets.Osu.Tests.csproj -c Release -m:1 --filter 'FullyQualifiedName~RxCsGainTest|FullyQualifiedName~RxSectionTypesTest|FullyQualifiedName~RxCsReductionTest|FullyQualifiedName~RxArlesTest|FullyQualifiedName~MosuPpBalanceTest|FullyQualifiedName~RelaxPpSystemSelectionTest|FullyQualifiedName~RealistikRelaxManagedParityTest|FullyQualifiedName~RealistikRelaxBalanceTest|FullyQualifiedName~RelaxAimAntiAbuseTest'
 ```
 
 This branch contains the calculator, client tests and release notes. Website code, deployment configuration, tokens,

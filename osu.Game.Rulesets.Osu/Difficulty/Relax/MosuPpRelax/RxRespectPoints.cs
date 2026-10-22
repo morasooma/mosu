@@ -129,7 +129,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         private const int moment_min_seconds = 8;
 
         /// <summary>RP of the playable beatmap (mods applied) played with <paramref name="mods"/>.</summary>
-        public static Result Calculate(IBeatmap beatmap, IReadOnlyList<Mod> mods)
+        /// <param name="circleSize">CS to rate the map at instead of the played one (CS Gain reference; only the circle diameter changes).</param>
+        public static Result Calculate(IBeatmap beatmap, IReadOnlyList<Mod> mods, float? circleSize = null)
         {
             var objects = beatmap.HitObjects.OfType<OsuHitObject>().ToList();
             var notes = objects.Where(o => o is not Spinner).ToList();
@@ -146,7 +147,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             double preemptRealMs = preemptMs(ar) / arRate;
             double hit300RealMs = (80 - 6 * od) / arRate;
 
-            double diameter = notes[0].Radius * 2;
+            double diameter = circleSize is float cs ? RxCsGain.Diameter(cs) : notes[0].Radius * 2;
 
             // ---------------- streams, jumps, rhythm (map time, rate-independent)
             double[] gaps = new double[notes.Count];

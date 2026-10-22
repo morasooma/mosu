@@ -17,12 +17,21 @@ Examples are SS scores, RX, with all rules of that version.
 Numbering restarts after 1.13.0: **1.13.0 = 0.0.1**. Before / after numbers are made with the test polygon in
 `tools/MosuPpLab` (`./lab.sh`), which calculates the maps of `tools/MosuPpLab/maps.txt` with the baseline and the current code.
 
-## MosuPp 1.0.0 (cache 35) — release
+## MosuPp 1.0.0 (cache 36) — release
 
 First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below plus:
 - **Balance**: aim control type scale 0.75 → 0.87. 0.75 was the 0.5.0 patch for small-spacing control maps that escaped the
   type balance as "unknown"; 0.5.0 also fixed that at its root (unknown-type fallback, density term, CS 4 control window), and
   the patch then cut every control map by a quarter (−26% against 0.4.0, −1.5% without it).
+- **CS Gain (RX)** (new, cache 36): smaller circles pay only on maps that are hard by themselves. Reference CS = the map's
+  own CS, at most 5. Gain = final SS PP at the played CS / final SS PP at the reference CS (same mods; distances in radii,
+  small circle bonus, CS PP Buff, RP, Arles, type scale — all of it; RP and Arles rated with the reference circle). The map
+  keeps gain^w, w = smoothstep(final SS PP at the reference CS, 800, 2000). Easy maps no longer turn into farm maps with DA /
+  HR, hard maps keep the whole gain, maps with their own CS up to 5 are not touched without CS mods.
+  Examples (SS): Hashire Uma Musume DA CS 8 1463 → 306 (NM 304); Overkill DA CS 8 1683 → 434; Zaplatit' DA CS 8 1613 → 625;
+  Sendan Life (/b/2267564) DA CS 8 4808 → 2425; glass beach, VANISH, ganbare!kumokosan, Attack with DA CS 8 unchanged;
+  Bleed (/b/2815425, CS 6) 957 → 649; HR: Smiling 1557 → 974, Preserved Valkyria 1126 → 868, L9 1738 → 1570, CosMo – 255
+  2177 → 2146.
 
 Against production 0.4.0 (SS, geometric mean by RP type over the test set): aim slop −11%, aim control −14%, streams +1%,
 tech +36%, reading 0%. Examples (0.4.0 → 1.0.0): ganbare!kumokosan (/b/2833124) 2975 → 2662; Attack (/b/5637274) 2474 → 2153,

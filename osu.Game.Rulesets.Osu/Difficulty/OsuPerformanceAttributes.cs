@@ -90,6 +90,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty
         [JsonIgnore]
         public double? MosuPpStreamWeight { get; set; }
 
+        /// <summary>MosuPp CS Gain: final SS PP with the same mods at the reference CS (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public double? MosuPpCsReferencePp { get; set; }
+
         /// <summary>MosuPp: type of a stream map outside its streams (Section Types; diagnostics, not serialised).</summary>
         [JsonIgnore]
         public string? MosuPpRpRemainderType { get; set; }
