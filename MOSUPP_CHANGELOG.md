@@ -17,7 +17,7 @@ Examples are SS scores, RX, with all rules of that version.
 Numbering restarts after 1.13.0: **1.13.0 = 0.0.1**. Before / after numbers are made with the test polygon in
 `tools/MosuPpLab` (`./lab.sh`), which calculates the maps of `tools/MosuPpLab/maps.txt` with the baseline and the current code.
 
-## MosuPp 1.0.0 (cache 37) — release
+## MosuPp 1.0.0 (cache 38) — release
 
 First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below plus:
 - **Balance**: aim control type scale 0.75 → 0.87. 0.75 was the 0.5.0 patch for small-spacing control maps that escaped the
@@ -39,6 +39,11 @@ First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below
   Examples (SS): the owner's easy set −17% (Cat (/b/5688819) 256 → 213, Horrible Kids (/b/2596015) 243 → 202, Zombie Nation
   (/b/4507434) 329 → 274, Caramelldansen (/b/150837) 153 → 128); Overkill 434 → 381; Feelin Sky 538 → 462; Libera 496 → 463;
   maps above 600 PP unchanged.
+- **Balance** (cache 38, owner's scenario): Stream Map Nerf 0.35 → 0.25, stream type scale 0.85 → 0.97.
+  Examples (SS, cache 37 → 38): Expurget (/b/4565459) 327 → 415, DT 1170 → 1307; Worms of Soul (/b/5245120) 310 → 407,
+  DT 982 → 1214; A Tale Of Salt And Light (/b/5571670) DT 1400 → 1560; Ixion's Torment 648 → 747.
+  Against production 0.4.0 (SS, geometric mean by RP type): aim slop −12%, aim control −18%, streams +11%, tech +31%,
+  reading −1%.
 
 Against production 0.4.0 (SS, geometric mean by RP type over the test set): aim slop −11%, aim control −14%, streams +1%,
 tech +36%, reading 0%. Examples (0.4.0 → 1.0.0): ganbare!kumokosan (/b/2833124) 2975 → 2662; Attack (/b/5637274) 2474 → 2153,

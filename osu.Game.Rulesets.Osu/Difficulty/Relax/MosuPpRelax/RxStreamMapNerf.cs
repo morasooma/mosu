@@ -8,8 +8,8 @@ using MosuPpRxCs;
 namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 {
     /// <summary>
-    /// MosuPp rule "Stream Map Nerf (RX)" (only for <c>ForkRelaxPpSystem.MosuPp</c>): every stream map loses up to 35% (0.7.0;
-    /// 50% before) of the PP its streams earn, whatever the shape of its streams. Replaces "Simple Stream Nerf (RX)" (v10–v24), which only hit
+    /// MosuPp rule "Stream Map Nerf (RX)" (only for <c>ForkRelaxPpSystem.MosuPp</c>): every stream map loses up to 25% (1.0.0;
+    /// 35% in 0.7.0–0.9.0, 50% before) of the PP its streams earn, whatever the shape of its streams. Replaces "Simple Stream Nerf (RX)" (v10–v24), which only hit
     /// straight / one-curve streams.
     /// </summary>
     /// <remarks>
@@ -17,7 +17,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
     /// the SS PP earned in streams (<see cref="RxSectionTypes"/>), before it was smoothstep(stream note share, 30%, 60%).
     /// Stream notes: runs of ≥ 6 notes with equal spacing in time (±10%) and ≤ 125 ms between notes (raw map time, so NM and
     /// DT use the same share), counting only movements up to 2.5 circle radii (equal-timed jumps are not streams).
-    /// Multiplier on the total: 1 − 0.35 · smoothstep(speed/aim, 1.0, 1.3) · stream PP share.
+    /// Multiplier on the total: 1 − 0.25 · smoothstep(speed/aim, 1.0, 1.3) · stream PP share.
     /// Since 0.3.0 a note where the cursor turns (&lt; 120°) is not a stream note (see <see cref="TURN_ANGLE"/>).
     /// Jump maps with streams (drivers license [full]: 73% streams but speed/aim 0.96 / 0.74, Novae Ruptis 0.80 / 0.65) are
     /// not touched. Examples (SS, RX, at the 0.3.0 maximum −50%; −35% since 0.7.0): Expurget, Worms of Soul −50% NM and DT;
@@ -26,7 +26,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
     /// </remarks>
     internal static class RxStreamMapNerf
     {
-        public const double MAX_NERF = 0.35; // 0.7.0: was 0.50
+        public const double MAX_NERF = 0.25; // 1.0.0 (cache 38, owner's scenario): 0.35 since 0.7.0, 0.50 before
         public const double STREAM_MAP_RATIO_START = 1.0;
         public const double STREAM_MAP_RATIO_FULL = 1.3;
         public const double STREAM_MAX_DELTA_MS = 125;

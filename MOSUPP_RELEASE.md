@@ -10,7 +10,7 @@ Full details and examples are in `MOSUPP_CHANGELOG.md` (0.5.0–1.0.0).
 
 - **Section Types** (new, `RxSectionTypes.cs`): the stream weight is the share of the SS PP that the map's streams earn.
   It is computed from the 400 ms section peaks of the difficulty calculator.
-  - Stream Map Nerf is proportional to the stream weight, up to −35% of that share.
+  - Stream Map Nerf is proportional to the stream weight, up to −25% of that share.
   - For stream maps, RP Balance and the type scale are blended with the map's type without its streams.
 - **CS Reduction** (new): lower CS through DA or EZ costs PP (CS 4 → 2 ≈ −45%).
 - **CS Gain** (new, `RxCsGain.cs`): smaller circles pay only on maps that are hard on their own.
@@ -29,8 +29,8 @@ Full details and examples are in `MOSUPP_CHANGELOG.md` (0.5.0–1.0.0).
   - The speed dominance part is removed (it took up to −32% from hard aim control with DT).
   - The "spike + filler" anti-farm is −12% (−8% in Realistik).
 - **Balance** (frozen in `MosuPpBalance`):
-  - global scale 1, Arles bonus 0.20, control scale 0.90, RP strength 1, stream nerf 0.35;
-  - type scales: streams 0.85, aim slop 0.895, tech 1.20, aim control 0.87;
+  - global scale 1, Arles bonus 0.20, control scale 0.90, RP strength 1, stream nerf 0.25;
+  - type scales: streams 0.97, aim slop 0.895, tech 1.20, aim control 0.87;
   - CS Reduction strength 1.6.
 - **Diagnostics** (`[JsonIgnore]`, not serialised): each rule's multiplier, map composition, RP type, and stream weight.
 
@@ -38,14 +38,14 @@ Against 0.4.0 (SS, geometric mean by RP type over the 87 calibration rows):
 
 | RP type | Change |
 |---|---:|
-| Aim slop | −11% |
-| Aim control | −14% |
-| Streams | +1% |
-| Tech | +36% |
-| Reading | 0% |
+| Aim slop | −12% |
+| Aim control | −18% |
+| Streams | +11% |
+| Tech | +31% |
+| Reading | −1% |
 
 The rules run through `OsuDifficultyCalculator` / `OsuPerformanceCalculator` when the selected Relax PP system is
-**MosuPp**, for RX and MRX. The MosuPp cache revision moves from 29 to 37, so cached PP is recalculated.
+**MosuPp**, for RX and MRX. The MosuPp cache revision moves from 29 to 38, so cached PP is recalculated.
 Normal client builds still have no `ConfigureForLab` method. The polygon override requires `EnableMosuPpLabTuning=true`.
 
 ## Validation
