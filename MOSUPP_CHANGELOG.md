@@ -17,7 +17,7 @@ Examples are SS scores, RX, with all rules of that version.
 Numbering restarts after 1.13.0: **1.13.0 = 0.0.1**. Before / after numbers are made with the test polygon in
 `tools/MosuPpLab` (`./lab.sh`), which calculates the maps of `tools/MosuPpLab/maps.txt` with the baseline and the current code.
 
-## MosuPp 1.0.0 (cache 36) — release
+## MosuPp 1.0.0 (cache 37) — release
 
 First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below plus:
 - **Balance**: aim control type scale 0.75 → 0.87. 0.75 was the 0.5.0 patch for small-spacing control maps that escaped the
@@ -32,6 +32,13 @@ First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below
   Sendan Life (/b/2267564) DA CS 8 4808 → 2425; glass beach, VANISH, ganbare!kumokosan, Attack with DA CS 8 unchanged;
   Bleed (/b/2815425, CS 6) 957 → 649; HR: Smiling 1557 → 974, Preserved Valkyria 1126 → 868, L9 1738 → 1570, CosMo – 255
   2177 → 2146.
+- **RP Balance (RX)** (cache 37): the RP bonus (multiplier above 1) needs a map worth 300–600 SS PP before RP (none below,
+  full above, smooth between); the penalty side is unchanged. RP grows as intensity^0.75 and was fitted on maps of
+  1000–2800 PP, so it never went below ~330 for an aim slop map: maps with almost no movement had RP 1.6–2.5× their PP
+  and all got +20% (median RP / PP 2.2 below 300 PP, 0.9 above 2500 PP).
+  Examples (SS): the owner's easy set −17% (Cat (/b/5688819) 256 → 213, Horrible Kids (/b/2596015) 243 → 202, Zombie Nation
+  (/b/4507434) 329 → 274, Caramelldansen (/b/150837) 153 → 128); Overkill 434 → 381; Feelin Sky 538 → 462; Libera 496 → 463;
+  maps above 600 PP unchanged.
 
 Against production 0.4.0 (SS, geometric mean by RP type over the test set): aim slop −11%, aim control −14%, streams +1%,
 tech +36%, reading 0%. Examples (0.4.0 → 1.0.0): ganbare!kumokosan (/b/2833124) 2975 → 2662; Attack (/b/5637274) 2474 → 2153,

@@ -38,8 +38,24 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         public const double MULTIPLIER_MIN = 0.8;
         public const double MULTIPLIER_MAX = 1.2;
 
+        /// <summary>The RP bonus (multiplier above 1) needs a map worth this much SS PP before RP; full from <see cref="BONUS_PP_FULL"/>.</summary>
+        /// <remarks>
+        /// 1.0.0 (cache 37): RP grows as intensity^0.75 and was fitted on maps of 1000–2800 PP, so it never goes below ~330 for an
+        /// aim slop map. Maps with almost no movement (≤ 300 PP before RP) had RP 1.6–2.5× their PP and all got +20%. The penalty
+        /// side (below 1) is unchanged.
+        /// </remarks>
+        public const double BONUS_PP_START = 300;
+
+        public const double BONUS_PP_FULL = 600;
+
         public static double Multiplier(double respectPoints, double ssPp)
-            => respectPoints <= 0 || ssPp <= 0 ? 1 : Math.Clamp(respectPoints / ssPp, MULTIPLIER_MIN, MULTIPLIER_MAX);
+        {
+            if (respectPoints <= 0 || ssPp <= 0)
+                return 1;
+
+            double multiplier = Math.Clamp(respectPoints / ssPp, MULTIPLIER_MIN, MULTIPLIER_MAX);
+            return multiplier <= 1 ? multiplier : 1 + (multiplier - 1) * smoothStep(ssPp, BONUS_PP_START, BONUS_PP_FULL);
+        }
 
         public enum MapType
         {
