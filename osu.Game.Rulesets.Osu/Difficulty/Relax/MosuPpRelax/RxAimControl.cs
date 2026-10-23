@@ -32,6 +32,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         public const double TURN_NONE_ANGLE = 130;
         public const double SPACING_FULL = 1.5; // circle diameters
         public const double SPACING_NONE = 2.5;
+        /// <summary>Circle diameter (osu!px) at CS 4: the spacing window is measured in these circles, independent of CS mods.</summary>
+        public const double REFERENCE_DIAMETER = 2 * (54.4 - 4.48 * 4);
         public const double STACK_SPACING = 0.3;
         public const double VELOCITY_REFERENCE = 10; // circle diameters per played second
         public const int HARDEST_SECONDS = 20;
@@ -70,7 +72,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                     continue;
 
                 double turn = 1 - smoothStep(angle, TURN_FULL_ANGLE, TURN_NONE_ANGLE);
-                double window = 1 - smoothStep(spacing, SPACING_FULL, SPACING_NONE);
+                // 0.5.0: which moves are "control" is decided in circles of the reference CS 4, so bigger circles (DA / EZ) do not
+                // turn wide jumps into control moves; the velocity below still uses the circles really played.
+                double window = 1 - smoothStep(distance(notes[i - 1].Position, notes[i].Position) / REFERENCE_DIAMETER, SPACING_FULL, SPACING_NONE);
                 double velocity = spacing * 1000 * clockRate / gap;
 
                 int bin = Math.Clamp((int)((notes[i].StartTime - t0) / 1000), 0, bins - 1);

@@ -27,13 +27,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             public double Multiplier => 1 + MosuPpBalance.Current.ArlesBonus * smoothStep(Confidence, CLASSIFICATION_THRESHOLD, 0.85);
         }
 
-        public static Analysis Analyze(IBeatmap beatmap)
+        /// <param name="circleSize">CS to rate the map at instead of the played one (CS Gain reference; only the circle diameter changes).</param>
+        public static Analysis Analyze(IBeatmap beatmap, float? circleSize = null)
         {
             var notes = beatmap.HitObjects.OfType<OsuHitObject>().Where(o => o is not Spinner).ToList();
             if (notes.Count < 3)
                 return default;
 
-            double diameter = Math.Max(1, notes[0].Radius * 2);
+            double diameter = Math.Max(1, circleSize is float referenceCs ? RxCsGain.Diameter(referenceCs) : notes[0].Radius * 2);
             var gaps = new double[notes.Count];
             var spacing = new double[notes.Count];
             var angles = Enumerable.Repeat(double.NaN, notes.Count).ToArray();
