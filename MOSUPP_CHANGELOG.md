@@ -17,6 +17,141 @@ Examples are SS scores, RX, with all rules of that version.
 Numbering restarts after 1.13.0: **1.13.0 = 0.0.1**. Before / after numbers are made with the test polygon in
 `tools/MosuPpLab` (`./lab.sh`), which calculates the maps of `tools/MosuPpLab/maps.txt` with the baseline and the current code.
 
+## MosuPp 1.0.0 (cache 40) — test release
+
+Test version: the balance can still change before the final 1.0.0.
+
+First release after production 0.4.0; it ships everything of 0.5.0–0.9.0 below plus:
+- **Balance**: aim control type scale 0.75 → 0.87. 0.75 was the 0.5.0 patch for small-spacing control maps that escaped the
+  type balance as "unknown"; 0.5.0 also fixed that at its root (unknown-type fallback, density term, CS 4 control window), and
+  the patch then cut every control map by a quarter (−26% against 0.4.0, −1.5% without it).
+- **CS Gain (RX)** (new, cache 36): smaller circles pay only on maps that are hard by themselves. Reference CS = the map's
+  own CS, at most 5. Gain = final SS PP at the played CS / final SS PP at the reference CS (same mods; distances in radii,
+  small circle bonus, CS PP Buff, RP, Arles, type scale — all of it; RP and Arles rated with the reference circle). The map
+  keeps gain^w, w = smoothstep(final SS PP at the reference CS, 800, 2000). Easy maps no longer turn into farm maps with DA /
+  HR, hard maps keep the whole gain, maps with their own CS up to 5 are not touched without CS mods.
+  Examples (SS): Hashire Uma Musume DA CS 8 1463 → 306 (NM 304); Overkill DA CS 8 1683 → 434; Zaplatit' DA CS 8 1613 → 625;
+  Sendan Life (/b/2267564) DA CS 8 4808 → 2425; glass beach, VANISH, ganbare!kumokosan, Attack with DA CS 8 unchanged;
+  Bleed (/b/2815425, CS 6) 957 → 649; HR: Smiling 1557 → 974, Preserved Valkyria 1126 → 868, L9 1738 → 1570, CosMo – 255
+  2177 → 2146.
+- **RP Balance (RX)** (cache 37): the RP bonus (multiplier above 1) needs a map worth 300–600 SS PP before RP (none below,
+  full above, smooth between); the penalty side is unchanged. RP grows as intensity^0.75 and was fitted on maps of
+  1000–2800 PP, so it never went below ~330 for an aim slop map: maps with almost no movement had RP 1.6–2.5× their PP
+  and all got +20% (median RP / PP 2.2 below 300 PP, 0.9 above 2500 PP).
+  Examples (SS): the owner's easy set −17% (Cat (/b/5688819) 256 → 213, Horrible Kids (/b/2596015) 243 → 202, Zombie Nation
+  (/b/4507434) 329 → 274, Caramelldansen (/b/150837) 153 → 128); Overkill 434 → 381; Feelin Sky 538 → 462; Libera 496 → 463;
+  maps above 600 PP unchanged.
+- **Balance** (cache 38, owner's scenario): Stream Map Nerf 0.35 → 0.25, stream type scale 0.85 → 0.97.
+  Examples (SS, cache 37 → 38): Expurget (/b/4565459) 327 → 415, DT 1170 → 1307; Worms of Soul (/b/5245120) 310 → 407,
+  DT 982 → 1214; A Tale Of Salt And Light (/b/5571670) DT 1400 → 1560; Ixion's Torment 648 → 747.
+  Against production 0.4.0 (SS, geometric mean by RP type): aim slop −12%, aim control −18%, streams +11%, tech +31%,
+  reading −1%.
+- **CS Gain (RX)** (cache 39): HR's own CS raise (×1.3) is not a gain — HR also mirrors the patterns and raises AR / OD, it
+  has to be played. With HR the reference CS is raised by ×1.3 (at most 10), so only what DA adds is gated. HR maps are back
+  at their PP without CS Gain: Smiling 984 → 1563, Preserved Valkyria 868 → 1126, Dreamin' attraction 792 → 1068, L9 1570 →
+  1738; DA CS 6 rows unchanged.
+- **Accuracy Gate (RX)** (new, cache 40): accuracy PP is paid by how hard the map is. Realistik accuracy PP depends only on OD,
+  accuracy and circle count, so an easy OD 9 map paid as much accuracy PP as a hard one (≈ 34% of the PP of easy maps, 5–9% of
+  hard ones), while in RX the game clicks the notes. Accuracy PP × (0.15 + 0.85 · smoothstep(skill PP, 200, 350)), skill PP =
+  aim + speed PP of an SS on the map + mods after the MosuPp aim rules.
+  The owner's easy set is now about half of production (median −49%, −38..−55%), maps with 1000+ PP are unchanged. Other maps
+  that lose more than 3% (SS, cache 39 → 40): heat abnormal 394 → 316, Overkill 381 → 314, LATHI 482 → 408, Feelin Sky
+  463 → 407, Hashire Uma Musume 254 → 225, burn this moment 331 → 296, Arche 475 → 427.
+
+Against production 0.4.0 (SS, geometric mean by RP type over the test set, cache 40): aim slop −12%, aim control −19%,
+streams +11%, tech +28%, reading −11% (heat, the only reading map, is easy at NM); the examples below are from cache 35. Examples (0.4.0 → 1.0.0): ganbare!kumokosan (/b/2833124) 2975 → 2662; Attack (/b/5637274) 2474 → 2153,
+DT 6297 → 5632; glass beach (/b/5870318) 2796 → 2502, DT 7429 → 6649; Six Seven (/b/5711898) 2128 → 1904; Hills Have Eyes
+(/b/4354559) 1980 → 1772; Sendan Life (/b/2267564) 1526 → 1366; Mor 3 (/b/4654706) 2038 → 1752; VANISH (/b/4323073)
+2652 → 2277; UMMU (/b/1743443) 1191 → 994, DT 2363 → 1989; FEEEEVER TIME (/b/3446204) DT 1932 → 1681; Bleed (/b/2815425)
+824 → 957; THE PLATINUM TRIGGER (/b/4352925) 690 → 1240; Lost Requiem [Zenith] (/b/5026621) 970 → 1731; HAWATARI
+(/b/3977191) 836 → 1415; Nhelv (/b/2932798) DT 1636 → 1787; Expurget (/b/4565459) 284 → 327, DT 1184 → 1170; Worms of Soul
+(/b/5245120) DT 1119 → 982; Songs Compilation (/b/4897206) DT 985 → 1168.
+
+## MosuPp 0.9.0 (cache 34)
+
+- **Realistik pattern balance (RX)**: anti-farm "spike + filler" −14% → −12%.
+- **Balance**: tech type scale 1.00 → 1.20 (owner's final value); aim slop type scale 0.87 → 0.895, so aim slop maps are on
+  average −11% against production 0.4.0 (geometric mean over the 34 aim slop SS rows of the test set; most of them exactly −11%).
+  Against 0.4.0 by RP type: aim slop −11%, aim control −26%, streams +1%, tech +36%, reading 0%.
+  Examples (SS, 0.8.0 → 0.9.0): Attack (/b/5637274) 2064 → 2153, DT 5473 → 5632; ganbare!kumokosan (/b/2833124) 2588 → 2662;
+  THE PLATINUM TRIGGER (/b/4352925) 1033 → 1240; Lost Requiem [Zenith] 1442 → 1731; Songs Compilation (/b/4897206) DT
+  1154 → 1168.
+
+## MosuPp 0.8.0 (cache 33)
+
+- **Section Types (RX)** (new): the map-type rules no longer see one type for the whole map. The difficulty is a weighted sum of
+  400 ms section peaks (hardest first, 0.9 per rank), so every section's share of the PP is known (aim and speed combined by
+  their share of the total). A section's stream share is the share of its notes in straight streams (stacked notes excluded);
+  the map's stream weight = Σ section PP share × section stream share. Example: Ne Obliviscaris – Songs Compilation
+  (/b/4897206), 6:33 with about a minute of hard jump and stream sections: streams earn 59% of its PP (Worms of Soul 99%,
+  Expurget 89%, Libera 39%, Sendan Life 3%).
+- **Stream Map Nerf (RX)**: proportional to the stream weight instead of smoothstep(stream note share, 30%, 60%) — only the
+  part of the PP the streams earn loses up to 35%; hard jump sections of stream maps are not nerfed as streams.
+- **RP Balance + type scale (RX)**: a stream map is rated as streams only by its stream weight; the rest takes the RP and the
+  type scale of the map's type without its streams (0.2.0 classification with no stream notes, aim slop when nothing fits).
+  Other types are unchanged (their RP scales were fitted together with their streams).
+  Examples (SS, 0.7.0 → 0.8.0): Songs Compilation DT 886 → 1154 (players' estimate ≈ 1200), NM 339 → 417; Libera 383 → 487;
+  Yomi yori Kitarite Utsutsu 505 → 674; This Calling 376 → 483; Last Resort 917 → 1129; Expurget 303 → 322, DT 1042 → 1165;
+  A Tale Of Salt And Light DT 1229 → 1393; BLANKFIELD – Goodbye 474 → 379 and Jashin 490 → 435 (their streams earn 67% / 85%
+  of the PP but had too few stream notes for the old share gate); burn this moment DT 960 → 857. Average by RP type: streams
+  +11%, aim control −1%, tech −0.3%, aim slop / reading / unknown 0%.
+
+## MosuPp 0.7.0 (cache 32)
+
+- **Realistik pattern balance (RX)**: the speed dominance part (up to −32% when speed PP ≫ aim PP, full from 850 speed PP) is
+  removed. It grew with the map's difficulty and only hit hard aim control with DT (FEEEEVER TIME, Rubik's Cube, UMMU), while
+  streams are already balanced by Stream Map Nerf, RP Balance and the type scale.
+- **Realistik pattern balance (RX)**: the "spike + filler" anti-farm part −8% → −14% (Spike Filler Guard still lifts it for maps
+  with 2–3+ hard moments). The flow overboost and HR wide stream parts are unchanged. The site shows every part separately.
+- **Stream Map Nerf (RX)**: maximum −50% → −35% (`StreamNerf` 0.50 → 0.35).
+  Examples (SS, 0.6.0 → 0.7.0): Rubik's Cube DT 1513 → 1873; FEEEEVER TIME DT 1338 → 1461; UMMU DT 1715 (Aim Control decides);
+  Worms of Soul 242 → 305; Expurget 241 → 303, DT 1006 → 1042 (RP takes the rest back); Libera 315 → 383; A Tale Of Salt And
+  Light 403 → 448; Attack (/b/5637274) 2152 → 2064; Euphoria 671 → 627. Average by RP type: streams +7%, aim control +2%, aim
+  slop −0.5%, tech −0.4%; all maps +1.3%.
+
+## MosuPp 0.6.0 (cache 31)
+
+- **RP Balance (RX), tech type**: tech maps are recognised by sliders that move about as much as the jumps, not by the slider
+  share alone. Tech = slider share 33–43% (was 45–55%) × slider / jump speed over the hardest 20 s 0.40–0.55 (new), streams
+  tolerated up to 25–45% (was 15–35%). Jump and control maps with many slow sliders (Zaplatit', Hashire, Machinegun, Sound
+  Chimera, LATHI: ratio ≤ 0.47) keep their type. 14 of the 15 tech maps of the test set are tech now (was 6); HERA (54% streams)
+  stays aim control. No other map of the test set changes its type.
+- **RP Balance (RX)**: tech RP scale 147 → 280. The old scale was fitted on 3 maps and pushed the rest to the −20% limit while
+  tech maps the classifier missed got +20% as "unknown"; every tech map of the test set now reaches the +20% limit.
+- **Balance**: tech type scale 0.95 → 1.00 (owner: tech is hard for everyone, about +20% RP and +200 PP).
+  Examples (SS, 0.5.0 → 0.6.0): THE PLATINUM TRIGGER (/b/4352925) 654 → 1033; Lost Requiem [Zenith] (/b/5026621) 913 → 1442,
+  [Celestial] (/b/5229944) 779 → 1212; HAWATARI (/b/3977191) 794 → 1193; desocializedvandalism (/b/3233265) 802 → 1053;
+  Egonomy (/b/3569579) 294 → 464; Nhelv (/b/2932798) 471 → 628, DT 1147 → 1530 (owner's target ≈ 1500); Transhumanist
+  (/b/3352759) 612 → 644; RPG (/b/3333745) 704 → 704. Average over the 14 tech maps +209 PP; other maps unchanged.
+
+## MosuPp 0.5.0 (cache 30)
+
+Fixes after 0.4.0 went live: dense small-spacing aim control maps were still overpaid, and lowering CS with DA cost too little.
+Worked out together with Codex (OpenAI) on the polygon; numbers below are SS, compared with 0.4.0 as released.
+
+- **Balance**: the owner's site scenario becomes the client default (`MosuPpBalance`): Arles bonus 0.30 → 0.20, control scale
+  1 → 0.90, type scales stream 0.85, aim slop 0.87, tech 0.95, aim control 0.75 (global 1, RP strength 1, stream nerf 0.50 kept).
+  Average change against 0.4.0 by type: streams −17%, aim slop −13%, aim control −22%, tech −11%, reading −9%.
+- **RP Balance (RX)**: maps the 0.2.0 classification leaves unknown take the content type of the polygon's pattern classifier
+  (stream / aim slop / tech / aim control, no reading / Arles override); aim control only when the fast-run spacing (circles
+  played) is ≤ 1.1. These maps had the generous unknown RP scale (363) and no per-type scale, so the aim control scale never
+  reached them. Meshuggah – Bleed DT 1794 → 1345, Sunless Rise – Ghosts Of The Past DT 2001 → 1501, Hashire Uma Musume DT
+  873 → 654, Camellia – Arche DT 1235 → 926, goreshit – burn this moment DT 1280 → 960 (−25% against the scenario alone;
+  We Could Get More Machinegun Psystyle!, 1.13 circles, a jump map, stays unknown).
+- **RP Balance (RX)**: the density term of the aim control Fitts intensity pays only for notes reached by a move
+  (× smoothstep(spacing, 0.5, 1.0 circles)) — tiny moves are not hard aim control in RX. Small effect (UMMU DT −3%, HERA ±5%).
+- **Aim Control (RX)**: the spacing window that decides which moves are control is measured in CS 4 circles; velocity still uses
+  the circles played. Bigger circles no longer turn wide jumps into control moves: with DA CS 4 → 2 the control multiplier of
+  Mor 3 grows ×1.57 → ×1.87 instead of ×2.59, control maps lose like jump maps.
+- **CS Reduction (RX)** (new): bigger circles than the map has (DA with a lower CS, EZ) — total × (native radius / played
+  radius)^k, k = `MosuPpBalance.CsReductionStrength` = 1.6 (site slider «Штраф за понижение CS», 0 disables). Only a reduction
+  relative to the map's own CS; native low-CS maps and raised CS are not touched. Applied last, after RP and Arles.
+  DA CS 4 → 2: ganbare!kumokosan, glass beach, Sendan Life, Vanish, Mor 3 −45% (0.4.0: −13…−22%); CS 5 → 2 Attack −64%;
+  CS 3 → 2 Expurget −22%. EZ: Six Seven, ganbare −39%, Mor 3 −48% (0.4.0: Six Seven EZ +20%). Code: `RxCsReduction.cs`.
+- The RP type is the type of the map as played with its mods (owner's decision): spacing is measured in the circles played, so
+  weak control with a low CS can become streams, streams with HR can become control, EZ (low AR) makes a map a reading map.
+  E.g. We Could Get More Machinegun Psystyle! DA CS 2 → aim control (−64% with CS Reduction), Six Seven EZ → reading (−39%).
+
 ## MosuPp 0.4.0 (cache 29)
 
 The client includes the approved polygon balance: global/control/type scales 1, Arles bonus 0.30,

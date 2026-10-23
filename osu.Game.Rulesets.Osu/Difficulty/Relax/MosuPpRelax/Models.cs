@@ -147,6 +147,13 @@ public sealed class RxDifficultyAttributes
     // of the played sections (≈ 1 for evenly hard maps, 3+ when one short part carries the whole map).
     public double AimPeakRatio { get; set; } = 1;
     public double SpeedPeakRatio { get; set; } = 1;
+
+    // MosuPp "Section Types (RX)": the 400 ms (× rate) section peaks used for the PP difficulty (StrainPeaksForPp), in map order.
+    // Section k covers map time (FirstSectionEnd + (k − 1) · SectionLength, FirstSectionEnd + k · SectionLength].
+    public float[] AimSectionPeaks { get; set; } = Array.Empty<float>();
+    public float[] SpeedSectionPeaks { get; set; } = Array.Empty<float>();
+    public double FirstSectionEnd { get; set; }
+    public double SectionLength { get; set; }
 }
 
 public sealed class RxNativePerformanceResult
