@@ -70,3 +70,22 @@ Take the official osu!lazer `osu.app.Apple.Silicon` bundle, copy the managed
 Morasooma/osu.Game/osu.Framework assemblies and resources from the linux-x64
 AppImage into it, switch the Machine field of `Morasooma.dll` to ARM64,
 repoint the apphost to `Morasooma.dll`, remove the updater, and sign.
+
+## 5. First launch of an unsigned / ad-hoc signed build
+
+Gatekeeper blocks apps that are not notarized. For users of a release build,
+there are three options.
+
+Option A: open the app once (macOS refuses), then go to
+System Settings -> Privacy & Security, scroll down to the "Morasooma was
+blocked" message and click **Open Anyway**.
+
+Option B: remove the quarantine flag in the terminal:
+`xattr -cr /Applications/Morasooma.app`
+
+Option C: disable signature checks system-wide with
+`sudo spctl --master-disable`. This works, but is not recommended: it turns
+off Gatekeeper for all apps.
+
+This should be explained on the download page. Developer ID signing plus
+notarization removes the problem entirely.
