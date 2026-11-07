@@ -105,11 +105,16 @@ internal static class ReadingEvaluator
         return difficulty;
     }
 
+    // High AR (approach under 500 ms on screen, ~AR 9.7+): reading difficulty grows with (500 − preempt)^2.5.
+    // MosuPp 1.1 draft (MosuPpBalance.HighArReading = false): no PP for high AR.
     private static float CalculatePreemptDifficulty(
         float velocity,
         float constantAngleNerf,
         float preempt)
     {
+        if (!osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax.MosuPpBalance.Current.HighArReading)
+            return 0f;
+
         float difference = PREEMPT_STARTING_POINT - preempt;
         float halfRect = (difference + MathF.Abs(difference)) / 2f;
         float preemptDifficulty = MathF.Pow(halfRect, 2.5f) / PREEMPT_BALANCING_FACTOR;
