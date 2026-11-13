@@ -216,6 +216,27 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
             });
         }
 
+        [Test]
+        public void PhysicalSnapshotAcceptsLegacyMapWithoutChangingPlayableObjects()
+        {
+            var ruleset = new OsuRuleset();
+            var working = GetBeatmap("801165");
+            var dt = new OsuModDoubleTime();
+            dt.LockDifficultyAdjust.Value = true;
+            Mod[] mods = { dt, new OsuModRelax() };
+            var playable = working.GetPlayableBeatmap(ruleset.RulesetInfo, mods);
+            double firstTime = playable.HitObjects[0].StartTime;
+            var physical = osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax.RxPhysicalPlay.Create(playable, mods);
+            Assert.Multiple(() =>
+            {
+                Assert.That(physical.HitObjects.Count, Is.EqualTo(playable.HitObjects.Count));
+                Assert.That(physical.HitObjects[0].StartTime, Is.EqualTo(firstTime / 1.5).Within(1e-8));
+                Assert.That(playable.HitObjects[0].StartTime, Is.EqualTo(firstTime));
+                Assert.That(physical.ControlPointInfo.GetType(), Is.EqualTo(playable.ControlPointInfo.GetType()));
+                Assert.That(physical.Difficulty.ApproachRate, Is.EqualTo(playable.Difficulty.ApproachRate));
+            });
+        }
+
         private (OsuDifficultyAttributes Difficulty, OsuPerformanceAttributes Performance) calculateRelax(string beatmapName)
             => calculateRelax(beatmapName, Array.Empty<Mod>());
 

@@ -10,6 +10,22 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
     public class MosuPpBalanceTest
     {
         [Test]
+        public void TestApprovedReleaseDefaults()
+        {
+            var b = MosuPpBalance.Current;
+            Assert.Multiple(() =>
+            {
+                Assert.That(MosuPpBalance.ReleaseVersion, Is.EqualTo("2.0.0"));
+                Assert.That(b.GlobalScale, Is.EqualTo(0.86673));
+                Assert.That(b.OwnerRules && b.UseHitAreaDistances && b.UsePhysicalEquivalence, Is.True);
+                Assert.That(b.PhysicalChallengeStrength, Is.EqualTo(1));
+                Assert.That(b.LongMapNerf, Is.Zero);
+                Assert.That(b.HighArReading, Is.False);
+                Assert.That(b.StreamNerf, Is.Zero);
+            });
+        }
+
+        [Test]
         public void TestClientCannotLoadLabOverrides()
         {
             Assert.Multiple(() =>

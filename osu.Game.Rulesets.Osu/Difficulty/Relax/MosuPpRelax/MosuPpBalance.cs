@@ -9,7 +9,7 @@ using System.Text.Json;
 namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 {
     /// <summary>
-    /// Approved MosuPp 0.5.0 balance (the owner's site scenario of 2026-10-15 + CS reduction). Normal client builds use immutable defaults;
+    /// Owner-approved MosuPp 2.0.0 release balance. Normal client builds use the immutable release instance;
     /// the polygon's process-local override is only compiled with MOSUPP_LAB.
     /// </summary>
     public sealed class MosuPpBalance
@@ -20,9 +20,23 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 #if MOSUPP_LAB
             private set;
 #endif
-        } = new MosuPpBalance();
+        } = new MosuPpBalance
+        {
+            GlobalScale = 0.86673, ArlesBonus = 0.15, ControlScale = 0.9, RpStrength = 1,
+            StreamNerf = 0, StreamScale = 1, AimSlopScale = 0.95, TechScale = 1, AimControlScale = 1,
+            CsReductionStrength = 1.6, RpLimit = 0.1, NomodScale = 1, HighArReading = false,
+            OwnerRules = true, UseHitAreaDistances = true, UsePhysicalEquivalence = true,
+            PhysicalChallengeStrength = 1, LongMapNerf = 0,
+        };
+
+        public const string ReleaseVersion = "2.0.0";
 
         public double GlobalScale { get; init; } = 1;
+        /// <summary>Additional maximum long-map reduction, reached at ten played minutes; zero disables the experiment.</summary>
+        public double LongMapNerf { get; init; }
+        /// <summary>Test candidate: carried cursor to hit-circle boundaries, shared by native aim and control.</summary>
+        public bool UseHitAreaDistances { get; init; }
+
         public double ArlesBonus { get; init; } = 0.2;
         public double ControlScale { get; init; } = 0.9;
         public double RpStrength { get; init; } = 1;
@@ -46,7 +60,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         /// AR 10 to 11 on screen). The owner (2026-10-28): there must be none.</summary>
         public bool HighArReading { get; init; } = true;
 
-        /// <summary>MosuPp 1.1 draft: plays without a rate change or with a rate up to 1.15x (NM, HR, DA, HD; <see cref="RxOwnerRules.IsNomodRate"/>) × this.</summary>
+        /// <summary>MosuPp 1.1 draft: plays at 1–1.15x receive this multiplier, fading to 1 at 1.40x (NM, HR, DA, HD).</summary>
         public double NomodScale { get; init; } = 1;
 
         /// <summary>"RP Balance (RX)": how far RP may move the total (±).</summary>
@@ -55,6 +69,12 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         /// <summary>MosuPp 1.1 draft: the owner's rules of 2026-10-28 (<see cref="RxOwnerRules"/>) — no HD reading in the core, no
         /// anti-farm part and no CS PP Buff (the owner's HR / DA CS buffs instead). Off = MosuPp 1.0.</summary>
         public bool OwnerRules { get; init; }
+
+        /// <summary>Compare physical plays in real time, independent of rate / HR / DA labels. Opt-in candidate.</summary>
+        public bool UsePhysicalEquivalence { get; init; }
+
+        /// <summary>Bounded physical challenge corrections, experimental 0..1; zero keeps the previous candidate.</summary>
+        public double PhysicalChallengeStrength { get; init; }
 
         internal double TypeScale(RxRespectPoints.MapType type) => type switch
         {
@@ -71,6 +91,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             var value = JsonSerializer.Deserialize<MosuPpBalance>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                         ?? throw new ArgumentException("Empty lab scenario");
             validate(value.GlobalScale, 0.5, 1.5);
+            validate(value.PhysicalChallengeStrength, 0, 1);
+            validate(value.LongMapNerf, 0, 0.5);
             validate(value.ArlesBonus, 0, 0.6);
             validate(value.ControlScale, 0, 2);
             validate(value.RpStrength, 0, 1);

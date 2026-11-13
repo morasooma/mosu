@@ -43,7 +43,8 @@ internal static class MosuRxCalculator
             cs,
             hp,
             clockRate,
-            passedObjects);
+            passedObjects,
+            request.UseHitAreaDistances);
 
         return RxPerformanceCalculator.Calculate(
             difficulty,
@@ -53,6 +54,7 @@ internal static class MosuRxCalculator
                 Count100 = request.Score.Count100,
                 Count50 = request.Score.Count50,
                 Misses = request.Score.Misses,
+                MissLoad = request.Score.MissLoad,
                 MaxCombo = request.Score.MaxCombo,
                 PassedObjects = passedObjects,
             },

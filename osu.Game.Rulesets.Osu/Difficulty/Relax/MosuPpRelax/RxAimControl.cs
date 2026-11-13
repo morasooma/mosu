@@ -46,13 +46,15 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         public static double Multiplier(double controlPp, double ssPp)
             => controlPp <= 0 || ssPp <= 0 ? 1 : Math.Pow(1 + Math.Pow(controlPp / ssPp, NORM_EXPONENT), 1 / NORM_EXPONENT);
 
-        public static double ControlPp(RxBeatmap beatmap, double clockRate)
+        public static double ControlPp(RxBeatmap beatmap, double clockRate, bool useHitAreaDistances = false)
         {
             List<RxHitObject> notes = beatmap.HitObjects.Where(o => o.Kind != RxHitObjectKind.Spinner).ToList();
             if (notes.Count < 3 || clockRate <= 0)
                 return 0;
 
             double diameter = 2 * (54.4 - 4.48 * beatmap.CircleSize);
+            var path = useHitAreaDistances ? RxDifficultyCalculator.CursorPath(beatmap, beatmap.CircleSize).Where(o => !o.IsSpinner).ToList() : null;
+            var referencePath = useHitAreaDistances ? (Math.Abs(beatmap.CircleSize - 4) < 0.0001 ? path : RxDifficultyCalculator.CursorPath(beatmap, 4).Where(o => !o.IsSpinner).ToList()) : null;
             double t0 = notes[0].StartTime;
             int bins = Math.Max(1, (int)Math.Ceiling((notes[^1].StartTime - t0) / 1000) + 1);
             double[] pressure = new double[bins];
@@ -63,18 +65,22 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 if (gap <= 0 || gap > FAST_MOVE_MS)
                     continue;
 
-                double spacing = distance(notes[i - 1].Position, notes[i].Position) / diameter;
-                if (spacing < STACK_SPACING)
+                double moved = path != null ? (path[i].CursorPosition - path[i - 1].EndPosition).Length : distance(notes[i - 1].Position, notes[i].Position);
+                double spacing = moved / diameter;
+                if (useHitAreaDistances ? moved <= 0.001 : spacing < STACK_SPACING)
                     continue;
 
-                double angle = RxStreamMapNerf.Angle(notes[i - 2].Position, notes[i - 1].Position, notes[i].Position);
+                double angle = path != null
+                    ? RxStreamMapNerf.Angle(path[i - 2].EndPosition, path[i - 1].CursorPosition, path[i - 1].CursorPosition + path[i].CursorPosition - path[i - 1].EndPosition)
+                    : RxStreamMapNerf.Angle(notes[i - 2].Position, notes[i - 1].Position, notes[i].Position);
                 if (double.IsNaN(angle))
                     continue;
 
                 double turn = 1 - smoothStep(angle, TURN_FULL_ANGLE, TURN_NONE_ANGLE);
                 // 0.5.0: which moves are "control" is decided in circles of the reference CS 4, so bigger circles (DA / EZ) do not
                 // turn wide jumps into control moves; the velocity below still uses the circles really played.
-                double window = 1 - smoothStep(distance(notes[i - 1].Position, notes[i].Position) / REFERENCE_DIAMETER, SPACING_FULL, SPACING_NONE);
+                double referenceMove = referencePath != null ? (referencePath[i].CursorPosition - referencePath[i - 1].EndPosition).Length : distance(notes[i - 1].Position, notes[i].Position);
+                double window = 1 - smoothStep(referenceMove / REFERENCE_DIAMETER, SPACING_FULL, SPACING_NONE);
                 double velocity = spacing * 1000 * clockRate / gap;
 
                 int bin = Math.Clamp((int)((notes[i].StartTime - t0) / 1000), 0, bins - 1);

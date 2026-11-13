@@ -77,6 +77,20 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 
         public static bool IsNomodRate(double clockRate) => clockRate >= 1 && clockRate <= NOMOD_RATE_LIMIT + 1e-6;
 
+        /// <summary>Full NM bonus through 1.15x, fading continuously to neutral at 1.40x; HT is unchanged.</summary>
+        public static double NomodMultiplier(double rate, double scale)
+            => rate < 1 ? 1 : 1 + (scale - 1) * (1 - RxMath.SmoothStep(rate, 1.15, 1.4));
+
+        /// <summary>Additional rate bonus, linearly interpolated between the owner's anchors. Capped above 3x.</summary>
+        public static double RateBonus(double rate)
+        {
+            if (rate <= 1) return 1;
+            if (rate <= 1.01) return 1 + (rate - 1);
+            if (rate <= 1.4) return 1.01 + (rate - 1.01) * 0.09 / 0.39;
+            if (rate <= 2) return 1.1 + (rate - 1.4) * 0.04 / 0.6;
+            return 1.14 + Math.Clamp(rate - 2, 0, 1) * 0.06;
+        }
+
         // ---------------------------------------------------------------- map
 
         /// <summary>"Sliders": +0.4% per 1% of sliders in the map above 15%.</summary>

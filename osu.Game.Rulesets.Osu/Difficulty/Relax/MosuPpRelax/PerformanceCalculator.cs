@@ -364,6 +364,10 @@ internal static class RxPerformanceCalculator
         float playedSliderCapacity = attributes.SliderCount;
         float lostComboCapacity = MathF.Max(0f, attributes.MaxCombo - combo) / 2f;
         comboBasedMissCount = MathF.Min(comboBasedMissCount, MathF.Min(playedSliderCapacity, lostComboCapacity));
-        return MathF.Max(comboBasedMissCount, misses);
+        float effective = MathF.Max(comboBasedMissCount, misses);
+        // Replace only the counted-miss part; excess combo-based breaks keep their original cost.
+        return score.MissLoad is double load
+            ? effective - misses + (float)Math.Clamp(load, 0, misses)
+            : effective;
     }
 }

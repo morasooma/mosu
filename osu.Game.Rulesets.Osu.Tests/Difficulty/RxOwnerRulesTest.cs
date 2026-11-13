@@ -16,6 +16,43 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
                                               bool hardRock = false, bool difficultyAdjust = false, bool hidden = false)
             => new RxOwnerRules.Play(rate, baseCs, cs, ar, ar, baseOd, od, hardRock, difficultyAdjust, hidden, false);
 
+        [TestCase(0.75, 1)]
+        [TestCase(1, 1)]
+        [TestCase(1.01, 1.01)]
+        [TestCase(1.205, 1.055)]
+        [TestCase(1.4, 1.1)]
+        [TestCase(1.7, 1.12)]
+        [TestCase(2, 1.14)]
+        [TestCase(2.5, 1.17)]
+        [TestCase(3, 1.2)]
+        [TestCase(4, 1.2)]
+        public void TestAdditionalRateBonus(double rate, double expected)
+            => Assert.That(RxOwnerRules.RateBonus(rate), Is.EqualTo(expected).Within(1e-10));
+
+        [TestCase(0.75, 1)]
+        [TestCase(1, 1.22)]
+        [TestCase(1.15, 1.22)]
+        [TestCase(1.275, 1.11)]
+        [TestCase(1.4, 1)]
+        [TestCase(1.5, 1)]
+        public void TestNomodFade(double rate, double expected)
+            => Assert.That(RxOwnerRules.NomodMultiplier(rate, 1.22), Is.EqualTo(expected).Within(1e-10));
+
+        [TestCase(1)]
+        [TestCase(1.01)]
+        [TestCase(1.15)]
+        [TestCase(1.25)]
+        [TestCase(1.4)]
+        [TestCase(2)]
+        [TestCase(3)]
+        public void TestRateBoundariesAreContinuous(double rate)
+        {
+            const double epsilon = 1e-8;
+            Assert.That(Math.Abs(RxOwnerRules.RateBonus(rate + epsilon) - RxOwnerRules.RateBonus(rate - epsilon)), Is.LessThan(1e-6));
+            if (rate > 1) // The existing HT policy is separate; only the new fade is continuous across both sides.
+                Assert.That(Math.Abs(RxOwnerRules.NomodMultiplier(rate + epsilon, 1.22) - RxOwnerRules.NomodMultiplier(rate - epsilon, 1.22)), Is.LessThan(1e-6));
+        }
+
         [Test]
         public void TestHardRockCs7()
             => Assert.That(RxOwnerRules.CsRaise(play(baseCs: 5.4f, cs: 7, hardRock: true)), Is.EqualTo(1.0828).Within(1e-9));

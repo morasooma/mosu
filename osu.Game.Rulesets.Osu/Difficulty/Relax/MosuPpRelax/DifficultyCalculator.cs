@@ -9,6 +9,8 @@ internal sealed class PreparedOsuObject
     public float Time { get; init; }
     public RxVec2 Position { get; init; }
     public RxVec2 EndPosition { get; init; }
+    public RxVec2 CursorPosition { get; init; }
+    public bool UsesHitAreaDistances { get; init; }
     public float? TravelDistance { get; init; }
     public bool IsSpinner => !TravelDistance.HasValue;
 }
@@ -39,12 +41,12 @@ internal sealed class DifficultyObject
 
         float jumpDistance = current.IsSpinner
             ? 0f
-            : ((current.Position - previousCursorPosition) * scalingFactor).Length;
+            : ((current.CursorPosition - previousCursorPosition) * scalingFactor).Length;
 
         float? normalisedVectorAngle = null;
         if (!current.IsSpinner && previousPrevious is not null)
         {
-            RxVec2 v = current.Position - previousCursorPosition;
+            RxVec2 v = current.CursorPosition - previousCursorPosition;
             normalisedVectorAngle = MathF.Atan2(MathF.Abs(v.Y), MathF.Abs(v.X));
         }
 
@@ -52,8 +54,8 @@ internal sealed class DifficultyObject
         if (previousPrevious is not null)
         {
             RxVec2 previousPreviousCursorPosition = previousPrevious.EndPosition;
-            RxVec2 v1 = previousPreviousCursorPosition - previous.Position;
-            RxVec2 v2 = current.Position - previousCursorPosition;
+            RxVec2 v1 = previousPreviousCursorPosition - previous.CursorPosition;
+            RxVec2 v2 = current.CursorPosition - previousCursorPosition;
             float dot = v1.Dot(v2);
             float det = v1.X * v2.Y - v1.Y * v2.X;
             angle = MathF.Abs(MathF.Atan2(det, dot));
@@ -411,8 +413,9 @@ internal static class RxDifficultyCalculator
         float cs,
         float hp,
         double clockRate,
-        uint? passedObjects)
-        => calculate(map, mods, ar, od, cs, hp, clockRate, passedObjects, true);
+        uint? passedObjects,
+        bool useHitAreaDistances = false)
+        => calculate(map, mods, ar, od, cs, hp, clockRate, passedObjects, true, useHitAreaDistances);
 
     private static RxDifficultyAttributes calculate(
         RxBeatmap map,
@@ -423,7 +426,8 @@ internal static class RxDifficultyCalculator
         float hp,
         double clockRate,
         uint? passedObjects,
-        bool applyHighCsStreamCompression)
+        bool applyHighCsStreamCompression,
+        bool useHitAreaDistances)
     {
         var attributes = new RxDifficultyAttributes
         {
@@ -449,9 +453,7 @@ internal static class RxDifficultyCalculator
             scalingFactor *= 1f + smallCircleBonus;
         }
 
-        var prepared = new List<PreparedOsuObject>(take);
-        for (int i = 0; i < take; i++)
-            prepared.Add(PrepareObject(map.HitObjects[i], map, radius, scalingFactor, attributes));
+        var prepared = PrepareObjects(map, take, radius, scalingFactor, attributes, useHitAreaDistances);
 
         var aim = new Skill(SkillKind.Aim);
         var speed = new Skill(SkillKind.Speed);
@@ -714,7 +716,7 @@ internal static class RxDifficultyCalculator
 
         if (applyHighCsStreamCompression)
         {
-            canonical = calculate(map, mods, ar, od, 5f, hp, clockRate, passedObjects, false);
+            canonical = calculate(map, mods, ar, od, 5f, hp, clockRate, passedObjects, false, useHitAreaDistances);
             streamWeight = HighCsStreamWeight(canonical);
         }
 
@@ -780,7 +782,7 @@ internal static class RxDifficultyCalculator
     {
         bool isCircleToCircle = !previous.IsSpinner && previous.TravelDistance.GetValueOrDefault(0f) == 0f &&
                                 !current.IsSpinner && current.TravelDistance.GetValueOrDefault(0f) == 0f;
-        return isCircleToCircle && h.Delta <= 100f && h.JumpDistance < 3f;
+        return isCircleToCircle && h.Delta <= 100f && h.JumpDistance < (current.UsesHitAreaDistances ? 0.0001f : 3f);
     }
 
     private static float HighCsStreamWeight(RxDifficultyAttributes canonical)
@@ -813,13 +815,39 @@ internal static class RxDifficultyCalculator
             h.Angle,
             h.NormalisedVectorAngle);
 
+    internal static List<PreparedOsuObject> CursorPath(RxBeatmap map, float cs)
+        => PrepareObjects(map, map.HitObjects.Count, RxCursorGeometry.Radius(cs), 1, new RxDifficultyAttributes(), true);
+
+    private static List<PreparedOsuObject> PrepareObjects(RxBeatmap map, int take, float radius, float scale,
+                                                         RxDifficultyAttributes attributes, bool useHitAreas)
+    {
+        var objects = new List<PreparedOsuObject>(take);
+        RxVec2 cursor = RxVec2.Zero;
+        for (int i = 0; i < take; i++)
+        {
+            RxHitObject hit = map.HitObjects[i];
+            if (useHitAreas)
+            {
+                if (i == 0 || map.HitObjects[i - 1].Kind == RxHitObjectKind.Spinner)
+                    cursor = RxCursorGeometry.Start(hit.Position, i + 1 < take ? map.HitObjects[i + 1].Position : hit.Position, radius);
+                cursor = RxCursorGeometry.EnterCircle(cursor, hit.Position, radius);
+            }
+            var prepared = PrepareObject(hit, map, radius, scale, attributes, useHitAreas ? cursor : null);
+            objects.Add(prepared);
+            cursor = prepared.EndPosition;
+        }
+        return objects;
+    }
+
     private static PreparedOsuObject PrepareObject(
        RxHitObject h,
        RxBeatmap map,
        float radius,
         float scalingFactor,
-        RxDifficultyAttributes attributes)
+        RxDifficultyAttributes attributes,
+        RxVec2? cursorAtHead = null)
     {
+        RxVec2 entry = cursorAtHead ?? h.Position;
         attributes.MaxCombo += 1;
 
         if (h.Kind == RxHitObjectKind.Circle)
@@ -829,7 +857,9 @@ internal static class RxDifficultyCalculator
             {
                 Time = (float)h.StartTime,
                 Position = h.Position,
-                EndPosition = h.Position,
+                CursorPosition = entry,
+                UsesHitAreaDistances = cursorAtHead.HasValue,
+                EndPosition = entry,
                 TravelDistance = 0f,
             };
         }
@@ -841,7 +871,9 @@ internal static class RxDifficultyCalculator
             {
                 Time = (float)h.StartTime,
                 Position = h.Position,
-                EndPosition = h.Position,
+                CursorPosition = entry,
+                UsesHitAreaDistances = cursorAtHead.HasValue,
+                EndPosition = entry,
                 TravelDistance = null,
             };
         }
@@ -856,7 +888,7 @@ internal static class RxDifficultyCalculator
 
         double scoringDistance = 100d * map.SliderMultiplier * sliderVelocity;
         double velocity = scoringDistance / beatLength;
-        RxVec2 endPosition = h.Position;
+        RxVec2 endPosition = entry;
         float travelDistance = 0f;
         float approximateFollowCircleRadius = radius * 3f;
 
@@ -875,7 +907,9 @@ internal static class RxDifficultyCalculator
             {
                 Time = (float)h.StartTime,
                 Position = h.Position,
-                EndPosition = h.Position,
+                CursorPosition = entry,
+                UsesHitAreaDistances = cursorAtHead.HasValue,
+                EndPosition = entry,
                 TravelDistance = 0f,
             };
         }
@@ -956,6 +990,8 @@ internal static class RxDifficultyCalculator
         {
             Time = (float)h.StartTime,
             Position = h.Position,
+            CursorPosition = entry,
+            UsesHitAreaDistances = cursorAtHead.HasValue,
             EndPosition = endPosition,
             TravelDistance = travelDistance,
         };

@@ -87,6 +87,8 @@ public sealed class RxScoreState
     public uint Count100 { get; set; }
     public uint Count50 { get; set; }
     public uint Misses { get; set; }
+    /// <summary>Optional lab evidence. Does not change the actual judgement counts or accuracy.</summary>
+    public double? MissLoad { get; set; }
     public uint? MaxCombo { get; set; }
     public uint? PassedObjects { get; set; }
 }
@@ -107,6 +109,7 @@ public sealed class RxCalculationRequest
 
     // Explicit rate wins. Otherwise DT/NC=1.5, HT=0.75, else 1.0.
     public double? ClockRate { get; init; }
+    public bool UseHitAreaDistances { get; init; }
 }
 
 public sealed class RxDifficultyAttributes

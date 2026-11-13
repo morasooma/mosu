@@ -13,7 +13,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 {
     internal static class RealistikBeatmapConverter
     {
-        public static RxBeatmap Convert(IBeatmap beatmap)
+        public static RxBeatmap Convert(IBeatmap beatmap, bool useStackedPositions = false)
         {
             var output = new RxBeatmap
             {
@@ -48,7 +48,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 var converted = new RxHitObject
                 {
                     StartTime = osuObject.StartTime,
-                    Position = new RxVec2(osuObject.X, osuObject.Y),
+                    Position = useStackedPositions ? new RxVec2(osuObject.StackedPosition.X, osuObject.StackedPosition.Y) : new RxVec2(osuObject.X, osuObject.Y),
                     Kind = osuObject switch
                     {
                         HitCircle => RxHitObjectKind.Circle,

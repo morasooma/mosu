@@ -24,6 +24,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
     /// </summary>
     internal static class MosuPpRelaxCalculator
     {
+        private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<RxPhysicalChallenge.Features>> challenge_features = new();
+        private static readonly ConditionalWeakTable<RxBeatmap, RxMissEvidence> miss_evidence = new();
+
         private static readonly ConcurrentDictionary<int, RxBeatmap> beatmaps = new ConcurrentDictionary<int, RxBeatmap>();
 
         /// <summary>
@@ -88,9 +91,21 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             if (!IsRelax(mods))
                 return;
 
+            IBeatmap evidenceBeatmap = beatmap;
+            Mod[] evidenceMods = mods.ToArray();
+            int cacheKey = createCacheKey(beatmap.BeatmapInfo, mods);
+            bool csRaisedByMod = mods.Any(m => m.Acronym is "HR" or "DA");
+            if (RxPhysicalPlay.Enabled)
+            {
+                beatmap = RxPhysicalPlay.Create(beatmap, mods);
+                mods = RxPhysicalPlay.Mods(mods);
+            }
+
             try
             {
-                RxBeatmap converted = RealistikBeatmapConverter.Convert(beatmap);
+                RxBeatmap converted = RealistikBeatmapConverter.Convert(beatmap, MosuPpBalance.Current.OwnerRules && MosuPpBalance.Current.UseHitAreaDistances);
+                if (MosuPpBalance.Current.OwnerRules)
+                    miss_evidence.Add(converted, new RxMissEvidence(evidenceBeatmap, evidenceMods));
                 respect_points.AddOrUpdate(converted, new StrongBox<RxRespectPoints.Result>(RxRespectPoints.Calculate(beatmap, mods)));
                 arles.AddOrUpdate(converted, new StrongBox<RxArles.Analysis>(RxArles.Analyze(beatmap)));
                 player_shape.AddOrUpdate(converted, new StrongBox<RxPlayerBalance.Shape>(RxPlayerBalance.Analyze(beatmap)));
@@ -100,13 +115,13 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 
                 // MosuPp 1.1 draft: DA up to HR's CS counts as HR (the same CS pays the same).
                 float referenceCs = RxCsGain.ReferenceCs(beatmap.BeatmapInfo.Difficulty.CircleSize,
-                    mods.Any(m => m.Acronym == "HR") || (MosuPpBalance.Current.OwnerRules && mods.Any(m => m.Acronym == "DA")));
+                    mods.Any(m => m.Acronym == "HR") || (MosuPpBalance.Current.OwnerRules && (mods.Any(m => m.Acronym == "DA") || (RxPhysicalPlay.Enabled && csRaisedByMod))));
                 if (beatmap.Difficulty.CircleSize > referenceCs + 1e-6)
                 {
                     cs_reference.AddOrUpdate(converted, new StrongBox<CsReference>(new CsReference(referenceCs,
                         RxRespectPoints.Calculate(beatmap, mods, referenceCs), RxArles.Analyze(beatmap, referenceCs))));
                 }
-                beatmaps[createCacheKey(beatmap.BeatmapInfo, mods)] = converted;
+                beatmaps[cacheKey] = converted;
             }
             catch (Exception exception)
             {
@@ -116,7 +131,21 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             }
         }
 
-        public static OsuPerformanceAttributes CalculatePerformance(ScoreInfo score)
+        public static OsuPerformanceAttributes CalculatePerformance(ScoreInfo score) => calculatePerformance(score, null);
+
+        /// <summary>Score-local contextual miss evidence, available to replay-aware and gameplay callers.</summary>
+        public static OsuPerformanceAttributes CalculatePerformanceWithMissLoad(ScoreInfo score, double missLoad)
+        {
+            if (!double.IsFinite(missLoad) || missLoad < 0) throw new ArgumentOutOfRangeException(nameof(missLoad));
+            return calculatePerformance(score, missLoad);
+        }
+
+#if MOSUPP_LAB
+        public static OsuPerformanceAttributes CalculatePerformanceForLab(ScoreInfo score, double missLoad)
+            => CalculatePerformanceWithMissLoad(score, missLoad);
+#endif
+
+        private static OsuPerformanceAttributes calculatePerformance(ScoreInfo score, double? missLoad)
         {
             if (score.BeatmapInfo is null)
                 throw new InvalidOperationException("Managed RX calculation requires BeatmapInfo.");
@@ -133,7 +162,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 
             try
             {
-                OsuPerformanceAttributes attributes = calculate(beatmap, createScoreState(score), score.Mods);
+                RxScoreState state = createScoreState(score);
+                state.MissLoad = missLoad is double suppliedMissLoad ? Math.Clamp(suppliedMissLoad, 0, state.Misses)
+                    : miss_evidence.TryGetValue(beatmap, out var evidence) ? evidence.MissLoad(score.HitEvents, (int)state.Misses) : null;
+                OsuPerformanceAttributes attributes = calculate(beatmap, state, score.Mods);
 
                 if (RelaxPpSystemSelection.Current != ForkRelaxPpSystem.MosuPp)
                     return attributes;
@@ -144,7 +176,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 // multiplier each per map + mods, from an SS (see mapLevel).
                 respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? respectPoints);
                 arles.TryGetValue(beatmap, out StrongBox<RxArles.Analysis>? shape);
-                double clockRate = ModUtils.CalculateRateWithMods(score.Mods);
+                double clockRate = RxPhysicalPlay.Enabled ? 1 : ModUtils.CalculateRateWithMods(score.Mods);
                 MapLevel level = mapLevel(beatmap, clockRate, ssTotal, attributes.MosuPpStreamWeight ?? 0, respectPoints?.Value, shape?.Value);
 
                 scale(attributes, level.Control);
@@ -221,8 +253,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                     owner *= ownerRule(attributes, "owner.streams", RxOwnerRules.Streams(shapeOfMap, load, play, streamShare));
                     owner *= ownerRule(attributes, "owner.overlappingStreams", RxOwnerRules.OverlappingStreams(shapeOfMap, streamShare));
                     owner *= ownerRule(attributes, "owner.overlappingStreamMap", RxOwnerRules.OverlappingStreamMap(shapeOfMap));
-                    if (RxOwnerRules.IsNomodRate(clockRate))
-                        owner *= ownerRule(attributes, "owner.nomod", balance.NomodScale);
+                    owner *= ownerRule(attributes, "owner.nomod", RxPhysicalPlay.Enabled ? 1 : RxOwnerRules.NomodMultiplier(clockRate, balance.NomodScale));
 
                     if (aimSlopWeight > 0)
                     {
@@ -252,6 +283,27 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                     }
                 }
 
+                // Applied after the level-dependent DT penalty: an additional bonus, not part of its reference level.
+                if (balance.OwnerRules)
+                    ownerRule(attributes, "owner.rateBonus", RxOwnerRules.RateBonus(clockRate));
+
+                if (balance.OwnerRules && player_shape.TryGetValue(beatmap, out StrongBox<RxPlayerBalance.Shape>? lengthShape))
+                    ownerRule(attributes, "owner.longMap", RxLongMapPenalty.Multiplier(lengthShape.Value.LengthMs / 1000 / clockRate, balance.LongMapNerf));
+
+                if (RxPhysicalPlay.Enabled && balance.PhysicalChallengeStrength > 0)
+                {
+                    var feature = challenge_features.GetValue(beatmap, m => new StrongBox<RxPhysicalChallenge.Features>(RxPhysicalChallenge.Analyze(m))).Value;
+                    double strength = balance.PhysicalChallengeStrength;
+                    double visible = attributes.MosuPpBreakdown?.FirstOrDefault(x => x.Key == "visibleNotes").Value ?? 1;
+                    ownerRule(attributes, "physical.speed", RxPhysicalChallenge.Speed(feature, strength));
+                    ownerRule(attributes, "physical.reading", RxPhysicalChallenge.Reading(feature, visible, strength));
+                    ownerRule(attributes, "physical.circle", RxPhysicalChallenge.Circle(play.BaseCs, play.PlayedCs, strength));
+                    ownerRule(attributes, "physical.rotation", RxPhysicalChallenge.Rotation(feature, strength));
+                    attributes.MosuPpBreakdown?.Add(new("physical.speedPressure", feature.SpeedPressure));
+                    attributes.MosuPpBreakdown?.Add(new("physical.visibleNotes", feature.VisibleNotes));
+                    attributes.MosuPpBreakdown?.Add(new("physical.rotationShare", feature.RotationShare));
+                }
+
                 return attributes;
             }
             catch (Exception exception) when (exception is not InvalidOperationException)
@@ -273,7 +325,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         {
             BeatmapDifficulty own = score.BeatmapInfo!.Difficulty;
             return new RxOwnerRules.Play(clockRate, own.CircleSize, beatmap.CircleSize, own.ApproachRate, beatmap.ApproachRate, own.OverallDifficulty,
-                beatmap.OverallDifficulty, score.Mods.Any(m => m is OsuModHardRock), score.Mods.Any(m => m is OsuModDifficultyAdjust),
+                beatmap.OverallDifficulty, !RxPhysicalPlay.Enabled && score.Mods.Any(m => m is OsuModHardRock), score.Mods.Any(m => m is OsuModDifficultyAdjust || (RxPhysicalPlay.Enabled && m is OsuModHardRock)),
                 score.Mods.Any(m => m is OsuModHidden || m.Acronym == "TC"), RxLockedDifficulty.IsLocked(score.Mods));
         }
 
@@ -288,7 +340,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
 
         private static double getControlPp(RxBeatmap beatmap, double clockRate)
             => control_pp.GetValue(beatmap, _ => new ConcurrentDictionary<double, double>())
-                         .GetOrAdd(clockRate, rate => RxAimControl.ControlPp(beatmap, rate));
+                         .GetOrAdd(clockRate, rate => RxAimControl.ControlPp(beatmap, rate, MosuPpBalance.Current.OwnerRules && MosuPpBalance.Current.UseHitAreaDistances));
 
         private static MapLevel mapLevel(RxBeatmap beatmap, double clockRate, double ssTotal, double streamWeight, RxRespectPoints.Result? respectPoints,
                                          RxArles.Analysis? shape)
@@ -383,6 +435,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
             if (ownerRules)
                 ppMods = ppMods.Where(m => m is not OsuModHidden).ToArray();
 
+            if (RxPhysicalPlay.Enabled)
+                ppMods = RxPhysicalPlay.Mods(ppMods);
+
             RxMods performanceMods = getPerformanceMods(ppMods);
             double clockRate = ModUtils.CalculateRateWithMods(ppMods);
 
@@ -403,6 +458,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 EffectiveCs = beatmap.CircleSize,
                 EffectiveHp = beatmap.HpDrainRate,
                 ClockRate = clockRate,
+                UseHitAreaDistances = MosuPpBalance.Current.OwnerRules && MosuPpBalance.Current.UseHitAreaDistances,
             });
 
             double nativeMultiplier = calculateNativeMultiplier(result, scoreState);
@@ -524,7 +580,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 mosuPpMultiplier *= record(breakdown, "csBuff", ownerRules ? 1 : RxCsPpBuff.Multiplier(beatmap.CircleSize));
 
                 // MosuPp "Heavy Miss Penalty (RX)": every miss above 15 removes another ~10% (× e^(−0.11 · (misses − 15))).
-                mosuPpMultiplier *= record(breakdown, "heavyMiss", RxHeavyMissPenalty.Multiplier(scoreState.Misses));
+                mosuPpMultiplier *= record(breakdown, "heavyMiss", RxHeavyMissPenalty.Multiplier(scoreState.Misses, scoreState.MissLoad));
             }
 
             return new OsuPerformanceAttributes
@@ -581,6 +637,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
                 EffectiveCs = beatmap.CircleSize,
                 EffectiveHp = beatmap.HpDrainRate,
                 ClockRate = clockRate,
+                UseHitAreaDistances = MosuPpBalance.Current.OwnerRules && MosuPpBalance.Current.UseHitAreaDistances,
             });
 
             RealistikRelaxBalance.ApplyComponentGuards(result, mods, ss, beatmap, (float)result.Difficulty.Cs, clockRate);
