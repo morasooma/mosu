@@ -225,13 +225,15 @@ internal static class RxPerformanceCalculator
 
         if (effectiveCircles > 0f)
         {
-            float effective300 = MathF.Max(0f, (float)n300 - spamCircles);
+            // Keep this signed: when spam exceeds the available 300s, clamping here
+            // leaves all 100/50 judgements in a tiny denominator and can produce accuracy > 1.
+            float effective300 = (float)n300 - spamCircles;
             float effectiveTotalHits = MathF.Max(0f, totalHits - spamCircles);
 
-            betterAccuracyPercentage = MathF.Max(
+            betterAccuracyPercentage = Math.Clamp(
                 (((effective300 - (effectiveTotalHits - effectiveCircles)) * 6f + n100 * 2f + n50)
                 / (effectiveCircles * 6f)),
-                0f);
+                0f, 1f);
         }
 
         float od = MathF.Min((float)attributes.Od, 10f);
