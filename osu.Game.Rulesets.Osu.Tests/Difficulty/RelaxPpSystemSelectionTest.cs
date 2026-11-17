@@ -191,9 +191,8 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
                 ? new Mod[] { new OsuModMosuRelax(), new OsuModDoubleTime() }
                 : new Mod[] { new OsuModMosuRelax() };
             var difficulty = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
-            var calculator = new OsuPerformanceCalculator();
             ScoreInfo perfect = createPerfectScore(working, difficulty, mods);
-            var ss = (OsuPerformanceAttributes)calculator.Calculate(perfect, difficulty);
+            var ss = osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax.MosuPpRelaxCalculator.CalculatePerformance(perfect);
 
             ScoreInfo imperfect = createPerfectScore(working, difficulty, mods);
             int totalHits = imperfect.Statistics[HitResult.Great];
@@ -202,7 +201,7 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
             imperfect.Statistics[HitResult.Miss] = 15;
             imperfect.MaxCombo = Math.Max(1, difficulty.MaxCombo / 2);
             imperfect.Accuracy = 1 - (30 * 200 + 15 * 300) / (300.0 * totalHits);
-            var actual = (OsuPerformanceAttributes)calculator.Calculate(imperfect, difficulty);
+            var actual = osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax.MosuPpRelaxCalculator.CalculatePerformance(imperfect);
 
             Assert.Multiple(() =>
             {

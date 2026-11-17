@@ -52,6 +52,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty
                     && ManagedRealistikRelaxCalculator.IsRelax(mods))
                     ManagedRealistikRelaxCalculator.Prepare(beatmap, mods, emptyAttributes);
 
+                if (PreparePerformanceCalculation && RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuPp
+                    && ManagedRealistikRelaxCalculator.IsRelax(mods))
+                    Relax.MosuPp2.Mp2PrereleaseCalculator.Prepare(beatmap, mods, WorkingBeatmap, emptyAttributes);
+
                 return emptyAttributes;
             }
 
@@ -184,6 +188,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty
                 && ManagedRealistikRelaxCalculator.IsRelax(mods))
                 ManagedRealistikRelaxCalculator.Prepare(beatmap, mods, attributes);
 
+            if (PreparePerformanceCalculation && RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuPp
+                && ManagedRealistikRelaxCalculator.IsRelax(mods))
+                Relax.MosuPp2.Mp2PrereleaseCalculator.Prepare(beatmap, mods, WorkingBeatmap, attributes);
+
             return attributes;
         }
 
@@ -196,6 +204,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty
             // The RX representation is immutable and valid for every time-sliced attributes
             // instance. Convert the complete map once and associate that one representation with
             // all prefixes used by the live PP counter.
+            if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuPp)
+                Relax.MosuPp2.Mp2PrereleaseCalculator.PrepareTimed(beatmap, mods, WorkingBeatmap,
+                    attributes.Select(attribute => (OsuDifficultyAttributes)attribute.Attributes));
+
             ManagedRealistikRelaxCalculator.PrepareTimed(beatmap, mods,
                 attributes.Select(attribute => (OsuDifficultyAttributes)attribute.Attributes));
         }

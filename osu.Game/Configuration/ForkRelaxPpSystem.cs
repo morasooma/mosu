@@ -15,9 +15,8 @@ namespace osu.Game.Configuration
         LazerVanilla,
 
         /// <summary>
-        /// MosuPp: the Mosu/Realistik RX calculator plus the MosuPp rules (see MOSUPP_CHANGELOG.md):
-        /// Aim-Focused Flow Guard, Length Bonus + Spike Nerf, Point Variety Nerf, Extreme Jump Nerf, Stream Map Nerf,
-        /// Stream-Only Guard, One-Point Map Guard, Short High CS Nerf, CS PP Buff, Heavy Miss Penalty, AR/OD Lock, Visible Notes Reading, Aim Control, Spike Filler Guard, Arles, RP Balance, CS Reduction, CS Gain, Accuracy Gate, Section Types and Traceable = Hidden.
+        /// Temporary 2.0.0 prerelease: the original MosuPp 2 laboratory model.
+        /// The approved 2.0.0 calculator remains in Relax/MosuPpRelax and on its release branch.
         /// </summary>
         [LocalisableDescription(typeof(ForkSettingsStrings), nameof(ForkSettingsStrings.RelaxPpSystemMosuPp))]
         MosuPp

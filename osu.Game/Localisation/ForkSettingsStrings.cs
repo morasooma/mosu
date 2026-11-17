@@ -1763,7 +1763,7 @@ namespace osu.Game.Localisation
         /// <summary>
         /// "MosuPp"
         /// </summary>
-        public static LocalisableString RelaxPpSystemMosuPp => new TranslatableString(getKey(@"relax_pp_system_mosu_pp"), @"MosuPp");
+        public static LocalisableString RelaxPpSystemMosuPp => new TranslatableString(getKey(@"relax_pp_system_mosu_pp"), @"2.0.0пререлиз");
 
         /// <summary>
         /// "Dynamic drift"

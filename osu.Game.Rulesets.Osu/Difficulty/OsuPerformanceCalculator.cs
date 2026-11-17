@@ -148,10 +148,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
             // The pinned Mosu/Realistik RX calculator owns relax PP under the fork system;
             // LazerVanilla falls through to the upstream lazer relax formula below.
-            // MosuPp: the self-contained MosuPp calculator (Relax/MosuPpRelax), identical to the MosuPp development build.
+            // The MosuPp slot temporarily runs the original MosuPp 2 laboratory draft.
             if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuPp
                 && ManagedRealistikRelaxCalculator.IsRelax(score.Mods))
-                return Relax.MosuPpRelax.MosuPpRelaxCalculator.CalculatePerformance(score);
+                return Relax.MosuPp2.Mp2PrereleaseCalculator.CalculatePerformance(score, osuAttributes);
 
             if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuRealistik
                 && ManagedRealistikRelaxCalculator.IsRelax(score.Mods))
