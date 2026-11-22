@@ -20,6 +20,8 @@ The [Morasooma resource bank](https://github.com/morasooma/mosu-resources-public
 is pinned as a separate Git submodule. The forked framework and its patched
 Veldrid renderer are included under `external/mosu-framework`. The client also
 uses public ppy resource packages. Each dependency retains its own licence.
+The bundled Font Awesome 5 icons are by Fonticons, Inc.; see the
+[Font Awesome licence](https://fontawesome.com/license/free).
 
 ## Licence and trademarks
 
