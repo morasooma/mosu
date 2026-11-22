@@ -17,10 +17,9 @@ dotnet build osu.Desktop/osu.Desktop.csproj -c Debug -m:4
 
 For an existing checkout, run `git submodule update --init` before building.
 The [Morasooma resource bank](https://github.com/morasooma/mosu-resources-public)
-is pinned as a separate Git submodule. It does not contain translation
-catalogues. The forked framework and its patched Veldrid renderer are included
-under `external/mosu-framework`. The client also uses public ppy resource
-packages. Each dependency retains its own licence.
+is pinned as a separate Git submodule. The forked framework and its patched
+Veldrid renderer are included under `external/mosu-framework`. The client also
+uses public ppy resource packages. Each dependency retains its own licence.
 
 ## Licence and trademarks
 
