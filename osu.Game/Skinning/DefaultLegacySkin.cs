@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using JetBrains.Annotations;
-using osu.Framework.IO.Stores;
 using osu.Game.Extensions;
 using osu.Game.IO;
 using osuTK.Graphics;
@@ -23,8 +22,8 @@ namespace osu.Game.Skinning
         public static SkinInfo CreateInfo() => new SkinInfo
         {
             ID = Skinning.SkinInfo.CLASSIC_SKIN, // this is temporary until database storage is decided upon.
-            Name = "Classic (upstream, 2013)",
-            Creator = "team osu!",
+            Name = "Classic",
+            Creator = "pax / Morasooma (P1 White, MIT)",
             Protected = true,
             InstantiationInfo = typeof(DefaultLegacySkin).GetInvariantInstantiationInfo()
         };
@@ -39,7 +38,7 @@ namespace osu.Game.Skinning
             : base(
                 skin,
                 resources,
-                new NamespacedResourceStore<byte[]>(resources.Resources, "Skins/Legacy")
+                MorasoomaSkin.CreateResourceStore()
             )
         {
             Configuration.CustomColours["SliderBall"] = new Color4(2, 170, 255, 255);

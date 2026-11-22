@@ -2,20 +2,17 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Track;
 using osu.Framework.Bindables;
-using osu.Framework.Logging;
 using osu.Framework.Timing;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Beatmaps.Timing;
 using osu.Game.Overlays;
-using osu.Game.Scoring;
 using osu.Game.Storyboards;
 
 namespace osu.Game.Screens.Play
@@ -48,20 +45,6 @@ namespace osu.Game.Screens.Play
             MaxValue = 2,
             Precision = 0.01,
         };
-
-        /// <summary>
-        /// Whether the audio playback rate should be validated.
-        /// Mostly disabled for tests.
-        /// </summary>
-        internal bool ShouldValidatePlaybackRate { get; init; }
-
-        /// <summary>
-        /// Whether the audio playback is within acceptable ranges.
-        /// Will become false if audio playback is not going as expected.
-        /// </summary>
-        public IBindable<bool> PlaybackRateValid => playbackRateValid;
-
-        private readonly Bindable<bool> playbackRateValid = new Bindable<bool>(true);
 
         private readonly IBeatmap beatmap;
 
@@ -108,27 +91,6 @@ namespace osu.Game.Screens.Play
             return time;
         }
 
-        public override void Seek(double time)
-        {
-            bool trackSeek = GameplayClock.IsRunning;
-            double timeBeforeSeek = GameplayClock.CurrentTime;
-
-            elapsedValidationTime = null;
-
-            base.Seek(time);
-
-            if (!trackSeek)
-                return;
-
-            double seekDelta = GameplayClock.CurrentTime - timeBeforeSeek;
-
-            if (!double.IsFinite(seekDelta) || Math.Abs(seekDelta) < 0.001)
-                return;
-
-            gameplaySeekCount++;
-            gameplaySeekDeltaMilliseconds += seekDelta;
-        }
-
         protected override void StartGameplayClock()
         {
             addAdjustmentsToTrack();
@@ -150,7 +112,7 @@ namespace osu.Game.Screens.Play
                 // double skip exception for storyboards with very long intros
                 skipTarget = 0;
 
-            seekAsAuthorisedSkip(skipTarget, GameplaySkipIntegrityEvent.INTRO, StartTime, GameplayStartTime, null, false);
+            Seek(skipTarget);
         }
 
         /// <summary>
@@ -173,34 +135,11 @@ namespace osu.Game.Screens.Play
                 || currentTime >= skipTarget)
                 return false;
 
-            return seekAsAuthorisedSkip(skipTarget, GameplaySkipIntegrityEvent.BREAK, breakPeriod.StartTime, breakPeriod.EndTime,
-                breakIndex, multiplayerServerAuthorised);
-        }
-
-        private bool seekAsAuthorisedSkip(double target, string kind, double periodStart, double periodEnd, int? breakIndex, bool multiplayerServerAuthorised)
-        {
-            bool shouldRecord = GameplayClock.IsRunning;
-            double timeBeforeSeek = GameplayClock.CurrentTime;
-
-            Seek(target);
+            bool wasRunning = GameplayClock.IsRunning;
+            Seek(skipTarget);
 
             double timeAfterSeek = GameplayClock.CurrentTime;
-            if (!shouldRecord || !double.IsFinite(timeAfterSeek) || timeAfterSeek - timeBeforeSeek < 0.001)
-                return false;
-
-            authorisedSkips.Add(new GameplaySkipIntegrityEvent
-            {
-                Sequence = authorisedSkips.Count,
-                Kind = kind,
-                FromMilliseconds = timeBeforeSeek,
-                ToMilliseconds = timeAfterSeek,
-                PeriodStartMilliseconds = periodStart,
-                PeriodEndMilliseconds = periodEnd,
-                BreakIndex = breakIndex,
-                MultiplayerServerAuthorised = multiplayerServerAuthorised,
-            });
-
-            return true;
+            return wasRunning && double.IsFinite(timeAfterSeek) && timeAfterSeek - currentTime >= 0.001;
         }
 
         /// <summary>
@@ -234,84 +173,6 @@ namespace osu.Game.Screens.Play
 
             addAdjustmentsToTrack();
         }
-
-        protected override void Update()
-        {
-            base.Update();
-            checkPlaybackValidity();
-        }
-
-        #region Clock validation (ensure things are running correctly for local gameplay)
-
-        private double elapsedGameplayClockTime;
-        private double elapsedWallClockTime;
-        private double? elapsedValidationTime;
-        private int playbackDiscrepancyCount;
-        private double maxPlaybackDriftMilliseconds;
-        private int gameplaySeekCount;
-        private double gameplaySeekDeltaMilliseconds;
-        private readonly List<GameplaySkipIntegrityEvent> authorisedSkips = new List<GameplaySkipIntegrityEvent>();
-
-        public bool PlaybackValidationEnabled => ShouldValidatePlaybackRate;
-
-        public int PlaybackDiscrepancyCount => playbackDiscrepancyCount;
-
-        public double MaxPlaybackDriftMilliseconds => maxPlaybackDriftMilliseconds;
-
-        public double ElapsedGameplayClockTime => elapsedGameplayClockTime;
-
-        public double ElapsedGameplayClockTimeExcludingSeeks => elapsedGameplayClockTime - gameplaySeekDeltaMilliseconds;
-
-        public int GameplaySeekCount => gameplaySeekCount;
-
-        public double GameplaySeekDeltaMilliseconds => gameplaySeekDeltaMilliseconds;
-
-        public IReadOnlyList<GameplaySkipIntegrityEvent> AuthorisedSkips => authorisedSkips;
-
-        public double ElapsedWallClockTime => elapsedWallClockTime;
-
-        private const int allowed_playback_discrepancies = 5;
-
-        private void checkPlaybackValidity()
-        {
-            if (!ShouldValidatePlaybackRate)
-                return;
-
-            if (GameplayClock.IsRunning)
-            {
-                elapsedGameplayClockTime += GameplayClock.ElapsedFrameTime;
-                elapsedWallClockTime += Math.Abs(GameplayClock.Rate) * Time.Elapsed;
-
-                if (elapsedValidationTime == null)
-                    elapsedValidationTime = elapsedGameplayClockTime;
-                else
-                    elapsedValidationTime += GameplayClock.Rate * Time.Elapsed;
-
-                double playbackDrift = Math.Abs(elapsedGameplayClockTime - elapsedValidationTime!.Value);
-                maxPlaybackDriftMilliseconds = Math.Max(maxPlaybackDriftMilliseconds, playbackDrift);
-
-                if (playbackDrift > 300)
-                {
-                    if (playbackDiscrepancyCount++ > allowed_playback_discrepancies)
-                    {
-                        if (playbackRateValid.Value)
-                        {
-                            playbackRateValid.Value = false;
-                            Logger.Log("System audio playback is not working as expected. Some online functionality will not work.\n\nPlease check your audio drivers.", level: LogLevel.Important);
-                        }
-                    }
-                    else
-                    {
-                        Logger.Log(
-                            $"Playback discrepancy detected ({playbackDiscrepancyCount} of allowed {allowed_playback_discrepancies}): {elapsedGameplayClockTime:N1} vs {elapsedValidationTime:N1}");
-                    }
-
-                    elapsedValidationTime = null;
-                }
-            }
-        }
-
-        #endregion
 
         private bool speedAdjustmentsApplied;
 

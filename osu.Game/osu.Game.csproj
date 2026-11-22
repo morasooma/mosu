@@ -50,4 +50,7 @@
     <PackageReference Include="ppy.osu.Framework" Version="2026.918.0" />
     <PackageReference Include="ppy.osu.Game.Resources" Version="2026.918.0" />
   </ItemGroup>
+  <ItemGroup Label="Morasooma resources">
+    <ProjectReference Include="..\external\mosu-resources\Morasooma.Resources.csproj" />
+  </ItemGroup>
 </Project>

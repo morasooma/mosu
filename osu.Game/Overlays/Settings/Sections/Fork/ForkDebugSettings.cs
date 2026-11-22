@@ -19,7 +19,6 @@ using osu.Game.Localisation;
 using osu.Game.Overlays.Dialog;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Overlays.Settings;
-using osu.Game.Scoring;
 using osu.Game.Performance.Debug;
 using osu.Game.Performance.Diagnostics;
 
@@ -121,15 +120,6 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Current = config.GetBindable<bool>(OsuSetting.ForkShowBeatmapsWithMissingAudio)
                 }),
             };
-
-#if DEBUG
-            children.Insert(0, new SettingsItemV2(new FormEnumDropdown<GameplayIntegrityDebugScenario>
-            {
-                Caption = "Античит: тестовый сигнал (только DEBUG)",
-                HintText = "Одноразово подменяет только итоговый integrity-отчёт следующей игры и автоматически вернётся в None. Не влияет на gameplay.",
-                Current = config.GetBindable<GameplayIntegrityDebugScenario>(OsuSetting.ForkGameplayIntegrityDebugScenario),
-            }));
-#endif
 
             if (diagnosticsManager != null)
             {

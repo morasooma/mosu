@@ -117,12 +117,6 @@ namespace osu.Game.Rulesets.Osu.UI
 
         public bool IsEnabled => getConfiguredEnabled();
 
-        public bool IsDeclaredMod => mosuRelaxMod != null;
-
-        public long GeneratedPressCount => inputEvents.Count(input => input.IsPress);
-
-        public long GeneratedReleaseCount => inputEvents.Count(input => !input.IsPress);
-
         public string CurrentModeName { get; private set; } = @"idle";
 
         public double? CurrentPlannedPressTime { get; private set; }

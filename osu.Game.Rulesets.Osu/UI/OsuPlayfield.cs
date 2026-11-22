@@ -43,7 +43,6 @@ namespace osu.Game.Rulesets.Osu.UI
         private readonly JudgementContainer<DrawableOsuJudgement> judgementLayer;
         private readonly AimAssistController aimAssistController;
         private readonly RelaxController relaxController;
-        private readonly ObservedHitObjectGraph? observedHitObjectGraph;
         private bool directChildrenLifeStable;
         private readonly List<DrawableOsuJudgement> activePerformanceBasicJudgements = new List<DrawableOsuJudgement>(max_concurrent_performance_basic_judgements + 2);
         private readonly List<DrawableOsuJudgement> activePerformanceTickJudgements = new List<DrawableOsuJudgement>(max_concurrent_performance_tick_judgements + 2);
@@ -66,12 +65,6 @@ namespace osu.Game.Rulesets.Osu.UI
         public AimAssistController AimAssistController => aimAssistController;
 
         public RelaxController RelaxController => relaxController;
-
-        /// <summary>
-        /// The observed-hit-object anti-cheat monitor, or <c>null</c> while
-        /// <see cref="UI.ObservedHitObjectGraph.FEATURE_ENABLED"/> is <c>false</c>.
-        /// </summary>
-        public ObservedHitObjectGraph? ObservedHitObjectGraph => observedHitObjectGraph;
 
         [Resolved]
         private OsuConfigManager config { get; set; } = null!;
@@ -108,19 +101,6 @@ namespace osu.Game.Rulesets.Osu.UI
                 RelativeSizeAxes = Axes.Both
             });
             children.Add(HitObjectContainer);
-
-            // Keep the dead anti-cheat monitor out of the scene entirely: while disabled it contributes scene
-            // nodes and a per-frame Update() callback that can never do anything useful.
-#pragma warning disable CS0162 // Unreachable code -- FEATURE_ENABLED is a compile-time master switch.
-            if (UI.ObservedHitObjectGraph.FEATURE_ENABLED)
-            {
-                children.Add(observedHitObjectGraph = new ObservedHitObjectGraph
-                {
-                    RelativeSizeAxes = Axes.Both,
-                    Name = nameof(observedHitObjectGraph),
-                });
-            }
-#pragma warning restore CS0162
 
             children.Add(aimAssistController = new AimAssistController { RelativeSizeAxes = Axes.Both });
             children.Add(relaxController = new RelaxController { RelativeSizeAxes = Axes.Both });

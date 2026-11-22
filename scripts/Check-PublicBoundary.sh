@@ -28,6 +28,15 @@ else
     echo "OK: RuntimeExtension is excluded"
 fi
 
+PRIVATE_PATHS=$(git -C "$REPO_DIR" ls-files | grep -Ei \
+    '(^|/)(AGENTS\.md|DODGE_IMPLEMENTATION_STATUS\.md|[^/]*(AntiCheat|GameplayIntegrity|ObservedHitObjectGraph|ForkSecuritySettings|CheatLikeness|PlatformSeal|ScoreProof)[^/]*\.cs)$' || true)
+if [ -n "$PRIVATE_PATHS" ]; then
+    printf 'FAIL: Private files tracked by Git:\n%s\n' "$PRIVATE_PATHS"
+    FAILED=1
+else
+    echo "OK: Known private paths are excluded"
+fi
+
 # 2. Score submission requests and legacy submission artifacts
 for req in CreateSoloScoreRequest SubmitSoloScoreRequest CreateRoomScoreRequest SubmitRoomScoreRequest APIScoreToken; do
     if find "$REPO_DIR" -name "${req}.cs" 2>/dev/null | grep -q .; then
@@ -67,7 +76,7 @@ else
     echo "OK: APIClientStateSubmission absent from ScoreInfo.cs"
 fi
 
-if grep -rn "APIClientStateChallenge" "$REPO_DIR/osu.Game" >/dev/null 2>&1; then
+if git -C "$REPO_DIR" grep -q -I -F 'APIClientStateChallenge' -- osu.Game; then
     echo "FAIL: APIClientStateChallenge found in codebase"
     FAILED=1
 else
@@ -75,14 +84,14 @@ else
 fi
 
 # 4. Banned endpoints and hardcoded credentials
-if grep -rn "lazer-api.g0v0.top" "$REPO_DIR" --exclude="Check-PublicBoundary.sh" >/dev/null 2>&1; then
+if git -C "$REPO_DIR" grep -q -I -F 'lazer-api.g0v0.top' -- . ':!scripts/Check-PublicBoundary.sh'; then
     echo "FAIL: Hardcoded g0v0 API URL found"
     FAILED=1
 else
     echo "OK: No hardcoded g0v0 API URL found"
 fi
 
-if grep -rn "osu.osunolimits.dev" "$REPO_DIR" --exclude="Check-PublicBoundary.sh" >/dev/null 2>&1; then
+if git -C "$REPO_DIR" grep -q -I -F 'osu.osunolimits.dev' -- . ':!scripts/Check-PublicBoundary.sh'; then
     echo "FAIL: Hardcoded osuNoLimits URL found"
     FAILED=1
 else
@@ -124,12 +133,11 @@ if [ ! -f "$SPECTATOR_CLIENT" ]; then
     echo "FAIL: OnlineSpectatorClient.cs not found"
     FAILED=1
 else
-    # Detect both SendFrameData and SendFrameDataV2 string and name variants
-    if grep -Eq 'SendFrameData(V2)?' "$SPECTATOR_CLIENT" 2>/dev/null; then
-        echo "FAIL: OnlineSpectatorClient forwards frames via SendFrameData / SendFrameDataV2 variant"
+    if grep -Eq 'BeginPlaySession|SendFrameData|EndPlaySession' "$SPECTATOR_CLIENT"; then
+        echo "FAIL: OnlineSpectatorClient references outbound gameplay calls"
         FAILED=1
     else
-        echo "OK: No SendFrameData or SendFrameDataV2 variants found in OnlineSpectatorClient"
+        echo "OK: No outbound gameplay calls in OnlineSpectatorClient"
     fi
 
     # Positively verify that SendFramesInternal is a Task.CompletedTask no-op

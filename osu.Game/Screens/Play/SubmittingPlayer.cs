@@ -52,11 +52,6 @@ namespace osu.Game.Screens.Play
             });
         }
 
-        protected override GameplayClockContainer CreateGameplayClockContainer(WorkingBeatmap beatmap, double gameplayStart) => new MasterGameplayClockContainer(beatmap, gameplayStart)
-        {
-            ShouldValidatePlaybackRate = true,
-        };
-
         public override bool AllowCriticalSettingsAdjustment
         {
             get

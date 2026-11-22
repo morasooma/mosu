@@ -140,9 +140,6 @@ namespace osu.Game.Rulesets.Osu.UI
         public float CurrentOffsetMagnitude => assistOffset.Length;
         public float CurrentAssistAuthority { get; private set; }
         public bool IsAimAssistEnabled => getMosuAimAssistProfile().HasValue || enabled.Value;
-        public bool IsAimAssistDeclaredMod => mosuAimAssistMod != null;
-        public long AdjustedFrameCount { get; private set; }
-        public float MaxAdjustmentMagnitude { get; private set; }
         public float CurrentIntentScore { get; private set; }
         public bool IsAntiJitterActive => antiJitterRemaining > 0;
         public string CurrentModeName { get; private set; } = @"idle";

@@ -106,9 +106,6 @@ namespace osu.Game.Screens.Play
         private readonly BindableFloat customApproachRate = new BindableFloat();
         private readonly Bindable<string> customUsername = new Bindable<string>();
 
-        [Cached]
-        private readonly GameplayIntegrityTracker gameplayIntegrityTracker = new GameplayIntegrityTracker();
-
         private readonly Bindable<bool> samplePlaybackDisabled = new Bindable<bool>();
 
         /// <summary>
@@ -332,8 +329,6 @@ namespace osu.Game.Screens.Play
             {
                 GameplayClockContainer = CreateGameplayClockContainer(Beatmap.Value, DrawableRuleset.GameplayStartTime),
             };
-
-            gameplayIntegrityTracker.ClockReportProvider = createClockIntegrityReport;
 
             AddInternal(screenSuspension = new ScreenSuspensionHandler(GameplayClockContainer));
 
@@ -791,7 +786,6 @@ namespace osu.Game.Screens.Play
                     }
 
                     playable = Beatmap.Value.GetPlayableBeatmap(ruleset.RulesetInfo, beatmapMods, cancellationToken);
-                    gameplayIntegrityTracker.SetDifficulty(Beatmap.Value.Beatmap.Difficulty, playable.Difficulty, customApproachRateEnabled.Value);
                 }
                 catch (BeatmapInvalidForRulesetException)
                 {
@@ -818,27 +812,6 @@ namespace osu.Game.Screens.Play
             }
 
             return playable;
-        }
-
-        private GameplayClockIntegrityReport createClockIntegrityReport()
-        {
-            if (GameplayClockContainer is not MasterGameplayClockContainer masterClock)
-                return new GameplayClockIntegrityReport { SpecialRateMode = UsesSpecialGameplayRateMode };
-
-            return new GameplayClockIntegrityReport
-            {
-                ValidationEnabled = masterClock.PlaybackValidationEnabled,
-                PlaybackRateValid = masterClock.PlaybackRateValid.Value,
-                DiscrepancyCount = masterClock.PlaybackDiscrepancyCount,
-                MaxDriftMilliseconds = masterClock.MaxPlaybackDriftMilliseconds,
-                GameplayElapsedMilliseconds = masterClock.ElapsedGameplayClockTimeExcludingSeeks,
-                RawGameplayElapsedMilliseconds = masterClock.ElapsedGameplayClockTime,
-                SeekCount = masterClock.GameplaySeekCount,
-                SeekDeltaMilliseconds = masterClock.GameplaySeekDeltaMilliseconds,
-                WallElapsedMilliseconds = masterClock.ElapsedWallClockTime,
-                SpecialRateMode = UsesSpecialGameplayRateMode,
-                AuthorisedSkips = masterClock.AuthorisedSkips.ToArray(),
-            };
         }
 
         /// <summary>

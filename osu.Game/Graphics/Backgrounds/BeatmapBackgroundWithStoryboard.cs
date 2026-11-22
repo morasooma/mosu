@@ -52,14 +52,20 @@ namespace osu.Game.Graphics.Backgrounds
         }
 
         [BackgroundDependencyLoader]
-        private void load()
+        private void load(CancellationToken? cancellationToken)
         {
-            LoadStoryboard(false);
+            // The background itself is already loaded by BackgroundScreenBeatmap on a loader thread.
+            // Reuse that cancellation token so rapid song-select traversal can stop storyboard construction.
+            loadStoryboard(false, cancellationToken ?? CancellationToken.None);
         }
 
-        public void LoadStoryboard(bool async = true)
+        public void LoadStoryboard(bool async = true) => loadStoryboard(async, CancellationToken.None);
+
+        private void loadStoryboard(bool async, CancellationToken parentCancellationToken)
         {
             Debug.Assert(drawableStoryboard == null);
+
+            parentCancellationToken.ThrowIfCancellationRequested();
 
             if (!Beatmap.Storyboard.HasDrawable)
                 return;
@@ -71,11 +77,16 @@ namespace osu.Game.Graphics.Backgrounds
                     Clock = storyboardClock
                 };
 
+                loadCancellationSource?.Dispose();
+                loadCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(parentCancellationToken);
+
                 if (async)
-                    LoadComponentAsync(drawableStoryboard, finishLoad, (loadCancellationSource = new CancellationTokenSource()).Token);
+                    LoadComponentAsync(drawableStoryboard, finishLoad, loadCancellationSource.Token);
                 else
                 {
+                    parentCancellationToken.ThrowIfCancellationRequested();
                     LoadComponent(drawableStoryboard);
+                    parentCancellationToken.ThrowIfCancellationRequested();
                     finishLoad(drawableStoryboard);
                 }
             }
@@ -83,6 +94,7 @@ namespace osu.Game.Graphics.Backgrounds
             {
                 drawableStoryboard = null;
                 updateStoryboardVisibility();
+                throw;
             }
             catch (Exception e)
             {
@@ -104,6 +116,7 @@ namespace osu.Game.Graphics.Backgrounds
         public void UnloadStoryboard()
         {
             loadCancellationSource?.Cancel();
+            loadCancellationSource?.Dispose();
             loadCancellationSource = null;
 
             if (drawableStoryboard == null)
@@ -161,6 +174,7 @@ namespace osu.Game.Graphics.Backgrounds
         protected override void Dispose(bool isDisposing)
         {
             loadCancellationSource?.Cancel();
+            loadCancellationSource?.Dispose();
             loadCancellationSource = null;
 
             base.Dispose(isDisposing);

@@ -111,24 +111,41 @@ namespace osu.Game.Rulesets.UI
             Clock = this;
         }
 
+        private int measuredInitialUpdateFrames;
+
         public override bool UpdateSubTree()
         {
+            bool measure = measuredInitialUpdateFrames++ < 3;
+            long start = measure ? Stopwatch.GetTimestamp() : 0;
+            int iterations = 0;
+
             stopwatch.Restart();
 
-            do
+            try
             {
-                // update clock is always trying to approach the aim time.
-                // it should be provided as the original value each loop.
-                updateClock();
+                do
+                {
+                    iterations++;
+                    // update clock is always trying to approach the aim time.
+                    // it should be provided as the original value each loop.
+                    updateClock();
 
-                if (state == PlaybackState.NotValid)
-                    break;
+                    if (state == PlaybackState.NotValid)
+                        break;
 
-                base.UpdateSubTree();
-                UpdateSubTreeMasking();
-            } while (state == PlaybackState.RequiresCatchUp && stopwatch.ElapsedMilliseconds < max_catchup_milliseconds);
+                    base.UpdateSubTree();
+                    UpdateSubTreeMasking();
+                } while (state == PlaybackState.RequiresCatchUp && stopwatch.ElapsedMilliseconds < max_catchup_milliseconds);
 
-            return true;
+                return true;
+            }
+            finally
+            {
+                if (measure)
+                    Logger.Log($"MOSU_FRAME_STABILITY_INITIAL_UPDATE frame={measuredInitialUpdateFrames} "
+                               + $"elapsed_ms={Stopwatch.GetElapsedTime(start).TotalMilliseconds:F2} iterations={iterations}",
+                        LoggingTarget.Performance);
+            }
         }
 
         private void updateClock()
@@ -151,7 +168,7 @@ namespace osu.Game.Rulesets.UI
 
             double proposedTime = referenceClock.CurrentTime;
 
-            if (FrameStablePlayback && !allowOneFrameClockSeek)
+            if (FrameStablePlayback && !allowOneFrameClockSeek && ReplayInputHandler?.UsesRecordedFrameTimes != true)
                 // if we require frame stability, the proposed time will be adjusted to move at most one known
                 // frame interval in the current direction.
                 applyFrameStability(ref proposedTime);

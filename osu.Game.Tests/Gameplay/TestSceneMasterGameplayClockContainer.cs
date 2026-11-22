@@ -132,45 +132,6 @@ namespace osu.Game.Tests.Gameplay
         }
 
         [Test]
-        public void TestRunningSeekIsExcludedFromElapsedGameplayTime()
-        {
-            MasterGameplayClockContainer gameplayClockContainer = null;
-
-            AddStep("create container", () =>
-            {
-                var working = new ClockBackedTestWorkingBeatmap(new OsuRuleset().RulesetInfo, new FramedClock(new ManualClock()), Audio);
-                Child = gameplayClockContainer = new MasterGameplayClockContainer(working, 0);
-                gameplayClockContainer.Reset(startClock: true);
-            });
-
-            AddUntilStep("clock is running", () => gameplayClockContainer.IsRunning);
-            AddStep("skip forward", () => gameplayClockContainer.Seek(gameplayClockContainer.CurrentTime + 6500));
-
-            AddAssert("seek counted", () => gameplayClockContainer.GameplaySeekCount, () => Is.EqualTo(1));
-            AddAssert("seek delta recorded", () => gameplayClockContainer.GameplaySeekDeltaMilliseconds, () => Is.EqualTo(6500).Within(10));
-            AddAssert("adjusted elapsed excludes seek", () =>
-                gameplayClockContainer.ElapsedGameplayClockTimeExcludingSeeks,
-                () => Is.EqualTo(gameplayClockContainer.ElapsedGameplayClockTime - gameplayClockContainer.GameplaySeekDeltaMilliseconds).Within(0.001));
-        }
-
-        [Test]
-        public void TestStoppedSeekIsNotExcludedFromElapsedGameplayTime()
-        {
-            MasterGameplayClockContainer gameplayClockContainer = null;
-
-            AddStep("create stopped container", () =>
-            {
-                var working = new ClockBackedTestWorkingBeatmap(new OsuRuleset().RulesetInfo, new FramedClock(new ManualClock()), Audio);
-                Child = gameplayClockContainer = new MasterGameplayClockContainer(working, 0);
-                gameplayClockContainer.Reset();
-            });
-
-            AddStep("seek while stopped", () => gameplayClockContainer.Seek(6500));
-            AddAssert("seek not counted", () => gameplayClockContainer.GameplaySeekCount, () => Is.Zero);
-            AddAssert("seek delta not recorded", () => gameplayClockContainer.GameplaySeekDeltaMilliseconds, () => Is.Zero);
-        }
-
-        [Test]
         public void TestBreakSkipIsAuthorisedAndBounded()
         {
             MasterGameplayClockContainer gameplayClockContainer = null;
@@ -186,9 +147,6 @@ namespace osu.Game.Tests.Gameplay
             AddUntilStep("clock is running", () => gameplayClockContainer.IsRunning);
             AddStep("skip break", () => gameplayClockContainer.SkipBreak(breakPeriod, 2, false));
             AddAssert("seeked to safe lead-in", () => gameplayClockContainer.CurrentTime, () => Is.EqualTo(19000).Within(10));
-            AddAssert("one authorised skip", () => gameplayClockContainer.AuthorisedSkips.Count, () => Is.EqualTo(1));
-            AddAssert("break index recorded", () => gameplayClockContainer.AuthorisedSkips[0].BreakIndex, () => Is.EqualTo(2));
-            AddAssert("seek and skip counts match", () => gameplayClockContainer.GameplaySeekCount, () => Is.EqualTo(gameplayClockContainer.AuthorisedSkips.Count));
         }
 
         protected override void Dispose(bool isDisposing)

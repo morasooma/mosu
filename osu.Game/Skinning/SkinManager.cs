@@ -53,7 +53,7 @@ namespace osu.Game.Skinning
 
         public readonly Bindable<Skin> CurrentSkin = new Bindable<Skin>();
 
-        public readonly Bindable<Live<SkinInfo>> CurrentSkinInfo = new Bindable<Live<SkinInfo>>(ArgonSkin.CreateInfo().ToLiveUnmanaged());
+        public readonly Bindable<Live<SkinInfo>> CurrentSkinInfo = new Bindable<Live<SkinInfo>>(MorasoomaSkin.CreateInfo().ToLiveUnmanaged());
 
         /// <summary>
         /// Persistent collection of skins pinned by the user.
@@ -66,11 +66,7 @@ namespace osu.Game.Skinning
 
         private readonly IResourceStore<byte[]> userFiles;
 
-        private Skin argonSkin { get; }
-
         private Skin trianglesSkin { get; }
-
-        private Skin retroSkin { get; }
 
         private static readonly Live<SkinInfo> random_skin_info = new SkinInfo
         {
@@ -107,10 +103,10 @@ namespace osu.Game.Skinning
 
             var defaultSkins = new[]
             {
-                retroSkin = new RetroSkin(this),
-                DefaultClassicSkin = new DefaultLegacySkin(this),
+                DefaultClassicSkin = new MorasoomaSkin(this),
+                new DefaultLegacySkin(this),
                 trianglesSkin = new TrianglesSkin(this),
-                argonSkin = new ArgonSkin(this),
+                new ArgonSkin(this),
                 new ArgonProSkin(this),
             };
 
@@ -129,7 +125,7 @@ namespace osu.Game.Skinning
                 CurrentSkin.Value = skin.NewValue.PerformRead(GetSkin);
             };
 
-            CurrentSkin.Value = argonSkin;
+            CurrentSkin.Value = DefaultClassicSkin;
             CurrentSkin.ValueChanged += skin =>
             {
                 if (!skin.NewValue.SkinInfo.Equals(CurrentSkinInfo.Value))
@@ -159,7 +155,7 @@ namespace osu.Game.Skinning
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_PRO_SKIN).ToLive(Realm));
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.TRIANGLES_SKIN).ToLive(Realm));
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.CLASSIC_SKIN).ToLive(Realm));
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.RETRO_SKIN).ToLive(Realm));
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.MORASOOMA_SKIN).ToLive(Realm));
 
                 skins.Add(random_skin_info);
 
@@ -198,12 +194,12 @@ namespace osu.Game.Skinning
 
                 // choose from only user skins, removing the current selection to ensure a new one is chosen.
                 var randomChoices = r.All<SkinInfo>()
-                                     .Where(s => !s.DeletePending && s.ID != currentSkinId)
+                                     .Where(s => !s.DeletePending && s.ID != currentSkinId && s.ID != SkinInfo.RETRO_SKIN)
                                      .ToArray();
 
                 if (randomChoices.Length == 0)
                 {
-                    CurrentSkinInfo.Value = ArgonSkin.CreateInfo().ToLiveUnmanaged();
+                    CurrentSkinInfo.Value = DefaultClassicSkin.SkinInfo;
                     return;
                 }
 
@@ -252,7 +248,7 @@ namespace osu.Game.Skinning
         /// </summary>
         /// <param name="skinInfo">The skin to lookup.</param>
         /// <returns>A <see cref="Skin"/> instance correlating to the provided <see cref="SkinInfo"/>.</returns>
-        public Skin GetSkin(SkinInfo skinInfo) => skinInfo.CreateInstance(this);
+        public Skin GetSkin(SkinInfo skinInfo) => skinInfo.ID == SkinInfo.RETRO_SKIN ? DefaultClassicSkin : skinInfo.CreateInstance(this);
 
         /// <summary>
         /// Ensure that the current skin is in a state it can accept user modifications.
@@ -441,7 +437,7 @@ namespace osu.Game.Skinning
                 Guid currentUserSkin = CurrentSkinInfo.Value.ID;
 
                 if (items.Any(s => s.ID == currentUserSkin))
-                    scheduler.Add(() => CurrentSkinInfo.Value = ArgonSkin.CreateInfo().ToLiveUnmanaged());
+                    scheduler.Add(() => CurrentSkinInfo.Value = DefaultClassicSkin.SkinInfo);
 
                 Delete(items.ToList(), silent);
             });
@@ -460,19 +456,10 @@ namespace osu.Game.Skinning
         {
             Live<SkinInfo> skinInfo = null;
 
-            if (Guid.TryParse(guidString, out var guid))
+            if (Guid.TryParse(guidString, out var guid) && guid != SkinInfo.RETRO_SKIN)
                 skinInfo = Query(s => s.ID == guid);
 
-            if (skinInfo == null)
-            {
-                if (guid == SkinInfo.CLASSIC_SKIN)
-                    skinInfo = DefaultClassicSkin.SkinInfo;
-
-                if (guid == SkinInfo.RETRO_SKIN)
-                    skinInfo = retroSkin.SkinInfo;
-            }
-
-            CurrentSkinInfo.Value = skinInfo ?? trianglesSkin.SkinInfo;
+            CurrentSkinInfo.Value = skinInfo ?? DefaultClassicSkin.SkinInfo;
         }
     }
 }

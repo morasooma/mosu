@@ -365,12 +365,6 @@ namespace osu.Game.Rulesets.Osu.UI
         {
             bool shouldDrive = assistOffset.LengthSquared > 0.01f || PassedActivationFilters || IsAntiJitterActive;
 
-            if (mosuAntiAimAssistMod == null && IsAimAssistEnabled && assistOffset.LengthSquared > 0.01f)
-            {
-                AdjustedFrameCount++;
-                MaxAdjustmentMagnitude = Math.Max(MaxAdjustmentMagnitude, assistOffset.Length);
-            }
-
             if (shouldDrive)
             {
                 Vector2 outputOffset = assistOffset;

@@ -1,0 +1,3 @@
+[submodule "external/mosu-resources"]
+	path = external/mosu-resources
+	url = https://github.com/morasooma/mosu-resources-public.git

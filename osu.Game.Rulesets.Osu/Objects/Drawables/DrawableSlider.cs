@@ -348,7 +348,8 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
         protected override void CheckForResult(bool userTriggered, double timeOffset)
         {
-            if (userTriggered || !TailCircle.Judged || Time.Current < HitObject.EndTime)
+            double judgementTime = osu.Game.Online.MosuServerEnvironment.UsesStableProtocol ? (int)HitObject.EndTime : HitObject.EndTime;
+            if (userTriggered || !TailCircle.Judged || Time.Current < judgementTime)
                 return;
 
             if (HitObject.ClassicSliderBehaviour)

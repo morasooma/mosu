@@ -10,9 +10,7 @@ namespace osu.Game.Users
         public string Name { get; set; }
         public string InternalName { get; set; }
         public string CoverUrl { get; set; }
-        public string ImageUrl => !string.IsNullOrEmpty(CoverUrl)
-            ? CoverUrl
-            : $@"https://assets.ppy.sh/medals/client/{InternalName}@2x.png";
+        public string ImageUrl => MorasoomaMedalAssets.Resolve(InternalName, CoverUrl);
         public string Description { get; set; }
     }
 }

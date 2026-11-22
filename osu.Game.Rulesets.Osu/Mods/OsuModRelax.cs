@@ -10,6 +10,7 @@ using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Objects.Types;
 using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.Objects.Drawables;
+using osu.Game.Rulesets.Osu.Replays;
 using osu.Game.Rulesets.Osu.UI;
 using osu.Game.Rulesets.Replays;
 using osu.Game.Rulesets.UI;
@@ -77,6 +78,13 @@ namespace osu.Game.Rulesets.Osu.Mods
             if (hasReplay && !legacyReplay)
                 return;
 
+            // Legacy automatic judgement updates hold the last recorded cursor. They
+            // must not generate RX presses: stable only samples Relax on input frames.
+            if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol
+                && osuInputManager.ReplayInputHandler is OsuFramedReplayInputHandler replayHandler
+                && !replayHandler.IsRecordedGameplayFrame)
+                return;
+
             bool requiresHold = false;
             bool requiresHit = false;
 
@@ -85,7 +93,9 @@ namespace osu.Game.Rulesets.Osu.Mods
             foreach (var h in playfield.HitObjectContainer.AliveObjects.OfType<DrawableOsuHitObject>())
             {
                 // we are not yet close enough to the object.
-                if (time < h.HitObject.StartTime - RELAX_LENIENCY)
+                if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol
+                    ? time <= h.HitObject.StartTime - RELAX_LENIENCY
+                    : time < h.HitObject.StartTime - RELAX_LENIENCY)
                     break;
 
                 // already hit or beyond the hittable end time.

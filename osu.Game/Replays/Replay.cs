@@ -18,11 +18,18 @@ namespace osu.Game.Replays
 
         public List<ReplayFrame> Frames = new List<ReplayFrame>();
 
+        /// <summary>
+        /// Original client version from an imported legacy replay, if available.
+        /// This is distinct from the version of the normalised score representation.
+        /// </summary>
+        public int? LegacyClientVersion;
+
         public Replay DeepClone()
         {
             return new Replay
             {
                 HasReceivedAllFrames = HasReceivedAllFrames,
+                LegacyClientVersion = LegacyClientVersion,
                 // individual frames are mutable for now but hopefully this will not be a thing in the future.
                 Frames = Frames.ToList(),
             };

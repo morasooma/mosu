@@ -33,6 +33,12 @@ namespace osu.Game.Input.Handlers
         /// <returns>The usable time value. If null, we should not advance time as we do not have enough data.</returns>
         public abstract double? SetFrameFromTime(double time);
 
+        /// <summary>
+        /// Whether recorded frame boundaries, rather than the regular frame-stability interval,
+        /// determine when gameplay can advance.
+        /// </summary>
+        public virtual bool UsesRecordedFrameTimes => false;
+
         public override bool Initialize(GameHost host) => true;
 
         public class ReplayState<T> : IInput

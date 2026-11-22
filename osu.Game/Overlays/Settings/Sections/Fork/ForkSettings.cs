@@ -118,12 +118,6 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Current = useStable
                 }),
                 new SettingsItemV2(stablePathTextBox),
-                new SettingsItemV2(new FormCheckBox
-                {
-                    Caption = ForkSettingsStrings.DisableOnlineRecordsCaption,
-                    HintText = ForkSettingsStrings.DisableOnlineRecordsHint,
-                    Current = config.GetBindable<bool>(OsuSetting.ForkDisableOnlineRecordSending)
-                }),
                 new SettingsItemV2(new FormEnumDropdown<ForkRelaxPpSystem>
                 {
                     Caption = ForkSettingsStrings.RelaxPpSystemCaption,

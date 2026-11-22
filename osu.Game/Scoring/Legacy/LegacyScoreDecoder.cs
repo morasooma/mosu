@@ -54,6 +54,8 @@ namespace osu.Game.Scoring.Legacy
                 int version = sr.ReadInt32();
 
                 scoreInfo.IsLegacyScore = version < LegacyScoreEncoder.FIRST_LAZER_VERSION;
+                if (scoreInfo.IsLegacyScore)
+                    score.Replay.LegacyClientVersion = version;
 
                 // TotalScoreVersion gets initialised to LATEST_VERSION.
                 // In the case where the incoming score has either an osu!stable or old lazer version, we need

@@ -261,20 +261,6 @@ namespace osu.Game.Screens.Ranking.Statistics
                 });
             }
 
-            if (AchievedScore != null && newScore.Equals(AchievedScore))
-            {
-                var report = GameplayPerformanceSnapshot.CreateCheatLikenessReport();
-                if (report.IsAvailable)
-                {
-                    yield return new StatisticItem("Anti-cheat analysis", () => new CheatLikenessStatistic(report)
-                    {
-                        RelativeSizeAxes = Axes.X,
-                        Anchor = Anchor.Centre,
-                        Origin = Anchor.Centre,
-                    });
-                }
-            }
-
             foreach (var statistic in newScore.Ruleset.CreateInstance().CreateStatisticsForScore(newScore, playableBeatmap))
                 yield return statistic;
 

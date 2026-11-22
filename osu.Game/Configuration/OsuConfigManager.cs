@@ -527,7 +527,7 @@ namespace osu.Game.Configuration
         {
             // UI/selection defaults
             SetDefault(OsuSetting.Ruleset, string.Empty);
-            SetDefault(OsuSetting.Skin, SkinInfo.ARGON_SKIN.ToString());
+            SetDefault(OsuSetting.Skin, SkinInfo.MORASOOMA_SKIN.ToString());
             SetDefault(OsuSetting.ForkSeparateSkinsPerRuleset, false);
             SetDefault(OsuSetting.ForkUseSkinCursorOutsideGameplay, false);
             SetDefault(OsuSetting.ForkOsuSkin, string.Empty);
@@ -661,11 +661,6 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ForkRelaxStableBpmMigrationComplete, false);
             SetDefault(OsuSetting.ForkRelaxPpSystem, ForkRelaxPpSystem.MosuRealistik);
             SetDefault(OsuSetting.ForkDisableRemoteLogging, false);
-            SetDefault(OsuSetting.ForkDisableOnlineRecordSending, false);
-            SetDefault(OsuSetting.ForkObservedHitObjectGraphEnabled, false);
-            SetDefault(OsuSetting.ForkObservedHitObjectGraphDebugVisible, false);
-            SetDefault(OsuSetting.ForkObservedHitObjectGraphShiftPixels, 0.5f, 0f, 8f, 0.1f);
-            SetDefault(OsuSetting.ForkObservedHitObjectGraphShiftIntervalMs, 1000.0, 100.0, 5000.0, 50.0);
             SetDefault(OsuSetting.ForkCustomRecommendedDifficultyEnabled, false);
             SetDefault(OsuSetting.ForkCustomRecommendedDifficulty, 5.0, 0.0, 15.0, 0.1);
             SetDefault(OsuSetting.ForkUncappedFrameRate, false);
@@ -732,11 +727,6 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ForkRelaxStableBpm, 200.0, 60.0, 600.0, 1.0);
             SetDefault(OsuSetting.ForkRelaxStableBpmMigrationComplete, false);
             SetDefault(OsuSetting.ForkDisableRemoteLogging, false);
-            SetDefault(OsuSetting.ForkDisableOnlineRecordSending, false);
-            SetDefault(OsuSetting.ForkObservedHitObjectGraphEnabled, false);
-            SetDefault(OsuSetting.ForkObservedHitObjectGraphDebugVisible, false);
-            SetDefault(OsuSetting.ForkObservedHitObjectGraphShiftPixels, 0.5f, 0f, 8f, 0.1f);
-            SetDefault(OsuSetting.ForkObservedHitObjectGraphShiftIntervalMs, 1000.0, 100.0, 5000.0, 50.0);
             SetDefault(OsuSetting.ForkCustomRecommendedDifficultyEnabled, false);
             SetDefault(OsuSetting.ForkCustomRecommendedDifficulty, 5.0, 0.0, 15.0, 0.1);
             SetDefault(OsuSetting.ForkUncappedFrameRate, false);
@@ -783,9 +773,6 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ForkExportReplayOnlyClicks, false);
             SetDefault(OsuSetting.ForkVisualOD11, false);
             SetDefault(OsuSetting.ForkHitErrorMeterShowPositionalMisses, false);
-#if DEBUG
-            SetDefault(OsuSetting.ForkGameplayIntegrityDebugScenario, GameplayIntegrityDebugScenario.None);
-#endif
             SetDefault(OsuSetting.ForkUse8kPollingRate, false);
             SetDefault(OsuSetting.ForkThemeMode, ThemeMode.Default);
             SetDefault(OsuSetting.ForkOverlayTransparency, false);
@@ -1206,11 +1193,6 @@ namespace osu.Game.Configuration
         ForkRelaxStableBpmMigrationComplete,
         ForkRelaxPpSystem,
         ForkDisableRemoteLogging,
-        ForkDisableOnlineRecordSending,
-        ForkObservedHitObjectGraphEnabled,
-        ForkObservedHitObjectGraphDebugVisible,
-        ForkObservedHitObjectGraphShiftPixels,
-        ForkObservedHitObjectGraphShiftIntervalMs,
         ForkCustomRecommendedDifficultyEnabled,
         ForkCustomRecommendedDifficulty,
         ForkUncappedFrameRate,
@@ -1275,9 +1257,6 @@ namespace osu.Game.Configuration
         ForkExportReplayOnlyClicks,
         ForkVisualOD11,
         ForkHitErrorMeterShowPositionalMisses,
-#if DEBUG
-        ForkGameplayIntegrityDebugScenario,
-#endif
         ForkUse8kPollingRate,
         ForkThemeMode,
         ForkOverlayTransparency,

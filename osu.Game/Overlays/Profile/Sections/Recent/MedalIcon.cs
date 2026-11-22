@@ -6,6 +6,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
+using osu.Game.Users;
 
 namespace osu.Game.Overlays.Profile.Sections.Recent
 {
@@ -14,8 +15,6 @@ namespace osu.Game.Overlays.Profile.Sections.Recent
     {
         private readonly string slug;
         private readonly Sprite sprite;
-
-        private string url => $@"https://assets.ppy.sh/medals/client/{slug}@2x.png";
 
         public MedalIcon(string slug)
         {
@@ -32,7 +31,8 @@ namespace osu.Game.Overlays.Profile.Sections.Recent
         [BackgroundDependencyLoader]
         private void load(LargeTextureStore textures)
         {
-            sprite.Texture = textures.Get(url);
+            if (MorasoomaMedalAssets.Resolve(slug) is { } resource)
+                sprite.Texture = textures.Get(resource);
         }
     }
 }

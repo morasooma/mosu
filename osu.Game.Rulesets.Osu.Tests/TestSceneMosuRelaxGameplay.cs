@@ -116,7 +116,7 @@ namespace osu.Game.Rulesets.Osu.Tests
                 };
                 ruleset.NewResult += judgements.Add;
             });
-            AddUntilStep("MRX включён через мод", () => ruleset.IsLoaded && relax.IsLoaded && relax.IsDeclaredMod && relax.IsEnabled);
+            AddUntilStep("MRX включён через мод", () => ruleset.IsLoaded && relax.IsLoaded && relax.IsEnabled);
             AddStep("применить скорость мода до появления нот", () =>
             {
                 ruleset.FrameStableClock.AdjustmentsFromMods.AddAdjustment(AdjustableProperty.Frequency, new BindableDouble(rate));

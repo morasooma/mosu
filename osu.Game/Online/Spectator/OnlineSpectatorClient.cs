@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR.Client;
 using osu.Framework.Allocation;
@@ -73,34 +72,7 @@ namespace osu.Game.Online.Spectator
             }
         }
 
-        protected override async Task<bool> BeginPlayingInternal(long? scoreToken, SpectatorState state)
-        {
-            var conn = activeConnection;
-            if (conn == null)
-                return false;
-
-            try
-            {
-                await conn.InvokeAsync(nameof(ISpectatorServer.BeginPlaySession), scoreToken, state).ConfigureAwait(false);
-                return true;
-            }
-            catch (Exception exception)
-            {
-                if (exception.GetHubExceptionMessage() == HubClientConnector.SERVER_SHUTDOWN_MESSAGE)
-                {
-                    Debug.Assert(connector != null);
-
-                    await connector.Reconnect().ConfigureAwait(false);
-                    return await BeginPlayingInternal(scoreToken, state).ConfigureAwait(false);
-                }
-
-                // Exceptions can occur if, for instance, the locally played beatmap doesn't have a server-side counterpart.
-                // For now, let's ignore these so they don't cause unobserved exceptions to appear to the user (and sentry),
-                // but log to disk for diagnostic purposes.
-                Logger.Log($"{nameof(OnlineSpectatorClient)}.{nameof(BeginPlayingInternal)} failed: {exception.Message}", LoggingTarget.Network);
-                return false;
-            }
-        }
+        protected override Task<bool> BeginPlayingInternal(long? scoreToken, SpectatorState state) => Task.FromResult(false);
 
         protected override Task SendFramesInternal(FrameDataBundle bundle)
         {
@@ -108,21 +80,7 @@ namespace osu.Game.Online.Spectator
             return Task.CompletedTask;
         }
 
-        protected override async Task EndPlayingInternal(SpectatorState state)
-        {
-            var conn = activeConnection;
-            if (conn == null)
-                return;
-
-            try
-            {
-                await conn.InvokeAsync(nameof(ISpectatorServer.EndPlaySession), state).ConfigureAwait(false);
-            }
-            catch (InvalidOperationException ex)
-            {
-                Logger.Log($"{nameof(OnlineSpectatorClient)} invoke of '{nameof(ISpectatorServer.EndPlaySession)}' failed: {ex.Message}", LoggingTarget.Network);
-            }
-        }
+        protected override Task EndPlayingInternal(SpectatorState state) => Task.CompletedTask;
 
         protected override async Task WatchUserInternal(int userId)
         {

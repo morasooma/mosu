@@ -12,7 +12,11 @@ using osu.Framework.Input.Events;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Drawables;
 using osu.Game.Rulesets.Objects.Types;
+using osu.Game.Rulesets.Osu.Mods;
+using osu.Game.Rulesets.Osu.UI;
 using osu.Game.Screens.Play;
+using osu.Game.Rulesets.Osu.Replays;
+using osu.Game.Rulesets.Osu.Scoring;
 using osuTK;
 
 namespace osu.Game.Rulesets.Osu.Objects.Drawables
@@ -26,6 +30,12 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
         [Resolved]
         private IGameplayClock? gameplayClock { get; set; }
+
+        [Resolved(CanBeNull = true)]
+        private DrawableOsuRuleset? drawableRuleset { get; set; }
+
+        private bool stableRelax => osu.Game.Online.MosuServerEnvironment.UsesStableProtocol
+            && drawableRuleset?.Mods.Any(m => m is OsuModRelax) == true;
 
         /// <summary>
         /// The point in time after which we can accept any key for tracking. Before this time, we may need to restrict tracking to the key used to hit the head circle.
@@ -51,6 +61,9 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
         private Vector2? screenSpaceMousePosition;
         private readonly DrawableSlider slider;
+        private StableSliderPosition? stableSliderPosition;
+        private int stableDownButton;
+        private double stableSlideStart;
 
         public SliderInputManager(DrawableSlider slider)
         {
@@ -69,14 +82,23 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
             return base.OnMouseMove(e);
         }
 
+        private bool isAutomaticReplayFrame => slider.OsuActionInputManager?.ReplayInputHandler is OsuFramedReplayInputHandler handler
+            && !handler.IsRecordedGameplayFrame;
+
         protected override void Update()
         {
             base.Update();
+            if (isAutomaticReplayFrame)
+                return;
+
             updateTracking(IsMouseInFollowArea(Tracking));
         }
 
         public void PostProcessHeadJudgement(DrawableSliderHead head)
         {
+            if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol)
+                return;
+
             if (!head.Judged || !head.Result.IsHit)
                 return;
 
@@ -141,17 +163,24 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
         public void TryJudgeNestedObject(DrawableOsuHitObject nestedObject, double timeOffset)
         {
+            if (isAutomaticReplayFrame)
+                return;
+
+            double judgementClock = Time.Current;
             switch (nestedObject)
             {
                 case DrawableSliderRepeat:
                 case DrawableSliderTick:
-                    if (timeOffset < 0)
+                    if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol ? judgementClock < (int)nestedObject.HitObject.StartTime : timeOffset < 0)
                         return;
 
                     break;
 
                 case DrawableSliderTail:
-                    if (timeOffset < SliderEventGenerator.TAIL_LENIENCY)
+                    double tailJudgeTime = osu.Game.Online.MosuServerEnvironment.UsesStableProtocol
+                        ? Math.Max(slider.HitObject.StartTime + (int)slider.HitObject.Duration / 2, (int)slider.HitObject.EndTime - 36)
+                        : nestedObject.HitObject.StartTime + SliderEventGenerator.TAIL_LENIENCY;
+                    if (judgementClock < tailJudgeTime)
                         return;
 
                     // Ensure the tail can only activate after all previous ticks/repeats already have.
@@ -168,12 +197,15 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
                     return;
             }
 
-            if (!slider.HeadCircle.Judged)
+            if (!slider.HeadCircle.Judged && !osu.Game.Online.MosuServerEnvironment.UsesStableProtocol)
                 return;
 
-            if (Tracking)
+            double checkpoint = nestedObject is DrawableSliderTail
+                ? Math.Max(slider.HitObject.StartTime + (int)slider.HitObject.Duration / 2, (int)slider.HitObject.EndTime - 36)
+                : (int)nestedObject.HitObject.StartTime;
+            if (Tracking && (!osu.Game.Online.MosuServerEnvironment.UsesStableProtocol || stableSlideStart <= checkpoint))
                 nestedObject.HitForcefully();
-            else if (timeOffset >= 0)
+            else if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol || timeOffset >= 0)
                 nestedObject.MissForcefully();
         }
 
@@ -190,6 +222,12 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
             double followProgress = Math.Clamp((Time.Current - slider.HitObject.StartTime) / slider.HitObject.Duration, 0, 1);
             Vector2 followCirclePosition = slider.HitObject.CurvePositionAt(followProgress);
+            if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol)
+            {
+                stableSliderPosition ??= new StableSliderPosition(slider.HitObject.Path.CalculatedPath,
+                    slider.HitObject.StartTime, slider.HitObject.Velocity, slider.HitObject.RepeatCount + 1);
+                followCirclePosition = stableSliderPosition.PositionAt(Time.Current);
+            }
             Vector2 mousePositionInSlider = slider.ToLocalSpace(pos) - slider.OriginPosition;
 
             return (mousePositionInSlider - followCirclePosition).LengthSquared <= radius * radius;
@@ -228,6 +266,34 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
             }
 
             bool wasTracking = Tracking;
+            if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol
+                && slider.OsuActionInputManager?.ReplayInputHandler is OsuFramedReplayInputHandler handler)
+            {
+                int buttons = handler.StableButtons;
+                bool swapAllowed = buttons != 0 && !(handler.StablePreviousButtons == 3 && handler.StablePreviousButtons2 == buttons);
+                bool held = false;
+                if (buttons == 0)
+                    stableDownButton = 0;
+                else if (stableDownButton == 0 || (buttons != 3 && swapAllowed))
+                {
+                    stableDownButton = (handler.StableNewButtons & 1) != 0 ? 1
+                        : (handler.StableNewButtons & 2) != 0 ? 2 : buttons;
+                    held = true;
+                }
+                else
+                    held = (buttons & stableDownButton) != 0;
+
+                bool trackingNow = Time.Current >= slider.HitObject.StartTime && !slider.Judged
+                    // Stable Relax checks the cursor directly. Legacy RX frames have no
+                    // buttons; synthesised head presses are not a slider hold requirement.
+                    && isValidTrackingPosition && (held || swapAllowed || stableRelax);
+                if (trackingNow && !Tracking)
+                    stableSlideStart = Time.Current;
+                Tracking = trackingNow;
+                if (wasTracking != Tracking)
+                    slider.Result.TrackingHistory.Push((Time.Current, Tracking));
+                return;
+            }
 
             // from the point at which the head circle is hit, this will be non-null.
             // it may be null if the head circle was missed.
@@ -250,7 +316,7 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
                 return;
 
             lastPressedActions.Clear();
-            bool validTrackingAction = false;
+            bool validTrackingAction = stableRelax;
 
             foreach (OsuAction action in slider.OsuActionInputManager.PressedActions)
             {
@@ -261,9 +327,10 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
             }
 
             Tracking =
+                (!osu.Game.Online.MosuServerEnvironment.UsesStableProtocol || Time.Current >= slider.HitObject.StartTime)
                 // even in an edge case where current time has exceeded the slider's time, we may not have finished judging.
                 // we don't want to potentially update from Tracking=true to Tracking=false at this point.
-                (!slider.AllJudged || Time.Current <= slider.HitObject.GetEndTime())
+                && (!slider.AllJudged || Time.Current <= slider.HitObject.GetEndTime())
                 // in valid position range
                 && isValidTrackingPosition
                 // valid action
@@ -292,6 +359,9 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
         private void resetState(DrawableHitObject obj)
         {
             Tracking = false;
+            stableSliderPosition = null;
+            stableDownButton = 0;
+            stableSlideStart = double.NegativeInfinity;
             timeToAcceptAnyKeyAfter = null;
             lastPressedActions.Clear();
             screenSpaceMousePosition = null;

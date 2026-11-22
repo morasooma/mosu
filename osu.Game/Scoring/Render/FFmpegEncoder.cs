@@ -23,6 +23,8 @@ namespace osu.Game.Scoring.Render
     public class FFmpegEncoder : IDisposable
     {
         private static readonly string local_ffmpeg_path = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
+        // AppImage mounts are read-only. Keep downloaded binaries in the user's writable data directory.
+        private static readonly string cached_ffmpeg_path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Morasooma", "ffmpeg");
 
         internal static string ExecutablePath => resolveExecutablePath();
 
@@ -87,7 +89,7 @@ namespace osu.Game.Scoring.Render
         }
 
         /// <summary>
-        /// Ensures FFmpeg is available at the local path. Downloads it if missing.
+        /// Ensures FFmpeg is available. Downloads it to a writable cache if missing.
         /// Call this before constructing <see cref="FFmpegEncoder"/> to avoid blocking.
         /// </summary>
         /// <param name="onProgress">Callback receiving (percent, downloadedMB, totalMB). Called periodically during download.</param>
@@ -102,7 +104,9 @@ namespace osu.Game.Scoring.Render
                 throw new FileNotFoundException("FFmpeg was not found. Install it manually or set FFMPEG_PATH.");
 
             Framework.Logging.Logger.Log("[FFmpeg] FFmpeg was not found. Downloading stable release...", Framework.Logging.LoggingTarget.Runtime, Framework.Logging.LogLevel.Important);
-            await downloadFFmpeg(local_ffmpeg_path, onProgress, token).ConfigureAwait(false);
+            string targetPath = OperatingSystem.IsLinux() ? cached_ffmpeg_path : local_ffmpeg_path;
+            Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+            await downloadFFmpeg(targetPath, onProgress, token).ConfigureAwait(false);
         }
 
         private readonly Process ffmpegProcess;
@@ -413,26 +417,46 @@ namespace osu.Game.Scoring.Render
             if (!string.IsNullOrWhiteSpace(envPath) && File.Exists(envPath))
                 return envPath;
 
-            if (File.Exists(local_ffmpeg_path))
-            {
-                if (!OperatingSystem.IsWindows())
-                {
-                    try
-                    {
-                        var mode = File.GetUnixFileMode(local_ffmpeg_path);
-                        if ((mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) == 0)
-                            return null;
-                    }
-                    catch
-                    {
-                        return null;
-                    }
-                }
-
+            if (isExecutable(local_ffmpeg_path))
                 return local_ffmpeg_path;
+
+            if (OperatingSystem.IsLinux())
+            {
+                if (isExecutable(cached_ffmpeg_path))
+                    return cached_ffmpeg_path;
+
+                // Prefer the distro's FFmpeg over downloading a second copy (also works in AppImages).
+                foreach (string directory in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+                {
+                    if (string.IsNullOrWhiteSpace(directory))
+                        continue;
+
+                    string candidate = Path.Combine(directory, "ffmpeg");
+                    if (isExecutable(candidate))
+                        return candidate;
+                }
             }
 
             return null;
+        }
+
+        private static bool isExecutable(string path)
+        {
+            if (!File.Exists(path))
+                return false;
+
+            if (OperatingSystem.IsWindows())
+                return true;
+
+            try
+            {
+                var mode = File.GetUnixFileMode(path);
+                return (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static async Task downloadFFmpeg(string targetPath, Action<int, long, long>? onProgress, CancellationToken token)

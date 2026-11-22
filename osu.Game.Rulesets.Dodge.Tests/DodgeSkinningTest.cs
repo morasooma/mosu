@@ -11,7 +11,7 @@ using osu.Framework.Graphics.Textures;
 using osu.Framework.IO.Stores;
 using osu.Game.Audio;
 using osu.Game.Beatmaps;
-using osu.Game.Resources;
+using Morasooma.Resources;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Dodge.Configuration;
 using osu.Game.Rulesets.Dodge.Skinning;
@@ -113,7 +113,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
         [Test]
         public void TestBuiltInMissSampleExists()
         {
-            using var resources = new DllResourceStore(OsuResources.ResourceAssembly);
+            using var resources = new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(ResourceAssembly).Assembly), "SoundOverrides");
 
             Assert.That(resources.Get("Samples/Gameplay/dodge-miss.wav"), Is.Not.Null.And.Not.Empty);
         }

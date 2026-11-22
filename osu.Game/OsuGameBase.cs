@@ -61,6 +61,7 @@ using osu.Game.Overlays;
 using osu.Game.Overlays.Settings;
 using osu.Game.Overlays.Settings.Sections;
 using osu.Game.Overlays.Settings.Sections.Input;
+using osu.Game.Graphics.Fonts;
 using osu.Game.Resources;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
@@ -406,6 +407,10 @@ namespace osu.Game
 
             // Fork-specific resources take precedence over upstream resources so public-facing
             // branding can be replaced without modifying the upstream dependency checkout.
+            var morasoomaAssembly = typeof(Morasooma.Resources.ResourceAssembly).Assembly;
+            foreach (string bank in new[] { "ShaderOverrides", "TextureOverrides", "CompatibilityOverrides", "CounterOverrides", "MedalOverrides", "IconOverrides", "SoundOverrides" })
+                Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(morasoomaAssembly), bank));
+
             Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(OsuGameBase).Assembly), @"Resources"));
             Resources.AddStore(new DllResourceStore(OsuResources.ResourceAssembly));
 
@@ -748,35 +753,15 @@ namespace osu.Game
 
         protected virtual void InitialiseFonts()
         {
-            AddFont(Resources, @"Fonts/Torus/Torus-Regular");
-            AddFont(Resources, @"Fonts/Torus/Torus-Light");
-            AddFont(Resources, @"Fonts/Torus/Torus-SemiBold");
-            AddFont(Resources, @"Fonts/Torus/Torus-Bold");
+            var catalogue = new MosuFontResources();
+            var bundledFonts = new ResourceStore<byte[]>(catalogue);
+            Resources.AddStore(bundledFonts);
 
-            AddFont(Resources, @"Fonts/Torus-Alternate/Torus-Alternate-Regular");
-            AddFont(Resources, @"Fonts/Torus-Alternate/Torus-Alternate-Light");
-            AddFont(Resources, @"Fonts/Torus-Alternate/Torus-Alternate-SemiBold");
-            AddFont(Resources, @"Fonts/Torus-Alternate/Torus-Alternate-Bold");
+            foreach (string asset in MosuFontResources.LegacyFaces.Keys)
+                AddFont(bundledFonts, asset);
 
-            AddFont(Resources, @"Fonts/Inter/Inter-Regular");
-            AddFont(Resources, @"Fonts/Inter/Inter-RegularItalic");
-            AddFont(Resources, @"Fonts/Inter/Inter-Light");
-            AddFont(Resources, @"Fonts/Inter/Inter-LightItalic");
-            AddFont(Resources, @"Fonts/Inter/Inter-SemiBold");
-            AddFont(Resources, @"Fonts/Inter/Inter-SemiBoldItalic");
-            AddFont(Resources, @"Fonts/Inter/Inter-Bold");
-            AddFont(Resources, @"Fonts/Inter/Inter-BoldItalic");
-
-            AddFont(Resources, @"Fonts/Noto/Noto-Basic");
-            AddFont(Resources, @"Fonts/Noto/Noto-Bopomofo");
-            AddFont(Resources, @"Fonts/Noto/Noto-CJK-Basic");
-            AddFont(Resources, @"Fonts/Noto/Noto-CJK-Compatibility");
-            AddFont(Resources, @"Fonts/Noto/Noto-Hangul");
-            AddFont(Resources, @"Fonts/Noto/Noto-Thai");
-
-            AddFont(Resources, @"Fonts/Venera/Venera-Light");
-            AddFont(Resources, @"Fonts/Venera/Venera-Bold");
-            AddFont(Resources, @"Fonts/Venera/Venera-Black");
+            foreach (string asset in catalogue.GetFontAssets())
+                AddFont(bundledFonts, asset);
 
             Fonts.AddStore(new OsuIcon.OsuIconStore(Textures));
 

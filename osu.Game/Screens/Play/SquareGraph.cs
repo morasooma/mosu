@@ -73,10 +73,11 @@ namespace osu.Game.Screens.Play
 
         private ScheduledDelegate scheduledCreate;
 
-        private readonly LayoutValue layout = new LayoutValue(Invalidation.DrawSize | Invalidation.DrawInfo);
+        private readonly LayoutValue layout;
 
-        public SquareGraph()
+        public SquareGraph(bool trackDrawInfo = true)
         {
+            layout = new LayoutValue(Invalidation.DrawSize | (trackDrawInfo ? Invalidation.DrawInfo : Invalidation.None));
             AddLayout(layout);
         }
 

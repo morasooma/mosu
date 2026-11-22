@@ -171,7 +171,7 @@ namespace osu.Game.Scoring.Render
             Ruleset.Value = score.ScoreInfo.Ruleset;
 
             var audioManager = parent.Get<AudioManager>();
-            gameplayHitsoundRenderer = new RenderGameplayHitsoundRenderer(audioManager);
+            gameplayHitsoundRenderer = new RenderGameplayHitsoundRenderer(audioManager, audioManager.CreateAudioMixer("ReplayCapture"));
             dependencies.CacheAs<IRenderGameplayHitsoundRenderer>(gameplayHitsoundRenderer);
             return dependencies;
         }

@@ -248,13 +248,6 @@ namespace osu.Game.Scoring
         [Ignored]
         public List<HitEvent> HitEvents { get; set; } = new List<HitEvent>();
 
-        /// <summary>
-        /// Aggregated client-side integrity information for this gameplay session.
-        /// This is intentionally not persisted in the local score database.
-        /// </summary>
-        [Ignored]
-        public GameplayIntegrityReport? GameplayIntegrityReport { get; set; }
-
         private TagCoopReplayMetadata? tagCoopReplay;
         private bool tagCoopReplayResolved;
 
@@ -298,9 +291,6 @@ namespace osu.Game.Scoring
             }
         }
 
-        [Ignored]
-        internal Func<GameplayIntegrityReport?>? GameplayIntegrityReportProvider { get; set; }
-
         public ScoreInfo DeepClone()
         {
             var clone = (ScoreInfo)this.Detach().MemberwiseClone();
@@ -308,8 +298,6 @@ namespace osu.Game.Scoring
             clone.Statistics = new Dictionary<HitResult, int>(clone.Statistics);
             clone.MaximumStatistics = new Dictionary<HitResult, int>(clone.MaximumStatistics);
             clone.HitEvents = new List<HitEvent>(clone.HitEvents);
-            clone.GameplayIntegrityReport = GameplayIntegrityReportProvider?.Invoke() ?? GameplayIntegrityReport;
-            clone.GameplayIntegrityReportProvider = null;
             clone.TagCoopReplay = TagCoopReplay?.DeepClone();
 
             // Ensure we have fresh mods to avoid any references (ie. after gameplay).
