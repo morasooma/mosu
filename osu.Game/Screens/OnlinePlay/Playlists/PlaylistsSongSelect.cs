@@ -12,6 +12,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Localisation;
 using osu.Framework.Screens;
 using osu.Game.Localisation;
+using osu.Game.Graphics.Sprites;
 using osu.Game.Online.API;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays;
@@ -32,22 +33,31 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
         public override string Title => ShortTitle.Humanize();
 
         protected readonly Bindable<bool> Freestyle = new Bindable<bool>(true);
-        private readonly Bindable<IReadOnlyList<Mod>> freeMods = new Bindable<IReadOnlyList<Mod>>([]);
+        protected readonly Bindable<IReadOnlyList<Mod>> freeMods = new Bindable<IReadOnlyList<Mod>>([]);
 
         [Resolved]
         private IOverlayManager? overlayManager { get; set; }
 
-        private readonly AddToPlaylistFooterButton addToPlaylistFooterButton;
+        protected readonly AddToPlaylistFooterButton addToPlaylistFooterButton;
+
+        protected virtual bool ShowPlaylistTray => true;
 
         private readonly Room room;
+        private readonly Room? editTarget;
+        private OsuSpriteText? additionStatus;
+        private bool savingAddition;
+
+        [Resolved]
+        private IAPIProvider api { get; set; } = null!;
         private ModSelectOverlay modSelect = null!;
         private FreeModSelectOverlay freeModSelect = null!;
 
         private IDisposable? modSelectOverlayRegistration;
 
-        public PlaylistsSongSelect(Room room, LocalisableString? addButtonText = null)
+        public PlaylistsSongSelect(Room room, LocalisableString? addButtonText = null, bool addToExisting = false)
         {
-            this.room = room;
+            editTarget = addToExisting ? room : null;
+            this.room = addToExisting ? new Room() : room;
 
             ShowOsuLogo = false;
 
@@ -71,16 +81,34 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
         [BackgroundDependencyLoader]
         private void load()
         {
-            AddInternal(new PlaylistTray(room)
+            if (ShowPlaylistTray)
             {
-                Anchor = Anchor.BottomRight,
-                Origin = Anchor.BottomRight,
-                Margin = new MarginPadding
+                AddInternal(new PlaylistTray(room)
                 {
-                    Bottom = ScreenFooterButton.HEIGHT,
-                    Right = OsuGame.SCREEN_EDGE_MARGIN
-                }
-            });
+                    Anchor = Anchor.BottomRight,
+                    Origin = Anchor.BottomRight,
+                    Margin = new MarginPadding
+                    {
+                        Bottom = ScreenFooterButton.HEIGHT,
+                        Right = OsuGame.SCREEN_EDGE_MARGIN
+                    }
+                });
+            }
+
+            if (editTarget != null)
+            {
+                AddInternal(additionStatus = new OsuSpriteText
+                {
+                    Anchor = Anchor.BottomRight,
+                    Origin = Anchor.BottomRight,
+                    Margin = new MarginPadding
+                    {
+                        Bottom = ScreenFooterButton.HEIGHT + OsuGame.SCREEN_EDGE_MARGIN,
+                        Right = OsuGame.SCREEN_EDGE_MARGIN * 2
+                    },
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5044,
+                });
+            }
 
             LoadComponent(freeModSelect = new FreeModSelectOverlay
             {
@@ -110,7 +138,51 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
 
         public virtual void AddNewItem()
         {
-            room.Playlist = room.Playlist.Append(createItem()).ToArray();
+            if (savingAddition) return;
+            if (editTarget == null)
+            {
+                room.Playlist = room.Playlist.Append(CreatePlaylistItem()).ToArray();
+                return;
+            }
+            if (editTarget.RoomID == null || editTarget.HasEnded || editTarget.Host?.Id != api.LocalUser.Value.Id)
+            {
+                additionStatus!.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5045;
+                return;
+            }
+            if (editTarget.Playlist.Count >= 2000)
+            {
+                additionStatus!.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5046;
+                return;
+            }
+            saveAddition(CreatePlaylistItem());
+        }
+
+        private void saveAddition(PlaylistItem item)
+        {
+            if (savingAddition || editTarget?.RoomID == null) return;
+            savingAddition = true;
+            addToPlaylistFooterButton.Enabled.Value = false;
+            additionStatus!.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5047;
+            var request = new AddRoomPlaylistItemsRequest(editTarget.RoomID.Value, new[] { item });
+            request.Success += response => Schedule(() =>
+            {
+                editTarget.CopyFrom(response);
+                savingAddition = false;
+                addToPlaylistFooterButton.Enabled.Value = true;
+                additionStatus!.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5048(editTarget.Playlist.Count);
+            });
+            request.Failure += exception => Schedule(() =>
+            {
+                savingAddition = false;
+                addToPlaylistFooterButton.Enabled.Value = true;
+                additionStatus!.Text = exception.Message;
+                const string prefix = "beatmaps not found:";
+                if (exception.Message.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    additionStatus.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5050;
+                }
+            });
+            api.Queue(request);
         }
 
         private void onModSelectStateChanged(ValueChangedEvent<Visibility> state)
@@ -199,6 +271,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
 
         public override bool OnExiting(ScreenExitEvent e)
         {
+            if (savingAddition) return true;
             if (base.OnExiting(e))
                 return true;
 
@@ -234,7 +307,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             ShowPresets = true,
         };
 
-        private PlaylistItem createItem() => new PlaylistItem(Beatmap.Value.BeatmapInfo)
+        protected PlaylistItem CreatePlaylistItem() => new PlaylistItem(Beatmap.Value.BeatmapInfo)
         {
             ID = room.Playlist.Count == 0 ? 0 : room.Playlist.Max(p => p.ID) + 1,
             RulesetID = Ruleset.Value.OnlineID,

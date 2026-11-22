@@ -41,6 +41,7 @@ using osu.Game.Online.Leaderboards;
 using osu.Game.Online.Placeholders;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Notifications;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Scoring;
@@ -55,6 +56,8 @@ namespace osu.Game.Screens.Select
         public const float SPACING_BETWEEN_SCORES = 4;
 
         public Func<bool> UseScorePanelOnlyInput { get; init; } = () => false;
+
+        private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
         public IBindable<BeatmapLeaderboardScope> Scope { get; } = new Bindable<BeatmapLeaderboardScope>();
 
@@ -105,10 +108,13 @@ namespace osu.Game.Screens.Select
 
         private ScoreOnlyScrollContainer scoresScroll = null!;
         private Container personalBestDisplay = null!;
+        private Container personalBestContent = null!;
+        private OsuContextMenuContainer personalBestContextMenu = null!;
 
         private Container<BeatmapLeaderboardScore> personalBestScoreContainer = null!;
         private OsuSpriteText personalBestText = null!;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<float>? radiusBindable;
         private LoadingLayer loading = null!;
 
         private CancellationTokenSource? cancellationTokenSource;
@@ -176,7 +182,7 @@ namespace osu.Game.Screens.Select
                         Shear = OsuGame.SHEAR,
                         Margin = new MarginPadding
                         {
-                            Left = OsuGame.DisableShear.Value ? -20f : -40f,
+                            Left = OsuGame.DisableShear.Value ? 0f : -40f,
                         },
                         CornerRadius = 10f,
                         Masking = true,
@@ -189,15 +195,15 @@ namespace osu.Game.Screens.Select
                             new WedgeBackground(),
                             // Required because wedge background blocks input from passing through
                             // to the main context menu container above.
-                            new OsuContextMenuContainer
+                            personalBestContextMenu = new OsuContextMenuContainer
                             {
                                 Shear = -OsuGame.SHEAR,
                                 RelativeSizeAxes = Axes.Both,
-                                Child = new Container
+                                Child = personalBestContent = new Container
                                 {
                                     RelativeSizeAxes = Axes.X,
                                     AutoSizeAxes = Axes.Y,
-                                    Padding = new MarginPadding { Top = 5f, Bottom = 5f, Left = OsuGame.DisableShear.Value ? 30f : 70f, Right = 10f },
+                                    Padding = new MarginPadding { Top = 5f, Bottom = 5f, Left = OsuGame.DisableShear.Value ? 40f : 70f, Right = 10f },
                                     Children = new Drawable[]
                                     {
                                         personalBestText = new OsuSpriteText
@@ -227,6 +233,32 @@ namespace osu.Game.Screens.Select
             };
 
             swishSample = audio.Samples.Get(@"SongSelect/leaderboard-score");
+
+            radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Panel, 10f);
+
+            void updateRadius()
+            {
+                float target = radiusBindable?.Value ?? 10f;
+                float maxSafe = !disableShear.Value ? 12f : 25f;
+                personalBestDisplay.CornerRadius = Math.Min(target, maxSafe);
+            }
+
+            disableShear.BindValueChanged(_ =>
+            {
+                scoresScroll.Shear = personalBestDisplay.Shear = OsuGame.SHEAR;
+                personalBestContextMenu.Shear = -OsuGame.SHEAR;
+                personalBestDisplay.Margin = new MarginPadding { Left = disableShear.Value ? 0f : -40f };
+                personalBestContent.Padding = new MarginPadding
+                {
+                    Top = 5f, Bottom = 5f, Left = disableShear.Value ? 40f : 70f, Right = 10f,
+                };
+                scoresContainer.Padding = new MarginPadding
+                {
+                    Top = 5f, Left = disableShear.Value ? 40f : 80f, Bottom = BeatmapLeaderboardScore.HEIGHT * 3,
+                };
+                updateRadius();
+            }, true);
+            radiusBindable.BindValueChanged(_ => updateRadius(), true);
         }
 
         private bool receivesInputAtScore(Vector2 screenSpacePos)
@@ -328,7 +360,11 @@ namespace osu.Game.Screens.Select
 
         public void RefetchScores()
         {
-            SetScores(Array.Empty<ScoreInfo>());
+            // A selection change is a loading state, not a successful empty leaderboard. Passing
+            // an empty list through SetScores() built a transient NoScores placeholder before
+            // immediately replacing it with Retrieving (and cleared the score tree twice).
+            cancellationTokenSource?.Cancel();
+            clearScores();
 
             if (beatmap.IsDefault)
             {
@@ -389,6 +425,9 @@ namespace osu.Game.Screens.Select
 
         private void updateScores()
         {
+            using var phase = PerformancePhaseLogger.Begin("SongSelect.Leaderboard.UpdateScores", detail:
+                $"beatmap_id={beatmap.Value.BeatmapInfo.OnlineID} scope={Scope.Value}");
+
             var scores = fetchedScores.Value;
 
             if (scores == null) return;
@@ -407,6 +446,10 @@ namespace osu.Game.Screens.Select
 
         protected void SetScores(IEnumerable<ScoreInfo> scores, ScoreInfo? userScore = null, int? totalCount = null)
         {
+            int scoreCount = scores.TryGetNonEnumeratedCount(out int count) ? count : -1;
+            using var phase = PerformancePhaseLogger.Begin("SongSelect.Leaderboard.SetScores", detail:
+                $"beatmap_id={beatmap.Value.BeatmapInfo.OnlineID} count={scoreCount} personal_best={userScore != null}");
+
             cancellationTokenSource?.Cancel();
             cancellationTokenSource = new CancellationTokenSource();
 
@@ -485,15 +528,27 @@ namespace osu.Game.Screens.Select
 
             if (userScore != null)
             {
-                personalBestDisplay.MoveToX(0, 600, Easing.OutQuint);
-                personalBestDisplay.FadeIn(600, Easing.OutQuint);
-                personalBestScoreContainer.Child = new BeatmapLeaderboardScore(userScore)
+                // A score card resolves skin, cover and avatar dependencies during loading. Never
+                // perform that work synchronously in the leaderboard response's update callback.
+                CancellationToken token = cancellationTokenSource.Token;
+                LoadComponentAsync(new BeatmapLeaderboardScore(userScore)
                 {
                     Highlight = BeatmapLeaderboardScore.HighlightType.Own,
                     Rank = userScore.Position,
                     SelectedMods = { BindTarget = mods },
                     Action = () => onLeaderboardScoreClicked(userScore),
-                };
+                }, loadedScore =>
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        loadedScore.Dispose();
+                        return;
+                    }
+
+                    personalBestScoreContainer.Child = loadedScore;
+                    personalBestDisplay.MoveToX(0, 600, Easing.OutQuint);
+                    personalBestDisplay.FadeIn(600, Easing.OutQuint);
+                }, token);
 
                 scoresScroll.TransformTo(nameof(scoresScroll.Padding), new MarginPadding { Bottom = personal_best_height }, 300, Easing.OutQuint);
 
@@ -519,6 +574,7 @@ namespace osu.Game.Screens.Select
 
         private void clearScores()
         {
+            using var phase = PerformancePhaseLogger.Begin("SongSelect.Leaderboard.ClearScores", detail: $"visible_rows={scoresContainer.Count}");
             float delay = 0;
 
             foreach (var d in scoresContainer)
@@ -686,7 +742,7 @@ namespace osu.Game.Screens.Select
             {
                 using var beatmapPackageStream = new MemoryStream();
 
-                var legacyBeatmapExporter = new LegacyBeatmapExporter(storage);
+                var legacyBeatmapExporter = new ServerBeatmapExporter(storage);
                 await legacyBeatmapExporter
                       .ExportToStreamAsync(selectedBeatmap.BeatmapSetInfo.ToLive(realm), beatmapPackageStream, notification, notification.CancellationToken)
                       .ConfigureAwait(true);
@@ -720,9 +776,33 @@ namespace osu.Game.Screens.Select
                 await api.PerformAsync(uploadRequest).ConfigureAwait(true);
                 var uploadedBeatmapSet = await uploadCompletion.Task.ConfigureAwait(true);
 
+                // Persist the assigned ID before downloading, so a local import failure cannot
+                // turn a successful publication into a second POST on retry.
                 linkUploadedBeatmapSet(beatmapSetId, uploadedBeatmapSet);
-
                 allowBeatmapUploadAfterReload = false;
+                notification.CancelRequested = () => false;
+
+                var download = new DownloadBeatmapSetRequest(uploadedBeatmapSet, false) { Mirror = DownloadMirror.Server };
+                var downloaded = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+                download.Success += filename => downloaded.TrySetResult(filename);
+                download.Failure += ex => downloaded.TrySetException(ex);
+                download.DownloadProgressed += progress => notification.Progress = progress;
+                await api.PerformAsync(download).ConfigureAwait(true);
+                string canonicalArchive = await downloaded.Task.ConfigureAwait(true);
+                var imported = await beatmaps.ImportAsUpdate(notification,
+                    new ImportTask(canonicalArchive), selectedBeatmap.BeatmapSetInfo).ConfigureAwait(true);
+                if (imported == null)
+                    throw new InvalidOperationException("The published beatmap set could not be imported. Download it again from the server.");
+
+                if (!beatmap.IsDefault && beatmap.Value.BeatmapInfo.ID == selectedBeatmap.BeatmapInfo.ID)
+                {
+                    var refreshed = imported.Value.Beatmaps.FirstOrDefault(b => b.DifficultyName == selectedBeatmap.BeatmapInfo.DifficultyName
+                                                                               && b.Ruleset.OnlineID == selectedBeatmap.BeatmapInfo.Ruleset.OnlineID)
+                                    ?? imported.Value.Beatmaps.First();
+                    if (refreshed != null)
+                        refreshSelectedBeatmap(refreshed);
+                }
+
                 notification.Progress = 1;
                 notification.State = ProgressNotificationState.Completed;
             }
@@ -759,27 +839,9 @@ namespace osu.Game.Screens.Select
                 localBeatmapSet.DateSubmitted = uploadedBeatmapSet.Submitted;
                 localBeatmapSet.DateRanked = uploadedBeatmapSet.Ranked;
 
-                var remainingOnlineBeatmaps = uploadedBeatmapSet.Beatmaps.ToList();
-
-                foreach (var localBeatmap in localBeatmapSet.Beatmaps
-                                                         .OrderBy(b => b.Ruleset.OnlineID)
-                                                         .ThenBy(b => b.DifficultyName, StringComparer.OrdinalIgnoreCase))
-                {
-                    var matchingOnlineBeatmap = matchUploadedBeatmap(localBeatmap, remainingOnlineBeatmaps);
-                    if (matchingOnlineBeatmap == null)
-                        continue;
-
-                    remainingOnlineBeatmaps.Remove(matchingOnlineBeatmap);
-
-                    localBeatmap.OnlineID = matchingOnlineBeatmap.OnlineID;
-                    localBeatmap.OnlineMD5Hash = matchingOnlineBeatmap.MD5Hash;
-                    localBeatmap.LastOnlineUpdate = matchingOnlineBeatmap.LastUpdated;
-                    localBeatmap.Status = matchingOnlineBeatmap.Status;
-
-                    localBeatmap.Metadata.Tags = ensureServerExclusiveTag(uploadedBeatmapSet.Tags);
-                    localBeatmap.Metadata.Author.OnlineID = uploadedBeatmapSet.AuthorID;
-                    localBeatmap.Metadata.Author.Username = uploadedBeatmapSet.Author.Username;
-                }
+                // Do not attach difficulty IDs before the canonical import. The importer
+                // sees those IDs on different local files and correctly rejects the collision.
+                // The set ID above is sufficient to recover from a download/import failure.
             });
 
             if (!beatmap.IsDefault && beatmap.Value.BeatmapSetInfo.ID == localBeatmapSetId)
@@ -811,40 +873,6 @@ namespace osu.Game.Screens.Select
             }
 
             RefetchScores();
-        }
-
-        private static APIBeatmap? matchUploadedBeatmap(BeatmapInfo localBeatmap, List<APIBeatmap> remainingOnlineBeatmaps)
-        {
-            List<APIBeatmap> candidates = remainingOnlineBeatmaps.Where(b => b.RulesetID == localBeatmap.Ruleset.OnlineID).ToList();
-
-            if (candidates.Count == 0)
-                return null;
-
-            candidates = narrowCandidates(candidates, b => string.Equals(b.DifficultyName, localBeatmap.DifficultyName, StringComparison.OrdinalIgnoreCase));
-            candidates = narrowCandidates(candidates, b => Math.Abs(b.Length - localBeatmap.Length) < 1);
-            candidates = narrowCandidates(candidates, b => Math.Abs(b.BPM - localBeatmap.BPM) < 0.01);
-            candidates = narrowCandidates(candidates, b => Math.Abs(b.DrainRate - localBeatmap.Difficulty.DrainRate) < 0.01f);
-            candidates = narrowCandidates(candidates, b => Math.Abs(b.CircleSize - localBeatmap.Difficulty.CircleSize) < 0.01f);
-            candidates = narrowCandidates(candidates, b => Math.Abs(b.ApproachRate - localBeatmap.Difficulty.ApproachRate) < 0.01f);
-            candidates = narrowCandidates(candidates, b => Math.Abs(b.OverallDifficulty - localBeatmap.Difficulty.OverallDifficulty) < 0.01f);
-
-            return candidates.OrderBy(b => b.OnlineID).FirstOrDefault();
-        }
-
-        private static List<T> narrowCandidates<T>(List<T> candidates, Func<T, bool> predicate)
-        {
-            var narrowed = candidates.Where(predicate).ToList();
-            return narrowed.Count > 0 ? narrowed : candidates;
-        }
-
-        private static string ensureServerExclusiveTag(string tags)
-        {
-            var parts = tags.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-
-            if (!parts.Any(tag => string.Equals(tag, BeatmapSetInfoExtensions.ServerExclusiveTag, StringComparison.OrdinalIgnoreCase)))
-                parts.Add(BeatmapSetInfoExtensions.ServerExclusiveTag);
-
-            return string.Join(' ', parts);
         }
 
         private LeaderboardState displayedState;

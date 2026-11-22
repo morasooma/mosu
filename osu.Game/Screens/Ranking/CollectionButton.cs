@@ -17,6 +17,8 @@ using osu.Game.Database;
 using osu.Game.Graphics;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
+using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 using Realms;
 
@@ -31,6 +33,9 @@ namespace osu.Game.Screens.Ranking
         private RealmAccess realmAccess { get; set; } = null!;
 
         private IDisposable? collectionSubscription;
+
+        [Resolved]
+        private OverlayColourProvider colourProvider { get; set; } = null!;
 
         [Resolved]
         private OsuColour colours { get; set; } = null!;
@@ -56,6 +61,7 @@ namespace osu.Game.Screens.Ranking
         {
             base.LoadComplete();
 
+            colourProvider.PaletteVersion.BindValueChanged(_ => updateState());
             collectionSubscription = realmAccess.RegisterForNotifications(r => r.All<BeatmapCollection>(), collectionsChanged);
 
             isInAnyCollection.BindValueChanged(_ => updateState(), true);
@@ -75,7 +81,12 @@ namespace osu.Game.Screens.Ranking
 
         private void updateState()
         {
-            Background.FadeColour(isInAnyCollection.Value ? colours.Green : colours.Gray4, 500, Easing.InOutExpo);
+            Colour4 activeColour = OverlayColourProvider.GetEffectiveContextColour(
+                ThemeSurfaceContext.Results,
+                SurfaceColourRole.Accent,
+                colours.Green);
+
+            Background.FadeColour(isInAnyCollection.Value ? activeColour : colours.Gray4, 500, Easing.InOutExpo);
         }
 
         public Popover GetPopover() => new CollectionPopover(beatmapInfo);

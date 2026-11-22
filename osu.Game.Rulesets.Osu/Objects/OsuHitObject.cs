@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using osu.Framework.Bindables;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.ControlPoints;
@@ -51,6 +52,12 @@ namespace osu.Game.Rulesets.Osu.Objects
         public double TimePreempt { get; set; } = 600;
         public double TimeFadeIn = 400;
 
+        /// <summary>
+        /// The extra preempt added by Freeze Frame. Hidden excludes this from its fade-in duration
+        /// to preserve the HD-before-FR behaviour regardless of beatmap mod application order.
+        /// </summary>
+        internal double FreezeFramePreemptAdjustment { get; set; }
+
         private HitObjectProperty<Vector2> position;
 
         public Bindable<Vector2> PositionBindable => position.Bindable;
@@ -81,12 +88,35 @@ namespace osu.Game.Rulesets.Osu.Objects
 
         private HitObjectProperty<int> stackHeight;
 
-        public Bindable<int> StackHeightBindable => stackHeight.Bindable;
+        private bool stackHeightBindableInitialised;
+
+        public Bindable<int> StackHeightBindable
+        {
+            get
+            {
+                var bindable = stackHeight.Bindable;
+                if (!stackHeightBindableInitialised)
+                {
+                    stackHeightBindableInitialised = true;
+                    bindable.BindValueChanged(height => updateNestedStackHeights(height.NewValue));
+                }
+                return bindable;
+            }
+        }
 
         public int StackHeight
         {
             get => stackHeight.Value;
-            set => stackHeight.Value = value;
+            set
+            {
+                if (stackHeightBindableInitialised)
+                    stackHeight.Value = value; // existing bindable propagates changes/disabled checks
+                else if (stackHeight.Value != value)
+                {
+                    stackHeight.Value = value;
+                    updateNestedStackHeights(value);
+                }
+            }
         }
 
         public virtual Vector2 StackOffset => new Vector2(StackHeight * Scale * -6.4f);
@@ -117,32 +147,114 @@ namespace osu.Game.Rulesets.Osu.Objects
 
         private HitObjectProperty<int> indexInCurrentCombo;
 
-        public Bindable<int> IndexInCurrentComboBindable => indexInCurrentCombo.Bindable;
+        private ComboInformation? sharedComboInformation;
+        private bool ownsSharedComboInformation;
+        private bool indexInCurrentComboBound;
+        private bool comboIndexBound;
+        private bool comboIndexWithOffsetsBound;
+        private bool comboBindableExposed;
+
+        // Built-in slider children need the same combo values during calculation, but
+        // do not need a bidirectional bindable graph until someone observes a bindable.
+        // The compact shared state has no parent reference, so a retained old child
+        // does not keep the whole slider/playable beatmap alive.
+        private sealed class ComboInformation
+        {
+            public HitObjectProperty<int> IndexInCurrentCombo;
+            public HitObjectProperty<int> ComboIndex;
+            public HitObjectProperty<int> ComboIndexWithOffsets;
+            public readonly List<WeakReference<OsuHitObject>> Children = new List<WeakReference<OsuHitObject>>();
+            public bool BindablesMaterialised;
+
+            public void MaterialiseBindings()
+            {
+                if (BindablesMaterialised) return;
+                BindablesMaterialised = true;
+                foreach (var reference in Children)
+                {
+                    if (reference.TryGetTarget(out var child)) child.bindSharedComboInformation();
+                }
+                Children.Clear();
+            }
+        }
+
+        public Bindable<int> IndexInCurrentComboBindable
+        {
+            get
+            {
+                comboBindableExposed = true;
+                if (sharedComboInformation == null) return indexInCurrentCombo.Bindable;
+                var shared = sharedComboInformation;
+                shared.MaterialiseBindings();
+                return ownsSharedComboInformation ? shared.IndexInCurrentCombo.Bindable : indexInCurrentCombo.Bindable;
+            }
+        }
 
         public virtual int IndexInCurrentCombo
         {
-            get => indexInCurrentCombo.Value;
-            set => indexInCurrentCombo.Value = value;
+            get => sharedComboInformation != null && (ownsSharedComboInformation || !indexInCurrentComboBound)
+                ? sharedComboInformation.IndexInCurrentCombo.Value : indexInCurrentCombo.Value;
+            set
+            {
+                if (sharedComboInformation != null && (ownsSharedComboInformation || !indexInCurrentComboBound))
+                    sharedComboInformation.IndexInCurrentCombo.Value = value;
+                else
+                    indexInCurrentCombo.Value = value;
+            }
         }
 
         private HitObjectProperty<int> comboIndex;
 
-        public Bindable<int> ComboIndexBindable => comboIndex.Bindable;
+        public Bindable<int> ComboIndexBindable
+        {
+            get
+            {
+                comboBindableExposed = true;
+                if (sharedComboInformation == null) return comboIndex.Bindable;
+                var shared = sharedComboInformation;
+                shared.MaterialiseBindings();
+                return ownsSharedComboInformation ? shared.ComboIndex.Bindable : comboIndex.Bindable;
+            }
+        }
 
         public virtual int ComboIndex
         {
-            get => comboIndex.Value;
-            set => comboIndex.Value = value;
+            get => sharedComboInformation != null && (ownsSharedComboInformation || !comboIndexBound)
+                ? sharedComboInformation.ComboIndex.Value : comboIndex.Value;
+            set
+            {
+                if (sharedComboInformation != null && (ownsSharedComboInformation || !comboIndexBound))
+                    sharedComboInformation.ComboIndex.Value = value;
+                else
+                    comboIndex.Value = value;
+            }
         }
 
         private HitObjectProperty<int> comboIndexWithOffsets;
 
-        public Bindable<int> ComboIndexWithOffsetsBindable => comboIndexWithOffsets.Bindable;
+        public Bindable<int> ComboIndexWithOffsetsBindable
+        {
+            get
+            {
+                comboBindableExposed = true;
+                if (sharedComboInformation == null) return comboIndexWithOffsets.Bindable;
+                var shared = sharedComboInformation;
+                shared.MaterialiseBindings();
+                return ownsSharedComboInformation ? shared.ComboIndexWithOffsets.Bindable : comboIndexWithOffsets.Bindable;
+            }
+        }
 
         public int ComboIndexWithOffsets
         {
-            get => comboIndexWithOffsets.Value;
-            set => comboIndexWithOffsets.Value = value;
+            get => sharedComboInformation != null && (ownsSharedComboInformation || !comboIndexWithOffsetsBound)
+                ? sharedComboInformation.ComboIndexWithOffsets.Value : comboIndexWithOffsets.Value;
+            set
+            {
+                if (sharedComboInformation != null && (ownsSharedComboInformation || !comboIndexWithOffsetsBound))
+                    sharedComboInformation.ComboIndexWithOffsets.Value = value;
+                else
+                    comboIndexWithOffsets.Value = value;
+            }
         }
 
         private HitObjectProperty<bool> lastInCombo;
@@ -155,22 +267,93 @@ namespace osu.Game.Rulesets.Osu.Objects
             set => lastInCombo.Value = value;
         }
 
-        protected OsuHitObject()
+        protected override void BindNestedComboInformation(IHasComboInformation nested, IHasComboInformation parent)
         {
-            StackHeightBindable.BindValueChanged(height =>
+            // Arbitrary ruleset/plugin subclasses retain the original eager binding
+            // path, including their virtual scalar accessors and custom nested objects.
+            Type nestedType = nested.GetType();
+            if (GetType() != typeof(Slider) || !ReferenceEquals(parent, this)
+                || (nestedType != typeof(SliderHeadCircle) && nestedType != typeof(SliderTailCircle)
+                    && nestedType != typeof(SliderRepeat) && nestedType != typeof(SliderTick)))
             {
-                foreach (var nested in NestedHitObjects)
+                base.BindNestedComboInformation(nested, parent);
+                return;
+            }
+
+            if (sharedComboInformation == null)
+            {
+                sharedComboInformation = new ComboInformation
                 {
-                    if (nested is OsuHitObject osuHitObject)
-                        osuHitObject.StackHeight = height.NewValue;
-                }
-            });
+                    ComboIndex = comboIndex,
+                    ComboIndexWithOffsets = comboIndexWithOffsets,
+                    IndexInCurrentCombo = indexInCurrentCombo,
+                    BindablesMaterialised = comboBindableExposed,
+                };
+                ownsSharedComboInformation = true;
+            }
+            // Drop dead generations on reapplication, without keeping replaced children
+            // alive. Public bindable exposure materialises the original graph for *all*
+            // live children, so parent UnbindBindings/UnbindAll preserve their semantics.
+            if (ReferenceEquals(nested, NestedHitObjects[0]))
+                sharedComboInformation.Children.RemoveAll(reference => !reference.TryGetTarget(out _));
+            var child = (OsuHitObject)nested;
+            child.sharedComboInformation = sharedComboInformation;
+            if (sharedComboInformation.BindablesMaterialised)
+                child.bindSharedComboInformation();
+            else
+                sharedComboInformation.Children.Add(new WeakReference<OsuHitObject>(child));
+        }
+
+        private void bindSharedComboInformation()
+        {
+            if (sharedComboInformation == null || ownsSharedComboInformation) return;
+            if (!comboIndexBound)
+            {
+                comboIndex.Bindable.BindTo(sharedComboInformation.ComboIndex.Bindable);
+                comboIndexBound = true;
+            }
+            if (!comboIndexWithOffsetsBound)
+            {
+                comboIndexWithOffsets.Bindable.BindTo(sharedComboInformation.ComboIndexWithOffsets.Bindable);
+                comboIndexWithOffsetsBound = true;
+            }
+            if (!indexInCurrentComboBound)
+            {
+                indexInCurrentCombo.Bindable.BindTo(sharedComboInformation.IndexInCurrentCombo.Bindable);
+                indexInCurrentComboBound = true;
+            }
+            // Once the original weak binding graph exists, the child must not retain
+            // the shared holder (and therefore the parent's bindables) strongly.
+            sharedComboInformation = null;
+        }
+
+        internal void PrepareGameplayBindings()
+        {
+            // Calculation-only beatmaps never need this graph. Gameplay constructs
+            // its drawable ruleset during background loading: restore the graph there,
+            // not on the first Update frame that acquires a pooled drawable.
+            _ = StackHeightBindable;
+            sharedComboInformation?.MaterialiseBindings();
+            foreach (var nested in NestedHitObjects)
+            {
+                if (nested is OsuHitObject osuHitObject) osuHitObject.PrepareGameplayBindings();
+            }
+        }
+
+        private void updateNestedStackHeights(int height)
+        {
+            foreach (var nested in NestedHitObjects)
+            {
+                if (nested is OsuHitObject osuHitObject)
+                    osuHitObject.StackHeight = height;
+            }
         }
 
         protected override void ApplyDefaultsToSelf(ControlPointInfo controlPointInfo, IBeatmapDifficultyInfo difficulty)
         {
             base.ApplyDefaultsToSelf(controlPointInfo, difficulty);
 
+            FreezeFramePreemptAdjustment = 0;
             TimePreempt = IBeatmapDifficultyInfo.DifficultyRangeInt(difficulty.ApproachRate, PREEMPT_RANGE);
 
             // Preempt time can go below 450ms. Normally, this is achieved via the DT mod which uniformly speeds up all animations game wide regardless of AR.

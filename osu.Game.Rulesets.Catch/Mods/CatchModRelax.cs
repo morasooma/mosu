@@ -19,7 +19,7 @@ namespace osu.Game.Rulesets.Catch.Mods
 {
     public partial class CatchModRelax : ModRelax, IApplicableToDrawableRuleset<CatchHitObject>, IApplicableToPlayer
     {
-        public override LocalisableString Description => @"Use the mouse to control the catcher.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3625;
 
         public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[] { typeof(CatchModMovingFast) }).ToArray();
 

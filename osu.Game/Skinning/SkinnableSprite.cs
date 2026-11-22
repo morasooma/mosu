@@ -121,8 +121,8 @@ namespace osu.Game.Skinning
                     => skin.GetType() == typeof(TrianglesSkin)
                        || skin.GetType() == typeof(ArgonProSkin)
                        || skin.GetType() == typeof(ArgonSkin)
+                       || skin.GetType() == typeof(MorasoomaSkin)
                        || skin.GetType() == typeof(DefaultLegacySkin)
-                       || skin.GetType() == typeof(RetroSkin)
                        || skin.GetType() == typeof(LegacySkin);
             }
         }
@@ -143,7 +143,7 @@ namespace osu.Game.Skinning
                     new OsuSpriteText
                     {
                         Position = new Vector2(25, 50),
-                        Text = $"missing: {lookup}",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5344(lookup),
                         Origin = Anchor.TopCentre,
                     }
                 };

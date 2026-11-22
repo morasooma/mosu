@@ -236,7 +236,7 @@ namespace osu.Game.Rulesets.Catch.Edit.Blueprints
 
         private IEnumerable<MenuItem> getContextMenuItems()
         {
-            yield return new OsuMenuItem("Add vertex", MenuItemType.Standard, () =>
+            yield return new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J3339, MenuItemType.Standard, () =>
             {
                 editablePath.AddVertex(rightMouseDownPosition);
             })
@@ -244,7 +244,7 @@ namespace osu.Game.Rulesets.Catch.Edit.Blueprints
                 Hotkey = new Hotkey(new KeyCombination(InputKey.Control, InputKey.MouseLeft))
             };
 
-            yield return new OsuMenuItem("Convert to stream", MenuItemType.Destructive, convertToStream)
+            yield return new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J3340, MenuItemType.Destructive, convertToStream)
             {
                 Hotkey = new Hotkey(new KeyCombination(InputKey.Control, InputKey.Shift, InputKey.F))
             };

@@ -38,6 +38,7 @@ namespace osu.Game.Screens.Select
 
         private readonly BindableList<CollectionFilterMenuItem> filters = new BindableList<CollectionFilterMenuItem>();
         private readonly Bindable<string> configCollectionFilter = new Bindable<string>();
+        private readonly BindableBool rememberCollection = new BindableBool();
 
         [Resolved]
         private ManageCollectionsDialog? manageCollectionsDialog { get; set; }
@@ -62,6 +63,10 @@ namespace osu.Game.Screens.Select
         private void load(OsuConfigManager configManager)
         {
             configManager.BindWith(OsuSetting.SongSelectCollectionFilter, configCollectionFilter);
+            configManager.BindWith(OsuSetting.SongSelectRememberCollection, rememberCollection);
+
+            if (!rememberCollection.Value)
+                configCollectionFilter.Value = string.Empty;
         }
 
         protected override void LoadComplete()
@@ -71,6 +76,7 @@ namespace osu.Game.Screens.Select
             realmSubscription = realm.RegisterForNotifications(r => r.All<BeatmapCollection>().OrderBy(c => c.Name), collectionsChanged);
 
             Current.BindValueChanged(selectionChanged);
+            rememberCollection.BindValueChanged(_ => persistSelection());
         }
 
         private void collectionsChanged(IRealmCollection<BeatmapCollection> collections, ChangeSet? changes)
@@ -83,7 +89,9 @@ namespace osu.Game.Screens.Select
                 if (ShowManageCollectionsItem)
                     filters.Add(new ManageCollectionsFilterMenuItem());
 
-                Current.Value = filters.SingleOrDefault(item => item.Collection?.PerformRead(c => c.ID.ToString()) == configCollectionFilter.Value) ?? allBeatmapsItem;
+                Current.Value = rememberCollection.Value
+                    ? filters.SingleOrDefault(item => item.Collection?.PerformRead(c => c.ID.ToString()) == configCollectionFilter.Value) ?? allBeatmapsItem
+                    : allBeatmapsItem;
             }
             else
             {
@@ -140,14 +148,17 @@ namespace osu.Game.Screens.Select
                     manageCollectionsDialog?.Show();
                     break;
 
-                case CollectionFilterMenuItem collectionMenuItem when collectionMenuItem.Collection != null:
-                    configCollectionFilter.Value = collectionMenuItem.Collection.PerformRead(c => c.ID.ToString());
-                    break;
-
-                case AllBeatmapsCollectionFilterMenuItem:
-                    configCollectionFilter.Value = string.Empty;
+                default:
+                    persistSelection();
                     break;
             }
+        }
+
+        private void persistSelection()
+        {
+            configCollectionFilter.Value = rememberCollection.Value
+                ? Current.Value?.Collection?.PerformRead(c => c.ID.ToString()) ?? string.Empty
+                : string.Empty;
         }
 
         protected override void Dispose(bool isDisposing)

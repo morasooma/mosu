@@ -17,6 +17,7 @@ using osu.Game.Extensions;
 using osu.Game.IO.Archives;
 using osu.Game.Models;
 using osu.Game.Overlays.Notifications;
+using osu.Game.Performance.Debug;
 using osu.Game.Utils;
 using Realms;
 
@@ -102,7 +103,7 @@ namespace osu.Game.Database
         {
             if (tasks.Length == 0)
             {
-                notification.CompletionText = $"No {HumanisedModelName}s were found to import!";
+                notification.CompletionText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3272(HumanisedModelName);
                 notification.State = ProgressNotificationState.Completed;
                 return Enumerable.Empty<RealmLive<TModel>>();
             }
@@ -115,7 +116,7 @@ namespace osu.Game.Database
 
             parameters.Batch |= tasks.Length >= minimum_items_considered_batch_import;
 
-            notification.Text = $"{HumanisedModelName.Humanize(LetterCasing.Title)} import is initialising...";
+            notification.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3273(HumanisedModelName.Humanize(LetterCasing.Title));
             notification.State = ProgressNotificationState.Active;
 
             await pauseIfNecessaryAsync(parameters, notification, notification.CancellationToken).ConfigureAwait(false);
@@ -138,7 +139,7 @@ namespace osu.Game.Database
                                 imported.Add(model);
                             current++;
 
-                            notification.Text = $"Imported {current} of {tasks.Length} {HumanisedModelName}s";
+                            notification.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3274(current, tasks.Length, HumanisedModelName);
                             notification.Progress = (float)current / tasks.Length;
                         }
                     }
@@ -167,18 +168,18 @@ namespace osu.Game.Database
                     }
                     else
                     {
-                        notification.Text = $"{HumanisedModelName.Humanize(LetterCasing.Title)} import failed! Check logs for more information.";
+                        notification.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3275(HumanisedModelName.Humanize(LetterCasing.Title));
                         notification.State = ProgressNotificationState.Cancelled;
                     }
                 }
                 else
                 {
                     if (tasks.Length > imported.Count)
-                        notification.CompletionText = $"Imported {imported.Count} of {tasks.Length} {HumanisedModelName}s.";
+                        notification.CompletionText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3276(imported.Count, tasks.Length, HumanisedModelName);
                     else if (imported.Count > 1)
-                        notification.CompletionText = $"Imported {imported.Count} {HumanisedModelName}s!";
+                        notification.CompletionText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3277(imported.Count, HumanisedModelName);
                     else
-                        notification.CompletionText = $"Imported {imported.First().GetDisplayString()}!";
+                        notification.CompletionText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3278(imported.First().GetDisplayString());
 
                     if (imported.Count > 0 && PresentImport != null)
                     {
@@ -255,6 +256,9 @@ namespace osu.Game.Database
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            using var importPhase = PerformancePhaseLogger.Begin("Import.Archive", detail: PerformancePhaseLogger.Enabled ? $"type={typeof(TModel).Name} archive={task} batch={parameters.Batch}" : null);
+            importPhase.SetEndDetail("outcome=failed_or_cancelled");
+
             Live<TModel>? import;
             using (ArchiveReader reader = task.GetReader())
                 import = await importFromArchive(reader, parameters, cancellationToken).ConfigureAwait(false);
@@ -273,6 +277,7 @@ namespace osu.Game.Database
                 Logger.Error(e, $@"Could not delete original file after import ({task})");
             }
 
+            importPhase.SetEndDetail(import != null ? "outcome=success" : "outcome=no_model");
             return import;
         }
 
@@ -293,7 +298,8 @@ namespace osu.Game.Database
 
             try
             {
-                model = CreateModel(archive, parameters);
+                using (PerformancePhaseLogger.Begin("Import.CreateModel"))
+                    model = CreateModel(archive, parameters);
 
                 if (model == null)
                     return null;
@@ -308,7 +314,13 @@ namespace osu.Game.Database
                 return null;
             }
 
-            var scheduledImport = Task.Factory.StartNew(() => ImportModel(model, archive, parameters, cancellationToken),
+            using var queuePhase = PerformancePhaseLogger.Begin("Import.QueueWait");
+            var scheduledImport = Task.Factory.StartNew(() =>
+            {
+                queuePhase.End("outcome=started");
+                using var modelPhase = PerformancePhaseLogger.Begin("Import.Model", detail: PerformancePhaseLogger.Enabled ? $"type={typeof(TModel).Name} archive={archive.Name} batch={parameters.Batch}" : null);
+                return ImportModel(model, archive, parameters, cancellationToken);
+            },
                 cancellationToken,
                 TaskCreationOptions.HideScheduler,
                 parameters.Batch ? import_scheduler_batch : import_scheduler);
@@ -329,6 +341,7 @@ namespace osu.Game.Database
 
             if (parameters.Batch && archive != null)
             {
+                using var precheckPhase = PerformancePhaseLogger.Begin("Import.BatchPrecheck");
                 // this is a fast bail condition to improve large import performance.
                 item.Hash = computeHashFast(archive);
 
@@ -368,6 +381,7 @@ namespace osu.Game.Database
 
                 if (archive != null)
                 {
+                    using var filesPhase = PerformancePhaseLogger.Begin("Import.StoreFiles");
                     // Import files to the disk store.
                     // We intentionally delay adding to realm to avoid blocking on a write during disk operations.
                     foreach (var filenames in getShortenedFilenames(archive))
@@ -380,6 +394,7 @@ namespace osu.Game.Database
                     }
                 }
 
+                using (PerformancePhaseLogger.Begin("Import.FileTransaction", detail: PerformancePhaseLogger.Enabled ? $"files={files.Count}" : null))
                 using (var transaction = realm.BeginWrite())
                 {
                     // Add all files to realm in one go.
@@ -394,13 +409,16 @@ namespace osu.Game.Database
                 }
 
                 item.Files.AddRange(files);
-                item.Hash = ComputeHash(item);
+                using (PerformancePhaseLogger.Begin("Import.ComputeHash"))
+                    item.Hash = ComputeHash(item);
 
                 // TODO: do we want to make the transaction this local? not 100% sure, will need further investigation.
+                using (PerformancePhaseLogger.Begin("Import.ModelTransaction"))
                 using (var transaction = realm.BeginWrite())
                 {
                     // TODO: we may want to run this outside of the transaction.
-                    Populate(item, archive, realm, cancellationToken);
+                    using (PerformancePhaseLogger.Begin("Import.Populate"))
+                        Populate(item, archive, realm, cancellationToken);
 
                     // Populate() may have adjusted file content (see SkinImporter.updateSkinIniMetadata), so regardless of whether a fast check was done earlier, let's
                     // check for existing items a second time.
@@ -431,7 +449,8 @@ namespace osu.Game.Database
                     // import to store
                     realm.Add(item);
 
-                    PostImport(item, realm, parameters);
+                    using (PerformancePhaseLogger.Begin("Import.PostImport"))
+                        PostImport(item, realm, parameters);
 
                     transaction.Commit();
                 }
@@ -446,6 +465,8 @@ namespace osu.Game.Database
                 throw;
             }
 
+            // A processing failure after this point must not report the already committed import as rolled back.
+            PostImportCommitted(item, parameters);
             return (Live<TModel>?)item.ToLive(Realm);
         });
 
@@ -577,6 +598,13 @@ namespace osu.Game.Database
         }
 
         /// <summary>
+        /// Called after a new model's import transaction has committed. Background work may now resolve the model from another thread.
+        /// </summary>
+        protected virtual void PostImportCommitted(TModel model, ImportParameters parameters)
+        {
+        }
+
+        /// <summary>
         /// Check whether an existing model already exists for a new import item.
         /// </summary>
         /// <param name="model">The new model proposed for import.</param>
@@ -639,7 +667,7 @@ namespace osu.Game.Database
 
             // A paused state could obviously be entered mid-import (during the `Task.WhenAll` below),
             // but in order to keep things simple let's focus on the most common scenario.
-            notification.Text = $"{HumanisedModelName.Humanize(LetterCasing.Title)} import is paused due to gameplay...";
+            notification.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3280(HumanisedModelName.Humanize(LetterCasing.Title));
             notification.State = ProgressNotificationState.Queued;
 
             while (PauseImports)
@@ -651,7 +679,7 @@ namespace osu.Game.Database
             cancellationToken.ThrowIfCancellationRequested();
             Logger.Log($@"{GetType().Name} is being resumed.");
 
-            notification.Text = $"{HumanisedModelName.Humanize(LetterCasing.Title)} import is resuming...";
+            notification.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3281(HumanisedModelName.Humanize(LetterCasing.Title));
             notification.State = ProgressNotificationState.Active;
         }
 

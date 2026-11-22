@@ -186,6 +186,15 @@ namespace osu.Game.Online.API
                 var existingFriends = friends.Select(f => f.TargetID).ToHashSet();
                 var updatedFriends = res.Select(f => f.TargetID).ToHashSet();
 
+                // A relationship added from a mutation response may not have a profile yet.
+                // Replace it once the full friends response arrives, notifying bound displays.
+                foreach (var incompleteFriend in friends.Where(f => f.TargetUser == null).ToArray())
+                {
+                    var relation = res.FirstOrDefault(r => r.TargetID == incompleteFriend.TargetID && r.TargetUser != null);
+                    if (relation != null)
+                        friends[friends.IndexOf(incompleteFriend)] = relation;
+                }
+
                 // Add new friends into local list.
                 friends.AddRange(res.Where(r => !existingFriends.Contains(r.TargetID)));
 

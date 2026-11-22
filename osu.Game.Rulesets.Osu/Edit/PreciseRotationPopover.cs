@@ -59,7 +59,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                 {
                     angleInput = new FormSliderBar<float>
                     {
-                        Caption = "Angle (degrees)",
+                        Caption = global::osu.Game.Localisation.ClientTranslationStrings.J3317,
                         Current = new BindableNumber<float>
                         {
                             MinValue = -360,
@@ -76,19 +76,19 @@ namespace osu.Game.Rulesets.Osu.Edit
                 }
             };
 
-            rotationOrigin.AddButton(gridCentreButton = new EditorRadioButton("Grid centre",
+            rotationOrigin.AddButton(gridCentreButton = new EditorRadioButton(global::osu.Game.Localisation.ClientTranslationStrings.J3318,
                 () => rotationInfo.Value = rotationInfo.Value with { Origin = EditorOrigin.GridCentre },
                 () => new SpriteIcon { Icon = FontAwesome.Regular.PlusSquare }));
-            rotationOrigin.AddButton(playfieldCentreButton = new EditorRadioButton("Playfield centre",
+            rotationOrigin.AddButton(playfieldCentreButton = new EditorRadioButton(global::osu.Game.Localisation.ClientTranslationStrings.J3319,
                 () => rotationInfo.Value = rotationInfo.Value with { Origin = EditorOrigin.PlayfieldCentre },
                 () => new SpriteIcon { Icon = FontAwesome.Regular.Square }));
-            rotationOrigin.AddButton(selectionCentreButton = new EditorRadioButton("Selection centre",
+            rotationOrigin.AddButton(selectionCentreButton = new EditorRadioButton(global::osu.Game.Localisation.ClientTranslationStrings.J3320,
                 () => rotationInfo.Value = rotationInfo.Value with { Origin = EditorOrigin.SelectionCentre },
                 () => new SpriteIcon { Icon = FontAwesome.Solid.VectorSquare }));
 
             selectionCentreButton.Selected.DisabledChanged += isDisabled =>
             {
-                selectionCentreButton.TooltipText = isDisabled ? "Select more than one object to perform selection-based rotation." : string.Empty;
+                selectionCentreButton.TooltipText = isDisabled ? global::osu.Game.Localisation.ClientTranslationStrings.J3321 : string.Empty;
             };
         }
 

@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
@@ -25,12 +26,16 @@ using static osu.Game.Input.Handlers.ReplayInputHandler;
 
 namespace osu.Game.Rulesets.UI
 {
-    public abstract partial class RulesetInputManager<T> : PassThroughInputManager, ICanAttachHUDPieces, IHasReplayHandler, IHasRecordingHandler
+    public abstract partial class RulesetInputManager<T> : PassThroughInputManager, ICanAttachHUDPieces, IHasReplayHandler, IHasRecordingHandler, IHasGameplayKeyBindings
         where T : struct
     {
         protected override bool AllowRightClickFromLongTouch => false;
 
         public readonly KeyBindingContainer<T> KeyBindingContainer;
+
+        public IEnumerable<IKeyBinding> GameplayKeyBindings => KeyBindingContainer is DatabasedKeyBindingContainer<T> databased
+            ? databased.CurrentKeyBindings
+            : KeyBindingContainer.DefaultKeyBindings;
 
         [Resolved]
         private ScoreProcessor? scoreProcessor { get; set; }

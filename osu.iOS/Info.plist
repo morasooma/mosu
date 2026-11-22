@@ -5,9 +5,9 @@
 	<key>CFBundleIdentifier</key>
 	<string>net.morasooma</string>
 	<key>CFBundleName</key>
-	<string>osu!</string>
+	<string>Morasooma</string>
 	<key>CFBundleDisplayName</key>
-	<string>osu!</string>
+	<string>Morasooma</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>MinimumOSVersion</key>
@@ -49,33 +49,17 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 	</array>
-    <key>CFBundleIcons~ipad</key>
-    <dict>
-        <key>CFBundlePrimaryIcon</key>
-        <dict>
-            <key>CFBundleIconFiles</key>
-            <array>
-                <string>AppIcon60x60</string>
-            </array>
-            <key>CFBundleIconName</key>
-            <string>AppIcon</string>
-        </dict>
-    </dict>
-    <key>CFBundleIcons</key>
-    <dict>
-        <key>CFBundlePrimaryIcon</key>
-        <dict>
-            <key>CFBundleIconFiles</key>
-            <array>
-                <string>AppIcon60x60</string>
-                <string>AppIcon76x76</string>
-            </array>
-            <key>CFBundleIconName</key>
-            <string>AppIcon</string>
-        </dict>
-    </dict>
+	<!-- AppIcon / Assets.xcassets supplies CFBundleIcons for both device families. -->
 	<key>UTExportedTypeDeclarations</key>
 	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array><string>public.data</string><string>sh.ppy.osu.items</string></array>
+			<key>UTTypeDescription</key><string>Morasooma resources</string>
+			<key>UTTypeIdentifier</key><string>net.morasooma.resources</string>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><string>morars</string><key>public.mime-type</key><string>application/x-morasooma-resources</string></dict>
+		</dict>
 		<dict>
 			<key>UTTypeConformsTo</key>
 			<array>

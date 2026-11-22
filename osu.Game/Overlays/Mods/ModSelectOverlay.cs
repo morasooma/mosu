@@ -26,6 +26,8 @@ using osu.Game.Graphics.Cursor;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Input.Bindings;
 using osu.Game.Localisation;
+using osu.Game.Overlays.CustomTheme;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Screens.Footer;
@@ -107,6 +109,8 @@ namespace osu.Game.Overlays.Mods
         protected virtual IReadOnlyList<Mod> ComputeActiveMods() => SelectedMods.Value;
 
         private readonly Bindable<Dictionary<ModType, IReadOnlyList<Mod>>> globalAvailableMods = new Bindable<Dictionary<ModType, IReadOnlyList<Mod>>>();
+        private Dictionary<ModType, IReadOnlyList<Mod>>? initialModsSource;
+        private Dictionary<ModType, IReadOnlyList<ModState>>? initialClonedMods;
 
         public IEnumerable<ModState> AllAvailableMods => AvailableMods.Value.SelectMany(pair => pair.Value);
 
@@ -115,10 +119,29 @@ namespace osu.Game.Overlays.Mods
         private ColumnScrollContainer columnScroll = null!;
         private ColumnFlowContainer columnFlow = null!;
 
+        protected override bool HasOpaqueBackground
+        {
+            get
+            {
+                if (columnFlow == null)
+                    return false;
+
+                foreach (var column in columnFlow.Columns)
+                {
+                    if (IsOpaqueBackgroundReady(column.OpaqueBackground))
+                        return true;
+                }
+
+                return false;
+            }
+        }
+
         private Container aboveColumnsContent = null!;
         private ModCustomisationPanel customisationPanel = null!;
 
         protected virtual SelectAllModsButton? SelectAllModsButton => null;
+
+        protected virtual string ColumnAppearSampleName => @"SongSelect/mod-column-pop-in";
 
         private Sample? columnAppearSample;
         private ModSettingChangeTracker? modSettingChangeTracker;
@@ -130,8 +153,8 @@ namespace osu.Game.Overlays.Mods
         [Resolved]
         private ScreenFooter? footer { get; set; }
 
-        public ModSelectOverlay(OverlayColourScheme colourScheme = OverlayColourScheme.Green)
-            : base(colourScheme)
+        public ModSelectOverlay(OverlayColourScheme colourScheme = OverlayColourScheme.Green, ThemeSurfaceContext? surfaceContext = ThemeSurfaceContext.ModSelect)
+            : base(colourScheme, surfaceContext)
         {
         }
 
@@ -143,7 +166,7 @@ namespace osu.Game.Overlays.Mods
             Header.Title = ModSelectOverlayStrings.ModSelectTitle;
             Header.Description = ModSelectOverlayStrings.ModSelectDescription;
 
-            columnAppearSample = audio.Samples.Get(@"SongSelect/mod-column-pop-in");
+            columnAppearSample = string.IsNullOrEmpty(ColumnAppearSampleName) ? null : audio.Samples.Get(ColumnAppearSampleName);
 
             MainAreaContent.Add(new OsuContextMenuContainer
             {
@@ -211,6 +234,13 @@ namespace osu.Game.Overlays.Mods
 
             globalAvailableMods.BindTo(game.AvailableMods);
 
+            // In song select this drawable is loaded off the update thread. Clone the initial
+            // ruleset's mods there instead of doing the expensive first clone in LoadComplete.
+            // A ruleset change between loading and LoadComplete falls back to the current source.
+            initialModsSource = globalAvailableMods.Value;
+            using (PerformancePhaseLogger.Begin("ModSelectOverlay.CloneInitialMods"))
+                initialClonedMods = cloneMods(initialModsSource);
+
             textSearchStartsActive = configManager.GetBindable<bool>(OsuSetting.ModSelectTextSearchStartsActive);
         }
 
@@ -231,6 +261,7 @@ namespace osu.Game.Overlays.Mods
 
         protected override void LoadComplete()
         {
+            using var loading = PerformancePhaseLogger.Begin("ModSelectOverlay.LoadComplete");
             // this is called before base call so that the mod state is populated early, and the transition in `PopIn()` can play out properly.
             globalAvailableMods.BindValueChanged(_ => createLocalMods(), true);
 
@@ -391,28 +422,41 @@ namespace osu.Game.Overlays.Mods
             return new ColumnDimContainer(column);
         }
 
+        private static Dictionary<ModType, IReadOnlyList<ModState>> cloneMods(Dictionary<ModType, IReadOnlyList<Mod>> source)
+        {
+            var result = new Dictionary<ModType, IReadOnlyList<ModState>>();
+
+            foreach (var (modType, mods) in source)
+                result[modType] = mods.SelectMany(ModUtils.FlattenMod).Select(mod => new ModState(mod.DeepClone())).ToArray();
+
+            return result;
+        }
+
         private void createLocalMods()
         {
-            var newLocalAvailableMods = new Dictionary<ModType, IReadOnlyList<ModState>>();
+            using var rebuilding = PerformancePhaseLogger.Begin("ModSelectOverlay.CreateLocalMods");
+            Dictionary<ModType, IReadOnlyList<ModState>> newLocalAvailableMods;
 
-            foreach (var (modType, mods) in globalAvailableMods.Value)
+            using (PerformancePhaseLogger.Begin("ModSelectOverlay.CloneAndBindMods"))
             {
-                var modStates = mods.SelectMany(ModUtils.FlattenMod)
-                                    .Select(mod => new ModState(mod.DeepClone()))
-                                    .ToArray();
+                newLocalAvailableMods = ReferenceEquals(globalAvailableMods.Value, initialModsSource) && initialClonedMods != null
+                    ? initialClonedMods
+                    : cloneMods(globalAvailableMods.Value);
+                initialClonedMods = null;
+                initialModsSource = null;
 
-                foreach (var modState in modStates)
+                foreach (var modState in newLocalAvailableMods.Values.SelectMany(states => states))
                 {
                     modState.Active.Value = SelectedMods.Value.Any(selected => selected.GetType() == modState.Mod.GetType());
                     modState.Active.BindValueChanged(_ => updateFromInternalSelection());
                 }
-
-                newLocalAvailableMods[modType] = modStates;
             }
 
             AvailableMods.Value = newLocalAvailableMods;
-            filterMods();
+            using (PerformancePhaseLogger.Begin("ModSelectOverlay.FilterMods"))
+                filterMods();
 
+            using var columns = PerformancePhaseLogger.Begin("ModSelectOverlay.AssignColumns");
             foreach (var column in columnFlow.Columns.OfType<ModColumn>())
                 column.AvailableMods = AvailableMods.Value.GetValueOrDefault(column.ModType, Array.Empty<ModState>());
         }

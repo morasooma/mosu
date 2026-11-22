@@ -16,6 +16,8 @@ namespace osu.Game.Screens.Play.HUD.ClicksPerSecond
 {
     public partial class ClicksPerSecondCounter : RollingCounter<int>, ISerialisableDrawable
     {
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+
         [Resolved]
         private ClicksPerSecondController controller { get; set; } = null!;
 
@@ -31,7 +33,7 @@ namespace osu.Game.Screens.Play.HUD.ClicksPerSecond
         [BackgroundDependencyLoader]
         private void load(OsuColour colours)
         {
-            Colour = colours.BlueLighter;
+            themeColours.Bind(action => Scheduler.Add(action), () => Colour = themeColours.GetColour(Overlays.OverlayColour.Content1, colours.BlueLighter));
         }
 
         protected override void Update()
@@ -82,14 +84,14 @@ namespace osu.Game.Screens.Play.HUD.ClicksPerSecond
                                     Anchor = Anchor.TopLeft,
                                     Origin = Anchor.TopLeft,
                                     Font = OsuFont.Numeric.With(size: 6, fixedWidth: false),
-                                    Text = @"clicks",
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5088,
                                 },
                                 new OsuSpriteText
                                 {
                                     Anchor = Anchor.TopLeft,
                                     Origin = Anchor.TopLeft,
                                     Font = OsuFont.Numeric.With(size: 6, fixedWidth: false),
-                                    Text = @"/sec",
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5089,
                                     Padding = new MarginPadding { Bottom = 3f }, // align baseline better
                                 }
                             }

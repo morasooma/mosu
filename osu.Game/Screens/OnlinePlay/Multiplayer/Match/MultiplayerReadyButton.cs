@@ -116,7 +116,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
         {
             if (room == null)
             {
-                Text = "Ready";
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4977;
                 return;
             }
 
@@ -131,9 +131,9 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
             if (multiplayerClient.IsReferee)
             {
                 if (room.State == MultiplayerRoomState.Open)
-                    Text = countReady == 0 ? $"Waiting for players... {countText}" : $"{countdownText ?? "Start match"} {countText}";
+                    Text = countReady == 0 ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4978(countText) : $"{countdownText ?? "Start match"} {countText}";
                 else
-                    Text = "Abort match";
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4979;
 
                 return;
             }
@@ -143,7 +143,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
                 switch (localUser?.State)
                 {
                     default:
-                        Text = $"Ready ({countdownText.ToLowerInvariant()})";
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4980(countdownText.ToLowerInvariant());
                         break;
 
                     case MultiplayerUserState.Spectating:
@@ -159,16 +159,16 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
                     case MultiplayerUserState.Spectating:
                     case MultiplayerUserState.Ready:
                         Text = multiplayerClient.IsHost
-                            ? $"Start match {countText}"
-                            : $"Waiting for host... {countText}";
+                            ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4981(countText)
+                            : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4982(countText);
                         break;
 
                     default:
                         // Show the abort button for the host as long as gameplay is in progress.
                         if (multiplayerClient.IsHost && room.State != MultiplayerRoomState.Open)
-                            Text = "Abort the match";
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4983;
                         else
-                            Text = "Ready";
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4977;
                         break;
                 }
             }

@@ -28,6 +28,10 @@ namespace osu.Game.Screens.Edit.Compose.Components
 
         private HitObjectUsageEventBuffer usageEventBuffer;
 
+        // Lane timelines own their time-range/filter lifetime independently of
+        // the playfield's drawable lifetime (which may end while their bar is visible).
+        protected virtual bool TrackComposerObjectUsage => true;
+
         protected InputManager InputManager { get; private set; }
 
         protected EditorBlueprintContainer(HitObjectComposer composer)
@@ -51,7 +55,7 @@ namespace osu.Game.Screens.Edit.Compose.Components
             Beatmap.HitObjectRemoved += RemoveBlueprintFor;
             Beatmap.SelectedHitObjects.CollectionChanged += updateSelectionLifetime;
 
-            if (Composer != null)
+            if (Composer != null && TrackComposerObjectUsage)
             {
                 foreach (var obj in Composer.HitObjects)
                     AddBlueprintFor(obj.HitObject);

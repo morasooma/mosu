@@ -90,7 +90,7 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
                     Font = OsuFont.Style.Heading1,
-                    Text = "No rooms match the selected filters.",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4800,
                     Alpha = 0,
                 },
             };
@@ -213,14 +213,20 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
                 var drawableRoom = new LoungeRoomPanel(room)
                 {
                     SelectedRoom = selectedRoom,
+                    PinnedChanged = updateLayoutPosition,
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
                 };
 
                 roomFlow.Add(drawableRoom);
-
-                roomFlow.SetLayoutPosition(drawableRoom, room.Pinned ? float.MinValue : -(room.RoomID ?? 0));
+                updateLayoutPosition(drawableRoom);
             }
+        }
+
+        private void updateLayoutPosition(LoungeRoomPanel panel)
+        {
+            if (roomFlow.Contains(panel))
+                roomFlow.SetLayoutPosition(panel, panel.Room.Pinned ? float.MinValue : -(panel.Room.RoomID ?? 0));
         }
 
         private void removeRooms(IEnumerable<Room> rooms)

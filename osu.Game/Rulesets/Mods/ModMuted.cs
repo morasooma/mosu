@@ -23,7 +23,7 @@ namespace osu.Game.Rulesets.Mods
         public override string Name => "Muted";
         public override string Acronym => "MU";
         public override IconUsage? Icon => OsuIcon.ModMuted;
-        public override LocalisableString Description => "Can you still feel the rhythm without music?";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4232;
         public override ModType Type => ModType.Fun;
         public override bool Ranked => true;
         public override bool ValidForFreestyleAsRequiredMod => true;
@@ -37,20 +37,20 @@ namespace osu.Game.Rulesets.Mods
 
         private readonly BindableNumber<int> currentCombo = new BindableInt();
 
-        [SettingSource("Start muted", "Increase volume as combo builds.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4233), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4234))]
         public BindableBool InverseMuting { get; } = new BindableBool();
 
-        [SettingSource("Enable metronome", "Add a metronome beat to help you keep track of the rhythm.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4235), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4236))]
         public BindableBool EnableMetronome { get; } = new BindableBool(true);
 
-        [SettingSource("Final volume at combo", "The combo count at which point the track reaches its final volume.", SettingControlType = typeof(SettingsSlider<int, MuteComboSlider>))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4237), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4238), SettingControlType = typeof(SettingsSlider<int, MuteComboSlider>))]
         public BindableInt MuteComboCount { get; } = new BindableInt(100)
         {
             MinValue = 0,
             MaxValue = 500,
         };
 
-        [SettingSource("Mute hit sounds", "Hit sounds are also muted alongside the track.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4239), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4240))]
         public BindableBool AffectsHitSounds { get; } = new BindableBool(true);
 
         protected ModMuted()

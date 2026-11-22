@@ -138,6 +138,108 @@ namespace osu.Game.Tests.Editing
             });
         }
 
+        [TestCase(50)]
+        [TestCase(-50)]
+        public void TestMovingTimingCarriesEffectsUntilNextTiming(double adjustment)
+        {
+            var beatmap = new Beatmap();
+            var info = beatmap.ControlPointInfo;
+            info.GroupAt(50, true).Add(new EffectControlPoint());
+            info.GroupAt(100, true).Add(new TimingControlPoint());
+            info.GroupAt(100, true).Add(new EffectControlPoint());
+            info.GroupAt(200, true).Add(new EffectControlPoint());
+            info.GroupAt(300, true).Add(new TimingControlPoint());
+            info.GroupAt(300, true).Add(new EffectControlPoint());
+            info.GroupAt(400, true).Add(new EffectControlPoint());
+            var effects = info.EffectPoints.ToArray();
+
+            TimingSectionAdjustments.MoveControlPointGroups(beatmap, new[] { info.GroupAt(100) }, adjustment, false);
+
+            Assert.That(effects.Select(e => e.Time), Is.EqualTo(new[] { 50, 100 + adjustment, 200 + adjustment, 300, 400 }));
+            Assert.That(info.TimingPoints.Select(t => t.Time), Is.EqualTo(new[] { 100 + adjustment, 300 }));
+        }
+
+        [TestCase(100)]
+        [TestCase(-100)]
+        public void TestOverlappingSelectedRangesMoveOnlyOnce(double adjustment)
+        {
+            var beatmap = new Beatmap();
+            var info = beatmap.ControlPointInfo;
+            foreach (double time in new[] { 100, 300, 500 })
+                info.GroupAt(time, true).Add(new TimingControlPoint());
+            foreach (double time in new[] { 200, 400, 600 })
+                info.GroupAt(time, true).Add(new EffectControlPoint());
+            var timing = info.TimingPoints.ToArray();
+            var effects = info.EffectPoints.ToArray();
+            beatmap.HitObjects.AddRange(new HitObject[]
+            {
+                new HitCircle { StartTime = 200 }, new HitCircle { StartTime = 300 }, new HitCircle { StartTime = 500 }
+            });
+
+            var moved = TimingSectionAdjustments.MoveControlPointGroups(beatmap,
+                new[] { info.GroupAt(100), info.GroupAt(200), info.GroupAt(300), info.GroupAt(400) }, adjustment, true);
+
+            Assert.That(timing.Select(t => t.Time), Is.EqualTo(new[] { 100 + adjustment, 300 + adjustment, 500 }));
+            Assert.That(effects.Select(e => e.Time), Is.EqualTo(new[] { 200 + adjustment, 400 + adjustment, 600 }));
+            Assert.That(beatmap.HitObjects.Select(h => h.StartTime), Is.EqualTo(new[] { 200 + adjustment, 300 + adjustment, 500 }));
+            Assert.That(moved.Select(g => g.Time), Is.EqualTo(new[] { 100 + adjustment, 200 + adjustment, 300 + adjustment, 400 + adjustment }));
+        }
+
+        [Test]
+        public void TestMovingEffectRowsDoesNotMoveTimingOrOtherEffects()
+        {
+            var beatmap = new Beatmap();
+            var info = beatmap.ControlPointInfo;
+            info.GroupAt(100, true).Add(new TimingControlPoint());
+            foreach (double time in new[] { 200, 300, 400 })
+                info.GroupAt(time, true).Add(new EffectControlPoint());
+            var effects = info.EffectPoints.ToArray();
+
+            TimingSectionAdjustments.MoveControlPointGroups(beatmap, new[] { info.GroupAt(200), info.GroupAt(400) }, 10, true);
+
+            Assert.That(effects.Select(e => e.Time), Is.EqualTo(new[] { 210, 300, 410 }));
+            Assert.That(info.TimingPoints.Single().Time, Is.EqualTo(100));
+        }
+
+        [Test]
+        public void TestMovingTimingDoesNotMoveObjectsWhenDisabled()
+        {
+            var beatmap = new Beatmap();
+            beatmap.ControlPointInfo.GroupAt(100, true).Add(new TimingControlPoint());
+            beatmap.ControlPointInfo.GroupAt(200, true).Add(new EffectControlPoint());
+            beatmap.HitObjects.Add(new HitCircle { StartTime = 200 });
+
+            TimingSectionAdjustments.MoveControlPointGroups(beatmap, new[] { beatmap.ControlPointInfo.GroupAt(100) }, 20, false);
+
+            Assert.That(beatmap.HitObjects.Single().StartTime, Is.EqualTo(200));
+            Assert.That(beatmap.ControlPointInfo.EffectPoints.Single().Time, Is.EqualTo(220));
+        }
+
+        [Test]
+        public void TestMovingOntoSelectedRowsPreservesIdenticalEffects()
+        {
+            var beatmap = new Beatmap();
+            var info = beatmap.ControlPointInfo;
+            var effects = new[] { new EffectControlPoint(), new EffectControlPoint(), new EffectControlPoint() };
+            for (int i = 0; i < effects.Length; i++)
+                info.GroupAt(i * 100, true).Add(effects[i]);
+
+            TimingSectionAdjustments.MoveControlPointGroups(beatmap, info.Groups.ToArray(), 100, false);
+
+            Assert.That(info.EffectPoints, Is.EqualTo(effects));
+            Assert.That(info.Groups.Select(g => g.Time), Is.EqualTo(new[] { 100, 200, 300 }));
+        }
+
+        [Test]
+        public void TestMovingEmptyRow()
+        {
+            var beatmap = new Beatmap();
+            var group = beatmap.ControlPointInfo.GroupAt(100, true);
+            var moved = TimingSectionAdjustments.MoveControlPointGroups(beatmap, new[] { group }, -150, false);
+            Assert.That(moved.Single().Time, Is.EqualTo(-50));
+            Assert.That(beatmap.ControlPointInfo.Groups.Single(), Is.SameAs(moved.Single()));
+        }
+
         private static void moveTimingPoint(IBeatmap beatmap, double originalTime, double adjustment)
         {
             var controlPoints = beatmap.ControlPointInfo;

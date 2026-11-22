@@ -2,6 +2,12 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using osu.Game.Rulesets.Mods;
+using osu.Framework.Allocation;
+using osu.Framework.Bindables;
+using osu.Game.Configuration;
 using osu.Framework.Caching;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Animations;
@@ -18,6 +24,27 @@ namespace osu.Game.Skinning
         /// The displayed component.
         /// </summary>
         public Drawable Drawable { get; private set; } = null!;
+
+        // Presence is separate from Alpha: Hidden and hit animations are free to transform Alpha.
+        public override bool IsPresent => !hiddenByMod && (componentVisible?.Value ?? true) && base.IsPresent;
+
+        private bool hiddenByMod;
+
+        private Bindable<bool>? componentVisible;
+
+        [BackgroundDependencyLoader]
+        private void loadVisibility(OsuConfigManager? config, IReadOnlyList<Mod>? mods)
+        {
+            if (ComponentLookup is not IHasVisibilitySetting { VisibilitySetting: OsuSetting setting })
+                return;
+
+            hiddenByMod = mods?.OfType<IHidesSkinElements>().Any(mod => mod.Hides(setting)) == true;
+            if (config != null)
+            {
+                componentVisible = config.GetBindable<bool>(setting);
+                componentVisible.BindValueChanged(_ => Invalidate(Invalidation.Presence));
+            }
+        }
 
         /// <summary>
         /// Whether the drawable component should be centered in available space.

@@ -9,7 +9,7 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
 {
     public partial class BatchImportSettings : SettingsSubsection
     {
-        protected override LocalisableString Header => @"Batch Import";
+        protected override LocalisableString Header => global::osu.Game.Localisation.ClientTranslationStrings.J4022;
 
         private SettingsButtonV2 importBeatmapsButton = null!;
         private SettingsButtonV2 importCollectionsButton = null!;
@@ -26,7 +26,7 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
             {
                 importBeatmapsButton = new SettingsButtonV2
                 {
-                    Text = @"Import beatmaps from stable",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4023,
                     Action = () =>
                     {
                         importBeatmapsButton.Enabled.Value = false;
@@ -35,7 +35,7 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
                 },
                 importSkinsButton = new SettingsButtonV2
                 {
-                    Text = @"Import skins from stable",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4024,
                     Action = () =>
                     {
                         importSkinsButton.Enabled.Value = false;
@@ -44,7 +44,7 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
                 },
                 importCollectionsButton = new SettingsButtonV2
                 {
-                    Text = @"Import collections from stable",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4025,
                     Action = () =>
                     {
                         importCollectionsButton.Enabled.Value = false;
@@ -53,7 +53,7 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
                 },
                 importScoresButton = new SettingsButtonV2
                 {
-                    Text = @"Import scores from stable",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4026,
                     Action = () =>
                     {
                         importScoresButton.Enabled.Value = false;

@@ -9,6 +9,8 @@ namespace osu.Game.Rulesets.Edit
     /// </summary>
     public interface IEditorTimelineEndTimeAdjustable
     {
+        bool CanAdjustEditorTimelineEndTime => true;
+
         void SetEditorTimelineEndTime(double endTime);
     }
 }

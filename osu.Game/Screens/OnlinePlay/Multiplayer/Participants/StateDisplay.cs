@@ -102,7 +102,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
 
             if (user.Role == MultiplayerRoomUserRole.Referee)
             {
-                text.Text = "referee";
+                text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4992;
                 icon.Icon = OsuIcon.EditorWhistle;
                 icon.Colour = colours.BlueLight;
                 return;
@@ -115,44 +115,44 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
                     break;
 
                 case MultiplayerUserState.Ready:
-                    text.Text = "ready";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4993;
                     icon.Icon = FontAwesome.Solid.CheckCircle;
                     icon.Colour = Color4Extensions.FromHex("#AADD00");
                     break;
 
                 case MultiplayerUserState.WaitingForLoad:
-                    text.Text = "loading";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4994;
                     icon.Icon = FontAwesome.Solid.PauseCircle;
                     icon.Colour = colours.Yellow;
                     break;
 
                 case MultiplayerUserState.Loaded:
                 case MultiplayerUserState.ReadyForGameplay:
-                    text.Text = "loaded";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4995;
                     icon.Icon = FontAwesome.Solid.DotCircle;
                     icon.Colour = colours.YellowLight;
                     break;
 
                 case MultiplayerUserState.Playing:
-                    text.Text = "playing";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4996;
                     icon.Icon = FontAwesome.Solid.PlayCircle;
                     icon.Colour = colours.BlueLight;
                     break;
 
                 case MultiplayerUserState.FinishedPlay:
-                    text.Text = "results pending";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4997;
                     icon.Icon = FontAwesome.Solid.ArrowAltCircleUp;
                     icon.Colour = colours.BlueLighter;
                     break;
 
                 case MultiplayerUserState.Results:
-                    text.Text = "results";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4998;
                     icon.Icon = FontAwesome.Solid.ArrowAltCircleUp;
                     icon.Colour = colours.BlueLighter;
                     break;
 
                 case MultiplayerUserState.Spectating:
-                    text.Text = "spectating";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4999;
                     icon.Icon = FontAwesome.Solid.Binoculars;
                     icon.Colour = colours.BlueLight;
                     break;
@@ -171,13 +171,13 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
                     break;
 
                 case DownloadState.Unknown:
-                    text.Text = "checking availability";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5000;
                     icon.Icon = FontAwesome.Solid.Question;
                     icon.Colour = colours.Orange0;
                     break;
 
                 case DownloadState.NotDownloaded:
-                    text.Text = "no map";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5001;
                     icon.Icon = FontAwesome.Solid.MinusCircle;
                     icon.Colour = colours.RedLight;
                     break;
@@ -186,13 +186,13 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
                     progressBar.FadeIn(fade_time);
                     progressBar.CurrentTime = availability.DownloadProgress ?? 0;
 
-                    text.Text = "downloading map";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5002;
                     icon.Icon = FontAwesome.Solid.ArrowAltCircleDown;
                     icon.Colour = colours.Blue;
                     break;
 
                 case DownloadState.Importing:
-                    text.Text = "importing map";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5003;
                     icon.Icon = FontAwesome.Solid.ArrowAltCircleDown;
                     icon.Colour = colours.Yellow;
                     break;

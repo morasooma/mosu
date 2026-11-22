@@ -15,10 +15,12 @@ namespace osu.Game.Rulesets.Mania.Skinning.Legacy
     {
         private readonly IBindable<ScrollingDirection> direction = new Bindable<ScrollingDirection>();
 
+        private readonly bool allowMorasoomaFallback;
         private Drawable? sprite;
 
-        public LegacyStageForeground()
+        public LegacyStageForeground(bool allowMorasoomaFallback)
         {
+            this.allowMorasoomaFallback = allowMorasoomaFallback;
             RelativeSizeAxes = Axes.Both;
         }
 
@@ -28,7 +30,12 @@ namespace osu.Game.Rulesets.Mania.Skinning.Legacy
             string bottomImage = skin.GetManiaSkinConfig<string>(LegacyManiaSkinConfigurationLookups.BottomStageImage)?.Value
                                  ?? "mania-stage-bottom";
 
-            sprite = skin.GetAnimation(bottomImage, true, true)?.With(d => d.Scale = new Vector2(1.6f));
+            // Check the first matching source, including animations, before accepting the optional panel.
+            var provider = skin.FindProvider(s => s.GetTexture($"{bottomImage}-0") != null || s.GetTexture(bottomImage) != null);
+            if (!allowMorasoomaFallback && provider is ISkinTransformer { Skin: MorasoomaSkin })
+                return;
+
+            sprite = provider.GetAnimation(bottomImage, true, true)?.With(d => d.Scale = new Vector2(LegacySkin.STABLE_MAGIC_SCALE_FACTOR));
 
             if (sprite != null)
                 InternalChild = sprite;

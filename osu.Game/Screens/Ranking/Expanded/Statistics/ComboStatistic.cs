@@ -60,7 +60,7 @@ namespace osu.Game.Screens.Ranking.Expanded.Statistics
                 {
                     Anchor = Anchor.CentreLeft,
                     Origin = Anchor.CentreLeft,
-                    Text = "PERFECT",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5118,
                     Font = OsuFont.Torus.With(size: 11, weight: FontWeight.SemiBold),
                     Colour = ColourInfo.GradientVertical(Color4Extensions.FromHex("#66FFCC"), Color4Extensions.FromHex("#FF9AD7")),
                     Alpha = 0,

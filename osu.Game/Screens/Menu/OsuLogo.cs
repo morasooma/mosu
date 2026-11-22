@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 #nullable disable
@@ -6,6 +6,7 @@
 using System;
 using System.Diagnostics;
 using osu.Framework.Allocation;
+using osu.Game.Graphics;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Audio.Track;
@@ -95,7 +96,7 @@ namespace osu.Game.Screens.Menu
             set
             {
                 trianglesRequested = value;
-                logoBackground.FadeTo(value ? 1 : 0, transition_length, Easing.OutQuint);
+                logoBackground.FadeTo(value ? 1 : 0, InterfaceAnimation.FadeDuration(transition_length), Easing.OutQuint);
                 updateTriangleVisibility();
             }
         }
@@ -105,7 +106,7 @@ namespace osu.Game.Screens.Menu
         public bool Ripple
         {
             get => rippleContainer.Alpha > 0;
-            set => rippleContainer.FadeTo(value ? 1 : 0, transition_length, Easing.OutQuint);
+            set => rippleContainer.FadeTo(value ? 1 : 0, InterfaceAnimation.FadeDuration(transition_length), Easing.OutQuint);
         }
 
         private const float visualizer_default_alpha = 0.5f;
@@ -336,12 +337,12 @@ namespace osu.Game.Screens.Menu
                 selected = (ForkMenuLogoGradient)RNG.Next((int)ForkMenuLogoGradient.Classic, (int)ForkMenuLogoGradient.Random);
 
             ColourInfo colours = getGradientColours(selected);
-            gradientBackground.FadeColour(colours, transition_length, Easing.OutQuint);
+            gradientBackground.FadeColour(colours, InterfaceAnimation.FadeDuration(transition_length), Easing.OutQuint);
             // A translucent neutral overlay keeps the animated outlines readable on every palette.
-            triangles.FadeColour(Color4.White.Opacity(0.28f), transition_length, Easing.OutQuint);
+            triangles.FadeColour(Color4.White.Opacity(0.28f), InterfaceAnimation.FadeDuration(transition_length), Easing.OutQuint);
         }
 
-        private void updateTriangleVisibility() => triangles.FadeTo(trianglesRequested && trianglesEnabled ? 1 : 0, transition_length, Easing.OutQuint);
+        private void updateTriangleVisibility() => triangles.FadeTo(trianglesRequested && trianglesEnabled ? 1 : 0, InterfaceAnimation.FadeDuration(transition_length), Easing.OutQuint);
 
         private static ColourInfo getGradientColours(ForkMenuLogoGradient gradient) => gradient switch
         {
@@ -362,6 +363,7 @@ namespace osu.Game.Screens.Menu
         };
 
         private int lastBeatIndex;
+        private bool reducedMotionApplied;
 
         protected override void OnNewBeat(int beatIndex, TimingControlPoint timingPoint, EffectControlPoint effectPoint, ChannelAmplitudes amplitudes)
         {
@@ -393,6 +395,9 @@ namespace osu.Game.Screens.Menu
                 });
             }
 
+            if (!InterfaceAnimation.AllowDecorativeMovement)
+                return;
+
             logoBeatContainer
                 .ScaleTo(1 - 0.02f * amplitudeAdjust, early_activation, Easing.Out).Then()
                 .ScaleTo(1, beatLength * 2, Easing.OutQuint);
@@ -421,6 +426,9 @@ namespace osu.Game.Screens.Menu
 
         public void PlayIntro()
         {
+            if (!InterfaceAnimation.AllowDecorativeMovement)
+                return;
+
             const double length = 3150;
             const double fade = 200;
 
@@ -436,6 +444,38 @@ namespace osu.Game.Screens.Menu
         protected override void Update()
         {
             base.Update();
+
+            if (!InterfaceAnimation.AllowDecorativeMovement)
+            {
+                logoBeatContainer.ClearTransforms();
+                logoBeatContainer.Scale = Vector2.One;
+                logoAmplitudeContainer.Scale = Vector2.One;
+                logoHoverContainer.ClearTransforms();
+                logoHoverContainer.Scale = Vector2.One;
+                logoBounceContainer.ClearTransforms();
+                logoBounceContainer.Scale = Vector2.One;
+                logoBounceContainer.Position = Vector2.Zero;
+                ripple.ClearTransforms();
+                ripple.Alpha = 0;
+                flashLayer.ClearTransforms();
+                flashLayer.Alpha = 0;
+                impactContainer.ClearTransforms();
+                impactContainer.Alpha = 0;
+                visualizer.Alpha = 0;
+                triangles.Alpha = 0;
+                intro.ClearTransforms();
+                intro.Hide();
+                logoHoverContainer.Alpha = 1;
+                reducedMotionApplied = true;
+                return;
+            }
+
+            if (reducedMotionApplied)
+            {
+                reducedMotionApplied = false;
+                visualizer.Alpha = visualizer_default_alpha;
+                updateTriangleVisibility();
+            }
 
             const float scale_adjust_cutoff = 0.4f;
 
@@ -455,7 +495,7 @@ namespace osu.Game.Screens.Menu
         {
             if (e.Button != MouseButton.Left) return true;
 
-            logoBounceContainer.ScaleTo(0.9f, 1000, Easing.Out);
+            logoBounceContainer.ScaleTo(InterfaceAnimation.AllowDecorativeMovement ? 0.9f : 1, InterfaceAnimation.MovementDuration(1000), Easing.Out);
             return true;
         }
 
@@ -463,7 +503,7 @@ namespace osu.Game.Screens.Menu
         {
             if (e.Button != MouseButton.Left) return;
 
-            logoBounceContainer.ScaleTo(1f, 500, Easing.OutElastic);
+            logoBounceContainer.ScaleTo(1f, InterfaceAnimation.MovementDuration(500), Easing.OutElastic);
         }
 
         protected override bool OnClick(ClickEvent e)
@@ -484,22 +524,25 @@ namespace osu.Game.Screens.Menu
 
         protected override bool OnHover(HoverEvent e)
         {
-            if (Action != null)
-                logoHoverContainer.ScaleTo(1.1f, 500, Easing.OutElastic);
+            if (Action != null && InterfaceAnimation.AllowDecorativeMovement)
+                logoHoverContainer.ScaleTo(1.1f, InterfaceAnimation.MovementDuration(500), Easing.OutElastic);
 
             return true;
         }
 
         protected override void OnHoverLost(HoverLostEvent e)
         {
-            logoHoverContainer.ScaleTo(1, 500, Easing.OutElastic);
+            logoHoverContainer.ScaleTo(1, InterfaceAnimation.MovementDuration(500), Easing.OutElastic);
         }
 
         public void Impact()
         {
+            if (!InterfaceAnimation.AllowDecorativeMovement)
+                return;
+
             impactContainer.FadeOutFromOne(250, Easing.In);
             impactContainer.ScaleTo(SCALE_ADJUST);
-            impactContainer.ScaleTo(1.12f, 250);
+            impactContainer.ScaleTo(1.12f, InterfaceAnimation.MovementDuration(250));
         }
 
         public override bool DragBlocksClick => false;
@@ -508,6 +551,9 @@ namespace osu.Game.Screens.Menu
 
         protected override void OnDrag(DragEvent e)
         {
+            if (!InterfaceAnimation.AllowDecorativeMovement)
+                return;
+
             Vector2 change = e.MousePosition - e.MouseDownPosition;
 
             // Diminish the drag distance as we go further to simulate "rubber band" feeling.
@@ -518,7 +564,7 @@ namespace osu.Game.Screens.Menu
 
         protected override void OnDragEnd(DragEndEvent e)
         {
-            logoBounceContainer.MoveTo(Vector2.Zero, 800, Easing.OutElastic);
+            logoBounceContainer.MoveTo(Vector2.Zero, InterfaceAnimation.MovementDuration(800), Easing.OutElastic);
             base.OnDragEnd(e);
         }
 

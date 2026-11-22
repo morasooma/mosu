@@ -18,9 +18,12 @@ using osu.Framework.Graphics.Effects;
 using osu.Framework.Graphics.Primitives;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Input.Events;
+using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Overlays.Settings;
+using osu.Game.Overlays.Settings.Sections;
 using osuTK.Graphics;
 
 namespace osu.Game.Overlays
@@ -67,14 +70,44 @@ namespace osu.Game.Overlays
         private BackdropBlurSurface contentBackground;
         private IBindable<Colour4> themeColour;
 
+        protected override BackdropBlurSurface OpaqueBackground => contentBackground;
+
         private readonly List<SettingsSection> loadableSections = new List<SettingsSection>();
 
         private Task sectionsLoadingTask;
+        private bool sectionFirstUpdateAdmitted;
+        private bool subsectionFirstUpdateAdmitted;
+
+        protected virtual bool StaggerSectionFirstUpdates => false;
+
+        internal bool AdmitSectionFirstUpdate()
+        {
+            if (!StaggerSectionFirstUpdates)
+                return true;
+
+            if (sectionFirstUpdateAdmitted)
+                return false;
+
+            sectionFirstUpdateAdmitted = true;
+            return true;
+        }
+
+        internal bool AdmitSubsectionFirstUpdate()
+        {
+            if (!StaggerSectionFirstUpdates)
+                return true;
+
+            if (subsectionFirstUpdateAdmitted)
+                return false;
+
+            subsectionFirstUpdateAdmitted = true;
+            return true;
+        }
 
         public IBindable<SettingsSection> CurrentSection = new Bindable<SettingsSection>();
 
         [Cached]
-        private OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Purple);
+        private OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Purple, ThemeSurfaceContext.Settings);
 
         protected SettingsPanel(bool showBackButton)
         {
@@ -101,6 +134,7 @@ namespace osu.Game.Overlays
                         RelativeSizeAxes = Axes.Both,
                         SurfaceColour = colourProvider.Background4,
                         Alpha = 1,
+                        Depth = float.MaxValue,
                     },
                     loading = new LoadingLayer
                     {
@@ -126,8 +160,9 @@ namespace osu.Game.Overlays
                     RelativeSizeAxes = Axes.Both,
                     ExpandableHeader = CreateHeader(),
                     SelectedSection = { BindTarget = CurrentSection },
-                    FixedHeader = new Container
+                    FixedHeader = new FillFlowContainer
                     {
+                        Direction = FillDirection.Vertical,
                         RelativeSizeAxes = Axes.X,
                         AutoSizeAxes = Axes.Y,
                         Padding = new MarginPadding
@@ -138,11 +173,13 @@ namespace osu.Game.Overlays
                         },
                         Anchor = Anchor.TopCentre,
                         Origin = Anchor.TopCentre,
-                        Child = SearchTextBox = new SettingsSearchTextBox
+                        Children = new Drawable[]
                         {
-                            RelativeSizeAxes = Axes.X,
-                            Origin = Anchor.TopCentre,
-                            Anchor = Anchor.TopCentre,
+                            SearchTextBox = new SettingsSearchTextBox
+                            {
+                                RelativeSizeAxes = Axes.X,
+                            },
+                            CreateSelectionControls(),
                         }
                     },
                     Footer = CreateFooter().With(f => f.Alpha = 0)
@@ -168,24 +205,34 @@ namespace osu.Game.Overlays
             loadableSections.Add(section);
         }
 
+        internal IReadOnlyList<SettingsSection> AvailableSections => loadableSections;
+        internal bool SectionsReady { get; private set; }
+        internal event Action SectionsLoaded;
+        internal void EnsureSectionsLoaded(SettingsPanel loader = null) => loadSections(loader);
+
+        protected virtual Drawable CreateSelectionControls() => new Container();
+
         protected virtual Drawable CreateHeader() => new Container();
 
         protected virtual Drawable CreateFooter() => new Container();
 
         protected override void PopIn()
         {
-            ContentContainer.MoveToX(ExpandedPosition, TRANSITION_LENGTH, Easing.OutQuint);
+            foreach (var subsections in Sidebar.Children.OfType<ForkSidebarSubsections>())
+                subsections.Collapse();
 
-            SectionsContainer.FadeEdgeEffectTo(WaveContainer.SHADOW_OPACITY, WaveContainer.APPEAR_DURATION, Easing.Out);
+            ContentContainer.MoveToX(ExpandedPosition, InterfaceAnimation.TransitionDuration(TRANSITION_LENGTH), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+
+            SectionsContainer.FadeEdgeEffectTo(WaveContainer.SHADOW_OPACITY, InterfaceAnimation.FadeDuration(WaveContainer.APPEAR_DURATION), Easing.Out);
 
             // delay load enough to ensure it doesn't overlap with the initial animation.
             // this is done as there is still a brief stutter during load completion which is more visible if the transition is in progress.
             // the eventual goal would be to remove the need for this by splitting up load into smaller work pieces, or fixing the remaining
             // load complete overheads.
-            Scheduler.AddDelayed(loadSections, TRANSITION_LENGTH / 3);
+            Scheduler.AddDelayed(() => loadSections(), InterfaceAnimation.MovementDuration(TRANSITION_LENGTH) / 3);
 
-            Sidebar?.MoveToX(0, TRANSITION_LENGTH, Easing.OutQuint);
-            this.FadeTo(1, TRANSITION_LENGTH / 2, Easing.OutQuint);
+            Sidebar?.MoveToX(0, InterfaceAnimation.TransitionDuration(TRANSITION_LENGTH), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+            this.FadeTo(1, InterfaceAnimation.TransitionFadeDuration(TRANSITION_LENGTH / 2), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
 
             SearchTextBox.TakeFocus();
             SearchTextBox.HoldFocus = true;
@@ -197,11 +244,11 @@ namespace osu.Game.Overlays
         {
             base.PopOut();
 
-            SectionsContainer.FadeEdgeEffectTo(0, WaveContainer.DISAPPEAR_DURATION, Easing.In);
-            ContentContainer.MoveToX(-WIDTH + ExpandedPosition, TRANSITION_LENGTH, Easing.OutQuint);
+            SectionsContainer.FadeEdgeEffectTo(0, InterfaceAnimation.FadeDuration(WaveContainer.DISAPPEAR_DURATION), Easing.In);
+            ContentContainer.MoveToX(-WIDTH + ExpandedPosition, InterfaceAnimation.TransitionDuration(TRANSITION_LENGTH), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
 
-            Sidebar?.MoveToX(-sidebar_width, TRANSITION_LENGTH, Easing.OutQuint);
-            this.FadeTo(0, TRANSITION_LENGTH / 2, Easing.OutQuint);
+            Sidebar?.MoveToX(-sidebar_width, InterfaceAnimation.TransitionDuration(TRANSITION_LENGTH), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+            this.FadeTo(0, InterfaceAnimation.TransitionFadeDuration(TRANSITION_LENGTH / 2), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
 
             SearchTextBox.HoldFocus = false;
             if (SearchTextBox.HasFocus)
@@ -216,6 +263,13 @@ namespace osu.Game.Overlays
             base.OnFocus(e);
         }
 
+        protected override void Update()
+        {
+            base.Update();
+            sectionFirstUpdateAdmitted = false;
+            subsectionFirstUpdateAdmitted = false;
+        }
+
         protected override void UpdateAfterChildren()
         {
             base.UpdateAfterChildren();
@@ -225,7 +279,7 @@ namespace osu.Game.Overlays
 
         private const double fade_in_duration = 500;
 
-        private void loadSections()
+        private void loadSections(SettingsPanel loader = null)
         {
             if (sectionsLoadingTask != null)
                 return;
@@ -233,15 +287,14 @@ namespace osu.Game.Overlays
             sectionsLoadingTask = LoadComponentsAsync(loadableSections, sections =>
             {
                 SectionsContainer.AddRange(sections);
-                SectionsContainer.Footer.FadeInFromZero(fade_in_duration, Easing.OutQuint);
-                SectionsContainer.SearchContainer.FadeInFromZero(fade_in_duration, Easing.OutQuint);
-
+                SectionsContainer.Footer.FadeInFromZero(InterfaceAnimation.FadeDuration(fade_in_duration), Easing.OutQuint);
+                SectionsContainer.SearchContainer.FadeInFromZero(InterfaceAnimation.FadeDuration(fade_in_duration), Easing.OutQuint);
                 loading.Hide();
-
+                SectionsReady = true;
+                SectionsLoaded?.Invoke();
                 SearchTextBox.Current.BindValueChanged(term => SectionsContainer.SearchTerm = term.NewValue, true);
-
                 loadSidebarButtons();
-            });
+            }, scheduler: loader?.Scheduler);
         }
 
         private void loadSidebarButtons()
@@ -258,8 +311,8 @@ namespace osu.Game.Overlays
                     Sidebar.Add(button);
 
                     button.FadeOut()
-                          .Delay(delay)
-                          .FadeInFromZero(fade_in_duration, Easing.OutQuint);
+                          .Delay(InterfaceAnimation.MovementDuration(delay))
+                          .FadeInFromZero(InterfaceAnimation.FadeDuration(fade_in_duration), Easing.OutQuint);
 
                     delay += 40;
                 }
@@ -275,7 +328,7 @@ namespace osu.Game.Overlays
             });
         }
 
-        private IEnumerable<SidebarIconButton> createSidebarButtons()
+        private IEnumerable<Drawable> createSidebarButtons()
         {
             foreach (var section in SectionsContainer)
             {
@@ -290,6 +343,9 @@ namespace osu.Game.Overlays
                         SectionsContainer.ScrollTo(section);
                     },
                 };
+
+                if (section is ForkSection fork)
+                    yield return new ForkSidebarSubsections(fork, SectionsContainer);
             }
         }
 
@@ -302,6 +358,13 @@ namespace osu.Game.Overlays
         public partial class SettingsSectionsContainer : SectionsContainer<SettingsSection>
         {
             public SearchContainer<SettingsSection> SearchContainer;
+
+            internal void RefreshSearch()
+            {
+                string term = SearchTerm;
+                SearchTerm = term + " ";
+                SearchTerm = term;
+            }
 
             public string SearchTerm
             {

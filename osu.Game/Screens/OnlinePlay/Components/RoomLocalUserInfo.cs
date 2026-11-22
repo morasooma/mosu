@@ -66,7 +66,7 @@ namespace osu.Game.Screens.OnlinePlay.Components
         {
             if (room.MaxAttempts != null)
             {
-                attemptDisplay.Text = $"Maximum attempts: {room.MaxAttempts:N0}";
+                attemptDisplay.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4368(room.MaxAttempts);
 
                 if (room.UserScore != null)
                 {

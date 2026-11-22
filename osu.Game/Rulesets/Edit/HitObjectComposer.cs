@@ -108,7 +108,7 @@ namespace osu.Game.Rulesets.Edit
         [BackgroundDependencyLoader(true)]
         private void load(OsuConfigManager config, Editor? editor, ReadableKeyCombinationProvider keyCombinationProvider)
         {
-            autoSeekOnPlacement = config.GetBindable<bool>(OsuSetting.EditorAutoSeekOnPlacement);
+            autoSeekOnPlacement = config.GetEditorAutoSeekOnPlacement(Ruleset.ShortName);
 
             if (editor != null)
                 composerFocusMode.BindTo(editor.ComposerFocusMode);
@@ -170,11 +170,11 @@ namespace osu.Game.Rulesets.Edit
                             {
                                 Children = new Drawable[]
                                 {
-                                    new EditorToolboxGroup("tools")
+                                    new EditorToolboxGroup(global::osu.Game.Localisation.ClientTranslationStrings.J4084)
                                     {
                                         Child = toolboxCollection = new EditorRadioButtonCollection { RelativeSizeAxes = Axes.X }
                                     },
-                                    new EditorToolboxGroup("toggles")
+                                    new EditorToolboxGroup(global::osu.Game.Localisation.ClientTranslationStrings.J4085)
                                     {
                                         Child = togglesCollection = new FillFlowContainer
                                         {
@@ -184,7 +184,7 @@ namespace osu.Game.Rulesets.Edit
                                             Spacing = new Vector2(0, 5),
                                         },
                                     },
-                                    new EditorToolboxGroup("bank")
+                                    new EditorToolboxGroup(global::osu.Game.Localisation.ClientTranslationStrings.J4086)
                                     {
                                         Child = new FillFlowContainer
                                         {
@@ -202,7 +202,7 @@ namespace osu.Game.Rulesets.Edit
                                                     {
                                                         new ExpandableSpriteText
                                                         {
-                                                            Text = "Normal",
+                                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4087,
                                                             AlwaysPresent = true,
                                                             AllowMultiline = false,
                                                             RelativePositionAxes = Axes.X,
@@ -213,7 +213,7 @@ namespace osu.Game.Rulesets.Edit
                                                         },
                                                         new ExpandableSpriteText
                                                         {
-                                                            Text = "Addition",
+                                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4088,
                                                             AlwaysPresent = true,
                                                             AllowMultiline = false,
                                                             RelativePositionAxes = Axes.X,
@@ -253,7 +253,7 @@ namespace osu.Game.Rulesets.Edit
                             },
                             RightToolbox = new ExpandingToolboxContainer(TOOLBOX_CONTRACTED_SIZE_RIGHT, 250)
                             {
-                                Child = new EditorToolboxGroup("inspector")
+                                Child = new EditorToolboxGroup(global::osu.Game.Localisation.ClientTranslationStrings.J4089)
                                 {
                                     Child = CreateHitObjectInspector()
                                 },

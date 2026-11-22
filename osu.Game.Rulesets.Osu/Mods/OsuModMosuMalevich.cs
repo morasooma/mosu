@@ -6,6 +6,8 @@ using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
+using osu.Framework.Graphics.Sprites;
+using osu.Game.Graphics;
 using osu.Framework.Localisation;
 using osu.Game.Configuration;
 using osu.Game.Localisation;
@@ -26,6 +28,8 @@ namespace osu.Game.Rulesets.Osu.Mods
         public override string Name => "Malevich Square";
 
         public override string Acronym => "MSQ";
+
+        public override IconUsage? Icon => OsuIcon.ModMosuMalevich;
 
         public override ModType Type => ModType.Mosu;
 

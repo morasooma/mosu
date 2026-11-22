@@ -10,11 +10,13 @@ namespace osu.Game.Configuration
     /// </summary>
     public static class RelaxPpSystemSelection
     {
-        public static ForkRelaxPpSystem Current { get; set; } = ForkRelaxPpSystem.MosuRealistik;
+        public static ForkRelaxPpSystem Current { get; set; } = ForkRelaxPpSystem.TazikPp;
 
         /// <summary>
-        /// Whether relax PP goes through the managed Mosu/Realistik calculator (MosuRealistik and MosuPp).
+        /// Whether osu! Relax PP uses a fork-managed calculator instead of upstream lazer.
         /// </summary>
-        public static bool UsesManagedRealistik => Current is ForkRelaxPpSystem.MosuRealistik or ForkRelaxPpSystem.MosuPp;
+        public static bool UsesManagedRealistik => Current is ForkRelaxPpSystem.MosuRealistik or ForkRelaxPpSystem.MosuPp or ForkRelaxPpSystem.TazikPp;
+
+        public static bool UsesContextualMissEvidence => Current is ForkRelaxPpSystem.TazikPp or ForkRelaxPpSystem.MosuPpPrerelease;
     }
 }

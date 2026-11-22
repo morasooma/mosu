@@ -37,6 +37,9 @@ namespace osu.Game.Screens.Edit.Timing
         private Bindable<ControlPointGroup?> selectedGroup { get; set; } = null!;
 
         [Resolved]
+        private ControlPointSelection selection { get; set; } = null!;
+
+        [Resolved]
         private IEditorChangeHandler? editorChangeHandler { get; set; }
 
         [BackgroundDependencyLoader]
@@ -76,7 +79,7 @@ namespace osu.Game.Screens.Edit.Timing
                             {
                                 new RoundedButton
                                 {
-                                    Text = "Select closest to current time",
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4327,
                                     Action = SelectClosestTimingPoint,
                                     Size = new Vector2(220, 30),
                                     Anchor = Anchor.CentreLeft,
@@ -129,14 +132,14 @@ namespace osu.Game.Screens.Edit.Timing
                 deleteButton.Enabled.Value = selected.NewValue != null;
 
                 addButton.Text = selected.NewValue != null
-                    ? "+ Clone to current time"
-                    : "+ Add at current time";
+                    ? global::osu.Game.Localisation.ClientTranslationStrings.J4328
+                    : global::osu.Game.Localisation.ClientTranslationStrings.J4329;
             }, true);
         }
 
         protected override bool OnClick(ClickEvent e)
         {
-            selectedGroup.Value = null;
+            selection.Clear();
             return true;
         }
 
@@ -153,9 +156,19 @@ namespace osu.Game.Screens.Edit.Timing
             if (selectedGroup.Value == null)
                 return;
 
-            Beatmap.ControlPointInfo.RemoveGroup(selectedGroup.Value);
+            Beatmap.BeginChange();
+            try
+            {
+                foreach (var group in selection.SelectedGroups.ToArray())
+                    Beatmap.ControlPointInfo.RemoveGroup(group);
 
-            selectedGroup.Value = Beatmap.ControlPointInfo.Groups.FirstOrDefault(g => g.Time >= clock.CurrentTime);
+                selection.Clear();
+                selectedGroup.Value = Beatmap.ControlPointInfo.Groups.FirstOrDefault(g => g.Time >= clock.CurrentTime);
+            }
+            finally
+            {
+                Beatmap.EndChange();
+            }
         }
 
         private void addNew()
@@ -180,6 +193,7 @@ namespace osu.Game.Screens.Edit.Timing
                 }
             }
 
+            selection.Clear();
             selectedGroup.Value = group;
         }
 
@@ -187,8 +201,7 @@ namespace osu.Game.Screens.Edit.Timing
         {
             // Best effort. We have no tracking of control points through undo/redo changes.
             // If we don't deselect, things like offset changes could spawn groups to be added from previous states (see https://github.com/ppy/osu/issues/31098).
-            if (selectedGroup.Value != null && !Beatmap.ControlPointInfo.Groups.Contains(selectedGroup.Value))
-                selectedGroup.Value = null;
+            selection.Prune(Beatmap.ControlPointInfo.Groups);
         }
 
         protected override void Dispose(bool isDisposing)

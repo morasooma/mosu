@@ -31,6 +31,12 @@ namespace osu.Game.Online.API
         Server,
 
         [LocalisableDescription(typeof(ForkSettingsStrings), nameof(ForkSettingsStrings.DownloadMirrorHinamizawa))]
-        Hinamizawa
+        Hinamizawa,
+
+        [Description("Mirria (lisek)"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3777))]
+        Mirria,
+
+        [Description("Nekoha"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3780))]
+        Nekoha
     }
 }

@@ -718,6 +718,88 @@ namespace osu.Game.Tests.Beatmaps.Formats
         }
 
         [Test]
+        public void TestHitObjectSampleBankNamesMatchLegacyEnumMapping()
+        {
+            // Include invalid enum values and a missing addition bank (which inherits the normal bank).
+            foreach (int normal in new[] { -1, 0, 1, 2, 3, 4 })
+            foreach (int addition in new[] { -1, 0, 1, 2, 3, 4 })
+            {
+                var parser = new ConvertHitObjectParser(0, LegacyBeatmapDecoder.LATEST_VERSION);
+                var hitObject = parser.Parse($"256,192,1000,1,2,{normal}:{addition}:0:70:");
+                string? expectedNormal = expectedBank(normal);
+                string? expectedAddition = addition == 0 ? expectedNormal : expectedBank(addition);
+
+                ClassicAssert.AreEqual(expectedNormal ?? "normal", hitObject.Samples[0].Bank, $"normal={normal} addition={addition}");
+                ClassicAssert.AreEqual(expectedAddition ?? "normal", hitObject.Samples[1].Bank, $"normal={normal} addition={addition}");
+                ClassicAssert.AreEqual(expectedNormal != null, ((ConvertHitObjectParser.LegacyHitSampleInfo)hitObject.Samples[0]).BankSpecified);
+                ClassicAssert.AreEqual(expectedAddition != null, ((ConvertHitObjectParser.LegacyHitSampleInfo)hitObject.Samples[1]).BankSpecified);
+                ClassicAssert.AreEqual(70, hitObject.Samples[0].Volume);
+                ClassicAssert.AreEqual(70, hitObject.Samples[1].Volume);
+            }
+
+            static string? expectedBank(int value) => value switch
+            {
+                0 => null,
+                2 => "soft",
+                3 => "drum",
+                _ => "normal"
+            };
+        }
+
+        [Test]
+        public void TestParserSampleFieldsAndIndependentNodeLists()
+        {
+            var parser = new ConvertHitObjectParser(0, LegacyBeatmapDecoder.LATEST_VERSION);
+            var slider = (ConvertSlider)parser.Parse("256,192,1000,2,2,B|300:192,3,100,2|8|4,2:3|3:2|0:0,2:3:12:70:custom.wav");
+
+            ClassicAssert.AreEqual(4, slider.NodeSamples.Count);
+            ClassicAssert.AreEqual(HitSampleInfo.HIT_NORMAL, slider.NodeSamples[0][0].Name);
+            ClassicAssert.AreEqual(HitSampleInfo.HIT_WHISTLE, slider.NodeSamples[0][1].Name);
+            ClassicAssert.AreEqual(HitSampleInfo.HIT_CLAP, slider.NodeSamples[1][1].Name);
+            ClassicAssert.AreEqual(HitSampleInfo.HIT_FINISH, slider.NodeSamples[2][1].Name);
+            ClassicAssert.AreEqual("soft", slider.NodeSamples[0][0].Bank);
+            ClassicAssert.AreEqual("drum", slider.NodeSamples[0][1].Bank);
+            ClassicAssert.True(slider.NodeSamples[0][1].EditorAutoBank == false);
+            ClassicAssert.AreEqual("drum", slider.NodeSamples[1][0].Bank);
+            ClassicAssert.AreEqual("soft", slider.NodeSamples[1][1].Bank);
+            ClassicAssert.IsNull(slider.NodeSamples[1][0].Suffix);
+            ClassicAssert.AreEqual(0, slider.NodeSamples[0][0].Volume);
+            ClassicAssert.AreEqual(0, slider.Samples[0].Volume);
+            ClassicAssert.AreNotSame(slider.NodeSamples[0], slider.NodeSamples[1]);
+            ClassicAssert.AreNotSame(slider.NodeSamples[0][1], slider.NodeSamples[1][1]);
+            slider.NodeSamples[0].Clear();
+            ClassicAssert.AreEqual(2, slider.NodeSamples[1].Count);
+
+            var a = parser.Parse("256,192,2000,1,0,2:0:0:50:");
+            var b = parser.Parse("256,192,3000,1,0,2:0:0:50:");
+            ClassicAssert.AreNotSame(a.Samples, b.Samples);
+            ClassicAssert.AreNotSame(a.Samples[0], b.Samples[0]);
+            ((ConvertHitObjectParser.LegacyHitSampleInfo)a.Samples[0]).BankSpecified = false;
+            ClassicAssert.True(((ConvertHitObjectParser.LegacyHitSampleInfo)b.Samples[0]).BankSpecified);
+        }
+
+        [Test]
+        public void TestParserSampleFieldEdgeCases()
+        {
+            var parser = new ConvertHitObjectParser(0, LegacyBeatmapDecoder.LATEST_VERSION);
+            var sample = (ConvertHitObjectParser.FileHitSampleInfo)parser.Parse("256,192,1000,1,2,0:0:2:0:hit.wav:ignored").Samples[0];
+            ClassicAssert.AreEqual("hit.wav", sample.Filename);
+            ClassicAssert.AreEqual(0, sample.Volume);
+            ClassicAssert.True(sample.UseBeatmapSamples);
+            ClassicAssert.AreEqual("hit.wav", sample.LookupNames.First());
+            var custom = (ConvertHitObjectParser.LegacyHitSampleInfo)parser.Parse("256,192,1250,1,8,2:0:12:70:").Samples[1];
+            ClassicAssert.AreEqual("Gameplay/soft-hitclap12", custom.LookupNames.First());
+            ClassicAssert.AreEqual(70, custom.Volume);
+            ClassicAssert.True(custom.EditorAutoBank);
+            ClassicAssert.True(custom.UseBeatmapSamples);
+            var another = (ConvertHitObjectParser.FileHitSampleInfo)parser.Parse("256,192,1500,1,2,0:0:2:0:hit.wav:ignored").Samples[0];
+            ClassicAssert.AreNotSame(sample, another);
+            ClassicAssert.Throws<FormatException>(() => parser.Parse("256,192,2000,1,0,0:0:"));
+            ClassicAssert.Throws<FormatException>(() => parser.Parse("256,192,2000,1,0,0:0:1:"));
+            ClassicAssert.Throws<OverflowException>(() => parser.Parse("256,192,2000,1,0,2147483648:0"));
+        }
+
+        [Test]
         public void TestInvalidBankDefaultsToNormal()
         {
             var decoder = new LegacyBeatmapDecoder { ApplyOffsets = false };

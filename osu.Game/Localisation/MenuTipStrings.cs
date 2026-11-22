@@ -40,9 +40,9 @@ namespace osu.Game.Localisation
         public static LocalisableString ScreenScalingSettings => new TranslatableString(getKey(@"screen_scaling_settings"), @"Try adjusting the ""Screen Scaling"" mode to change your gameplay or UI area, even in fullscreen!");
 
         /// <summary>
-        /// "What used to be &quot;osu!direct&quot; is available to all users just like on the website. You can access it anywhere using {0}!"
+        /// "The beatmap catalogue is available to everyone. Open it from anywhere in the game with {0}!"
         /// </summary>
-        public static LocalisableString FreeOsuDirect(LocalisableString keybind) => new TranslatableString(getKey(@"free_osu_direct"), @"What used to be ""osu!direct"" is available to all users just like on the website. You can access it anywhere using {0}!", keybind);
+        public static LocalisableString FreeOsuDirect(LocalisableString keybind) => ClientBrandingStrings.BrowseMaps(keybind);
 
         /// <summary>
         /// "Seeking in replays is available by dragging on the progress bar at the bottom of the screen or by using the left and right arrow keys!"
@@ -120,9 +120,9 @@ namespace osu.Game.Localisation
         public static LocalisableString AutoplayBeatmapShortcut => new TranslatableString(getKey(@"autoplay_beatmap_shortcut"), @"Ctrl-Enter at song select will start a beatmap in autoplay mode!");
 
         /// <summary>
-        /// "&quot;Lazer&quot; is not an English word. The correct spelling for the bright light is &quot;laser&quot;."
+        /// "You can export your current images, sounds and fonts as a .morars resource pack from the interface settings."
         /// </summary>
-        public static LocalisableString LazerIsNotAWord => new TranslatableString(getKey(@"lazer_is_not_a_word"), @"""Lazer"" is not an English word. The correct spelling for the bright light is ""laser"".");
+        public static LocalisableString LazerIsNotAWord => ClientBrandingStrings.ResourcePacks;
 
         /// <summary>
         /// "Multithreading support means that even with low &quot;FPS&quot; your input and judgements will be accurate!"

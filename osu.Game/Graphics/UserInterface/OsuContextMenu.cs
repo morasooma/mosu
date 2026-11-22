@@ -44,9 +44,9 @@ namespace osu.Game.Graphics.UserInterface
 
         private void updateBackgroundColour(OsuColour colours, ThemeMode theme)
         {
-            if (theme == ThemeMode.Dark)
+            if (OverlayColourProvider.IsDarkTheme)
                 BackgroundColour = Color4Extensions.FromHex(@"1a1a1a");
-            else if (theme == ThemeMode.Light)
+            else if (OverlayColourProvider.IsLightTheme)
                 BackgroundColour = Color4Extensions.FromHex(@"ebebeb");
             else
                 BackgroundColour = colours.ContextMenuGray;

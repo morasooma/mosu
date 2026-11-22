@@ -26,8 +26,9 @@ namespace osu.Game.Tests.Visual.Gameplay
         protected override IBeatmap CreateBeatmap(RulesetInfo ruleset)
         {
             var beatmap = new OsuBeatmap();
+            beatmap.Difficulty.ApproachRate = 0;
             beatmap.HitObjects.Add(new HitCircle { StartTime = 0 });
-            beatmap.HitObjects.Add(new HitCircle { StartTime = 5000 });
+            beatmap.HitObjects.Add(new HitCircle { StartTime = 4450 });
             beatmap.HitObjects.Add(new HitCircle { StartTime = 10000 });
             beatmap.Breaks.Add(new BreakPeriod(6000, 9000));
             beatmap.Breaks.Add(new BreakPeriod(1000, 4000));
@@ -48,15 +49,15 @@ namespace osu.Game.Tests.Visual.Gameplay
         [Test]
         public void TestBreakOverlayVisibility()
         {
-            AddAssert("break overlay hidden", () => !this.ChildrenOfType<BreakOverlay>().Single().Child.IsPresent);
+            AddAssert("break overlay hidden", () => !this.ChildrenOfType<BreakOverlay>().Single().IsVisualVisible);
             addSeekStep(2000);
-            AddUntilStep("break overlay visible", () => this.ChildrenOfType<BreakOverlay>().Single().Child.IsPresent);
+            AddUntilStep("break overlay visible", () => this.ChildrenOfType<BreakOverlay>().Single().IsVisualVisible);
             addSeekStep(5000);
-            AddAssert("break overlay hidden", () => !this.ChildrenOfType<BreakOverlay>().Single().Child.IsPresent);
+            AddAssert("break overlay hidden", () => !this.ChildrenOfType<BreakOverlay>().Single().IsVisualVisible);
             addSeekStep(7000);
-            AddUntilStep("break overlay visible", () => this.ChildrenOfType<BreakOverlay>().Single().Child.IsPresent);
+            AddUntilStep("break overlay visible", () => this.ChildrenOfType<BreakOverlay>().Single().IsVisualVisible);
             addSeekStep(10000);
-            AddAssert("break overlay hidden", () => !this.ChildrenOfType<BreakOverlay>().Single().Child.IsPresent);
+            AddAssert("break overlay hidden", () => !this.ChildrenOfType<BreakOverlay>().Single().IsVisualVisible);
         }
 
         [Test]
@@ -65,7 +66,8 @@ namespace osu.Game.Tests.Visual.Gameplay
             addSeekStep(2000);
             AddUntilStep("break skip visible", () => this.ChildrenOfType<SkipOverlay>().Any(o => o.IsButtonVisible));
             AddStep("request break skip", () => this.ChildrenOfType<SkipOverlay>().Single(o => o.IsButtonVisible).RequestSkip());
-            AddAssert("master clock seeked", () => Player.GameplayClockContainer.CurrentTime, () => Is.EqualTo(3000).Within(100));
+            AddAssert("master clock seeked before low AR note appears", () => Player.GameplayClockContainer.CurrentTime, () => Is.EqualTo(2400).Within(100));
+            AddAssert("next note has not appeared", () => Player.GameplayClockContainer.CurrentTime < 4450 - 1800);
             AddAssert("playfield clock synchronised", () =>
                 Player.DrawableRuleset.FrameStableClock.CurrentTime,
                 () => Is.EqualTo(Player.GameplayClockContainer.CurrentTime).Within(100));

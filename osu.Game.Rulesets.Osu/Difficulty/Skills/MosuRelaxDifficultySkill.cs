@@ -2,8 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Skills;
 using osu.Game.Rulesets.Mods;
@@ -33,7 +31,10 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
         private readonly SkillKind kind;
         private readonly bool applyMappingAntiAbuse;
-        private readonly List<RecentObject> recentObjects = new List<RecentObject>(recent_object_limit);
+        // Newest-first logical order without copying seven structs on every aim object.
+        private readonly RecentObject[] recentObjects = new RecentObject[recent_object_limit];
+        private int recentObjectHead;
+        private int recentObjectCount;
 
         private PreparedObject? previousPrepared;
         private PreparedObject? previousPreviousPrepared;
@@ -42,6 +43,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         private double previousTime;
         private double maxEndTime;
         private double? cachedDifficultyValue;
+        private double[] peakBuffer = Array.Empty<double>();
 
         public SkillKind Kind => kind;
 
@@ -96,10 +98,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
                     difficultyObject.JumpDistance,
                     difficultyObject.Angle);
 
-                if (recentObjects.Count >= recent_object_limit)
-                    recentObjects.RemoveAt(recentObjects.Count - 1);
-
-                recentObjects.Insert(0, recent);
+                recentObjectHead = (recentObjectHead + recent_object_limit - 1) % recent_object_limit;
+                recentObjects[recentObjectHead] = recent;
+                recentObjectCount = Math.Min(recentObjectCount + 1, recent_object_limit);
             }
 
             return currentStrain;
@@ -107,33 +108,39 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
         public override double DifficultyValue()
         {
-            double[] peaks = GetCurrentStrainPeaks().Where(p => p > 0).ToArray();
+            int count = copyPeaks(positiveOnly: true);
+            double[] peaks = peakBuffer;
 
-            if (peaks.Length == 0)
+            if (count == 0)
                 return 0;
 
-            int earlySectionCount = (int)Math.Floor(peaks.Length * 0.85);
+            int earlySectionCount = (int)Math.Floor(count * 0.85);
 
-            if (peaks.Length > 5 && earlySectionCount > 0)
+            if (count > 5 && earlySectionCount > 0)
             {
-                double earlyMax = peaks.Take(earlySectionCount).Max();
+                double earlyMax = peaks[0];
+                for (int i = 1; i < earlySectionCount; i++)
+                    earlyMax = Math.Max(earlyMax, peaks[i]);
                 double spikeThreshold = Math.Max(earlyMax * 1.35, 1);
 
-                for (int i = earlySectionCount; i < peaks.Length; i++)
+                for (int i = earlySectionCount; i < count; i++)
                 {
                     if (peaks[i] > spikeThreshold)
                         peaks[i] = spikeThreshold + (peaks[i] - spikeThreshold) * 0.62;
                 }
             }
 
-            Array.Sort(peaks, (a, b) => b.CompareTo(a));
+            // Positive finite/equal peaks are numerically identical under reverse traversal.
+            // The default sort avoids Array.Sort's per-call custom-comparer delegate wrapper.
+            Array.Sort(peaks, 0, count);
+            Array.Reverse(peaks, 0, count);
 
             double difficulty = 0;
             double weight = 1;
 
-            foreach (double peak in peaks)
+            for (int i = 0; i < count; i++)
             {
-                difficulty += peak * weight;
+                difficulty += peaks[i] * weight;
                 weight *= 0.9;
             }
 
@@ -149,38 +156,65 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             if (singleStrain <= 0)
                 return 0;
 
-            return GetObjectDifficulties().Sum(strain =>
-                1.1 / (1 + Math.Exp(-10 * (strain / singleStrain - 0.88))));
+            double total = 0;
+            foreach (double strain in ObjectDifficulties)
+                total += 1.1 / (1 + Math.Exp(-10 * (strain / singleStrain - 0.88)));
+            return total;
         }
 
         public double CalculateSectionSpikeFillerWeight()
         {
-            double[] peaks = GetCurrentStrainPeaks().ToArray();
+            int count = copyPeaks(positiveOnly: false);
+            double[] peaks = peakBuffer;
 
-            if (peaks.Length < 150)
+            if (count < 150)
                 return 0;
 
-            Array.Sort(peaks);
-            double peakReference = peaks.Skip(peaks.Length - Math.Min(peaks.Length, 3)).Average();
+            Array.Sort(peaks, 0, count);
+            // Preserve the old ascending three-element Average addition order.
+            double peakReference = (peaks[count - 3] + peaks[count - 2] + peaks[count - 1]) / 3;
 
             if (peakReference <= 0.0001)
                 return 0;
 
-            int baselineIndex = (int)Math.Round((peaks.Length - 1) * 0.60, MidpointRounding.AwayFromZero);
-            double baseline = Math.Max(peaks[Math.Min(baselineIndex, peaks.Length - 1)], 0.0001);
+            int baselineIndex = (int)Math.Round((count - 1) * 0.60, MidpointRounding.AwayFromZero);
+            double baseline = Math.Max(peaks[Math.Min(baselineIndex, count - 1)], 0.0001);
             double spikeStrength = smoothStep(peakReference / baseline, 1.35, 1.90);
 
             if (spikeStrength <= 0)
                 return 0;
 
-            double hardCoverage = (double)peaks.Count(peak => peak >= peakReference * 0.72) / peaks.Length;
+            int hardCount = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (peaks[i] >= peakReference * 0.72)
+                    hardCount++;
+            }
+            double hardCoverage = (double)hardCount / count;
             double sparseWeight = 1 - smoothStep(hardCoverage, 0.08, 0.24);
-            double longWeight = smoothStep(peaks.Length, 150, 300);
+            double longWeight = smoothStep(count, 150, 300);
 
             return Math.Clamp(spikeStrength * sparseWeight * longWeight, 0, 1);
         }
 
-        public int SectionCount => GetCurrentStrainPeaks().Count();
+        public int SectionCount => CompletedStrainPeaks.Count + 1;
+
+        private int copyPeaks(bool positiveOnly)
+        {
+            int required = CompletedStrainPeaks.Count + 1;
+            if (peakBuffer.Length < required)
+                Array.Resize(ref peakBuffer, Math.Max(required, Math.Max(16, peakBuffer.Length * 2)));
+            int count = 0;
+            for (int i = 0; i < CompletedStrainPeaks.Count; i++)
+            {
+                double peak = CompletedStrainPeaks[i];
+                if (!positiveOnly || peak > 0)
+                    peakBuffer[count++] = peak;
+            }
+            if (!positiveOnly || CurrentSectionPeak > 0)
+                peakBuffer[count++] = CurrentSectionPeak;
+            return count;
+        }
 
         private double strainValueOf(DifficultyObject current) =>
             kind == SkillKind.Aim ? aimStrainValue(current) : speedStrainValue(current);
@@ -283,14 +317,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             if (current.Angle is not { } currentAngle || current.NormalisedVectorAngle is not { } currentVectorAngle)
                 return 1;
 
-            if (recentObjects.Count == 0 || recentObjects[0].Angle == null)
+            if (recentObjectCount == 0 || recentObjects[recentObjectHead].Angle == null)
                 return 1;
 
             double constantAngleCount = 0;
 
-            for (int i = 0; i < Math.Min(note_limit, recentObjects.Count); i++)
+            for (int i = 0; i < Math.Min(note_limit, recentObjectCount); i++)
             {
-                RecentObject recent = recentObjects[i];
+                RecentObject recent = recentObjects[(recentObjectHead + i) % recent_object_limit];
 
                 if (Math.Max(current.StrainTime, recent.StrainTime) > 1.1 * Math.Min(current.StrainTime, recent.StrainTime))
                     break;
@@ -304,7 +338,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             double vectorRepetition = Math.Pow(Math.Min(repetition_threshold / Math.Max(constantAngleCount, 0), 1), 2);
             double stackFactor = smootherStep(current.JumpDistance, 0, normalised_diameter);
-            double recentAngle = recentObjects[0].Angle.GetValueOrDefault();
+            double recentAngle = recentObjects[recentObjectHead].Angle.GetValueOrDefault();
             double angleDifference = Math.Cos(2 * Math.Min(Math.Abs(currentAngle - recentAngle) * stackFactor, Math.PI / 4));
             double baseNerf = 1 - maximum_repetition_nerf * reverseAngleSmoothStep(recentAngle) * angleDifference;
 

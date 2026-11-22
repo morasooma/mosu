@@ -39,7 +39,7 @@ namespace osu.Game.Rulesets.Catch.Difficulty
             {
                 StarRating = Math.Sqrt(skills.OfType<Movement>().Single().DifficultyValue()) * difficulty_multiplier,
                 Mods = mods,
-                MaxCombo = beatmap.GetMaxCombo(),
+                MaxCombo = getDifficultyBeatmap(beatmap).GetMaxCombo(),
             };
 
             return attributes;
@@ -59,7 +59,7 @@ namespace osu.Game.Rulesets.Catch.Difficulty
             halfCatcherWidth *= 1 - (Math.Max(0, beatmap.Difficulty.CircleSize - 5.5f) * 0.0625f);
 
             // In 2B beatmaps, it is possible that a normal Fruit is placed in the middle of a JuiceStream.
-            foreach (var hitObject in CatchBeatmap.GetPalpableObjects(beatmap.HitObjects))
+            foreach (var hitObject in CatchBeatmap.GetPalpableObjects(getDifficultyBeatmap(beatmap).HitObjects))
             {
                 // We want to only consider fruits that contribute to the combo.
                 if (hitObject is Banana || hitObject is TinyDroplet)
@@ -72,6 +72,21 @@ namespace osu.Game.Rulesets.Catch.Difficulty
             }
 
             return objects;
+        }
+
+        private static IBeatmap getDifficultyBeatmap(IBeatmap beatmap)
+        {
+            if (!beatmap.HitObjects.Any(h => h is FruitNinjaFruit))
+                return beatmap;
+
+            return new Beatmap<CatchHitObject>
+            {
+                Difficulty = beatmap.Difficulty,
+                HitObjects = beatmap.HitObjects.OfType<FruitNinjaFruit>()
+                                    .Where(f => !f.IsBomb && f.SourceObject != null)
+                                    .Select(f => (CatchHitObject)f.SourceObject!)
+                                    .ToList(),
+            };
         }
 
         protected override Skill[] CreateSkills(IBeatmap beatmap, Mod[] mods)

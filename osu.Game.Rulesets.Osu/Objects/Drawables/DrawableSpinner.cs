@@ -44,6 +44,12 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
         private Bindable<bool> isSpinning;
         private bool spinnerFrequencyModulate;
 
+        [Resolved(canBeNull: true)]
+        private IReadOnlyList<osu.Game.Rulesets.Mods.Mod> activeMods { get; set; }
+
+        public bool StableRelaxTracking => Result?.StableState != null
+            && activeMods?.Any(mod => mod is osu.Game.Rulesets.Mods.ModRelax) == true;
+
         // see https://github.com/peppy/osu-stable-reference/blob/0b8b19af621dbb282773c22b36cc0453942b98d8/osu!/Audio/AudioEngine.cs#L924
         private const float spinning_sample_modulated_base_frequency = 20_000f / 44_100;
         private const float spinning_sample_modulaton_ratio = 40_000f / 44_100;
@@ -54,7 +60,8 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
         /// <summary>
         /// The amount of bonus score gained from spinning after the required number of spins, for display purposes.
         /// </summary>
-        public double CurrentBonusScore => score_per_tick * Math.Clamp(completedFullSpins.Value - HitObject.SpinsRequiredForBonus, 0, HitObject.MaximumBonusSpins);
+        public double CurrentBonusScore => Result?.StableState is { } stable ? stable.BonusCount * 1000
+            : score_per_tick * Math.Clamp(completedFullSpins.Value - HitObject.SpinsRequiredForBonus, 0, HitObject.MaximumBonusSpins);
 
         /// <summary>
         /// The maximum amount of bonus score which can be achieved from extra spins.
@@ -237,6 +244,9 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
         {
             get
             {
+                if (Result?.StableState is { } stable)
+                    return stable.RequiredHalfTurns == 0 ? 1 : stable.HalfTurns / (float)stable.RequiredHalfTurns;
+
                 if (HitObject.SpinsRequired == 0)
                     // some spinners are so short they can't require an integer spin count.
                     // these become implicitly hit.
@@ -265,7 +275,9 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
             ApplyResult(static (r, hitObject) =>
             {
                 var spinner = (DrawableSpinner)hitObject;
-                if (spinner.Progress >= 1)
+                if (spinner.Result.StableState is { } stable)
+                    r.Type = stable.GetJudgement();
+                else if (spinner.Progress >= 1)
                     r.Type = HitResult.Great;
                 else if (spinner.Progress > .9)
                     r.Type = HitResult.Ok;
@@ -281,7 +293,8 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
             base.Update();
 
             if (HandleUserInput)
-                RotationTracker.Tracking = RotationTracker.IsSpinnableTime && !Result.HasResult && correctButtonPressed();
+                RotationTracker.Tracking = RotationTracker.IsSpinnableTime && !Result.HasResult
+                    && correctButtonPressed();
 
             spinningSample?.Frequency.Value = spinnerFrequencyModulate
                 ? Math.Min(spinning_sample_modulated_max_frequency, spinning_sample_modulated_base_frequency + progressUnclamped * spinning_sample_modulaton_ratio)
@@ -330,7 +343,12 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
             // don't update after end time to avoid the rate display dropping during fade out.
             // this shouldn't be limited to StartTime as it causes weirdness with the underlying calculation, which is expecting updates during that period.
             if (Time.Current <= HitObject.EndTime)
-                spmCalculator.SetRotation(Result.TotalRotation);
+            {
+                if (Result.StableState is { } stable)
+                    spmCalculator.SetStableSpinsPerMinute(stable.SpinsPerMinute);
+                else
+                    spmCalculator.SetRotation(Result.TotalRotation);
+            }
 
             updateBonusScore();
         }

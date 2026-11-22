@@ -7,10 +7,13 @@ using NUnit.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Utils;
+using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays;
+using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
 using osu.Game.Screens.OnlinePlay.DailyChallenge;
@@ -96,6 +99,49 @@ namespace osu.Game.Tests.Visual.DailyChallenge
             AddStep("complete load", () => pendingRequest.TriggerSuccess(createResponse(3, true)));
             AddStep("force refetch", () => leaderboard.RefetchScores());
             AddStep("complete load", () => pendingRequest.TriggerSuccess(createResponse(4, true)));
+        }
+
+        [Test]
+        public void TestRelaxLeaderboardSelection()
+        {
+            DailyChallengeLeaderboard leaderboard = null!;
+            IndexPlaylistScoresRequest latestRequest = null!;
+            int requestCount = 0;
+            bool previousThirdParty = false;
+            string previousApiUrl = string.Empty;
+
+            AddStep("use default Mosu profile", () =>
+            {
+                previousThirdParty = MosuServerEnvironment.IsThirdPartyServer;
+                previousApiUrl = MosuServerEnvironment.ActiveApiUrl;
+                MosuServerEnvironment.IsThirdPartyServer = false;
+                MosuServerEnvironment.ActiveApiUrl = MosuServerEnvironment.PublicServerUrl;
+                dummyAPI.HandleRequest = req =>
+                {
+                    if (req is not IndexPlaylistScoresRequest indexRequest)
+                        return false;
+                    latestRequest = indexRequest;
+                    requestCount++;
+                    return true;
+                };
+            });
+            AddStep("create leaderboard", () => Child = leaderboard = new DailyChallengeLeaderboard(
+                new Room { RoomID = 1 }, new PlaylistItem(Beatmap.Value.BeatmapInfo))
+            {
+                RelativeSizeAxes = Axes.Both,
+            });
+            AddUntilStep("normal request", () => latestRequest?.Relax == false);
+            AddStep("select RX during request", () => leaderboard.SelectedMods.Value = new Mod[] { new OsuModRelax() });
+            AddUntilStep("RX request replaces normal", () => latestRequest?.Relax == true && requestCount == 2);
+            AddStep("select unrelated mod", () => leaderboard.SelectedMods.Value = new Mod[] { new OsuModRelax(), new OsuModHidden() });
+            AddAssert("no refetch for unrelated mod", () => requestCount == 2);
+            AddStep("remove RX", () => leaderboard.SelectedMods.Value = Array.Empty<Mod>());
+            AddUntilStep("normal request replaces RX", () => latestRequest?.Relax == false && requestCount == 3);
+            AddStep("restore server", () =>
+            {
+                MosuServerEnvironment.IsThirdPartyServer = previousThirdParty;
+                MosuServerEnvironment.ActiveApiUrl = previousApiUrl;
+            });
         }
 
         private IndexedMultiplayerScores createResponse(int scoreCount, bool returnUserBest)

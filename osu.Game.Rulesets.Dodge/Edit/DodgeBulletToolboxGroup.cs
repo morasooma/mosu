@@ -168,24 +168,41 @@ namespace osu.Game.Rulesets.Dodge.Edit
         {
             base.LoadComplete();
 
-            settings.BulletContinueUntilExit.BindValueChanged(_ => applyToSelection());
-            settings.BulletTrajectoryGuideStyle.BindValueChanged(_ => applyToSelection());
+            settings.BulletContinueUntilExit.BindValueChanged(value => applyToSelection(bullet => bullet.ContinueUntilExit = value.NewValue));
+            settings.BulletTrajectoryGuideStyle.BindValueChanged(value => applyToSelection(bullet => bullet.TrajectoryGuideStyle = value.NewValue));
             settings.BulletMovementType.BindValueChanged(type =>
             {
-                waveControls.Alpha = type.NewValue == DodgeMovementType.Sine ? 1 : 0;
-                applyToSelection();
+                waveControls.Alpha = type.NewValue != DodgeMovementType.Linear ? 1 : 0;
+                waveControls.Children[0].Alpha = type.NewValue == DodgeMovementType.Sine ? 1 : 0;
+                ((ExpandableSlider<int>)waveControls.Children[1]).ExpandedLabelText = type.NewValue.IsLooping()
+                    ? DodgeEditorStrings.LoopRepetitions : DodgeEditorStrings.WaveCycles;
+                applyToSelection(bullet => bullet.MovementType = type.NewValue);
             }, true);
-            settings.BulletMovementEasing.BindValueChanged(_ => applyToSelection());
-            settings.BulletWaveAmplitude.BindValueChanged(_ => applyToSelection());
-            settings.BulletWaveCycles.BindValueChanged(_ => applyToSelection());
-            settings.BulletWavePhase.BindValueChanged(_ => applyToSelection());
-            settings.BulletShape.BindValueChanged(_ => applyToSelection());
-            settings.BulletColour.BindValueChanged(_ => applyToSelection());
-            settings.BulletOutlineColour.BindValueChanged(_ => applyToSelection());
-            settings.BulletOpacity.BindValueChanged(_ => applyToSelection());
-            settings.BulletOutlineThickness.BindValueChanged(_ => applyToSelection());
+            settings.BulletMovementEasing.BindValueChanged(value => applyToSelection(bullet => bullet.MovementEasing = value.NewValue));
+            settings.BulletWaveAmplitude.BindValueChanged(value => applyToSelection(bullet => bullet.WaveAmplitude = value.NewValue));
+            settings.BulletWaveCycles.BindValueChanged(value => applyToSelection(bullet => bullet.WaveCycles = value.NewValue));
+            settings.BulletWavePhase.BindValueChanged(value => applyToSelection(bullet => bullet.WavePhase = value.NewValue));
+            settings.BulletShape.BindValueChanged(value => applyToSelection(bullet => bullet.Shape = value.NewValue));
+            settings.BulletColour.BindValueChanged(value => applyToSelection(bullet => bullet.Colour = value.NewValue));
+            settings.BulletOutlineColour.BindValueChanged(value => applyToSelection(bullet => bullet.OutlineColour = value.NewValue));
+            settings.BulletOpacity.BindValueChanged(value => applyToSelection(bullet => bullet.Opacity = value.NewValue));
+            settings.BulletOutlineThickness.BindValueChanged(value => applyToSelection(bullet => bullet.OutlineThickness = value.NewValue));
             selectedHitObjects.BindTo(editorBeatmap.SelectedHitObjects);
-            selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection());
+            selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection(), true);
+            editorBeatmap.HitObjectUpdated += onHitObjectUpdated;
+        }
+
+        private void onHitObjectUpdated(HitObject item)
+        {
+            if (selectedHitObjects.Contains(item))
+                Scheduler.AddOnce(readFromSelection);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (editorBeatmap != null)
+                editorBeatmap.HitObjectUpdated -= onHitObjectUpdated;
+            base.Dispose(isDisposing);
         }
 
         private void readFromSelection()
@@ -211,7 +228,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             syncingSelection = false;
         }
 
-        private void applyToSelection()
+        private void applyToSelection(Action<DodgeBullet> apply)
         {
             if (syncingSelection)
                 return;
@@ -223,24 +240,18 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
             editorBeatmap.BeginChange();
 
-            foreach (var bullet in bullets)
+            try
             {
-                bullet.ContinueUntilExit = settings.BulletContinueUntilExit.Value;
-                bullet.TrajectoryGuideStyle = settings.BulletTrajectoryGuideStyle.Value;
-                bullet.MovementType = settings.BulletMovementType.Value;
-                bullet.MovementEasing = settings.BulletMovementEasing.Value;
-                bullet.WaveAmplitude = settings.BulletWaveAmplitude.Value;
-                bullet.WaveCycles = settings.BulletWaveCycles.Value;
-                bullet.WavePhase = settings.BulletWavePhase.Value;
-                bullet.Shape = settings.BulletShape.Value;
-                bullet.Colour = settings.BulletColour.Value;
-                bullet.OutlineColour = settings.BulletOutlineColour.Value;
-                bullet.Opacity = settings.BulletOpacity.Value;
-                bullet.OutlineThickness = settings.BulletOutlineThickness.Value;
-                editorBeatmap.Update(bullet);
+                foreach (var bullet in bullets)
+                {
+                    apply(bullet);
+                    editorBeatmap.Update(bullet);
+                }
             }
-
-            editorBeatmap.EndChange();
+            finally
+            {
+                editorBeatmap.EndChange();
+            }
         }
 
         private static Drawable createColourControl(LocalisableString label, Bindable<Colour4> colour) => new FillFlowContainer

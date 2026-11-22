@@ -112,7 +112,7 @@ namespace osu.Game.Screens.Edit.Components.Timelines.Summary.Parts
                 });
             }
 
-            public LocalisableString TooltipText => $"{section.StartTime.ToEditorFormattedString()} - {section.EndTime.ToEditorFormattedString()} kiai time";
+            public LocalisableString TooltipText => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4299(section.StartTime.ToEditorFormattedString(), section.EndTime.ToEditorFormattedString());
         }
 
         private readonly struct KiaiSection

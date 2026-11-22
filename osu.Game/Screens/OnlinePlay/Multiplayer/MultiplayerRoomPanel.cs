@@ -43,7 +43,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                 Size = new Vector2(130, 1),
                 DarkerColour = Color4Extensions.FromHex(@"593790"),
                 LighterColour = Color4Extensions.FromHex(@"593790").Lighten(0.5f),
-                Text = "Change settings",
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4952,
                 Action = () => OnEdit?.Invoke()
             });
         }

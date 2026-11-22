@@ -46,7 +46,7 @@ namespace osu.Game.Screens.Edit.Components.Timelines.Summary.Parts
             [BackgroundDependencyLoader]
             private void load(OsuColour colours) => Colour = colours.Green1;
 
-            public LocalisableString TooltipText => $"{StartTime.ToEditorFormattedString()} preview time";
+            public LocalisableString TooltipText => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4300(StartTime.ToEditorFormattedString());
         }
     }
 }

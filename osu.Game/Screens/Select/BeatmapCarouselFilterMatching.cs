@@ -30,18 +30,20 @@ namespace osu.Game.Screens.Select
         {
             var criteria = getCriteria();
 
-            return matchItems(items, criteria).ToList();
+            return matchItems(items, criteria, cancellationToken).ToList();
         }, cancellationToken).ConfigureAwait(false);
 
-        private IEnumerable<CarouselItem> matchItems(IEnumerable<CarouselItem> items, FilterCriteria criteria)
+        private IEnumerable<CarouselItem> matchItems(IEnumerable<CarouselItem> items, FilterCriteria criteria, CancellationToken cancellationToken)
         {
             int countMatching = 0;
 
             foreach (var item in items)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var beatmap = (BeatmapInfo)item.Model;
 
-                if (beatmap.Hidden)
+                // Sorting and grouping require a parent set, even when showing individual difficulties.
+                if (beatmap.Hidden || beatmap.BeatmapSet == null)
                     continue;
 
                 if (!CheckCriteriaMatch(beatmap, criteria))
@@ -180,21 +182,12 @@ namespace osu.Game.Screens.Select
 
         private static bool checkPerformancePoints(BeatmapInfo beatmap, FilterCriteria criteria)
         {
-            double pp = isRelax(criteria)
-                ? ForkDataStore.Instance?.GetRelaxPP(beatmap.ID) ?? -1
-                : ForkDataStore.Instance?.GetPP(beatmap.ID) ?? -1;
+            double pp = criteria.GetPp(beatmap);
 
             return pp > 0 && criteria.PerformancePoints.IsInRange(pp);
         }
 
         private static double getStarRating(BeatmapInfo beatmap, FilterCriteria criteria)
-        {
-            if (!isRelax(criteria))
-                return beatmap.StarRating;
-
-            return ForkDataStore.Instance?.GetRelaxStarRating(beatmap.ID) ?? -1;
-        }
-
-        private static bool isRelax(FilterCriteria criteria) => criteria.Mods?.Any(m => m is ModRelax || m.Acronym == "MRX") == true;
+            => criteria.GetStars(beatmap);
     }
 }

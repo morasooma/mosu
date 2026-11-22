@@ -147,7 +147,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 
                 beatLength.BindValueChanged(beatLength =>
                 {
-                    Label.Text = $"{60000 / beatLength.NewValue:n1} BPM";
+                    Label.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4319(60000 / beatLength.NewValue);
                 }, true);
             }
 

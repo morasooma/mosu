@@ -34,7 +34,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         public CardFlow CenterRow { get; private set; } = null!;
 
         public override bool ShowStageOverlay => true;
-        public override LocalisableString StageHeading => "Discard Phase";
+        public override LocalisableString StageHeading => global::osu.Game.Localisation.ClientTranslationStrings.J4892;
 
         private PlayerHandOfCards playerHand = null!;
         private ShearedButton discardButton = null!;
@@ -64,7 +64,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
         public DiscardScreen()
         {
-            StageCaption = "Replace cards from your hand";
+            StageCaption = global::osu.Game.Localisation.ClientTranslationStrings.J4893;
         }
 
         [BackgroundDependencyLoader]
@@ -111,8 +111,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                     Alpha = 0,
                 }.With(d =>
                 {
-                    d.AddParagraph("These are your cards for this match!");
-                    d.AddParagraph("When it’s your turn, you can play a card to go head-to-head against your opponent!");
+                    d.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J4894);
+                    d.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J4895);
                 })
             ];
 
@@ -216,9 +216,9 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         private void onSelectionChanged()
         {
             if (playerHand.Selection.Any())
-                discardButton.Text = $"Replace {"card".ToQuantity(playerHand.Selection.Count())}";
+                discardButton.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4896("card".ToQuantity(playerHand.Selection.Count()));
             else
-                discardButton.Text = "Keep cards";
+                discardButton.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4897;
         }
 
         private void onDiscardButtonClicked()
@@ -234,7 +234,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
             // A bit awkward, but we're delaying this until we're mostly sure the opponent is still discarding.
             // See the countdown reset logic for DiscardStage which gives 3 seconds for animation.
-            waitingOpponentTextUpdate = Scheduler.AddDelayed(() => StageCaption = "Waiting for your opponent...", 3200);
+            waitingOpponentTextUpdate = Scheduler.AddDelayed(() => StageCaption = global::osu.Game.Localisation.ClientTranslationStrings.J4898, 3200);
         }
 
         private readonly List<RankedPlayCardWithPlaylistItem> discardedCards = new List<RankedPlayCardWithPlaylistItem>();

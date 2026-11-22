@@ -152,7 +152,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                             Padding = new MarginPadding { Bottom = 30 },
                             Child = roundNumber = new OsuSpriteText
                             {
-                                Text = $"Round {matchInfo.CurrentRound}",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4926(matchInfo.CurrentRound),
                                 Anchor = Anchor.Centre,
                                 Origin = Anchor.Centre,
                                 Font = OsuFont.GetFont(size: 36, weight: FontWeight.Bold, typeface: Typeface.TorusAlternate),
@@ -321,7 +321,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                             },
                             new OsuSpriteText
                             {
-                                Text = "Damage",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4927,
                                 Anchor = Anchor.TopCentre,
                                 Origin = Anchor.Centre,
                                 Font = OsuFont.GetFont(weight: FontWeight.SemiBold, size: 22),

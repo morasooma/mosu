@@ -18,6 +18,7 @@ namespace osu.Game.Beatmaps
             bool serverExclusive = set.OnlineID >= BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD
                                    || set.IsServerExclusive();
             bool useOfficialService = beatmapApi?.OfficialApi?.IsAvailable == true
+                                      && config?.Get<BeatmapCatalogueSource>(OsuSetting.BeatmapCatalogueSource) == BeatmapCatalogueSource.Official
                                       && !serverExclusive;
 
             var request = new DownloadBeatmapSetRequest(set, minimiseDownloadSize)

@@ -11,6 +11,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK.Graphics;
 
 namespace osu.Game.Graphics.UserInterfaceV2
@@ -40,6 +41,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
         private readonly HoverSounds sounds;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<float>? cornerRadius;
 
         public FormControlBackground()
         {
@@ -71,6 +73,9 @@ namespace osu.Game.Graphics.UserInterfaceV2
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            cornerRadius = colourProvider.GetRadiusBindable(GeometryRole.Input);
+            cornerRadius.BindValueChanged(r => CornerRadius = r.NewValue, true);
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ => updateStyle());

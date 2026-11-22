@@ -144,7 +144,7 @@ namespace osu.Game.Overlays.Profile.Sections.Ranks
                                         Origin = Anchor.CentreRight,
                                         Direction = FillDirection.Horizontal,
                                         Spacing = new Vector2(2),
-                                        Children = Score.Mods.Select(m => m.ToMod(ruleset)).AsOrdered().Select(mod => new ModIcon(mod)
+                                        Children = Score.Mods.Select(m => m.ToMod(ruleset)).AsVisible().AsOrdered().Select(mod => new ModIcon(mod)
                                         {
                                             Scale = new Vector2(0.35f)
                                         }).ToList(),
@@ -192,7 +192,7 @@ namespace osu.Game.Overlays.Profile.Sections.Ranks
                                     Left = 30,
                                     Right = 20
                                 },
-                                Child = createDrawablePerformance().With(d =>
+                                Child = CreateDrawablePerformance().With(d =>
                                 {
                                     d.Anchor = Anchor.Centre;
                                     d.Origin = Anchor.Centre;
@@ -228,7 +228,7 @@ namespace osu.Game.Overlays.Profile.Sections.Ranks
             }
         };
 
-        private Drawable createDrawablePerformance()
+        protected virtual Drawable CreateDrawablePerformance()
         {
             var font = OsuFont.GetFont(weight: FontWeight.Bold);
 
@@ -301,7 +301,7 @@ namespace osu.Game.Overlays.Profile.Sections.Ranks
                         Anchor = Anchor.BottomLeft,
                         Origin = Anchor.BottomLeft,
                         Font = font.With(size: 12),
-                        Text = @"pp",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4002,
                         TooltipText = ppTooltipText,
                         Colour = colourProvider.Light3,
                     }
@@ -333,7 +333,7 @@ namespace osu.Game.Overlays.Profile.Sections.Ranks
                     {
                         Anchor = Anchor.BottomLeft,
                         Origin = Anchor.BottomLeft,
-                        Text = " by ",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4003,
                         Font = OsuFont.GetFont(size: 12, italics: true)
                     },
                     new OsuSpriteText

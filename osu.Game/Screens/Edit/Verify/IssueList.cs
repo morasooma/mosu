@@ -78,7 +78,7 @@ namespace osu.Game.Screens.Edit.Verify
                     {
                         new RoundedButton
                         {
-                            Text = "Refresh",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4348,
                             Action = Refresh,
                             Size = new Vector2(120, 40),
                             Anchor = Anchor.BottomRight,

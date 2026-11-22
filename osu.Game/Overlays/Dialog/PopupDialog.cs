@@ -6,6 +6,7 @@ using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -24,6 +25,10 @@ namespace osu.Game.Overlays.Dialog
 {
     public abstract partial class PopupDialog : VisibilityContainer
     {
+        public virtual float PreferredWidth => 500;
+        protected virtual bool CompactAppearance => false;
+        protected virtual bool HorizontalButtons => false;
+
         public const float ENTER_DURATION = 500;
         public const float EXIT_DURATION = 500;
 
@@ -31,6 +36,7 @@ namespace osu.Game.Overlays.Dialog
         private readonly Vector2 ringMinifiedSize = new Vector2(20f);
 
         private readonly Box flashLayer;
+        internal readonly BackdropBlurSurface Background;
         private Sample? flashSample;
 
         private readonly Container content;
@@ -39,8 +45,10 @@ namespace osu.Game.Overlays.Dialog
         private readonly SpriteIcon icon;
         private readonly TextFlowContainer header;
         private readonly TextFlowContainer body;
+        private IBindable<float>? popupRadius;
 
         protected override Container<Drawable> Content => content;
+        internal Container ContentContainer => content;
 
         public Container MainContent { get; private set; }
 
@@ -90,6 +98,11 @@ namespace osu.Game.Overlays.Dialog
             set
             {
                 buttonsContainer.ChildrenEnumerable = value;
+                if (HorizontalButtons)
+                {
+                    foreach (var button in buttonsContainer.Children)
+                        button.Width = 0.48f;
+                }
 
                 // Hide the container if it is empty, so that it doesn't unnecessarily
                 // insert its padding into the parent container.
@@ -136,6 +149,9 @@ namespace osu.Game.Overlays.Dialog
             Anchor = Anchor.Centre;
             Origin = Anchor.Centre;
 
+            if (CompactAppearance)
+                ringSize = new Vector2(36);
+
             InternalChildren = new Drawable[]
             {
                 content = new Container
@@ -161,7 +177,7 @@ namespace osu.Game.Overlays.Dialog
                             RelativeSizeAxes = Axes.Both,
                             Children = new Drawable[]
                             {
-                                new BackdropBlurSurface
+                                Background = new BackdropBlurSurface
                                 {
                                     RelativeSizeAxes = Axes.Both,
                                     SurfaceColour = Color4Extensions.FromHex(@"221a21"),
@@ -188,14 +204,14 @@ namespace osu.Game.Overlays.Dialog
                             AutoSizeAxes = Axes.Y,
                             Direction = FillDirection.Vertical,
                             Spacing = new Vector2(0f, 10f),
-                            Padding = new MarginPadding { Top = 60, Bottom = 30 },
+                            Padding = new MarginPadding { Top = CompactAppearance ? 20 : 60, Bottom = CompactAppearance ? 15 : 30 },
                             Children = new Drawable[]
                             {
                                 new Container
                                 {
                                     Origin = Anchor.TopCentre,
                                     Anchor = Anchor.TopCentre,
-                                    Padding = new MarginPadding { Bottom = 30 },
+                                    Padding = new MarginPadding { Bottom = CompactAppearance ? 0 : 30 },
                                     Size = ringSize,
                                     Children = new Drawable[]
                                     {
@@ -205,7 +221,7 @@ namespace osu.Game.Overlays.Dialog
                                             Anchor = Anchor.Centre,
                                             Masking = true,
                                             BorderColour = Color4.White,
-                                            BorderThickness = 5f,
+                                            BorderThickness = CompactAppearance ? 0 : 5f,
                                             Children = new Drawable[]
                                             {
                                                 new Box
@@ -219,7 +235,7 @@ namespace osu.Game.Overlays.Dialog
                                                     Anchor = Anchor.Centre,
                                                     Icon = FontAwesome.Solid.TimesCircle,
                                                     Y = -2,
-                                                    Size = new Vector2(50),
+                                                    Size = new Vector2(CompactAppearance ? 28 : 50),
                                                 },
                                             },
                                         },
@@ -255,9 +271,9 @@ namespace osu.Game.Overlays.Dialog
                                     Origin = Anchor.TopCentre,
                                     RelativeSizeAxes = Axes.X,
                                     AutoSizeAxes = Axes.Y,
-                                    Direction = FillDirection.Vertical,
+                                    Direction = HorizontalButtons ? FillDirection.Horizontal : FillDirection.Vertical,
                                     Spacing = new Vector2(5),
-                                    Padding = new MarginPadding { Top = 30 },
+                                    Padding = new MarginPadding { Top = CompactAppearance ? 10 : 30 },
                                 },
                             },
                         },
@@ -270,10 +286,14 @@ namespace osu.Game.Overlays.Dialog
             Show();
         }
 
-        [BackgroundDependencyLoader]
-        private void load(AudioManager audio)
+        [BackgroundDependencyLoader(permitNulls: true)]
+        private void load(AudioManager audio, OverlayColourProvider? colourProvider = null)
         {
             flashSample = audio.Samples.Get(@"UI/default-select-disabled");
+
+            popupRadius = colourProvider?.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Popup, 20f)
+                ?? OverlayColourProvider.GetGeometryRadius(osu.Game.Overlays.CustomTheme.GeometryRole.Popup, 20f);
+            popupRadius.BindValueChanged(r => content.CornerRadius = r.NewValue, true);
         }
 
         /// <summary>
@@ -346,7 +366,7 @@ namespace osu.Game.Overlays.Dialog
             if (!actionInvoked)
                 // In the case a user did not choose an action before a hide was triggered, press the last button.
                 // This is presumed to always be a sane default "cancel" action.
-                buttonsContainer.Last().TriggerClick();
+                (buttonsContainer.Children.OfType<PopupDialogCancelButton>().LastOrDefault() ?? buttonsContainer.Last()).TriggerClick();
 
             content
                 .ScaleTo(0.7f, EXIT_DURATION, Easing.Out)

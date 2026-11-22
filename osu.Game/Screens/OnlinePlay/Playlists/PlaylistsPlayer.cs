@@ -25,7 +25,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
         [Cached(typeof(IGameplayLeaderboardProvider))]
         private readonly PlaylistsGameplayLeaderboardProvider leaderboardProvider;
 
-        protected override UserActivity InitialActivity => new UserActivity.InPlaylistGame(Beatmap.Value.BeatmapInfo, Ruleset.Value);
+        protected override UserActivity InitialActivity => new UserActivity.InPlaylistGame(Beatmap.Value.BeatmapInfo, Ruleset.Value).WithMods(Mods.Value);
 
         public PlaylistsPlayer(Room room, PlaylistItem playlistItem)
             : base(room, playlistItem, new PlayerConfiguration

@@ -122,6 +122,9 @@ namespace osu.Game.Online.API.Requests.Responses
         [JsonProperty("has_replay")]
         public bool HasReplay { get; set; }
 
+        [JsonProperty("replay_views")]
+        public long? ReplayViews { get; set; }
+
         [JsonProperty("ranked")]
         public bool Ranked { get; set; }
 
@@ -139,6 +142,7 @@ namespace osu.Game.Online.API.Requests.Responses
         public bool ShouldSerializePP() => false;
         public bool ShouldSerializeOnlineID() => false;
         public bool ShouldSerializeHasReplay() => false;
+        public bool ShouldSerializeReplayViews() => false;
         public bool ShouldSerializePreserve() => false;
         public bool ShouldSerializeProcessed() => false;
 

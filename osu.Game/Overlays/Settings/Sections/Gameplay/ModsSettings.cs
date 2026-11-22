@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
@@ -28,6 +28,7 @@ namespace osu.Game.Overlays.Settings.Sections.Gameplay
                     Current = config.GetBindable<bool>(OsuSetting.IncreaseFirstObjectVisibility),
                 })
                 {
+                    FavouriteId = "OsuSetting.IncreaseFirstObjectVisibility",
                     Keywords = new[] { @"approach", @"circle", @"hidden" },
                 },
             };

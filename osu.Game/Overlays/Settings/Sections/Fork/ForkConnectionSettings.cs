@@ -8,10 +8,12 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using osu.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Sprites;
 using osu.Framework.Localisation;
 using osu.Framework.Threading;
 using osu.Game.Configuration;
@@ -20,6 +22,9 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Localisation;
 using osu.Game.Online;
+using osu.Game.Online.API;
+using osu.Game.Overlays.Notifications;
+using osu.Game.Updater;
 using osu.Game.Overlays.Dialog;
 using osuTK;
 using osuTK.Graphics;
@@ -34,11 +39,28 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
         [Resolved(CanBeNull = true)]
         private IDialogOverlay? dialogOverlay { get; set; }
 
+        private FormEnumDropdown<ReleaseStream> releaseStreamDropdown = null!;
+
+        private readonly Bindable<SettingsNote.Data?> releaseStreamDropdownNote = new Bindable<SettingsNote.Data?>();
+
+        private readonly Bindable<ReleaseStream> configReleaseStream = new Bindable<ReleaseStream>();
+
+        [Resolved]
+        private UpdateManager? updateManager { get; set; }
+
+        [Resolved]
+        private INotificationOverlay? notifications { get; set; }
+
+        [Resolved(canBeNull: true)]
+        private IAPIProvider? api { get; set; }
+
         protected override LocalisableString Header => ForkSettingsStrings.ConnectionHeader;
 
         [BackgroundDependencyLoader]
         private void load(OsuConfigManager config)
         {
+            config.BindWith(OsuSetting.ReleaseStream, configReleaseStream);
+
             Bindable<MosuConnectionRoute> connectionRoute = config.GetBindable<MosuConnectionRoute>(OsuSetting.ForkConnectionRoute);
             bool revertingChange = false;
 
@@ -73,10 +95,78 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Current = connectionRoute
                 })
                 {
+                    FavouriteId = "ui:ForkSettingsStrings.ConnectionProxyCaption",
                     Keywords = new[] { @"proxy", @"connection", @"latency", @"ping", @"Russia", @"RF", @"резервный", @"прокси", @"соединение", @"пинг" }
                 },
-                new ConnectionLatencyDisplay(),
             };
+
+            // For simplicity, hide the concept of release streams from mobile users.
+            if (RuntimeInfo.IsDesktop && updateManager != null)
+            {
+                Add(new SettingsItemV2(releaseStreamDropdown = new FormEnumDropdown<ReleaseStream>
+                {
+                    Caption = GeneralSettingsStrings.ReleaseStream,
+                    Current = { Value = configReleaseStream.Value },
+                })
+                {
+                    FavouriteId = "ui:GeneralSettingsStrings.ReleaseStream",
+                    Keywords = new[] { @"version" },
+                    Note = { BindTarget = releaseStreamDropdownNote },
+                    ShowRevertToDefaultButton = updateManager.FixedReleaseStream == null
+                });
+
+                if (updateManager.FixedReleaseStream != null)
+                {
+                    configReleaseStream.Value = updateManager.FixedReleaseStream.Value;
+
+                    releaseStreamDropdown.Items = [updateManager.FixedReleaseStream.Value];
+                    releaseStreamDropdownNote.Value = new SettingsNote.Data(GeneralSettingsStrings.ChangeReleaseStreamPackageManagerWarning, SettingsNote.Type.Informational);
+                    releaseStreamDropdown.Current.Disabled = true;
+                }
+                else
+                {
+                    configReleaseStream.BindValueChanged(s =>
+                    {
+                        releaseStreamDropdownNote.Value = s.NewValue != ReleaseStream.Lazer
+                            ? new SettingsNote.Data(GeneralSettingsStrings.ReleaseStreamNonStableUpgradeInformation, SettingsNote.Type.Informational)
+                            : null;
+                    }, true);
+                }
+
+                releaseStreamDropdown.Current.BindValueChanged(releaseStreamChanged);
+            }
+
+            Add(new ConnectionLatencyDisplay());
+        }
+
+        private void releaseStreamChanged(ValueChangedEvent<ReleaseStream> stream)
+        {
+            switch (stream.NewValue)
+            {
+                case ReleaseStream.Lazer:
+                    configReleaseStream.Value = stream.NewValue;
+                    break;
+
+                case ReleaseStream.DevBuild when api?.IsLoggedIn != true || api.LocalUser.Value is not { Active: true, IsSupporter: true }:
+                    notifications?.Post(new SimpleNotification
+                    {
+                        Text = ForkSettingsStrings.GeneralDevBuildSupportersOnly,
+                        Icon = FontAwesome.Solid.Lock,
+                    });
+                    releaseStreamDropdown.Current.Value = stream.OldValue;
+                    configReleaseStream.Value = stream.OldValue;
+                    break;
+
+                default:
+                    dialogOverlay?.Push(
+                        new ConfirmDialog(GeneralSettingsStrings.ChangeReleaseStreamConfirmation,
+                            () => configReleaseStream.Value = stream.NewValue,
+                            () => releaseStreamDropdown.Current.Value = stream.OldValue)
+                        {
+                            BodyText = GeneralSettingsStrings.ChangeReleaseStreamConfirmationInfo
+                        });
+                    break;
+            }
         }
 
         private partial class ConnectionLatencyDisplay : FillFlowContainer

@@ -66,6 +66,64 @@ namespace osu.Game.Tests.NonVisual
         }
 
         [Test]
+        public void TestRelaxPpSystemDefaultsToPrereleaseWithoutOverwritingLaterChoice()
+        {
+            using var storage = new TemporaryNativeStorage($@"fork-relax-pp-default-{Guid.NewGuid():N}");
+
+            using (var config = new OsuConfigManager(storage))
+            {
+                Assert.Multiple(() =>
+                {
+                    Assert.That(config.Get<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem), Is.EqualTo(ForkRelaxPpSystem.MosuPpPrerelease));
+                    Assert.That(config.Get<bool>(OsuSetting.ForkMosuPpPrereleaseDefaultMigrated), Is.True);
+                    Assert.That(config.Get<bool>(OsuSetting.ForkTazikPpDefaultMigrated), Is.True);
+                    Assert.That(config.Get<bool>(OsuSetting.ForkRelaxPpSystemDefaultMigrated), Is.True);
+                });
+                config.SetValue(OsuSetting.ForkRelaxPpSystem, ForkRelaxPpSystem.TazikPp);
+                config.Save();
+            }
+
+            using var reopened = new OsuConfigManager(storage);
+            Assert.That(reopened.Get<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem), Is.EqualTo(ForkRelaxPpSystem.TazikPp));
+        }
+
+        [TestCase(ForkRelaxPpSystem.MosuRealistik, false, ForkRelaxPpSystem.MosuPpPrerelease)]
+        [TestCase(ForkRelaxPpSystem.LazerVanilla, false, ForkRelaxPpSystem.MosuPpPrerelease)]
+        [TestCase(ForkRelaxPpSystem.MosuPp, false, ForkRelaxPpSystem.MosuPpPrerelease)]
+        [TestCase(ForkRelaxPpSystem.TazikPp, true, ForkRelaxPpSystem.MosuPpPrerelease)]
+        [TestCase(ForkRelaxPpSystem.MosuRealistik, true, ForkRelaxPpSystem.MosuRealistik)]
+        [TestCase(ForkRelaxPpSystem.LazerVanilla, true, ForkRelaxPpSystem.LazerVanilla)]
+        [TestCase(ForkRelaxPpSystem.MosuPp, true, ForkRelaxPpSystem.MosuPp)]
+        [TestCase(ForkRelaxPpSystem.MosuPpPrerelease, true, ForkRelaxPpSystem.MosuPpPrerelease)]
+        public void TestExistingRelaxPpSystemMigratesOnce(ForkRelaxPpSystem previous, bool tazikDefaultMigrated, ForkRelaxPpSystem expected)
+        {
+            using var storage = new TemporaryNativeStorage($@"fork-relax-pp-migration-{Guid.NewGuid():N}");
+            writeFile(storage, @"mosu.ini", $"ForkRelaxPpSystem = {previous}\nForkRelaxPpSystemDefaultMigrated = {tazikDefaultMigrated}\nForkTazikPpDefaultMigrated = {tazikDefaultMigrated}");
+
+            using (var config = new OsuConfigManager(storage))
+            {
+                Assert.Multiple(() =>
+                {
+                    Assert.That(config.Get<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem), Is.EqualTo(expected));
+                    Assert.That(config.Get<bool>(OsuSetting.ForkMosuPpPrereleaseDefaultMigrated), Is.True);
+                    Assert.That(config.Get<bool>(OsuSetting.ForkTazikPpDefaultMigrated), Is.True);
+                    Assert.That(config.Get<bool>(OsuSetting.ForkRelaxPpSystemDefaultMigrated), Is.True);
+                });
+                config.Save();
+            }
+
+            // After migration the user can explicitly choose the former default again.
+            using (var config = new OsuConfigManager(storage))
+            {
+                config.SetValue(OsuSetting.ForkRelaxPpSystem, ForkRelaxPpSystem.TazikPp);
+                config.Save();
+            }
+
+            using var reopened = new OsuConfigManager(storage);
+            Assert.That(reopened.Get<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem), Is.EqualTo(ForkRelaxPpSystem.TazikPp));
+        }
+
+        [Test]
         public void TestLegacyConnectionProxySettingMigratesToProxy2()
         {
             using var storage = new TemporaryNativeStorage($@"fork-connection-route-{Guid.NewGuid():N}");

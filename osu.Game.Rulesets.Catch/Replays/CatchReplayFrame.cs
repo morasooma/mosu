@@ -17,6 +17,9 @@ namespace osu.Game.Rulesets.Catch.Replays
         public float Position;
         public bool Dashing;
 
+        // Only Fruit Ninja uses two-dimensional cursor input. Null preserves ordinary Catch replays.
+        public float? BladeY;
+
         public CatchReplayFrame()
         {
         }
@@ -42,6 +45,7 @@ namespace osu.Game.Rulesets.Catch.Replays
         public void FromLegacy(LegacyReplayFrame currentFrame, IBeatmap beatmap, ReplayFrame? lastFrame = null)
         {
             Position = currentFrame.Position.X;
+            BladeY = currentFrame.MouseY;
             Dashing = currentFrame.ButtonState == ReplayButtonState.Left1;
 
             if (Dashing)
@@ -63,7 +67,7 @@ namespace osu.Game.Rulesets.Catch.Replays
 
             if (Actions.Contains(CatchAction.Dash)) state |= ReplayButtonState.Left1;
 
-            return new LegacyReplayFrame(Time, Position, null, state);
+            return new LegacyReplayFrame(Time, Position, BladeY, state);
         }
 
         public override bool IsEquivalentTo(ReplayFrame other)
@@ -71,6 +75,7 @@ namespace osu.Game.Rulesets.Catch.Replays
                && Time == catchFrame.Time
                && Position == catchFrame.Position
                && Dashing == catchFrame.Dashing
+               && BladeY == catchFrame.BladeY
                && Actions.SequenceEqual(catchFrame.Actions);
     }
 }

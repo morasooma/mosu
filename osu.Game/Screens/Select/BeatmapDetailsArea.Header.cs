@@ -14,7 +14,6 @@ using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Localisation;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Screens.Play.Leaderboards;
-using osuTK;
 
 namespace osu.Game.Screens.Select
 {
@@ -23,11 +22,13 @@ namespace osu.Game.Screens.Select
         public partial class Header : CompositeDrawable
         {
             private WedgeSelector<Selection> tabControl = null!;
-            private FillFlowContainer leaderboardControls = null!;
+            private GridContainer leaderboardControls = null!;
 
             private ShearedDropdown<BeatmapLeaderboardScope> scopeDropdown = null!;
             private ShearedDropdown<LeaderboardSortMode> sortDropdown = null!;
             private ShearedToggleButton selectedModsToggle = null!;
+            private ILocalisedBindableString sortLabel = null!;
+            private ILocalisedBindableString modsLabel = null!;
 
             public IBindable<Selection> Type => tabControl.Current;
 
@@ -42,7 +43,7 @@ namespace osu.Game.Screens.Select
             public IBindable<bool> FilterBySelectedMods => selectedModsToggle.Active;
 
             [BackgroundDependencyLoader]
-            private void load(OsuConfigManager config)
+            private void load(OsuConfigManager config, LocalisationManager localisation)
             {
                 InternalChildren = new Drawable[]
                 {
@@ -61,48 +62,56 @@ namespace osu.Game.Screens.Select
                                 Margin = new MarginPadding { Top = 2f },
                                 IsSwitchable = true,
                             },
-                            leaderboardControls = new FillFlowContainer
+                            leaderboardControls = new GridContainer
                             {
                                 Anchor = Anchor.CentreRight,
                                 Origin = Anchor.CentreRight,
                                 RelativeSizeAxes = Axes.X,
                                 Height = 30,
-                                Spacing = new Vector2(5f, 0f),
-                                Direction = FillDirection.Horizontal,
-                                Padding = new MarginPadding { Left = 258 },
-                                Children = new Drawable[]
+                                Padding = new MarginPadding { Left = 205 },
+                                ColumnDimensions = new[]
                                 {
-                                    selectedModsToggle = new ShearedToggleButton
+                                    new Dimension(),
+                                    new Dimension(GridSizeMode.Absolute, 5),
+                                    new Dimension(),
+                                    new Dimension(GridSizeMode.Absolute, 5),
+                                    new Dimension(GridSizeMode.AutoSize),
+                                },
+                                Content = new[]
+                                {
+                                    new Drawable[]
                                     {
-                                        Anchor = Anchor.CentreRight,
-                                        Origin = Anchor.CentreRight,
-                                        AutoSizeAxes = Axes.X,
-                                        Text = UserInterfaceStrings.SelectedMods,
-                                        Height = 30f,
-                                        // Eyeballed to make spacing match. Because shear is silly and implemented in different ways between dropdown and button.
-                                        Margin = new MarginPadding { Left = -9.2f },
-                                    },
-                                    sortDropdown = new ShearedDropdown<LeaderboardSortMode>(BeatmapLeaderboardWedgeStrings.Sort)
-                                    {
-                                        Anchor = Anchor.TopRight,
-                                        Origin = Anchor.TopRight,
-                                        RelativeSizeAxes = Axes.X,
-                                        Width = 0.4f,
-                                        Items = Enum.GetValues<LeaderboardSortMode>(),
-                                    },
-                                    scopeDropdown = new ScopeDropdown
-                                    {
-                                        Anchor = Anchor.TopRight,
-                                        Origin = Anchor.TopRight,
-                                        RelativeSizeAxes = Axes.X,
-                                        Width = 0.4f,
-                                        Current = { Value = BeatmapLeaderboardScope.Global },
+                                        scopeDropdown = new ScopeDropdown
+                                        {
+                                            RelativeSizeAxes = Axes.X,
+                                            Current = { Value = BeatmapLeaderboardScope.Global },
+                                        },
+                                        new Container(),
+                                        sortDropdown = new ShearedDropdown<LeaderboardSortMode>(BeatmapLeaderboardWedgeStrings.Sort)
+                                        {
+                                            RelativeSizeAxes = Axes.X,
+                                            Items = Enum.GetValues<LeaderboardSortMode>(),
+                                        },
+                                        new Container(),
+                                        selectedModsToggle = new ShearedToggleButton
+                                        {
+                                            AutoSizeAxes = Axes.X,
+                                            Text = UserInterfaceStrings.SelectedMods,
+                                            Height = 30f,
+                                        },
                                     },
                                 },
                             },
                         },
                     },
                 };
+
+                sortLabel = localisation.GetLocalisedBindableString(BeatmapLeaderboardWedgeStrings.Sort);
+                sortLabel.BindValueChanged(v => sortDropdown.LeftSideLabel = v.NewValue == "Сортировка" ? "Сорт." : v.NewValue, true);
+
+                modsLabel = localisation.GetLocalisedBindableString(UserInterfaceStrings.SelectedMods);
+                modsLabel.BindValueChanged(v => selectedModsToggle.Text = v.NewValue == "Выбранные моды" ? global::osu.Game.Localisation.ClientTranslationStrings.J5149 : v.NewValue, true);
+                selectedModsToggle.TooltipText = UserInterfaceStrings.SelectedMods;
 
                 config.BindWith(OsuSetting.BeatmapDetailTab, configDetailTab);
                 config.BindWith(OsuSetting.BeatmapLeaderboardSortMode, configLeaderboardSortMode);

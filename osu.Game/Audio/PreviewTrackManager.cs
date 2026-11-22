@@ -2,7 +2,9 @@
 // This file is partly modified by GooGuTeam.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using osu.Framework.Allocation;
+using osu.Framework.Utils;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Track;
 using osu.Framework.Bindables;
@@ -45,8 +47,12 @@ namespace osu.Game.Audio
         /// <returns>The playable <see cref="PreviewTrack"/>.</returns>
         public PreviewTrack Get(IBeatmapSetInfo beatmapSetInfo)
         {
-            var track = CreatePreviewTrack(beatmapSetInfo, trackStore);
+            return Register(CreatePreviewTrack(beatmapSetInfo, trackStore));
+        }
 
+        /// <summary>Coordinates an already bounded, locally supplied preview with other previews and main music.</summary>
+        public PreviewTrack Register(TrackManagerPreviewTrack track)
+        {
             track.Started += () => Schedule(() =>
             {
                 CurrentTrack?.Stop();
@@ -66,6 +72,14 @@ namespace osu.Game.Audio
             });
 
             return track;
+        }
+
+        /// <summary>Silences carousel music for an entire preview surface, including loading gaps and pauses.</summary>
+        public IDisposable SilenceMainTrack()
+        {
+            var mute = new BindableDouble(0);
+            mainTrackAdjustments.AddAdjustment(AdjustableProperty.Volume, mute);
+            return new InvokeOnDisposal(() => mainTrackAdjustments.RemoveAdjustment(AdjustableProperty.Volume, mute));
         }
 
         /// <summary>

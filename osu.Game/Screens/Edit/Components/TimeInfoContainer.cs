@@ -76,7 +76,7 @@ namespace osu.Game.Screens.Edit.Components
             if (lastBPM != newBPM)
             {
                 lastBPM = newBPM;
-                bpm.Text = @$"{newBPM:0} BPM";
+                bpm.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4292(newBPM);
             }
 
             if (lastProgress != newProgress)

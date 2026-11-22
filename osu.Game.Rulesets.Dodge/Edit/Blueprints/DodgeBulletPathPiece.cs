@@ -73,7 +73,11 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 bullet.MovementEasing,
                 bullet.WaveAmplitude,
                 Math.Max(1, bullet.WaveCycles),
-                bullet.WavePhase);
+                bullet.WavePhase,
+                bullet.WorldBounds,
+                bullet.StartTime,
+                bullet.Duration,
+                bullet.ArenaTimeline);
 
             if (stateValid && state == cachedState)
                 return;
@@ -82,20 +86,14 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             stateValid = true;
             GeometryRebuildCount++;
 
-            float maximumProgress = bullet.ContinueUntilExit
-                ? DodgeTrajectory.CalculateExitProgress(
-                    bullet.Position,
-                    bullet.EndPosition,
-                    bullet.BulletSize,
-                    bullet.MovementType,
-                    bullet.WaveAmplitude,
-                    bullet.WaveCycles,
-                    bullet.WavePhase,
-                    bullet.MovementEasing)
+            float maximumProgress = bullet.ContinueUntilExit && bullet.Duration > 0
+                ? (float)((bullet.MovementEndTime - bullet.StartTime) / bullet.Duration)
                 : 1;
 
             start.Position = bullet.Position;
-            end.Position = DodgeTrajectory.PositionAtProgress(
+            // Closed paths finish back at the start. Keep the authored opposite
+            // point visible so the circle diameter / return travel remains editable.
+            end.Position = bullet.MovementType.IsLooping() ? bullet.EndPosition : DodgeTrajectory.PositionAtProgress(
                 bullet.Position,
                 bullet.EndPosition,
                 maximumProgress,
@@ -180,6 +178,10 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             DodgeMovementEasing MovementEasing,
             float WaveAmplitude,
             int WaveCycles,
-            float WavePhase);
+            float WavePhase,
+            RectangleF? WorldBounds,
+            double StartTime,
+            double Duration,
+            UI.DodgeArenaStateEvaluator? ArenaTimeline);
     }
 }

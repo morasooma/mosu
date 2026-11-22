@@ -25,7 +25,7 @@ namespace osu.Game.Rulesets.Mods
         /// </summary>
         protected float CurrentRotation { get; private set; }
 
-        [SettingSource("Roll speed", "Rotations per minute")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4192), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4193))]
         public BindableNumber<double> SpinSpeed { get; } = new BindableDouble(0.5)
         {
             MinValue = 0.02,
@@ -33,22 +33,22 @@ namespace osu.Game.Rulesets.Mods
             Precision = 0.01,
         };
 
-        [SettingSource("Direction", "The direction of rotation")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4194), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4195))]
         public Bindable<RotationDirection> Direction { get; } = new Bindable<RotationDirection>();
 
         public override string Name => "Barrel Roll";
         public override string Acronym => "BR";
         public override IconUsage? Icon => OsuIcon.ModBarrelRoll;
-        public override LocalisableString Description => "The whole playfield is on a wheel!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4196;
 
         public override IEnumerable<(LocalisableString setting, LocalisableString value)> SettingDescription
         {
             get
             {
                 if (!SpinSpeed.IsDefault)
-                    yield return ("Roll speed", $"{SpinSpeed.Value:N2} rpm");
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4192, global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4197(SpinSpeed.Value));
                 if (!Direction.IsDefault)
-                    yield return ("Direction", Direction.Value.GetDescription());
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4194, Direction.Value.GetDescription());
             }
         }
 

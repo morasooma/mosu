@@ -35,7 +35,7 @@ namespace osu.Desktop.Security
         {
             public ElevatedPrivilegesNotification()
             {
-                Text = NotificationsStrings.ElevatedPrivileges(RuntimeInfo.IsUnix ? "root" : "Administrator");
+                Text = NotificationsStrings.ElevatedPrivileges(RuntimeInfo.IsUnix ? global::osu.Game.Localisation.ClientTranslationStrings.J5339 : global::osu.Game.Localisation.ClientTranslationStrings.J5340);
             }
 
             [BackgroundDependencyLoader]

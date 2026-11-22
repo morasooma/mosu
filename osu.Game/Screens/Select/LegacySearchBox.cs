@@ -57,7 +57,7 @@ namespace osu.Game.Screens.Select
                             {
                                 Anchor = Anchor.CentreLeft,
                                 Origin = Anchor.CentreLeft,
-                                Text = @"Search:",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J5168,
                                 Font = LegacyFonts.Get(20, FontWeight.Bold),
                                 Colour = Color4.GreenYellow,
                                 Shadow = true,
@@ -84,7 +84,7 @@ namespace osu.Game.Screens.Select
 
             public SearchTextBox()
             {
-                PlaceholderText = @"Type to search!";
+                PlaceholderText = global::osu.Game.Localisation.ClientTranslationStrings.J5169;
                 // como en lazer: agarra y mantiene el foco asi se puede tipear directo sin clickear.
                 // solo esta presente en modo legacy, asi que no roba foco en el resto.
                 HoldFocus = true;

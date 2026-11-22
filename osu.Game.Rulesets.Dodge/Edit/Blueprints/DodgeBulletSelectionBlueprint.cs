@@ -5,6 +5,7 @@ using System;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Primitives;
 using osu.Game.Rulesets.Dodge.Objects;
+using osu.Game.Rulesets.Dodge.Objects.Drawables;
 using osu.Game.Rulesets.Edit;
 using osuTK;
 
@@ -18,6 +19,10 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
 
         protected override bool AlwaysShowWhenSelected => true;
 
+        private DrawableDodgeHitObject? projectile => DrawableObject as DrawableDodgeHitObject;
+
+        public override bool IsSelectable => base.IsSelectable && projectile?.IsInEditorSelectionWindow == true;
+
         public DodgeBulletSelectionBlueprint(DodgeBullet hitObject)
             : base(hitObject)
         {
@@ -30,7 +35,12 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             pathPiece.UpdateFrom(HitObject);
         }
 
-        public override Vector2 ScreenSpaceSelectionPoint => ToScreenSpace(HitObject.Position);
+        internal Vector2 ScreenSpaceProjectilePoint
+            => projectile?.EditorSelectionQuad.Centre ?? ToScreenSpace(HitObject.Position);
+
+        public override Vector2 ScreenSpaceSelectionPoint => IsSelected
+            ? ToScreenSpace(HitObject.Position)
+            : ScreenSpaceProjectilePoint;
 
         protected override Vector2[] ScreenSpaceAdditionalNodes => new[] { ToScreenSpace(HitObject.EndPosition) };
 
@@ -38,6 +48,9 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         {
             get
             {
+                if (!IsSelected && projectile != null)
+                    return projectile.EditorSelectionQuad.AABBFloat.Inflate(new Vector2(selection_padding));
+
                 RectangleF bounds = pathPiece.GamefieldBounds;
                 Vector2 topLeft = ToScreenSpace(new Vector2(bounds.Left, bounds.Top));
                 Vector2 topRight = ToScreenSpace(new Vector2(bounds.Right, bounds.Top));
@@ -52,6 +65,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             }
         }
 
-        public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => pathPiece.ReceivePositionalInputAt(screenSpacePos);
+        public override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
+            => IsSelectable && (IsSelected ? pathPiece.ReceivePositionalInputAt(screenSpacePos) : SelectionQuad.Contains(screenSpacePos));
     }
 }

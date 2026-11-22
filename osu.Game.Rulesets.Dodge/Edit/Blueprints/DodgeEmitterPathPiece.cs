@@ -77,7 +77,9 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 emitter.MovementEasing,
                 emitter.WaveAmplitude,
                 Math.Max(1, emitter.WaveCycles),
-                emitter.WavePhase);
+                emitter.WavePhase,
+                emitter.LoopScope,
+                emitter.LoopOffset);
 
             if (stateValid && state == cachedState)
                 return;
@@ -136,8 +138,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
                 int previewBurst = i / raysPerBurst;
                 int burstIndex = previewBurst == 0 ? 0 : emitter.EffectiveBurstCount - 1;
                 int rayIndex = i % raysPerBurst;
-                Vector2 burstSource = emitter.SourcePositionAt(burstIndex);
-                Vector2 controlEndPosition = emitter.EndPositionAt(burstIndex, rayIndex);
+                var (burstSource, controlEndPosition) = emitter.TrajectoryPointsAt(burstIndex, rayIndex);
                 TrajectoryPiece trajectory = trajectories[i];
 
                 trajectory.Path.Colour = emitter.Colour;
@@ -269,6 +270,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             DodgeMovementEasing MovementEasing,
             float WaveAmplitude,
             int WaveCycles,
-            float WavePhase);
+            float WavePhase,
+            DodgeEmitterLoopScope LoopScope,
+            Vector2 LoopOffset);
     }
 }

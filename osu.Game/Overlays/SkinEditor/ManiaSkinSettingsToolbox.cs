@@ -18,8 +18,8 @@ namespace osu.Game.Overlays.SkinEditor
         {
             var slider = new SettingsItemV2(new FormSliderBar<int>
             {
-                Caption = "Playfield scale",
-                HintText = "Scales the mania notefield around the receptor line, including notes, receptors, judgements and column spacing.",
+                Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4063,
+                HintText = global::osu.Game.Localisation.ClientTranslationStrings.J1972,
                 Current = skin.MosuSettings.ManiaNoteScalePercent,
                 KeyboardStep = 1,
                 LabelFormat = value => $"{value}%",

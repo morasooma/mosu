@@ -9,7 +9,7 @@ namespace osu.Game.Rulesets.Taiko.Mods
 {
     public class TaikoModEasy : ModEasy
     {
-        public override LocalisableString Description => @"Beats move slower, and less accuracy required!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3749;
 
         /// <summary>
         /// Multiplier factor added to the scrolling speed.

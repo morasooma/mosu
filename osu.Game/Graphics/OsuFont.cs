@@ -184,7 +184,7 @@ namespace osu.Game.Graphics
         Venera,
         Torus,
 
-        [Description("Torus (alternate)")]
+        [Description("Torus (alternate)"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3397))]
         TorusAlternate,
         Inter,
     }

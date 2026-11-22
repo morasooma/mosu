@@ -22,6 +22,7 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
 using osu.Game.Overlays.Music;
+using osu.Game.Performance.Debug;
 using osuTK;
 using osuTK.Graphics;
 
@@ -118,7 +119,7 @@ namespace osu.Game.Overlays
                                     CreateContent = () => new OsuSpriteText
                                     {
                                         Font = title_font,
-                                        Text = @"Nothing to play",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J3869,
                                         Anchor = Anchor.Centre,
                                         Origin = Anchor.Centre,
                                     },
@@ -134,7 +135,7 @@ namespace osu.Game.Overlays
                                     CreateContent = () => new OsuSpriteText
                                     {
                                         Font = artist_font,
-                                        Text = @"Nothing to play",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J3869,
                                         Anchor = Anchor.Centre,
                                         Origin = Anchor.Centre,
                                     },
@@ -356,6 +357,7 @@ namespace osu.Game.Overlays
 
         private void trackChanged(WorkingBeatmap beatmap, TrackChangeDirection direction = TrackChangeDirection.None)
         {
+            using var phase = PerformancePhaseLogger.Begin("NowPlaying.TrackChanged");
             currentBeatmap = beatmap;
 
             // avoid using scheduler as our scheduler may not be run for a long time, holding references to beatmaps.

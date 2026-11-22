@@ -24,19 +24,28 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Caption = ForkSettingsStrings.AimAssistEnableCaption,
                     HintText = ForkSettingsStrings.AimAssistEnableHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkAimAssistEnabled)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkAimAssistEnabled",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.AimAssistShowTargetsCaption,
                     HintText = ForkSettingsStrings.AimAssistShowTargetsHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkAimAssistShowTargets)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkAimAssistShowTargets",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.AimAssistShowFlowCaption,
                     HintText = ForkSettingsStrings.AimAssistShowFlowHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkAimAssistShowFlowDebug)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkAimAssistShowFlowDebug",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.AimAssistStrengthCaption,
@@ -44,15 +53,21 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Current = config.GetBindable<double>(OsuSetting.ForkAimAssistStrength),
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkAimAssistStrength",
+                },
                 new SettingsItemV2(new FormSliderBar<float>
                 {
                     Caption = ForkSettingsStrings.AimAssistFovCaption,
                     HintText = ForkSettingsStrings.AimAssistFovHint,
                     Current = config.GetBindable<float>(OsuSetting.ForkAimAssistFovRadius),
                     KeyboardStep = 1f,
-                    LabelFormat = value => $"{value:0}px"
-                }),
+                    LabelFormat = value => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4038(value)
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkAimAssistFovRadius",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.AimAssistIntentCaption,
@@ -60,7 +75,10 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Current = config.GetBindable<double>(OsuSetting.ForkAimAssistIntentThreshold),
                     KeyboardStep = 0.05f,
                     LabelFormat = value => $"{value:0.##}"
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkAimAssistIntentThreshold",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.AimAssistFrictionCaption,
@@ -68,23 +86,32 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Current = config.GetBindable<double>(OsuSetting.ForkAimAssistDynamicFriction),
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkAimAssistDynamicFriction",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.AimAssistJitterCaption,
                     HintText = ForkSettingsStrings.AimAssistJitterHint,
                     Current = config.GetBindable<double>(OsuSetting.ForkAimAssistAntiJitterMs),
                     KeyboardStep = 1f,
-                    LabelFormat = value => $"{value:0} ms"
-                }),
+                    LabelFormat = value => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4039(value)
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkAimAssistAntiJitterMs",
+                },
                 new SettingsItemV2(new FormSliderBar<float>
                 {
                     Caption = ForkSettingsStrings.AimAssistOvershootCaption,
                     HintText = ForkSettingsStrings.AimAssistOvershootHint,
                     Current = config.GetBindable<float>(OsuSetting.ForkAimAssistOvershootAllowance),
                     KeyboardStep = 1f,
-                    LabelFormat = value => $"{value:0}px"
-                }),
+                    LabelFormat = value => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4038(value)
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkAimAssistOvershootAllowance",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.AimAssistCenterCaption,
@@ -92,7 +119,10 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Current = config.GetBindable<double>(OsuSetting.ForkAimAssistCenterBias),
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkAimAssistCenterBias",
+                },
             };
         }
     }

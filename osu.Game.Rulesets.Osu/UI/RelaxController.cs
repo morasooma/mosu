@@ -12,6 +12,7 @@ using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Objects.Types;
+using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.Objects.Drawables;
 using osu.Game.Rulesets.Scoring;
@@ -84,6 +85,8 @@ namespace osu.Game.Rulesets.Osu.UI
         private OsuInputManager? inputManager;
         private OsuPlayfield? playfield;
         private DrawableRuleset? drawableRuleset;
+        private MapleRelaxController? mapleRelax;
+        private MosuRelaxAlgorithm activeRelaxAlgorithm;
 
         private bool gameplayInputsBlocked;
         private bool alternatingBurstActive;
@@ -117,6 +120,12 @@ namespace osu.Game.Rulesets.Osu.UI
 
         public bool IsEnabled => getConfiguredEnabled();
 
+        public bool IsDeclaredMod => mosuRelaxMod != null;
+
+        public long GeneratedPressCount => inputEvents.Count(input => input.IsPress);
+
+        public long GeneratedReleaseCount => inputEvents.Count(input => !input.IsPress);
+
         public string CurrentModeName { get; private set; } = @"idle";
 
         public double? CurrentPlannedPressTime { get; private set; }
@@ -148,13 +157,18 @@ namespace osu.Game.Rulesets.Osu.UI
         public IReadOnlyList<RelaxInputEvent> InputEvents => inputEvents;
 
         public bool IsTargetAwaitingPress(OsuHitObject hitObject)
-            => getConfiguredEnabled()
-               && plans.TryGetValue(hitObject, out HitPlan? plan)
-               && !plan.Pressed
-               && !plan.Released;
+            => getConfiguredEnabled() && (usesMaple
+                ? mapleRelax?.IsAwaiting(hitObject) == true
+                : plans.TryGetValue(hitObject, out HitPlan? plan) && !plan.Pressed && !plan.Released);
 
         public bool TryGetTargetScheduledPressTime(OsuHitObject hitObject, out double pressTime)
         {
+            if (usesMaple)
+            {
+                pressTime = mapleRelax?.ScheduledPressTime ?? 0;
+                return getConfiguredEnabled() && mapleRelax?.IsAwaiting(hitObject) == true;
+            }
+
             if (getConfiguredEnabled()
                 && plans.TryGetValue(hitObject, out HitPlan? plan)
                 && !plan.Pressed
@@ -170,6 +184,9 @@ namespace osu.Game.Rulesets.Osu.UI
 
         public bool TryGetTargetLinkedPressTime(OsuHitObject hitObject, out double pressTime)
         {
+            if (usesMaple)
+                return TryGetTargetScheduledPressTime(hitObject, out pressTime);
+
             if (getConfiguredEnabled()
                 && plans.TryGetValue(hitObject, out HitPlan? plan)
                 && !plan.Pressed
@@ -185,15 +202,29 @@ namespace osu.Game.Rulesets.Osu.UI
 
 
         private osu.Game.Rulesets.Osu.Mods.OsuModMosuRelax? mosuRelaxMod;
+        private DrawableRuleset? cachedModRuleset;
 
         private void cacheMosuRelaxMod()
         {
-            if (drawableRuleset == null)
+            // A missing mod is a completed lookup, not a reason to allocate an
+            // OfType iterator on every gameplay update.
+            if (drawableRuleset == null || ReferenceEquals(cachedModRuleset, drawableRuleset))
                 return;
 
-            mosuRelaxMod ??= drawableRuleset.Mods.OfType<osu.Game.Rulesets.Osu.Mods.OsuModMosuRelax>().FirstOrDefault();
+            cachedModRuleset = drawableRuleset;
+            mosuRelaxMod = null;
+            var mods = drawableRuleset.Mods;
+            for (int i = 0; i < mods.Count; i++)
+            {
+                if (mods[i] is OsuModMosuRelax mod)
+                {
+                    mosuRelaxMod = mod;
+                    break;
+                }
+            }
         }
 
+        private bool usesMaple => mosuRelaxMod?.Algorithm.Value == MosuRelaxAlgorithm.Maple;
         private bool getConfiguredEnabled() => mosuRelaxMod != null || enabled.Value;
         private bool usesReliableProfile => mosuRelaxMod?.Preset.Value == osu.Game.Rulesets.Osu.Mods.MosuRelaxPreset.Reliable;
         private double getConfiguredBaseOffset() => mosuRelaxMod?.BaseOffset.Value ?? baseOffset.Value;
@@ -259,7 +290,20 @@ namespace osu.Game.Rulesets.Osu.UI
                 return;
             }
 
+            var algorithm = usesMaple ? MosuRelaxAlgorithm.Maple : MosuRelaxAlgorithm.Mosu;
+            if (activeRelaxAlgorithm != algorithm)
+            {
+                clearState();
+                activeRelaxAlgorithm = algorithm;
+            }
+
             ensureGameplayInputsBlocked();
+            if (usesMaple)
+            {
+                updateMapleRelax();
+                return;
+            }
+
             collectTargets();
             syncPlansWithTargets();
             cleanupPlans();
@@ -282,7 +326,7 @@ namespace osu.Game.Rulesets.Osu.UI
             if (!getConfiguredEnabled())
                 return false;
 
-            if (inputManager?.ReplayInputHandler != null)
+            if (inputManager?.ReplayInputHandler != null || usesMaple && inputManager?.ReplayBotActive == true)
                 return false;
 
             if (drawableRuleset == null)
@@ -306,8 +350,44 @@ namespace osu.Game.Rulesets.Osu.UI
             gameplayInputsBlocked = true;
         }
 
+        private void updateMapleRelax()
+        {
+            if (mapleRelax == null)
+            {
+                if (beatmap == null)
+                    return;
+
+                mapleRelax = new MapleRelaxController(mosuRelaxMod!, beatmap.HitObjects.OfType<OsuHitObject>().OrderBy(h => h.StartTime).ToArray(),
+                    alreadyJudged: obj => playfield!.HitObjectContainer.Objects.OfType<DrawableOsuHitObject>()
+                        .Any(drawable => ReferenceEquals(drawable.HitObject, obj)
+                                         && (drawable is DrawableSlider slider ? slider.HeadCircle.AllJudged : drawable.AllJudged)));
+                mapleRelax.InputChanged = (pressed, action, time, start) =>
+                {
+                    setActionPressed(action, pressed);
+                    flushInputState();
+                    inputEvents.Add(new RelaxInputEvent(pressed, action, time, start));
+                    if (pressed)
+                    {
+                        LastPressAction = action;
+                        LastPressTime = time;
+                    }
+                    else
+                        LastReleaseTime = time;
+                };
+            }
+
+            mapleRelax.Update(Time.Current, getGameplayRate(), playfield!.ScreenSpaceToGamefield(getSyncCursorPosition()));
+            CurrentModeName = @"maple";
+            CurrentPlannedPressTime = mapleRelax.ScheduledPressTime;
+            CurrentPlannedReleaseTime = mapleRelax.NextReleaseTime;
+            CurrentAppliedTimingOffset = mapleRelax.AppliedTimingOffset;
+            CurrentPendingSyncDelay = Math.Max(0, Time.Current - (CurrentPlannedPressTime ?? Time.Current));
+            CurrentImpactPointPosition = mapleRelax.Target == null ? null : toScreenSpace(mapleRelax.Target.StackedPosition);
+        }
+
         private void clearState()
         {
+            mapleRelax?.Reset();
             plans.Clear();
             activeTargets.Clear();
             plansToRemove.Clear();
@@ -3068,6 +3148,9 @@ namespace osu.Game.Rulesets.Osu.UI
 
         protected override void Dispose(bool isDisposing)
         {
+            // The framework disposes drawables asynchronously after their input tree has been
+            // detached. Do not dispatch input (and cursor transforms) from this disposal thread.
+            mapleRelax = null;
             base.Dispose(isDisposing);
         }
 

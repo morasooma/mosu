@@ -183,7 +183,7 @@ namespace osu.Game.Rulesets.Mania.Skinning.Legacy
                             return new LegacyStageBackground();
 
                         case ManiaSkinComponents.StageForeground:
-                            return new LegacyStageForeground();
+                            return new LegacyStageForeground(allowMorasoomaFallback: Skin is MorasoomaSkin or DefaultLegacySkin or LegacyBeatmapSkin);
 
                         case ManiaSkinComponents.BarLine:
                             return new LegacyBarLine();

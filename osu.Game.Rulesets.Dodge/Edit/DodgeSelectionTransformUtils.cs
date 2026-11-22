@@ -23,6 +23,8 @@ namespace osu.Game.Rulesets.Dodge.Edit
             DodgeArenaChange arena => (arena.TargetPosition, arena.TargetPosition + arena.TargetSize),
             DodgeBeam beam => (beam.Position, beam.EndPosition),
             DodgeCameraChange camera => (camera.Position, camera.EndPosition),
+            DodgeTrigger { Action: DodgeTriggerAction.MovePlayer } trigger => (trigger.TargetPosition, trigger.TargetPosition),
+            DodgeTrigger { Action: DodgeTriggerAction.ResizeArena } trigger => (trigger.TargetPosition, trigger.TargetPosition + trigger.TargetSize),
             DodgeTrigger trigger => (trigger.Position, trigger.Position),
             _ => throw new ArgumentException($"Unsupported transform object {hitObject.GetType().Name}.", nameof(hitObject)),
         };
@@ -77,7 +79,21 @@ namespace osu.Game.Rulesets.Dodge.Edit
                     break;
 
                 case DodgeTrigger trigger:
-                    trigger.Position = start;
+                    if (trigger.Action is DodgeTriggerAction.MovePlayer or DodgeTriggerAction.ResizeArena)
+                    {
+                        Vector2 delta = start - trigger.TargetPosition;
+                        trigger.TargetPosition = start;
+                        trigger.Position += delta;
+                        if (trigger.Action == DodgeTriggerAction.ResizeArena)
+                        {
+                            trigger.TargetPosition = Vector2.ComponentMin(start, end);
+                            trigger.TargetSize = Vector2.ComponentMax(start, end) - trigger.TargetPosition;
+                        }
+                        else if (!trigger.MoveFromCurrentPosition)
+                            trigger.SourcePosition += delta;
+                    }
+                    else
+                        trigger.Position = start;
                     break;
             }
         }

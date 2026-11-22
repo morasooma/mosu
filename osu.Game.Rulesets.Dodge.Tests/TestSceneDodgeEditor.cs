@@ -523,28 +523,26 @@ namespace osu.Game.Rulesets.Dodge.Tests
             AddUntilStep("lane blueprints created",
                 () => this.ChildrenOfType<LaneTimelineHitObjectBlueprint>().Count(),
                 () => Is.EqualTo(bullet_count + emitter_count + 1));
-            AddUntilStep("same-time bullets collapsed", () =>
+            AddUntilStep("same-time bullets keep individual layers", () =>
             {
                 LaneTimelineHitObjectBlueprint[] bullets = this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                                                                    .Where(blueprint => blueprint.Item is DodgeBullet)
                                                                    .ToArray();
-                return bullets.Count(blueprint => blueprint.IsGroupMarkerVisible) == 1
-                       && bullets.All(blueprint => blueprint.GroupCount == bullet_count);
+                return bullets.All(blueprint => blueprint.IsGroupMarkerVisible && blueprint.GroupCount == 1);
             });
             AddStep("remember collapsed group marker", () =>
                 collapsedBulletGroup = this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
-                                           .Single(blueprint => blueprint.Item is DodgeBullet && blueprint.IsGroupMarkerVisible));
-            AddUntilStep("same-time emitters collapsed", () =>
+                                           .First(blueprint => blueprint.Item is DodgeBullet && blueprint.IsGroupMarkerVisible));
+            AddUntilStep("same-time emitters keep individual layers", () =>
             {
                 LaneTimelineHitObjectBlueprint[] emitters = this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                                                                     .Where(blueprint => blueprint.Item is DodgeEmitter)
                                                                     .ToArray();
-                return emitters.Count(blueprint => blueprint.IsGroupMarkerVisible) == 1
-                       && emitters.All(blueprint => blueprint.GroupCount == emitter_count);
+                return emitters.All(blueprint => blueprint.IsGroupMarkerVisible && blueprint.GroupCount == 1);
             });
             AddStep("remember collapsed emitter marker", () =>
                 collapsedEmitterGroup = this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
-                                            .Single(blueprint => blueprint.Item is DodgeEmitter && blueprint.IsGroupMarkerVisible));
+                                            .First(blueprint => blueprint.Item is DodgeEmitter && blueprint.IsGroupMarkerVisible));
             AddAssert("types use ordered fixed lanes", () =>
             {
                 arenaBlueprint = this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
@@ -555,7 +553,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
                        && collapsedBulletGroup.Y < collapsedEmitterGroup.Y
                        && collapsedEmitterGroup.Y < arenaBlueprint.Y;
             });
-            AddAssert("groups start collapsed", () => !collapsedBulletGroup.IsGroupExpanded && !collapsedEmitterGroup.IsGroupExpanded);
+            AddAssert("individual layers visible immediately", () => collapsedBulletGroup.IsGroupExpanded && collapsedEmitterGroup.IsGroupExpanded);
             AddStep("remember lane transform count", () =>
                 transformCountAfterLayout = this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                                                 .SelectMany(blueprint => blueprint.ChildrenOfType<Drawable>().Append(blueprint))
@@ -597,25 +595,17 @@ namespace osu.Game.Rulesets.Dodge.Tests
                                   first.SelectionQuad.AABBFloat.Bottom < second.SelectionQuad.AABBFloat.Top)
                               .All(separated => separated);
             });
-            AddAssert("inactive layers are hidden", () =>
+            AddAssert("other type layers remain visible", () =>
                 this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                     .Count(blueprint => blueprint.Item is not DodgeBullet && blueprint.IsGroupMarkerVisible),
-                () => Is.Zero);
-            AddAssert("active bullets use the full timeline height", () =>
+                () => Is.EqualTo(emitter_count + 1));
+            AddAssert("bullet layers stay in their own band", () =>
                 this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                     .Where(blueprint => blueprint.Item is DodgeBullet)
                     .Max(blueprint => blueprint.ScreenSpaceSelectionPoint.Y) - this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                                                       .Where(blueprint => blueprint.Item is DodgeBullet)
                                                       .Min(blueprint => blueprint.ScreenSpaceSelectionPoint.Y),
-                () => Is.GreaterThan(this.ChildrenOfType<Timeline>().Single().ScreenSpaceDrawQuad.Height * 0.8f));
-            AddAssert("active bullet layer is centred", () =>
-            {
-                LaneTimelineHitObjectBlueprint[] bullets = this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
-                                                                .Where(blueprint => blueprint.Item is DodgeBullet)
-                                                                .ToArray();
-                return (bullets.Min(blueprint => blueprint.ScreenSpaceSelectionPoint.Y)
-                        + bullets.Max(blueprint => blueprint.ScreenSpaceSelectionPoint.Y)) / 2;
-            }, () => Is.EqualTo(this.ChildrenOfType<Timeline>().Single().ScreenSpaceDrawQuad.Centre.Y).Within(0.01f));
+                () => Is.LessThan(this.ChildrenOfType<Timeline>().Single().ScreenSpaceDrawQuad.Height / 6));
 
             AddStep("click another expanded bullet", () =>
             {
@@ -649,10 +639,10 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                     .Count(blueprint => blueprint.Item is DodgeEmitter && blueprint.IsGroupMarkerVisible),
                 () => Is.EqualTo(emitter_count));
-            AddUntilStep("previous bullet layer is hidden", () =>
+            AddUntilStep("previous bullet layer remains visible", () =>
                 this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                     .Count(blueprint => blueprint.Item is DodgeBullet && blueprint.IsGroupMarkerVisible),
-                () => Is.Zero);
+                () => Is.EqualTo(bullet_count));
             AddAssert("expanded emitters have separate rows", () =>
                 this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                     .Where(blueprint => blueprint.Item is DodgeEmitter)
@@ -706,19 +696,19 @@ namespace osu.Game.Rulesets.Dodge.Tests
                 InputManager.Click(MouseButton.Left);
             });
             AddUntilStep("emitter selected from timeline", () => EditorBeatmap.SelectedHitObjects.SingleOrDefault(), () => Is.SameAs(emitters[1]));
-            AddUntilStep("other layers hidden", () =>
+            AddUntilStep("other layers stay visible", () =>
                 this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                     .Where(blueprint => blueprint.Item is not DodgeEmitter)
-                    .All(blueprint => !blueprint.IsGroupMarkerVisible));
+                    .All(blueprint => blueprint.IsGroupMarkerVisible));
             AddAssert("every emitter has a separate vertical row", () =>
                 timelineEmitters().Select(blueprint => MathF.Round(blueprint.ScreenSpaceSelectionPoint.Y, 2)).Distinct().Count(),
                 () => Is.EqualTo(emitters.Length));
-            AddAssert("emitter layer uses full timeline height", () =>
+            AddAssert("emitter layers stay in their own band", () =>
             {
                 LaneTimelineHitObjectBlueprint[] blueprints = timelineEmitters();
                 return blueprints.Max(blueprint => blueprint.ScreenSpaceSelectionPoint.Y)
                        - blueprints.Min(blueprint => blueprint.ScreenSpaceSelectionPoint.Y);
-            }, () => Is.GreaterThan(timelineEmitters()[0].Parent!.DrawHeight * 0.6f));
+            }, () => Is.LessThan(timelineEmitters()[0].Parent!.DrawHeight / 6));
 
             LaneTimelineHitObjectBlueprint[] timelineEmitters()
                 => this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
@@ -728,7 +718,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
         }
 
         [Test]
-        public void TestEffectiveDodgeSpansRemainOnTimeline()
+        public void TestSelectedContinuedProjectilesKeepAuthoredTimelineSpans()
         {
             DodgeBullet[] bullets = Enumerable.Range(0, 8).Select(index => new DodgeBullet
             {
@@ -754,38 +744,31 @@ namespace osu.Game.Rulesets.Dodge.Tests
             };
 
             AddStep("add effective-span objects", () => EditorBeatmap.AddRange(bullets.Cast<DodgeHitObject>().Append(emitter).Append(arena)));
+            AddStep("select continued bullets", () => EditorBeatmap.SelectedHitObjects.AddRange(bullets));
             AddStep("seek beyond nominal durations", () => EditorClock.Seek(5000));
             AddUntilStep("projectile timeline lanes retained", () =>
                 this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                     .Count(blueprint => bullets.Any(bullet => bullet == blueprint.Item) || blueprint.Item == emitter),
                 () => Is.EqualTo(bullets.Length + 1));
-            AddAssert("bullet bar reaches movement end", () =>
+            AddAssert("bullet bar ends at authored duration", () =>
                 this.ChildrenOfType<LaneTimelineHitObjectBlueprint>().Single(blueprint => blueprint.Item == bullets[0]).TimelineEndTime,
-                () => Is.EqualTo(bullets[0].MovementEndTime).Within(0.01));
+                () => Is.EqualTo(bullets[0].EndTime).Within(0.01));
             AddAssert("completed arena transition is not stretched to the playhead", () =>
                 this.ChildrenOfType<LaneTimelineHitObjectBlueprint>().Any(blueprint => blueprint.Item == arena),
                 () => Is.False);
-            AddUntilStep("staggered bullets reuse one row", () =>
+            AddUntilStep("selected bullets keep individual rows", () =>
                 this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
                     .Where(blueprint => bullets.Any(bullet => bullet == blueprint.Item))
                     .Select(blueprint => MathF.Round(blueprint.Y, 2))
                     .Distinct()
                     .Count(),
-                () => Is.EqualTo(1));
+                () => Is.EqualTo(bullets.Length));
             AddAssert("lanes keep bullet emitter order", () =>
             {
                 float bulletY = this.ChildrenOfType<LaneTimelineHitObjectBlueprint>().Single(blueprint => blueprint.Item == bullets[0]).Y;
                 float emitterY = this.ChildrenOfType<LaneTimelineHitObjectBlueprint>().Single(blueprint => blueprint.Item == emitter).Y;
                 return bulletY < emitterY;
             });
-            AddStep("activate bullet layer", () => EditorBeatmap.SelectedHitObjects.Add(bullets[0]));
-            AddUntilStep("active bullet layer exposes every visible object", () =>
-                this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
-                    .Where(blueprint => bullets.Any(bullet => bullet == blueprint.Item))
-                    .Select(blueprint => MathF.Round(blueprint.Y, 3))
-                    .Distinct()
-                    .Count(),
-                () => Is.EqualTo(bullets.Length));
         }
 
         [Test]
@@ -860,12 +843,12 @@ namespace osu.Game.Rulesets.Dodge.Tests
             AddUntilStep("every local bullet has its own row", () =>
                 localBlueprints().Select(blueprint => MathF.Round(blueprint.ScreenSpaceSelectionPoint.Y, 2)).Distinct().Count(),
                 () => Is.EqualTo(visible_count));
-            AddAssert("local rows fill timeline height", () =>
+            AddAssert("local rows stay in bullet band", () =>
             {
                 LaneTimelineHitObjectBlueprint[] blueprints = localBlueprints();
                 return blueprints.Max(blueprint => blueprint.ScreenSpaceSelectionPoint.Y)
                        - blueprints.Min(blueprint => blueprint.ScreenSpaceSelectionPoint.Y);
-            }, () => Is.GreaterThan(this.ChildrenOfType<Timeline>().Single().ScreenSpaceDrawQuad.Height * 0.8f));
+            }, () => Is.LessThan(this.ChildrenOfType<Timeline>().Single().ScreenSpaceDrawQuad.Height / 6));
 
             LaneTimelineHitObjectBlueprint[] localBlueprints()
                 => this.ChildrenOfType<LaneTimelineHitObjectBlueprint>()
@@ -903,9 +886,9 @@ namespace osu.Game.Rulesets.Dodge.Tests
                                      .SingleOrDefault(blueprint => blueprint.Item == shortEmitter)!;
                 return longBlueprint != null && shortBlueprint != null;
             });
-            AddUntilStep("inactive emitter layer shares one row",
+            AddUntilStep("inactive emitter layer keeps separate rows",
                 () => Math.Abs(longBlueprint.Y - shortBlueprint.Y),
-                () => Is.LessThan(0.1f));
+                () => Is.EqualTo(longBlueprint.Parent!.DrawHeight / 12).Within(0.1));
 
             AddStep("activate emitter layer", () =>
             {
@@ -915,7 +898,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
             AddUntilStep("one emitter selected", () => EditorBeatmap.SelectedHitObjects.Count, () => Is.EqualTo(1));
             AddUntilStep("active emitter layer exposes overlap",
                 () => Math.Abs(longBlueprint.ScreenSpaceSelectionPoint.Y - shortBlueprint.ScreenSpaceSelectionPoint.Y),
-                () => Is.EqualTo(longBlueprint.Parent!.DrawHeight / 2).Within(0.1));
+                () => Is.EqualTo(longBlueprint.Parent!.DrawHeight / 12).Within(0.1));
             AddStep("select shorter emitter", () =>
             {
                 InputManager.MoveMouseTo(shortBlueprint.ScreenSpaceSelectionPoint);
@@ -954,9 +937,9 @@ namespace osu.Game.Rulesets.Dodge.Tests
                                       .SingleOrDefault(blueprint => blueprint.Item == secondArena)!;
                 return firstBlueprint != null && secondBlueprint != null;
             });
-            AddUntilStep("inactive arena layer shares one row",
+            AddUntilStep("inactive arena layer keeps separate rows",
                 () => Math.Abs(firstBlueprint.Y - secondBlueprint.Y),
-                () => Is.LessThan(0.1f));
+                () => Is.EqualTo(firstBlueprint.Parent!.DrawHeight / 12).Within(0.1));
             AddStep("activate arena layer", () =>
             {
                 InputManager.MoveMouseTo(firstBlueprint.ScreenSpaceSelectionPoint);
@@ -965,7 +948,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
             AddUntilStep("one arena selected", () => EditorBeatmap.SelectedHitObjects.Count, () => Is.EqualTo(1));
             AddUntilStep("active arena layer exposes overlap",
                 () => Math.Abs(firstBlueprint.ScreenSpaceSelectionPoint.Y - secondBlueprint.ScreenSpaceSelectionPoint.Y),
-                () => Is.EqualTo(firstBlueprint.Parent!.DrawHeight / 2).Within(0.1));
+                () => Is.EqualTo(firstBlueprint.Parent!.DrawHeight / 12).Within(0.1));
             AddStep("select first arena", () =>
             {
                 InputManager.MoveMouseTo(firstBlueprint.ScreenSpaceSelectionPoint);

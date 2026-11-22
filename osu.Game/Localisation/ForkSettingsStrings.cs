@@ -9,6 +9,14 @@ namespace osu.Game.Localisation
     {
         private const string prefix = @"osu.Game.Resources.Localisation.ForkSettings";
 
+        public static LocalisableString ChatTranslator => new TranslatableString(getKey(@"chat_translator"), @"Translator");
+        public static LocalisableString ChatTranslatorEnable => new TranslatableString(getKey(@"chat_translator_enable"), @"Enable message translation");
+        public static LocalisableString ChatTranslatorDisable => new TranslatableString(getKey(@"chat_translator_disable"), @"Disable message translation");
+        public static LocalisableString ChatShowOriginal => new TranslatableString(getKey(@"chat_show_original"), @"Show original");
+        public static LocalisableString ChatShowTranslation => new TranslatableString(getKey(@"chat_show_translation"), @"Show translation");
+        public static LocalisableString ChatOriginal => new TranslatableString(getKey(@"chat_original"), @"original");
+        public static LocalisableString ChatTranslation => new TranslatableString(getKey(@"chat_translation"), @"translation");
+
         /// <summary>
         /// "About Morasooma"
         /// </summary>
@@ -535,6 +543,26 @@ namespace osu.Game.Localisation
         /// "Uses exclusive WASAPI access on Windows to minimise the output queue."
         /// </summary>
         public static LocalisableString ExclusiveAudioHint => new TranslatableString(getKey(@"exclusive_audio_hint"), @"Uses exclusive WASAPI access on Windows to minimise the output queue.");
+
+        /// <summary>
+        /// "Low-latency audio (Linux, experimental)"
+        /// </summary>
+        public static LocalisableString LinuxLowLatencyAudioCaption => new TranslatableString(getKey(@"linux_low_latency_audio_caption"), @"Low-latency audio (Linux, experimental)");
+
+        /// <summary>
+        /// "Requests a shorter BASS output period. May cause crackling on some systems; does not change system audio settings."
+        /// </summary>
+        public static LocalisableString LinuxLowLatencyAudioHint => new TranslatableString(getKey(@"linux_low_latency_audio_hint"), @"Requests a shorter BASS output period. May cause crackling on some systems; does not change system audio settings.");
+
+        /// <summary>
+        /// "SDL3 audio output (Linux, experimental)"
+        /// </summary>
+        public static LocalisableString LinuxSdlOutputCaption => new TranslatableString(getKey(@"linux_sdl_output_caption"), @"SDL3 audio output (Linux, experimental)");
+
+        /// <summary>
+        /// "Uses BASS for decoding and mixing, SDL3 for output. Requires the system default audio device. Falls back to BASS if SDL3 cannot start."
+        /// </summary>
+        public static LocalisableString LinuxSdlOutputHint => new TranslatableString(getKey(@"linux_sdl_output_hint"), @"Uses BASS for decoding and mixing, SDL3 for output. Requires the system default audio device. Falls back to BASS if SDL3 cannot start.");
         /// <summary>
         /// "Only during gameplay"
         /// </summary>
@@ -840,9 +868,9 @@ namespace osu.Game.Localisation
         /// </summary>
         public static LocalisableString GameplayRenderScaleCaption => new TranslatableString(getKey(@"gameplay_render_scale_caption"), @"Gameplay render scale");
         /// <summary>
-        /// "Renders the osu! playfield at a lower resolution while keeping the cursor and interface at native resolution. Very low values heavily reduce visual clarity. At 100% the offscreen rendering path is fully disabled."
+        /// "Renders the Standard playfield at a lower resolution while keeping the cursor and interface at native resolution. Very low values heavily reduce visual clarity. At 100% the offscreen rendering path is fully disabled."
         /// </summary>
-        public static LocalisableString GameplayRenderScaleHint => new TranslatableString(getKey(@"gameplay_render_scale_hint"), @"Renders the osu! playfield at a lower resolution while keeping the cursor and interface at native resolution. Very low values heavily reduce visual clarity. At 100% the offscreen rendering path is fully disabled.");
+        public static LocalisableString GameplayRenderScaleHint => new TranslatableString(getKey(@"gameplay_render_scale_hint"), @"Renders the Standard playfield at a lower resolution while keeping the cursor and interface at native resolution. Very low values heavily reduce visual clarity. At 100% the offscreen rendering path is fully disabled.");
         /// <summary>
         /// "Apply recommended settings"
         /// </summary>
@@ -895,6 +923,10 @@ namespace osu.Game.Localisation
         /// "When enabled, writes FPS, frame time, CPU, memory, and gameplay state samples to the performance folder."
         /// </summary>
         public static LocalisableString PerfLoggingHint => new TranslatableString(getKey(@"perf_logging_hint"), @"When enabled, writes FPS, frame time, CPU, memory, and gameplay state samples to the performance folder.");
+        /// <summary>
+        /// "Performance logging is enabled. It may reduce FPS or cause stuttering; data is saved in the performance folder."
+        /// </summary>
+        public static LocalisableString PerfLoggingStartupWarning => new TranslatableString(getKey(@"perf_logging_startup_warning"), @"Performance logging is enabled. It may reduce FPS or cause stuttering; data is saved in the performance folder.");
         /// <summary>
         /// "Allow screen tearing (DXGI Tearing)"
         /// </summary>
@@ -1034,9 +1066,9 @@ namespace osu.Game.Localisation
         public static LocalisableString DiagnosticsCurrentStep(LocalisableString renderer, LocalisableString profile, LocalisableString current, LocalisableString total) =>
             new TranslatableString(getKey(@"diagnostics_current_step"), @"{0} · {1} · stage {2}/{3}", renderer, profile, current, total);
         /// <summary>
-        /// "The client may restart between stages. Do not change settings or run heavy applications until the results screen appears."
+        /// "The client may restart between stages. If it opens in the background, click its window within 30 seconds. Keep it focused while it measures performance."
         /// </summary>
-        public static LocalisableString DiagnosticsProgressHint => new TranslatableString(getKey(@"diagnostics_progress_hint"), @"The client may restart between stages. Do not change settings or run heavy applications until the results screen appears.");
+        public static LocalisableString DiagnosticsProgressHint => new TranslatableString(getKey(@"diagnostics_progress_hint"), @"The client may restart between stages. If it opens in the background, click its window within 30 seconds. Keep it focused while it measures performance.");
         /// <summary>
         /// "Estimated time remaining: about {0} min"
         /// </summary>
@@ -1516,14 +1548,6 @@ namespace osu.Game.Localisation
         /// </summary>
         public static LocalisableString CustomUIFontHint => new TranslatableString(getKey(@"custom_ui_font_hint"), @"Select a BMFont (.fnt + .png) to use for the user interface. Place font files in the Fonts folder.");
         /// <summary>
-        /// "Russian font fix"
-        /// </summary>
-        public static LocalisableString RussianFontFixCaption => new TranslatableString(getKey(@"russian_font_fix_caption"), @"Russian font fix");
-        /// <summary>
-        /// "Uses Comfortaa Regular for Cyrillic characters instead of the selected custom UI font."
-        /// </summary>
-        public static LocalisableString RussianFontFixHint => new TranslatableString(getKey(@"russian_font_fix_hint"), @"Uses Comfortaa Regular for Cyrillic characters instead of the selected custom UI font.");
-        /// <summary>
         /// "Open fonts folder"
         /// </summary>
         public static LocalisableString FontsFolderBtn => new TranslatableString(getKey(@"fonts_folder_btn"), @"Open fonts folder");
@@ -1535,6 +1559,747 @@ namespace osu.Game.Localisation
         /// "Changes the global color scheme of the game immediately."
         /// </summary>
         public static LocalisableString ThemeModeHint => new TranslatableString(getKey(@"theme_mode_hint"), @"Changes the global color scheme of the game immediately.");
+        /// <summary>
+        /// "Default"
+        /// </summary>
+        public static LocalisableString ThemeModeDefault => new TranslatableString(getKey(@"theme_mode_default"), @"Default");
+        /// <summary>
+        /// "Light"
+        /// </summary>
+        public static LocalisableString ThemeModeLight => new TranslatableString(getKey(@"theme_mode_light"), @"Light");
+        /// <summary>
+        /// "Dark"
+        /// </summary>
+        public static LocalisableString ThemeModeDark => new TranslatableString(getKey(@"theme_mode_dark"), @"Dark");
+        /// <summary>
+        /// "Custom"
+        /// </summary>
+        public static LocalisableString ThemeModeCustom => new TranslatableString(getKey(@"theme_mode_custom"), @"Custom");
+        /// <summary>
+        /// "Theme Settings"
+        /// </summary>
+        public static LocalisableString CustomThemeSettingsButton => new TranslatableString(getKey(@"custom_theme_settings_button"), @"Theme settings");
+        /// <summary>
+        /// "Theme Settings"
+        /// </summary>
+        public static LocalisableString CustomThemeSettingsHeader => new TranslatableString(getKey(@"custom_theme_settings_header"), @"Theme settings");
+        /// <summary>
+        /// "Create and edit custom color themes without restarting."
+        /// </summary>
+        public static LocalisableString CustomThemeSettingsDescription => new TranslatableString(getKey(@"custom_theme_settings_description"), @"Create and edit a custom color theme live without restarting.");
+        /// <summary>
+        /// "Apply this theme"
+        /// </summary>
+        public static LocalisableString CustomThemeApplyButton => new TranslatableString(getKey(@"custom_theme_apply_button"), @"Apply this theme");
+        /// <summary>
+        /// "Custom theme active"
+        /// </summary>
+        public static LocalisableString CustomThemeActiveButton => new TranslatableString(getKey(@"custom_theme_active_button"), @"✓ Custom theme active");
+        /// <summary>
+        /// "Custom theme is active. All color edits apply immediately."
+        /// </summary>
+        public static LocalisableString CustomThemeStatusActive => new TranslatableString(getKey(@"custom_theme_status_active"), @"Custom theme is active. All color changes are applied live.");
+        /// <summary>
+        /// "Another theme is currently active. Click «Apply this theme» to make it active."
+        /// </summary>
+        public static LocalisableString CustomThemeStatusInactive => new TranslatableString(getKey(@"custom_theme_status_inactive"), @"A different theme is currently active. Click «Apply this theme» to activate it.");
+        /// <summary>
+        /// "Base theme (foundation)"
+        /// </summary>
+        public static LocalisableString CustomThemeBaseModeCaption => new TranslatableString(getKey(@"custom_theme_base_mode_caption"), @"Base theme (foundation)");
+        /// <summary>
+        /// "Determines text contrast polarity and default colors for non-overridden elements."
+        /// </summary>
+        public static LocalisableString CustomThemeBaseModeHint => new TranslatableString(getKey(@"custom_theme_base_mode_hint"), @"Determines text contrast and default colors for all non-overridden elements.");
+        /// <summary>
+        /// "Reset all colors to base theme"
+        /// </summary>
+        public static LocalisableString CustomThemeResetAllButton => new TranslatableString(getKey(@"custom_theme_reset_all_button"), @"Reset all colors to base");
+        /// <summary>
+        /// "Accent color"
+        /// </summary>
+        public static LocalisableString CustomThemeColourAccent => new TranslatableString(getKey(@"custom_theme_colour_accent"), @"Primary accent color");
+        /// <summary>
+        /// "Buttons, toggles, sliders, and primary interactive elements."
+        /// </summary>
+        public static LocalisableString CustomThemeColourAccentHint => new TranslatableString(getKey(@"custom_theme_colour_accent_hint"), @"Buttons, switches, and active controls.");
+        /// <summary>
+        /// "Highlight color"
+        /// </summary>
+        public static LocalisableString CustomThemeColourHighlight => new TranslatableString(getKey(@"custom_theme_colour_highlight"), @"Highlight color");
+        /// <summary>
+        /// "Row hover, focus rings, and bright highlight accents."
+        /// </summary>
+        public static LocalisableString CustomThemeColourHighlightHint => new TranslatableString(getKey(@"custom_theme_colour_highlight_hint"), @"Row highlights, focus indicators, and hover effects.");
+        /// <summary>
+        /// "Primary text and icons"
+        /// </summary>
+        public static LocalisableString CustomThemeColourContent1 => new TranslatableString(getKey(@"custom_theme_colour_content1"), @"Primary text and icons");
+        /// <summary>
+        /// "Titles, headings, primary body text, and key icons."
+        /// </summary>
+        public static LocalisableString CustomThemeColourContent1Hint => new TranslatableString(getKey(@"custom_theme_colour_content1_hint"), @"Color of titles, primary text, and key icons.");
+        /// <summary>
+        /// "Secondary text"
+        /// </summary>
+        public static LocalisableString CustomThemeColourContent2 => new TranslatableString(getKey(@"custom_theme_colour_content2"), @"Secondary text");
+        /// <summary>
+        /// "Subtitles, descriptions, captions, and secondary labels."
+        /// </summary>
+        public static LocalisableString CustomThemeColourContent2Hint => new TranslatableString(getKey(@"custom_theme_colour_content2_hint"), @"Subtitles, descriptions, hints, and secondary labels.");
+        /// <summary>
+        /// "Card and panel surfaces"
+        /// </summary>
+        public static LocalisableString CustomThemeColourBackground3 => new TranslatableString(getKey(@"custom_theme_colour_background3"), @"Card and panel background");
+        /// <summary>
+        /// "Base surface for settings cards, content containers, and list groups."
+        /// </summary>
+        public static LocalisableString CustomThemeColourBackground3Hint => new TranslatableString(getKey(@"custom_theme_colour_background3_hint"), @"Primary surface for containers, settings, and cards.");
+        /// <summary>
+        /// "Raised panels and menus"
+        /// </summary>
+        public static LocalisableString CustomThemeColourBackground4 => new TranslatableString(getKey(@"custom_theme_colour_background4"), @"Elevated panels and menus");
+        /// <summary>
+        /// "Dropdowns, table rows, and floating popup surfaces."
+        /// </summary>
+        public static LocalisableString CustomThemeColourBackground4Hint => new TranslatableString(getKey(@"custom_theme_colour_background4_hint"), @"Dropdowns, table rows, and elevated blocks.");
+        /// <summary>
+        /// "Interactive buttons and surfaces"
+        /// </summary>
+        public static LocalisableString CustomThemeColourBackground2 => new TranslatableString(getKey(@"custom_theme_colour_background2"), @"Buttons and interactive blocks");
+        /// <summary>
+        /// "Surfaces for interactive buttons, toggle chips, and item containers."
+        /// </summary>
+        public static LocalisableString CustomThemeColourBackground2Hint => new TranslatableString(getKey(@"custom_theme_colour_background2_hint"), @"Background for interactive buttons and switches.");
+        /// <summary>
+        /// "Input fields"
+        /// </summary>
+        public static LocalisableString CustomThemeColourForeground1 => new TranslatableString(getKey(@"custom_theme_colour_foreground1"), @"Text input fields");
+        /// <summary>
+        /// "Text box surfaces and slider input tracks."
+        /// </summary>
+        public static LocalisableString CustomThemeColourForeground1Hint => new TranslatableString(getKey(@"custom_theme_colour_foreground1_hint"), @"Background for text input fields and sliders.");
+        /// <summary>
+        /// "Overlay background"
+        /// </summary>
+        public static LocalisableString CustomThemeColourBackground6 => new TranslatableString(getKey(@"custom_theme_colour_background6"), @"Primary overlay background");
+        /// <summary>
+        /// "Deepest background behind screens, sidebars, and full-screen overlays."
+        /// </summary>
+        public static LocalisableString CustomThemeColourBackground6Hint => new TranslatableString(getKey(@"custom_theme_colour_background6_hint"), @"Deep background for screens, sidebars, and underlays.");
+        /// <summary>
+        /// "Revert color to base theme"
+        /// </summary>
+        public static LocalisableString CustomThemeRevertToInherited => new TranslatableString(getKey(@"custom_theme_revert_to_inherited"), @"Reset color to base theme");
+        /// <summary>
+        /// "(inherited)"
+        /// </summary>
+        public static LocalisableString CustomThemeInheritedLabel => new TranslatableString(getKey(@"custom_theme_inherited_label"), @"(inherited)");
+        /// <summary>
+        /// "(custom)"
+        /// </summary>
+        public static LocalisableString CustomThemeCustomizedLabel => new TranslatableString(getKey(@"custom_theme_customized_label"), @"(customized)");
+        /// <summary>
+        /// "Accents and highlights"
+        /// </summary>
+        public static LocalisableString CustomThemeSectionAccents => new TranslatableString(getKey(@"custom_theme_section_accents"), @"Accents and highlights");
+        /// <summary>
+        /// "Text and icons"
+        /// </summary>
+        public static LocalisableString CustomThemeSectionText => new TranslatableString(getKey(@"custom_theme_section_text"), @"Text and icons");
+        /// <summary>
+        /// "Surfaces and background"
+        /// </summary>
+        public static LocalisableString CustomThemeSectionSurfaces => new TranslatableString(getKey(@"custom_theme_section_surfaces"), @"Surfaces and background");
+        /// <summary>
+        /// "Interface rounding"
+        /// </summary>
+        public static LocalisableString CustomThemeSectionGeometry => new TranslatableString(getKey(@"custom_theme_section_geometry"), @"Interface corner radii");
+        /// <summary>
+        /// "Reset all rounding to defaults"
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryResetAll => new TranslatableString(getKey(@"custom_theme_geometry_reset_all"), @"Reset all corner radii");
+        /// <summary>
+        /// "Revert rounding to default"
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryRevert => new TranslatableString(getKey(@"custom_theme_geometry_revert"), @"Reset corner radius to default");
+        /// <summary>
+        /// "Buttons and controls"
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryButtonCaption => new TranslatableString(getKey(@"custom_theme_geometry_button_caption"), @"Buttons and controls");
+        /// <summary>
+        /// "Corner rounding for buttons, toggles, and small interactive controls."
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryButtonHint => new TranslatableString(getKey(@"custom_theme_geometry_button_hint"), @"Corner radius for buttons, switches, and interactive controls.");
+        /// <summary>
+        /// "Input fields"
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryInputCaption => new TranslatableString(getKey(@"custom_theme_geometry_input_caption"), @"Input fields");
+        /// <summary>
+        /// "Corner rounding for text boxes, dropdowns, and form inputs."
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryInputHint => new TranslatableString(getKey(@"custom_theme_geometry_input_hint"), @"Corner radius for text fields, dropdowns, and sliders.");
+        /// <summary>
+        /// "Cards"
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryCardCaption => new TranslatableString(getKey(@"custom_theme_geometry_card_caption"), @"Cards");
+        /// <summary>
+        /// "Corner rounding for beatmap cards and listing items."
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryCardHint => new TranslatableString(getKey(@"custom_theme_geometry_card_hint"), @"Corner radius for beatmap cards and list items.");
+        /// <summary>
+        /// "Panels"
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryPanelCaption => new TranslatableString(getKey(@"custom_theme_geometry_panel_caption"), @"Panels");
+        /// <summary>
+        /// "Corner rounding for room panels, user cards, and info containers."
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryPanelHint => new TranslatableString(getKey(@"custom_theme_geometry_panel_hint"), @"Corner radius for room panels and information containers.");
+        /// <summary>
+        /// "Popups and menus"
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryPopupCaption => new TranslatableString(getKey(@"custom_theme_geometry_popup_caption"), @"Popups and menus");
+        /// <summary>
+        /// "Corner rounding for context menus, dropdown lists, and popovers."
+        /// </summary>
+        public static LocalisableString CustomThemeGeometryPopupHint => new TranslatableString(getKey(@"custom_theme_geometry_popup_hint"), @"Corner radius for context menus, lists, and popups.");
+        /// <summary>
+        /// "Top bar"
+        /// </summary>
+        public static LocalisableString CustomThemeSectionTopBar => new TranslatableString(getKey(@"custom_theme_section_top_bar"), @"Top bar");
+        /// <summary>
+        /// "Top bar style"
+        /// </summary>
+        public static LocalisableString CustomThemeTopBarVariantCaption => new TranslatableString(getKey(@"custom_theme_top_bar_variant_caption"), @"Top bar shape");
+        /// <summary>
+        /// "Visual style and layout variant of the main top bar."
+        /// </summary>
+        public static LocalisableString CustomThemeTopBarVariantHint => new TranslatableString(getKey(@"custom_theme_top_bar_variant_hint"), @"Choose the shape and layout of the main top bar.");
+        /// <summary>
+        /// "Top bar corner radius"
+        /// </summary>
+        public static LocalisableString CustomThemeTopBarRadiusCaption => new TranslatableString(getKey(@"custom_theme_top_bar_radius_caption"), @"Top bar corner radius");
+        /// <summary>
+        /// "Corner rounding radius for the top bar (used in rounded, attached, and floating styles)."
+        /// </summary>
+        public static LocalisableString CustomThemeTopBarRadiusHint => new TranslatableString(getKey(@"custom_theme_top_bar_radius_hint"), @"Corner radius of the top bar (for rounded, attached, and floating styles).");
+        /// <summary>
+        /// "Reset top bar style"
+        /// </summary>
+        public static LocalisableString CustomThemeTopBarReset => new TranslatableString(getKey(@"custom_theme_top_bar_reset"), @"Reset top bar");
+        /// <summary>
+        /// "Classic (flat)"
+        /// </summary>
+        public static LocalisableString TopBarVariantFlat => new TranslatableString(getKey(@"top_bar_variant_flat"), @"Classic (flat)");
+        /// <summary>
+        /// "Rounded"
+        /// </summary>
+        public static LocalisableString TopBarVariantRounded => new TranslatableString(getKey(@"top_bar_variant_rounded"), @"Rounded");
+        /// <summary>
+        /// "Attached to song select"
+        /// </summary>
+        public static LocalisableString TopBarVariantAttached => new TranslatableString(getKey(@"top_bar_variant_attached"), @"Attached to map list");
+        /// <summary>
+        /// "Floating island"
+        /// </summary>
+        public static LocalisableString TopBarVariantFloating => new TranslatableString(getKey(@"top_bar_variant_floating"), @"Floating island");
+        /// <summary>
+        /// "Downward rounded"
+        /// </summary>
+        public static LocalisableString TopBarVariantDownwardRounded => new TranslatableString(getKey(@"top_bar_variant_downward_rounded"), @"Downward rounded");
+        /// <summary>
+        /// "Context colors (screens)"
+        /// </summary>
+        public static LocalisableString CustomThemeSectionContexts => new TranslatableString(getKey(@"custom_theme_section_contexts"), @"Contextual colors (screens)");
+        /// <summary>
+        /// "Song Select"
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelect => new TranslatableString(getKey(@"custom_theme_context_song_select"), @"Song select and carousel");
+        /// <summary>
+        /// "Song select panel background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectPanelBg => new TranslatableString(getKey(@"custom_theme_context_ss_panel_bg"), @"Beatmap panel background");
+        /// <summary>
+        /// "Underlying background of beatmap panels in song select."
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectPanelBgHint => new TranslatableString(getKey(@"custom_theme_context_ss_panel_bg_hint"), @"Background color of beatmap panels in the song select carousel.");
+        /// <summary>
+        /// "Selected beatmap accent"
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectAccent => new TranslatableString(getKey(@"custom_theme_context_ss_accent"), @"Selected map highlight");
+        /// <summary>
+        /// "Border and glow highlight for the selected beatmap panel."
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectAccentHint => new TranslatableString(getKey(@"custom_theme_context_ss_accent_hint"), @"Border and highlight color of the active map in the carousel.");
+        /// <summary>
+        /// "Beatmap title text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectTextPrimary => new TranslatableString(getKey(@"custom_theme_context_ss_text_primary"), @"Beatmap title text");
+        /// <summary>
+        /// "Title text on beatmap panels."
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectTextPrimaryHint => new TranslatableString(getKey(@"custom_theme_context_ss_text_primary_hint"), @"Color of titles and track names on song select panels.");
+        /// <summary>
+        /// "Mod Select"
+        /// </summary>
+        public static LocalisableString CustomThemeContextModSelect => new TranslatableString(getKey(@"custom_theme_context_mod_select"), @"Mod select menu");
+        /// <summary>
+        /// "Mod card background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextModCardBg => new TranslatableString(getKey(@"custom_theme_context_mod_card_bg"), @"Mod card background");
+        /// <summary>
+        /// "Background colour for individual mod cards."
+        /// </summary>
+        public static LocalisableString CustomThemeContextModCardBgHint => new TranslatableString(getKey(@"custom_theme_context_mod_card_bg_hint"), @"Background color of modifier cards.");
+        /// <summary>
+        /// "Mod select header background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextModHeaderBg => new TranslatableString(getKey(@"custom_theme_context_mod_header_bg"), @"Mod select header background");
+        /// <summary>
+        /// "Background colour for the sheared header at the top of the mod select overlay."
+        /// </summary>
+        public static LocalisableString CustomThemeContextModHeaderBgHint => new TranslatableString(getKey(@"custom_theme_context_mod_header_bg_hint"), @"Background color of the sheared header at the top of the mod select menu.");
+        /// <summary>
+        /// "Mod select overlay backdrop"
+        /// </summary>
+        public static LocalisableString CustomThemeContextModBackdrop => new TranslatableString(getKey(@"custom_theme_context_mod_backdrop"), @"Mod select backdrop dim");
+        /// <summary>
+        /// "Background dim and tint colour behind the mod selection interface."
+        /// </summary>
+        public static LocalisableString CustomThemeContextModBackdropHint => new TranslatableString(getKey(@"custom_theme_context_mod_backdrop_hint"), @"Color of dim and overall background behind the mod select menu.");
+        /// <summary>
+        /// "Mod card inner background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextModCardInnerBg => new TranslatableString(getKey(@"custom_theme_context_mod_card_inner_bg"), @"Mod card inner background");
+        /// <summary>
+        /// "Background colour of inner text box of mod cards."
+        /// </summary>
+        public static LocalisableString CustomThemeContextModCardInnerBgHint => new TranslatableString(getKey(@"custom_theme_context_mod_card_inner_bg_hint"), @"Color of the inner background for mod text.");
+        /// <summary>
+        /// "Mod category column background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextModColumnBg => new TranslatableString(getKey(@"custom_theme_context_mod_column_bg"), @"Category column background");
+        /// <summary>
+        /// "Background colour for vertical category columns."
+        /// </summary>
+        public static LocalisableString CustomThemeContextModColumnBgHint => new TranslatableString(getKey(@"custom_theme_context_mod_column_bg_hint"), @"Background color of vertical mod category columns.");
+        /// <summary>
+        /// "Mod hover highlight"
+        /// </summary>
+        public static LocalisableString CustomThemeContextModControlHover => new TranslatableString(getKey(@"custom_theme_context_mod_ctrl_hover"), @"Hover highlight");
+        /// <summary>
+        /// "Highlight colour for mod buttons and switches on hover."
+        /// </summary>
+        public static LocalisableString CustomThemeContextModControlHoverHint => new TranslatableString(getKey(@"custom_theme_context_mod_ctrl_hover_hint"), @"Highlight color for mod buttons and switches on hover.");
+        /// <summary>
+        /// "Mod accent elements"
+        /// </summary>
+        public static LocalisableString CustomThemeContextModAccent => new TranslatableString(getKey(@"custom_theme_context_mod_accent"), @"Mod accent elements");
+        /// <summary>
+        /// "Accent colour for active mod elements and headers."
+        /// </summary>
+        public static LocalisableString CustomThemeContextModAccentHint => new TranslatableString(getKey(@"custom_theme_context_mod_accent_hint"), @"Color of decorative accents and headers in the mod menu.");
+        /// <summary>
+        /// "Mod title text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextModTextPrimary => new TranslatableString(getKey(@"custom_theme_context_mod_text_primary"), @"Mod titles");
+        /// <summary>
+        /// "Primary title text colour in the mod menu."
+        /// </summary>
+        public static LocalisableString CustomThemeContextModTextPrimaryHint => new TranslatableString(getKey(@"custom_theme_context_mod_text_primary_hint"), @"Color of modifier names and primary headers.");
+        /// <summary>
+        /// "Mod description text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextModTextSecondary => new TranslatableString(getKey(@"custom_theme_context_mod_text_sec"), @"Mod description text");
+        /// <summary>
+        /// "Descriptions and secondary labels in the mod menu."
+        /// </summary>
+        public static LocalisableString CustomThemeContextModTextSecondaryHint => new TranslatableString(getKey(@"custom_theme_context_mod_text_sec_hint"), @"Color of descriptions and secondary labels in the mod menu.");
+        /// <summary>
+        /// "Mod category colours"
+        /// </summary>
+        public static LocalisableString CustomThemeModCategoriesHeader => new TranslatableString(getKey(@"custom_theme_mod_categories_header"), @"Mod category colors");
+        /// <summary>
+        /// "Difficulty reduction mods"
+        /// </summary>
+        public static LocalisableString CustomThemeModTypeDifficultyReduction => new TranslatableString(getKey(@"custom_theme_mod_type_diff_reduction"), @"Difficulty Reduction");
+        /// <summary>
+        /// "Difficulty increase mods"
+        /// </summary>
+        public static LocalisableString CustomThemeModTypeDifficultyIncrease => new TranslatableString(getKey(@"custom_theme_mod_type_diff_increase"), @"Difficulty Increase");
+        /// <summary>
+        /// "Automation mods"
+        /// </summary>
+        public static LocalisableString CustomThemeModTypeAutomation => new TranslatableString(getKey(@"custom_theme_mod_type_automation"), @"Automation");
+        /// <summary>
+        /// "Conversion mods"
+        /// </summary>
+        public static LocalisableString CustomThemeModTypeConversion => new TranslatableString(getKey(@"custom_theme_mod_type_conversion"), @"Conversion");
+        /// <summary>
+        /// "Fun mods"
+        /// </summary>
+        public static LocalisableString CustomThemeModTypeFun => new TranslatableString(getKey(@"custom_theme_mod_type_fun"), @"Fun");
+        /// <summary>
+        /// "System mods"
+        /// </summary>
+        public static LocalisableString CustomThemeModTypeSystem => new TranslatableString(getKey(@"custom_theme_mod_type_system"), @"System");
+        /// <summary>
+        /// "Beatmap Editor"
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditor => new TranslatableString(getKey(@"custom_theme_context_editor"), @"Beatmap editor");
+        /// <summary>
+        /// "Sidebar background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorSidebars => new TranslatableString(getKey(@"custom_theme_context_editor_sidebars"), @"Sidebar background");
+        /// <summary>
+        /// "Background colour of editor side toolbars."
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorSidebarsHint => new TranslatableString(getKey(@"custom_theme_context_editor_sidebars_hint"), @"Color of sidebar tool panels in the beatmap editor.");
+        /// <summary>
+        /// "Timeline background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorTimeline => new TranslatableString(getKey(@"custom_theme_context_editor_timeline"), @"Timeline background");
+        /// <summary>
+        /// "Bottom timeline bar background in the editor."
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorTimelineHint => new TranslatableString(getKey(@"custom_theme_context_editor_timeline_hint"), @"Color of the bottom timeline panel in the beatmap editor.");
+        /// <summary>
+        /// "Editor accent elements"
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorAccent => new TranslatableString(getKey(@"custom_theme_context_editor_accent"), @"Editor accent elements");
+        /// <summary>
+        /// "Active tools and highlights in the editor."
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorAccentHint => new TranslatableString(getKey(@"custom_theme_context_editor_accent_hint"), @"Color of active tools and switches in the editor.");
+        /// <summary>
+        /// "Beatmap Library"
+        /// </summary>
+        public static LocalisableString CustomThemeContextLibrary => new TranslatableString(getKey(@"custom_theme_context_library"), @"Beatmap library and lists");
+        /// <summary>
+        /// "Card background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextCardBg => new TranslatableString(getKey(@"custom_theme_context_card_bg"), @"Library card background");
+        /// <summary>
+        /// "Background colour for online beatmap listing cards."
+        /// </summary>
+        public static LocalisableString CustomThemeContextCardBgHint => new TranslatableString(getKey(@"custom_theme_context_card_bg_hint"), @"Background color of cards in the online beatmap listing.");
+        /// <summary>
+        /// "Card download accent"
+        /// </summary>
+        public static LocalisableString CustomThemeContextCardAccent => new TranslatableString(getKey(@"custom_theme_context_card_accent"), @"Beatmap download indicators");
+        /// <summary>
+        /// "Download progress bar and status indicator accent."
+        /// </summary>
+        public static LocalisableString CustomThemeContextCardAccentHint => new TranslatableString(getKey(@"custom_theme_context_card_accent_hint"), @"Color of progress bar and beatmap download status.");
+        /// <summary>
+        /// "Card secondary text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextCardTextSecondary => new TranslatableString(getKey(@"custom_theme_context_card_text_sec"), @"Artist and difficulty text");
+        /// <summary>
+        /// "Mapper name, source, and secondary details on beatmap cards."
+        /// </summary>
+        public static LocalisableString CustomThemeContextCardTextSecondaryHint => new TranslatableString(getKey(@"custom_theme_context_card_text_sec_hint"), @"Color of mapper name, source, and secondary data.");
+        /// <summary>
+        /// "Settings Panel"
+        /// </summary>
+        public static LocalisableString CustomThemeContextSettings => new TranslatableString(getKey(@"custom_theme_context_settings"), @"Settings panel");
+        /// <summary>
+        /// "Settings glass surface"
+        /// </summary>
+        public static LocalisableString CustomThemeContextSettingsSurface => new TranslatableString(getKey(@"custom_theme_context_settings_surface"), @"Settings glass surface");
+        /// <summary>
+        /// "Blurred glass background of the settings overlay."
+        /// </summary>
+        public static LocalisableString CustomThemeContextSettingsSurfaceHint => new TranslatableString(getKey(@"custom_theme_context_settings_surface_hint"), @"Color of blurred glass surface behind settings panel.");
+        /// <summary>
+        /// "Settings sidebar background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextSettingsElevated => new TranslatableString(getKey(@"custom_theme_context_settings_elevated"), @"Settings sidebar background");
+        /// <summary>
+        /// "Navigation sidebar background in the settings panel."
+        /// </summary>
+        public static LocalisableString CustomThemeContextSettingsElevatedHint => new TranslatableString(getKey(@"custom_theme_context_settings_elevated_hint"), @"Color of the section navigation sidebar on the left.");
+        /// <summary>
+        /// "Infinite Glass mode"
+        /// </summary>
+        public static LocalisableString CustomThemeContextInfiniteGlass => new TranslatableString(getKey(@"custom_theme_context_infinite_glass"), @"Infinite Glass mode");
+        /// <summary>
+        /// "Infinite Glass card background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextInfiniteGlassCard => new TranslatableString(getKey(@"custom_theme_context_ig_card"), @"Infinite Glass card background");
+        /// <summary>
+        /// "Background of beatmap cards in the zoomable Infinite Glass canvas."
+        /// </summary>
+        public static LocalisableString CustomThemeContextInfiniteGlassCardHint => new TranslatableString(getKey(@"custom_theme_context_ig_card_hint"), @"Card background color in the zoomable Infinite Glass canvas.");
+        /// <summary>
+        /// "Infinite Glass primary text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextInfiniteGlassText => new TranslatableString(getKey(@"custom_theme_context_ig_text"), @"Infinite Glass card text");
+        /// <summary>
+        /// "Title and primary text on Infinite Glass cards."
+        /// </summary>
+        public static LocalisableString CustomThemeContextInfiniteGlassTextHint => new TranslatableString(getKey(@"custom_theme_context_ig_text_hint"), @"Color of titles and key text in Infinite Glass.");
+        /// <summary>
+        /// "Infinite Glass hover highlight"
+        /// </summary>
+        public static LocalisableString CustomThemeContextInfiniteGlassAccent => new TranslatableString(getKey(@"custom_theme_context_ig_accent"), @"Infinite Glass hover highlight");
+        /// <summary>
+        /// "Hover glow highlight on Infinite Glass cards."
+        /// </summary>
+        public static LocalisableString CustomThemeContextInfiniteGlassAccentHint => new TranslatableString(getKey(@"custom_theme_context_ig_accent_hint"), @"Highlight color of Infinite Glass cards on cursor hover.");
+        /// <summary>
+        /// "Reset screen colors"
+        /// </summary>
+        public static LocalisableString CustomThemeResetContextButton => new TranslatableString(getKey(@"custom_theme_reset_context_button"), @"Reset colors for this screen");
+        /// <summary>
+        /// "Top bar"
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBar => new TranslatableString(getKey(@"custom_theme_context_topbar"), @"Top bar");
+        /// <summary>
+        /// "Top bar background"
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarBg => new TranslatableString(getKey(@"custom_theme_context_topbar_bg"), @"Top bar background");
+        /// <summary>
+        /// "Main background colour of the top bar."
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarBgHint => new TranslatableString(getKey(@"custom_theme_context_topbar_bg_hint"), @"Color of the main top bar strip.");
+        /// <summary>
+        /// "Attached pod plates"
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarElevated => new TranslatableString(getKey(@"custom_theme_context_topbar_elevated"), @"Underlay background (Attached)");
+        /// <summary>
+        /// "Background colour of protruding button plates in attached layout mode."
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarElevatedHint => new TranslatableString(getKey(@"custom_theme_context_topbar_elevated_hint"), @"Color of protruding button blocks in attached mode.");
+        /// <summary>
+        /// "Button hover highlight"
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarControlHover => new TranslatableString(getKey(@"custom_theme_context_topbar_ctrl_hover"), @"Hover button highlight");
+        /// <summary>
+        /// "Highlight colour when hovering over top bar buttons and clock."
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarControlHoverHint => new TranslatableString(getKey(@"custom_theme_context_topbar_ctrl_hover_hint"), @"Highlight color for top bar buttons and clock on hover.");
+        /// <summary>
+        /// "Top bar accent"
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarAccent => new TranslatableString(getKey(@"custom_theme_context_topbar_accent"), @"Top bar accent");
+        /// <summary>
+        /// "Active ruleset indicator and mode lines on the top bar."
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarAccentHint => new TranslatableString(getKey(@"custom_theme_context_topbar_accent_hint"), @"Color of mode indicators and active tabs.");
+        /// <summary>
+        /// "Active icons and text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarTextPrimary => new TranslatableString(getKey(@"custom_theme_context_topbar_text_primary"), @"Active icons and text");
+        /// <summary>
+        /// "Colour of main icons, clock text, and active buttons."
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarTextPrimaryHint => new TranslatableString(getKey(@"custom_theme_context_topbar_text_primary_hint"), @"Color of primary icons and clock on the top bar.");
+        /// <summary>
+        /// "Secondary icons"
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarTextSecondary => new TranslatableString(getKey(@"custom_theme_context_topbar_text_sec"), @"Secondary icons");
+        /// <summary>
+        /// "Colour of subtle or inactive icons on the top bar."
+        /// </summary>
+        public static LocalisableString CustomThemeContextTopBarTextSecondaryHint => new TranslatableString(getKey(@"custom_theme_context_topbar_text_sec_hint"), @"Color of inactive and secondary icons.");
+        /// <summary>
+        /// "Results Screen"
+        /// </summary>
+        public static LocalisableString CustomThemeContextResults => new TranslatableString(getKey(@"custom_theme_context_results"), @"Results screen");
+        /// <summary>
+        /// "Results bottom bar"
+        /// </summary>
+        public static LocalisableString CustomThemeContextResultsBg => new TranslatableString(getKey(@"custom_theme_context_results_bg"), @"Results bottom bar");
+        /// <summary>
+        /// "Bottom bar background colour on the results screen."
+        /// </summary>
+        public static LocalisableString CustomThemeContextResultsBgHint => new TranslatableString(getKey(@"custom_theme_context_results_bg_hint"), @"Color of the bottom info strip on the results screen.");
+        /// <summary>
+        /// "Score cards and statistics"
+        /// </summary>
+        public static LocalisableString CustomThemeContextResultsElevated => new TranslatableString(getKey(@"custom_theme_context_results_elevated"), @"Results and statistics cards");
+        /// <summary>
+        /// "Background colour of score cards and statistics breakdown boxes."
+        /// </summary>
+        public static LocalisableString CustomThemeContextResultsElevatedHint => new TranslatableString(getKey(@"custom_theme_context_results_elevated_hint"), @"Background color for score cards and statistics graphs.");
+        /// <summary>
+        /// "Results accent"
+        /// </summary>
+        public static LocalisableString CustomThemeContextResultsAccent => new TranslatableString(getKey(@"custom_theme_context_results_accent"), @"Results screen accent");
+        /// <summary>
+        /// "Highlight and indicator accents on the results screen."
+        /// </summary>
+        public static LocalisableString CustomThemeContextResultsAccentHint => new TranslatableString(getKey(@"custom_theme_context_results_accent_hint"), @"Color of highlights and local indicators.");
+        /// <summary>
+        /// "Results primary text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextResultsTextPrimary => new TranslatableString(getKey(@"custom_theme_context_results_text_primary"), @"Results primary text");
+        /// <summary>
+        /// "Score value, grade, and prominent numbers."
+        /// </summary>
+        public static LocalisableString CustomThemeContextResultsTextPrimaryHint => new TranslatableString(getKey(@"custom_theme_context_results_text_primary_hint"), @"Color of score, rank, and key numerical statistics.");
+        /// <summary>
+        /// "Results secondary text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextResultsTextSecondary => new TranslatableString(getKey(@"custom_theme_context_results_text_sec"), @"Results secondary text");
+        /// <summary>
+        /// "Secondary metrics and statistic labels on results."
+        /// </summary>
+        public static LocalisableString CustomThemeContextResultsTextSecondaryHint => new TranslatableString(getKey(@"custom_theme_context_results_text_sec_hint"), @"Color of descriptions, labels, and secondary statistics.");
+        /// <summary>
+        /// "Tool buttons"
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorControlIdle => new TranslatableString(getKey(@"custom_theme_context_editor_ctrl_idle"), @"Tool buttons");
+        /// <summary>
+        /// "Idle tool button and menu bar backgrounds in the editor."
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorControlIdleHint => new TranslatableString(getKey(@"custom_theme_context_editor_ctrl_idle_hint"), @"Base background for idle tool buttons and panels.");
+        /// <summary>
+        /// "Hovered elements and submenus"
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorControlHover => new TranslatableString(getKey(@"custom_theme_context_editor_ctrl_hover"), @"Elements on hover");
+        /// <summary>
+        /// "Hover highlights and dropdown backgrounds in the editor."
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorControlHoverHint => new TranslatableString(getKey(@"custom_theme_context_editor_ctrl_hover_hint"), @"Highlight color for buttons on hover and dropdown menus.");
+        /// <summary>
+        /// "Selected tool"
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorControlSelected => new TranslatableString(getKey(@"custom_theme_context_editor_ctrl_selected"), @"Selected tool");
+        /// <summary>
+        /// "Active tool buttons and selected rows in the editor."
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorControlSelectedHint => new TranslatableString(getKey(@"custom_theme_context_editor_ctrl_selected_hint"), @"Color of active tool button or selected table row.");
+        /// <summary>
+        /// "Editor primary text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorTextPrimary => new TranslatableString(getKey(@"custom_theme_context_editor_text_primary"), @"Editor primary text");
+        /// <summary>
+        /// "Values, timestamps, and primary labels in the editor."
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorTextPrimaryHint => new TranslatableString(getKey(@"custom_theme_context_editor_text_primary_hint"), @"Color of primary labels, buttons, and values in the editor.");
+        /// <summary>
+        /// "Editor secondary text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorTextSecondary => new TranslatableString(getKey(@"custom_theme_context_editor_text_sec"), @"Editor secondary text");
+        /// <summary>
+        /// "Table headers and secondary hints in the editor."
+        /// </summary>
+        public static LocalisableString CustomThemeContextEditorTextSecondaryHint => new TranslatableString(getKey(@"custom_theme_context_editor_text_sec_hint"), @"Color of column headers and auxiliary hints.");
+        /// <summary>
+        /// "Footer and buttons"
+        /// </summary>
+        public static LocalisableString CustomThemeSectionFooter => new TranslatableString(getKey(@"custom_theme_section_footer"), @"Footer and buttons");
+        /// <summary>
+        /// "Enable button and footer gradients"
+        /// </summary>
+        public static LocalisableString CustomThemeEnableGradientsCaption => new TranslatableString(getKey(@"custom_theme_enable_gradients_caption"), @"Button and footer gradients");
+        /// <summary>
+        /// "Show vertical gradients on buttons and the bottom footer bar. Disabling enforces flat solid colors."
+        /// </summary>
+        public static LocalisableString CustomThemeEnableGradientsHint => new TranslatableString(getKey(@"custom_theme_enable_gradients_hint"), @"Enables subtle gradients on sheared buttons and footer strip. When disabled, solid colors are used.");
+        /// <summary>
+        /// "Footer bar background"
+        /// </summary>
+        public static LocalisableString CustomThemeFooterBgCaption => new TranslatableString(getKey(@"custom_theme_footer_bg_caption"), @"Footer strip background");
+        /// <summary>
+        /// "Background colour of the bottom bar across screens."
+        /// </summary>
+        public static LocalisableString CustomThemeFooterBgHint => new TranslatableString(getKey(@"custom_theme_footer_bg_hint"), @"Primary background color of the bottom navigation bar.");
+        /// <summary>
+        /// "Back button background"
+        /// </summary>
+        public static LocalisableString CustomThemeFooterBackBgCaption => new TranslatableString(getKey(@"custom_theme_footer_back_bg_caption"), @"Back button background");
+        /// <summary>
+        /// "Background colour of the back button."
+        /// </summary>
+        public static LocalisableString CustomThemeFooterBackBgHint => new TranslatableString(getKey(@"custom_theme_footer_back_bg_hint"), @"Main fill color for the Back button.");
+        /// <summary>
+        /// "Back button text and icon"
+        /// </summary>
+        public static LocalisableString CustomThemeFooterBackTextCaption => new TranslatableString(getKey(@"custom_theme_footer_back_text_caption"), @"Back button text and icon");
+        /// <summary>
+        /// "Text and icon colour for the back button."
+        /// </summary>
+        public static LocalisableString CustomThemeFooterBackTextHint => new TranslatableString(getKey(@"custom_theme_footer_back_text_hint"), @"Color of text and arrow on the Back button.");
+        /// <summary>
+        /// "Mods button background"
+        /// </summary>
+        public static LocalisableString CustomThemeFooterModsBgCaption => new TranslatableString(getKey(@"custom_theme_footer_mods_bg_caption"), @"Mods button background");
+        /// <summary>
+        /// "Background colour of the mods button when idle."
+        /// </summary>
+        public static LocalisableString CustomThemeFooterModsBgHint => new TranslatableString(getKey(@"custom_theme_footer_mods_bg_hint"), @"Background color of the Mods button in idle state.");
+        /// <summary>
+        /// "Mods button accent"
+        /// </summary>
+        public static LocalisableString CustomThemeFooterModsAccentCaption => new TranslatableString(getKey(@"custom_theme_footer_mods_accent_caption"), @"Mods button accent");
+        /// <summary>
+        /// "Accent bar and active state color for the mods button."
+        /// </summary>
+        public static LocalisableString CustomThemeFooterModsAccentHint => new TranslatableString(getKey(@"custom_theme_footer_mods_accent_hint"), @"Color of the accent bar and active state of the Mods button.");
+        /// <summary>
+        /// "Random button background"
+        /// </summary>
+        public static LocalisableString CustomThemeFooterRandomBgCaption => new TranslatableString(getKey(@"custom_theme_footer_random_bg_caption"), @"Random button background");
+        /// <summary>
+        /// "Background colour of the random beatmap button."
+        /// </summary>
+        public static LocalisableString CustomThemeFooterRandomBgHint => new TranslatableString(getKey(@"custom_theme_footer_random_bg_hint"), @"Fill color of the Random button.");
+        /// <summary>
+        /// "Random button accent"
+        /// </summary>
+        public static LocalisableString CustomThemeFooterRandomAccentCaption => new TranslatableString(getKey(@"custom_theme_footer_random_accent_caption"), @"Random button accent");
+        /// <summary>
+        /// "Accent bar and icon color for the random button."
+        /// </summary>
+        public static LocalisableString CustomThemeFooterRandomAccentHint => new TranslatableString(getKey(@"custom_theme_footer_random_accent_hint"), @"Color of accent strip and icon for the Random button.");
+        /// <summary>
+        /// "Options button background"
+        /// </summary>
+        public static LocalisableString CustomThemeFooterOptionsBgCaption => new TranslatableString(getKey(@"custom_theme_footer_options_bg_caption"), @"Options button background");
+        /// <summary>
+        /// "Background colour of the options button."
+        /// </summary>
+        public static LocalisableString CustomThemeFooterOptionsBgHint => new TranslatableString(getKey(@"custom_theme_footer_options_bg_hint"), @"Fill color of the Options button.");
+        /// <summary>
+        /// "Options button accent"
+        /// </summary>
+        public static LocalisableString CustomThemeFooterOptionsAccentCaption => new TranslatableString(getKey(@"custom_theme_footer_options_accent_caption"), @"Options button accent");
+        /// <summary>
+        /// "Accent bar and icon color for the options button."
+        /// </summary>
+        public static LocalisableString CustomThemeFooterOptionsAccentHint => new TranslatableString(getKey(@"custom_theme_footer_options_accent_hint"), @"Color of accent strip and icon for the Options button.");
+        /// <summary>
+        /// "Reset footer and buttons to defaults"
+        /// </summary>
+        public static LocalisableString CustomThemeFooterReset => new TranslatableString(getKey(@"custom_theme_footer_reset"), @"Reset footer and buttons");
+
+        /// <summary>
+        /// "Detail wedges and metadata"
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectElevated => new TranslatableString(getKey(@"custom_theme_context_ss_elevated"), @"Detail panels and wedges");
+        /// <summary>
+        /// "Background of song title wedge, metadata wedge, and leaderboard."
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectElevatedHint => new TranslatableString(getKey(@"custom_theme_context_ss_elevated_hint"), @"Background for title wedge, metadata, and beatmap scores.");
+        /// <summary>
+        /// "Footer action buttons"
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectControlIdle => new TranslatableString(getKey(@"custom_theme_context_ss_ctrl_idle"), @"Action buttons in footer");
+        /// <summary>
+        /// "Background colour of footer buttons like Mods, Random, and Options."
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectControlIdleHint => new TranslatableString(getKey(@"custom_theme_context_ss_ctrl_idle_hint"), @"Color for mods, random, and options buttons.");
+        /// <summary>
+        /// "Beatmap secondary text"
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectTextSecondary => new TranslatableString(getKey(@"custom_theme_context_ss_text_sec"), @"Artist and details text");
+        /// <summary>
+        /// "Mapper name, difficulty name, and stats on beatmap panels."
+        /// </summary>
+        public static LocalisableString CustomThemeContextSongSelectTextSecondaryHint => new TranslatableString(getKey(@"custom_theme_context_ss_text_sec_hint"), @"Color of mapper name, difficulty, and statistics.");
         /// <summary>
         /// "Transparent overlays"
         /// </summary>
@@ -1758,6 +2523,13 @@ namespace osu.Game.Localisation
         public static LocalisableString RelaxPpSystemMosuPp => new TranslatableString(getKey(@"relax_pp_system_mosu_pp"), @"MosuPp");
 
         /// <summary>
+        /// "tazikpp"
+        /// </summary>
+        public static LocalisableString RelaxPpSystemTazikPp => new TranslatableString(getKey(@"relax_pp_system_tazikpp"), @"tazikpp");
+
+        public static LocalisableString RelaxPpSystemMosuPpPrerelease => @"2.0.0 prerelease";
+
+        /// <summary>
         /// "Dynamic drift"
         /// </summary>
         public static LocalisableString RelaxDynamicDriftCaption => new TranslatableString(getKey(@"relax_dynamic_drift_caption"), @"Dynamic drift");
@@ -1843,33 +2615,37 @@ namespace osu.Game.Localisation
         /// </summary>
         public static LocalisableString ServerProfilesConnectBtn => new TranslatableString(getKey(@"server_profiles_connect_btn"), @"Connect to server");
         /// <summary>
-        /// "Проверить подключение"
+        /// "Test connection"
         /// </summary>
-        public static LocalisableString ServerProfilesTestConnectionBtn => new TranslatableString(getKey(@"server_profiles_test_connection_btn"), @"Проверить подключение");
+        public static LocalisableString ServerProfilesTestConnectionBtn => new TranslatableString(getKey(@"server_profiles_test_connection_btn"), @"Test connection");
         /// <summary>
-        /// "Проверяет текущий адрес Stable Bancho и данные входа без перезапуска игры."
+        /// "Tests current Stable Bancho address and login credentials without restarting the game."
         /// </summary>
-        public static LocalisableString ServerProfilesTestConnectionHint => new TranslatableString(getKey(@"server_profiles_test_connection_hint"), @"Проверяет текущий адрес Stable Bancho и данные входа без перезапуска игры.");
+        public static LocalisableString ServerProfilesTestConnectionHint => new TranslatableString(getKey(@"server_profiles_test_connection_hint"), @"Tests current Stable Bancho address and login credentials without restarting the game.");
         /// <summary>
-        /// "Проверка подключения..."
+        /// "Testing connection..."
         /// </summary>
-        public static LocalisableString ServerProfilesTestingConnectionBtn => new TranslatableString(getKey(@"server_profiles_testing_connection_btn"), @"Проверка подключения...");
+        public static LocalisableString ServerProfilesTestingConnectionBtn => new TranslatableString(getKey(@"server_profiles_testing_connection_btn"), @"Testing connection...");
         /// <summary>
-        /// "Подключение работает"
+        /// "Connection successful"
         /// </summary>
-        public static LocalisableString ServerProfilesTestSuccessTitle => new TranslatableString(getKey(@"server_profiles_test_success_title"), @"Подключение работает");
+        public static LocalisableString ServerProfilesTestSuccessTitle => new TranslatableString(getKey(@"server_profiles_test_success_title"), @"Connection successful");
         /// <summary>
-        /// "Bancho принял пользователя {0} (ID: {1}).\n\nАдрес: {2}"
+        /// "Bancho accepted user {0} (ID: {1}). Address: {2}"
         /// </summary>
-        public static LocalisableString ServerProfilesTestSuccessBody(LocalisableString username, LocalisableString userId, LocalisableString endpoint) => new TranslatableString(getKey(@"server_profiles_test_success_body"), "Bancho принял пользователя {0} (ID: {1}).\n\nАдрес: {2}", username, userId, endpoint);
+        public static LocalisableString ServerProfilesTestSuccessBody(LocalisableString username, LocalisableString userId, LocalisableString endpoint) => new TranslatableString(getKey(@"server_profiles_test_success_body"), @"Bancho accepted user {0} (ID: {1}).
+
+Address: {2}", username, userId, endpoint);
         /// <summary>
-        /// "Подключение не удалось"
+        /// "Connection failed"
         /// </summary>
-        public static LocalisableString ServerProfilesTestFailureTitle => new TranslatableString(getKey(@"server_profiles_test_failure_title"), @"Подключение не удалось");
+        public static LocalisableString ServerProfilesTestFailureTitle => new TranslatableString(getKey(@"server_profiles_test_failure_title"), @"Connection failed");
         /// <summary>
-        /// "Адрес: {0}\n\n{1}"
+        /// "Address: {0} {1}"
         /// </summary>
-        public static LocalisableString ServerProfilesTestFailureBody(LocalisableString endpoint, LocalisableString error) => new TranslatableString(getKey(@"server_profiles_test_failure_body"), "Адрес: {0}\n\n{1}", endpoint, error);
+        public static LocalisableString ServerProfilesTestFailureBody(LocalisableString endpoint, LocalisableString error) => new TranslatableString(getKey(@"server_profiles_test_failure_body"), @"Address: {0}
+
+{1}", endpoint, error);
         /// <summary>
         /// "Add profile"
         /// </summary>
@@ -1971,23 +2747,23 @@ namespace osu.Game.Localisation
         /// <summary>
         /// "Supporter Quests"
         /// </summary>
-        public static LocalisableString SupporterQuestTitle => new TranslatableString(getKey(@"supporter_quest_title"), @"Supporter Quests");
+        public static LocalisableString SupporterQuestTitle => new TranslatableString(getKey(@"supporter_quest_title"), @"Main path");
         /// <summary>
         /// "Complete quests to earn a month of supporter!"
         /// </summary>
-        public static LocalisableString SupporterQuestDescription => new TranslatableString(getKey(@"supporter_quest_description"), @"Complete quests to earn a month of supporter!");
+        public static LocalisableString SupporterQuestDescription => new TranslatableString(getKey(@"supporter_quest_description"), @"Complete quests to earn 30 days of mora-supporter!");
         /// <summary>
         /// "Until 1 month of supporter"
         /// </summary>
-        public static LocalisableString SupporterQuestHeader => new TranslatableString(getKey(@"supporter_quest_header"), @"Until 1 month of supporter");
+        public static LocalisableString SupporterQuestHeader => new TranslatableString(getKey(@"supporter_quest_header"), @"Until 30 days of mora-supporter");
         /// <summary>
-        /// "Саппортер можно получить, только внеся вклад в сообщество."
+        /// "Supporter status can only be obtained by contributing to the community."
         /// </summary>
-        public static LocalisableString SupporterQuestContributionNote => new TranslatableString(getKey(@"supporter_quest_contribution_note"), @"Саппортер можно получить, только внеся вклад в сообщество.");
+        public static LocalisableString SupporterQuestContributionNote => new TranslatableString(getKey(@"supporter_quest_contribution_note"), @"mora-supporter status can be earned by contributing to the community.");
         /// <summary>
-        /// "Поддержать проект"
+        /// "Support the project"
         /// </summary>
-        public static LocalisableString SupporterQuestDonateBtn => new TranslatableString(getKey(@"supporter_quest_donate_btn"), @"Поддержать проект");
+        public static LocalisableString SupporterQuestDonateBtn => new TranslatableString(getKey(@"supporter_quest_donate_btn"), @"Support the project");
         /// <summary>
         /// "+ {0} more locked"
         /// </summary>
@@ -2000,7 +2776,7 @@ namespace osu.Game.Localisation
         /// <summary>
         /// "Supporter benefits:"
         /// </summary>
-        public static LocalisableString SupporterQuestFeaturesHeader => new TranslatableString(getKey(@"supporter_quest_features_header"), @"Supporter benefits:");
+        public static LocalisableString SupporterQuestFeaturesHeader => new TranslatableString(getKey(@"supporter_quest_features_header"), @"mora-supporter benefits:");
         /// <summary>
         /// "• Ability to change your username"
         /// </summary>
@@ -2021,6 +2797,10 @@ namespace osu.Game.Localisation
         /// "• All Morasooma Supporter features"
         /// </summary>
         public static LocalisableString SupporterQuestFeature5 => new TranslatableString(getKey(@"supporter_quest_feature_5"), @"• All Morasooma Supporter features");
+        /// <summary>
+        /// "• Button to invite everyone to multiplayer"
+        /// </summary>
+        public static LocalisableString SupporterQuestFeature6 => new TranslatableString(getKey(@"supporter_quest_feature_6"), @"• Button to invite everyone to multiplayer");
 
         /// <summary>
         /// "Play 5 maps"
@@ -2338,20 +3118,92 @@ namespace osu.Game.Localisation
             getKey(@"single_threaded_execution_warning"),
             @"Single-threaded mode is enabled. This can substantially reduce gameplay FPS and make the update rate fluctuate with rendering. Use Multi-threaded under Settings > Graphics > Threading mode.");
 
-        public static LocalisableString RestrictionTitle => new TranslatableString(getKey(@"restriction_title"), @"АККАУНТ ОГРАНИЧЕН");
+        public static LocalisableString RestrictionTitle => new TranslatableString(getKey(@"restriction_title"), @"ACCOUNT RESTRICTED");
 
-        public static LocalisableString RestrictionGenericBody => new TranslatableString(getKey(@"restriction_generic_body"), @"На аккаунте действует рестрикт.");
+        public static LocalisableString RestrictionGenericBody => new TranslatableString(getKey(@"restriction_generic_body"), @"This account has an active restriction.");
 
         public static LocalisableString RestrictionCheatingBody(string username) => new TranslatableString(
             getKey(@"restriction_cheating_body"),
-            @"Рестрикт выдан за читы. Чтобы запросить снятие рестрикта, напишите администратору в Discord: {0}",
+            @"Restriction issued for cheating. To appeal the restriction, contact the administrator on Discord: {0}",
             username);
 
-        public static LocalisableString RestrictionCopyDiscord => new TranslatableString(getKey(@"restriction_copy_discord"), @"Скопировать xtillius1");
+        public static LocalisableString RestrictionCopyDiscord => new TranslatableString(getKey(@"restriction_copy_discord"), @"Copy xtillius1");
 
-        public static LocalisableString RestrictionOpenDiscord => new TranslatableString(getKey(@"restriction_open_discord"), @"Открыть Discord");
+        public static LocalisableString RestrictionOpenDiscord => new TranslatableString(getKey(@"restriction_open_discord"), @"Open Discord");
 
         private static string getKey(string key) => $@"{prefix}:{key}";
 
+
+        public static LocalisableString ForkDebugBenchmarkDifficultyCaption => new TranslatableString(getKey(@"fork_debug_benchmark_difficulty_caption"), @"Benchmark recalculation up to 1000 beatmaps (SR + PP)");
+        public static LocalisableString ForkDebugBenchmarkDifficultyHint => new TranslatableString(getKey(@"fork_debug_benchmark_difficulty_hint"), @"Recalculates difficulty and max PP for up to 1000 library beatmaps without saving to database. Progress, time and CPU time are reported in notification and logs. Can be cancelled between maps.");
+        public static LocalisableString ForkDebugHudCaption => new TranslatableString(getKey(@"fork_debug_hud_caption"), @"Diagnostic HUD");
+        public static LocalisableString ForkDebugHudHint => new TranslatableString(getKey(@"fork_debug_hud_hint"), @"Shows thread frametimes, memory, GC and probable freeze causes. Detailed mode displays extra GC counters.");
+        public static LocalisableString ForkDebugToolbarMemoryCaption => new TranslatableString(getKey(@"fork_debug_toolbar_memory_caption"), @"Show memory in top bar");
+        public static LocalisableString ForkDebugToolbarMemoryHint => new TranslatableString(getKey(@"fork_debug_toolbar_memory_hint"), @"Adds compact RAM and .NET GC heap indicator to toolbar.");
+        public static LocalisableString ForkDebugFreezeNotificationsCaption => new TranslatableString(getKey(@"fork_debug_freeze_notifications_caption"), @"Show freeze notifications");
+        public static LocalisableString ForkDebugFreezeNotificationsHint => new TranslatableString(getKey(@"fork_debug_freeze_notifications_hint"), @"Displays duration and probable cause for frames longer than 20 ms for a few seconds.");
+        public static LocalisableString ForkDebugCreateMemoryDumpCaption => new TranslatableString(getKey(@"fork_debug_create_memory_dump_caption"), @"Create memory dump");
+        public static LocalisableString ForkDebugCreateMemoryDumpHint => new TranslatableString(getKey(@"fork_debug_create_memory_dump_hint"), @"Memory dump may contain tokens, personal data, and other secrets from process memory. Do not send it to untrusted recipients.");
+        public static LocalisableString ForkDebugOpenMemoryDumpsFolderCaption => new TranslatableString(getKey(@"fork_debug_open_memory_dumps_folder_caption"), @"Open memory dumps folder");
+        public static LocalisableString ForkDebugMemoryDumpCreating => new TranslatableString(getKey(@"fork_debug_memory_dump_creating"), @"Creating memory dump. Client may temporarily freeze…");
+        public static LocalisableString ForkDebugNoRecentLogs => new TranslatableString(getKey(@"fork_debug_no_recent_logs"), @"No logs or renders found in the last 10 minutes.");
+        public static LocalisableString ForkPerfImportThreadsCaption => new TranslatableString(getKey(@"fork_perf_import_threads_caption"), @"Beatmap import calculation threads");
+        public static LocalisableString ForkPerfImportThreadsHint => new TranslatableString(getKey(@"fork_perf_import_threads_hint"), @"Number of calculation threads when importing beatmaps. Applies after client restart. Does not cap single-core or client CPU percentage.");
+        public static LocalisableString ForkPerfBackgroundCalcPaceCaption => new TranslatableString(getKey(@"fork_perf_background_calc_pace_caption"), @"Background beatmap calculation pace");
+        public static LocalisableString ForkPerfBackgroundCalcPaceHint => new TranslatableString(getKey(@"fork_perf_background_calc_pace_hint"), @"Reduces average intensity of background missing PP and difficulty recalculation. Does not apply to beatmap import. Not a strict CPU, disk, or GC limit.");
+        public static LocalisableString ServerProfilesPasswordPlaceholder => new TranslatableString(getKey(@"server_profiles_password_placeholder"), @"Leave empty to keep the stored password");
+        public static LocalisableString ServerProfilesNewProfile => new TranslatableString(getKey(@"server_profiles_new_profile"), @"New Server Profile");
+        public static LocalisableString CustomThemeExportButton => new TranslatableString(getKey(@"custom_theme_export_button"), @"Export theme");
+        public static LocalisableString CustomThemeImportButton => new TranslatableString(getKey(@"custom_theme_import_button"), @"Import theme");
+        public static LocalisableString CustomThemeExportSuccess(LocalisableString filename) => new TranslatableString(getKey(@"custom_theme_export_success"), @"Theme exported: {0}", filename);
+        public static LocalisableString CustomThemeExportFailed(LocalisableString error) => new TranslatableString(getKey(@"custom_theme_export_failed"), @"Failed to export theme: {0}", error);
+        public static LocalisableString CustomThemeImportSuccess(LocalisableString themeName) => new TranslatableString(getKey(@"custom_theme_import_success"), @"Theme «{0}» imported successfully.", themeName);
+        public static LocalisableString CustomThemeImportFailed(LocalisableString error) => new TranslatableString(getKey(@"custom_theme_import_failed"), @"Failed to import theme: {0}", error);
+        public static LocalisableString CustomThemeImportDialogHeader => new TranslatableString(getKey(@"custom_theme_import_dialog_header"), @"Import theme");
+        public static LocalisableString CustomThemeImportDialogBody(LocalisableString name, LocalisableString baseTheme, LocalisableString overridesCount) => new TranslatableString(getKey(@"custom_theme_import_dialog_body"), @"You are about to import theme «{0}» (base: {1}, {2} overrides). Current custom theme settings will be overwritten. Apply?", name, baseTheme, overridesCount);
+        public static LocalisableString CustomThemeImportDialogApply => new TranslatableString(getKey(@"custom_theme_import_dialog_apply"), @"Apply theme");
+        public static LocalisableString CustomThemeImportDialogCancel => new TranslatableString(getKey(@"custom_theme_import_dialog_cancel"), @"Cancel");
+
+        public static LocalisableString ForkDebugMemoryDumpConfirm => new TranslatableString(getKey(@"fork_debug_memory_dump_confirm"), @"A memory dump may take several gigabytes and contain authorization tokens, personal data, messages, file paths, and other secrets from process memory. Do not share or send this file to untrusted parties. Continue?");
+        public static LocalisableString ForkDebugMemoryDumpSaved(LocalisableString folderName) => new TranslatableString(getKey(@"fork_debug_memory_dump_saved"), @"Memory dump saved: {0}", folderName);
+        public static LocalisableString ForkDebugMemoryDumpError(LocalisableString error) => new TranslatableString(getKey(@"fork_debug_memory_dump_error"), @"Failed to create memory dump: {0}", error);
+        public static LocalisableString QuickExportLogsSuccess(LocalisableString fileName) => new TranslatableString(getKey(@"quick_export_logs_success"), @"Logs successfully exported to {0}!", fileName);
+        public static LocalisableString QuickExportLogsFailed(LocalisableString error) => new TranslatableString(getKey(@"quick_export_logs_failed"), @"Error exporting logs: {0}", error);
+
+        public static LocalisableString CollectionExportDialogHeader => new TranslatableString(getKey(@"collection_export_dialog_header"), @"Export beatmaps from collection");
+        public static LocalisableString CollectionExportDialogPrompt => new TranslatableString(getKey(@"collection_export_dialog_prompt"), @"Select a collection to export.");
+        public static LocalisableString CollectionExportDialogBody(LocalisableString collectionName, LocalisableString count) => new TranslatableString(getKey(@"collection_export_dialog_body"), @"Collection: {0}\n{1} beatmap sets will be exported.", collectionName, count);
+        public static LocalisableString CollectionExportDialogExport => new TranslatableString(getKey(@"collection_export_dialog_export"), @"Export");
+        public static LocalisableString CollectionExportDialogCancel => new TranslatableString(getKey(@"collection_export_dialog_cancel"), @"Cancel");
+
+        public static LocalisableString SecurityRoomIdPlaceholder => new TranslatableString(getKey(@"security_room_id_placeholder"), @"e.g. 123");
+        public static LocalisableString SecurityTargetUserIdPlaceholder => new TranslatableString(getKey(@"security_target_user_id_placeholder"), @"e.g. 456");
+        public static LocalisableString SecurityPlaylistIdPlaceholder => new TranslatableString(getKey(@"security_playlist_id_placeholder"), @"e.g. 0");
+        public static LocalisableString SecurityBeatmapIdPlaceholder => new TranslatableString(getKey(@"security_beatmap_id_placeholder"), @"e.g. 75");
+        public static LocalisableString SecurityBeatmapHashPlaceholder => new TranslatableString(getKey(@"security_beatmap_hash_placeholder"), @"e.g. a5b99395a42bd55bc5eb1d2411cbdf8b");
+        public static LocalisableString SecurityRulesetIdPlaceholder => new TranslatableString(getKey(@"security_ruleset_id_placeholder"), @"Usually 0");
+        public static LocalisableString SecurityRulesetHashPlaceholder => new TranslatableString(getKey(@"security_ruleset_hash_placeholder"), @"Can be left empty");
+        public static LocalisableString SecurityBurstUnit(LocalisableString value) => new TranslatableString(getKey(@"security_burst_unit"), @"{0} pcs.", value);
+        public static LocalisableString SecurityRepeatedForceJoinBody(LocalisableString roomId, LocalisableString userId, LocalisableString count, LocalisableString report) => new TranslatableString(getKey(@"security_repeated_force_join_body"), @"PUT /api/v2/rooms/{0}/users/{1} succeeded {2} time(s).\n\n{3}\n\nIf participant_count keeps climbing on repeated requests, the server is trusting repeated room/user mutations from the path.", roomId, userId, count, report);
+        public static LocalisableString SecurityRepeatedForcePartBody(LocalisableString roomId, LocalisableString userId, LocalisableString count, LocalisableString report) => new TranslatableString(getKey(@"security_repeated_force_part_body"), @"DELETE /api/v2/rooms/{0}/users/{1} succeeded {2} time(s).\n\n{3}\n\nIf participant_count keeps dropping even when the same user is already gone, the server is trusting repeated leave operations too much.", roomId, userId, count, report);
+        public static LocalisableString SecurityRepeatedSelfJoinBody(LocalisableString roomId, LocalisableString count, LocalisableString report) => new TranslatableString(getKey(@"security_repeated_self_join_body"), @"PUT /api/v2/rooms/{0}/users/self ran {1} time(s).\n\n{2}\n\nIf each repeated self-join bumps participant_count again, the same account can inflate room population without changing identity.", roomId, count, report);
+        public static LocalisableString SecurityCompletedStepsBeforeFailure(LocalisableString report, LocalisableString error) => new TranslatableString(getKey(@"security_completed_steps_before_failure"), @"Completed steps before failure:\n{0}\n\n{1}", report, error);
+
+        public static LocalisableString CustomThemeImportDialogUnavailable => new TranslatableString(getKey(@"custom_theme_import_dialog_unavailable"), @"Dialog overlay is not available to confirm import.");
+
+        public static LocalisableString SettingsExactValueCaption => new TranslatableString(getKey(@"settings_exact_value_caption"), @"Exact value");
+        public static LocalisableString SettingsNumericExactValueHint => new TranslatableString(getKey(@"settings_numeric_exact_value_hint"), @"Type a precise value for this setting.");
+        public static LocalisableString SettingsDifficultyExactValueHint => new TranslatableString(getKey(@"settings_difficulty_exact_value_hint"), @"Type a precise value for this setting. Leave empty to use the beatmap value.");
+        public static LocalisableString SettingsDifficultyExactValuePlaceholder => new TranslatableString(getKey(@"settings_difficulty_exact_value_placeholder"), @"Beatmap value");
+
+        public static LocalisableString GeneralDisableAutomaticUpdatesCaption => new TranslatableString(getKey(@"general_disable_automatic_updates_caption"), @"Disable automatic updates (Morasooma)");
+        public static LocalisableString GeneralDevBuildSupportersOnly => new TranslatableString(getKey(@"general_dev_build_supporters_only"), @"Dev Build is available to active supporters only.");
+
+        public static LocalisableString SkinManiaPlayfieldScaleCaption => new TranslatableString(getKey(@"skin_mania_playfield_scale_caption"), @"Mania playfield scale");
+        public static LocalisableString SkinManiaPlayfieldScaleHint => new TranslatableString(getKey(@"skin_mania_playfield_scale_hint"), @"Scales the mania notefield around the receptor line, including notes, receptors, judgements and column spacing.");
+
+        public static LocalisableString OnlinePmFriendsOnlyHint => new TranslatableString(getKey(@"online_pm_friends_only_hint"), @"Block private messages, room invites, and duel requests from people not on your friends list.");
+
+        public static LocalisableString DialogOk => new TranslatableString(getKey(@"dialog_ok"), @"OK");
     }
 }

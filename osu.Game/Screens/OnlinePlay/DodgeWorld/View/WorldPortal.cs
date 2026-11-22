@@ -52,7 +52,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                     Anchor = Anchor.BottomCentre,
                     Origin = Anchor.BottomCentre,
                     Y = -7,
-                    Text = "DODGE PORTAL",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4783,
                     Font = OsuFont.Default.With(size: 15, weight: FontWeight.Bold),
                 },
             });

@@ -48,6 +48,14 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
             pathVersion.BindTo(DrawableSlider.PathVersion);
 
             CheckHittable = (d, t, r) => DrawableSlider.CheckHittable?.Invoke(d, t, r) ?? ClickAction.Hit;
+            HitArea.Hit = () =>
+            {
+                // Select the key before the head judgement, but do not let a press
+                // consumed by an already-judged head change slider ownership.
+                if (!Judged && osu.Game.Online.MosuServerEnvironment.UsesStableProtocol && HitAction is OsuAction action)
+                    DrawableSlider.SliderInputManager.HandleStableHeadPress(action);
+                UpdateResult(true);
+            };
         }
 
         protected override void CheckForResult(bool userTriggered, double timeOffset)

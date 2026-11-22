@@ -12,7 +12,7 @@ using osu.Game.Configuration;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
-using osu.Game.Rulesets.Scoring;
+using osu.Game.Utils;
 using osuTK;
 
 namespace osu.Game.Overlays.Mods
@@ -98,6 +98,8 @@ namespace osu.Game.Overlays.Mods
         {
             base.LoadComplete();
 
+            beatmapAttributesDisplay?.StarDifficulty.BindValueChanged(_ => updateInformation());
+
             Beatmap.BindValueChanged(b =>
             {
                 beatmapAttributesDisplay?.BeatmapInfo.Value = b.NewValue?.BeatmapInfo;
@@ -127,14 +129,25 @@ namespace osu.Game.Overlays.Mods
 
             if (rankingInformationDisplay != null && workingBeatmap != null)
             {
-                var scoreMultiplierCalculator = Ruleset.Value?.CreateInstance().CreateScoreMultiplierCalculator(new ScoreMultiplierContext(workingBeatmap.BeatmapInfo.Difficulty));
-                double multiplier = scoreMultiplierCalculator?.CalculateFor(ActiveMods.Value) ?? 1;
+                var currentRuleset = Ruleset.Value?.CreateInstance();
+                double multiplier = currentRuleset != null
+                    ? ModUtils.CalculateScoreMultiplierForDisplay(currentRuleset, workingBeatmap.BeatmapInfo, ActiveMods.Value)
+                    : 1;
 
                 rankingInformationDisplay.ModMultiplier.Value = multiplier;
-                rankingInformationDisplay.Ranked.Value = ActiveMods.Value.All(m => m.Ranked);
+                rankingInformationDisplay.Ranked.Value = ModPerformancePointHelper.ModsAwardPerformancePoints(workingBeatmap.BeatmapInfo, ActiveMods.Value)
+                                                        && (Online.MosuServerEnvironment.UsesStableProtocol || ActiveMods.Value.All(m => m.Ranked))
+                                                        && ModPerformancePointHelper.IsWithinRankedStarLimit(Ruleset.Value, ActiveMods.Value,
+                                                            beatmapAttributesDisplay?.StarDifficulty.Value.Stars ?? workingBeatmap.BeatmapInfo.StarRating);
             }
 
             beatmapAttributesDisplay?.Mods.Value = ActiveMods.Value;
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            modSettingChangeTracker?.Dispose();
+            base.Dispose(isDisposing);
         }
 
         protected override void Update()

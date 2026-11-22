@@ -12,6 +12,7 @@ using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Input.Events;
 using osu.Game.Configuration;
@@ -95,7 +96,7 @@ namespace osu.Game.Overlays.Mods
             ModType = modType;
             this.allowIncompatibleSelection = allowIncompatibleSelection;
 
-            HeaderText = modType == ModType.Mosu ? "Morasooma" : ModType.Humanize(LetterCasing.Title);
+            HeaderText = modType == ModType.Mosu ? global::osu.Game.Localisation.ClientTranslationStrings.J3964 : ModType.Humanize(LetterCasing.Title);
 
             if (allowIncompatibleSelection)
             {
@@ -117,24 +118,36 @@ namespace osu.Game.Overlays.Mods
             }
         }
 
+        [Resolved]
+        private OverlayColourProvider colourProvider { get; set; } = null!;
+
+        [Resolved]
+        private OsuColour colours { get; set; } = null!;
+
         [BackgroundDependencyLoader]
-        private void load(OsuColour colours, OsuConfigManager configManager)
+        private void load(OsuConfigManager configManager)
         {
-            AccentColour = colours.ForModType(ModType);
+            updateColours();
+
+            hotkeyStyle = configManager.GetBindable<ModSelectHotkeyStyle>(OsuSetting.ModSelectHotkeyStyle);
+        }
+
+        private void updateColours()
+        {
+            AccentColour = colourProvider.GetModTypeColour(ModType, colours);
 
             if (toggleAllCheckbox != null)
             {
                 toggleAllCheckbox.AccentColour = AccentColour;
                 toggleAllCheckbox.AccentHoverColour = AccentColour.Lighten(0.3f);
             }
-
-            hotkeyStyle = configManager.GetBindable<ModSelectHotkeyStyle>(OsuSetting.ModSelectHotkeyStyle);
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
 
+            colourProvider.PaletteVersion.BindValueChanged(_ => updateColours());
             toggleAllCheckbox?.Current.BindValueChanged(_ => updateToggleAllText(), true);
             hotkeyStyle.BindValueChanged(val => hotkeyHandler = createHotkeyHandler(val.NewValue), true);
             asyncLoadPanels();
@@ -152,19 +165,71 @@ namespace osu.Game.Overlays.Mods
         {
             cancellationTokenSource?.Cancel();
 
-            var panels = availableMods.Select(mod => CreateModPanel(mod).With(panel => panel.Shear = Vector2.Zero)).ToArray();
-            latestLoadedPanels = panels;
+            cancellationTokenSource?.Dispose();
+            var cancellation = cancellationTokenSource = new CancellationTokenSource();
+            var token = cancellation.Token;
+            latestLoadedPanels = null;
 
-            latestLoadTask = LoadComponentsAsync(panels, loaded =>
+            // LoadComponentsAsync enumerates its argument on Update. A lazy Select
+            // therefore still constructs every panel (and its drawable tree) there.
+            // Construct them inside a loadable flow instead, on the existing loader.
+            var batch = new ModPanelBatch(availableMods.ToArray(), CreateModPanel);
+            latestLoadTask = LoadComponentAsync(batch, loaded =>
             {
-                ItemsFlow.ChildrenEnumerable = loaded;
+                if (token.IsCancellationRequested || IsDisposed)
+                    return;
+
+                latestLoadedPanels = loaded.Children.ToArray();
+                ItemsFlow.Child = loaded;
                 updateState();
-            }, (cancellationTokenSource = new CancellationTokenSource()).Token);
+            }, token);
+        }
+
+        private partial class ModPanelBatch : FillFlowContainer<ModPanel>
+        {
+            private readonly ModState[] mods;
+            private readonly Func<ModState, ModPanel> createPanel;
+
+            public ModPanelBatch(ModState[] mods, Func<ModState, ModPanel> createPanel)
+            {
+                this.mods = mods;
+                this.createPanel = createPanel;
+                RelativeSizeAxes = Axes.X;
+                AutoSizeAxes = Axes.Y;
+                Direction = FillDirection.Vertical;
+                Spacing = new Vector2(0, 7);
+            }
+
+            [BackgroundDependencyLoader]
+            private void load(CancellationToken cancellation)
+            {
+                foreach (var mod in mods)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    Add(createPanel(mod).With(panel => panel.Shear = Vector2.Zero));
+                }
+            }
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            cancellationTokenSource?.Cancel();
+            cancellationTokenSource?.Dispose();
+            base.Dispose(isDisposing);
         }
 
         private void updateState()
         {
             bool anyVisibleMods = availableMods.Any(mod => mod.Visible);
+
+            if (toggleAllCheckbox != null && !SelectionAnimationRunning)
+            {
+                toggleAllCheckbox.Alpha = anyVisibleMods ? 1 : 0;
+
+                // checking `anyPanelsVisible` is important since `.All()` returns `true` for empty enumerables.
+                if (anyVisibleMods)
+                    toggleAllCheckbox.Current.Value = availableMods.Where(panel => panel.Visible).All(panel => panel.Active.Value);
+            }
 
             if (availableMods.Count == 0 || !anyVisibleMods)
             {
@@ -175,17 +240,6 @@ namespace osu.Game.Overlays.Mods
 
             Width = WIDTH;
             Alpha = 1;
-
-            if (toggleAllCheckbox != null && !SelectionAnimationRunning)
-            {
-                bool anyPanelsVisible = anyVisibleMods;
-
-                toggleAllCheckbox.Alpha = anyPanelsVisible ? 1 : 0;
-
-                // checking `anyPanelsVisible` is important since `.All()` returns `true` for empty enumerables.
-                if (anyPanelsVisible)
-                    toggleAllCheckbox.Current.Value = availableMods.Where(panel => panel.Visible).All(panel => panel.Active.Value);
-            }
         }
 
         #region Bulk select / deselect

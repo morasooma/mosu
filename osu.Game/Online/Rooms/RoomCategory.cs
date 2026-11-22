@@ -11,13 +11,13 @@ namespace osu.Game.Online.Rooms
         Normal,
         Spotlight,
 
-        [Description("Featured Artist")]
+        [Description("Featured Artist"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3858))]
         FeaturedArtist,
 
-        [Description("Daily Challenge")]
+        [Description("Daily Challenge"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3859))]
         DailyChallenge,
 
-        [Description("Realtime")]
+        [Description("Realtime"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3860))]
         Realtime,
     }
 }

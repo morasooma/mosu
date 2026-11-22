@@ -466,6 +466,80 @@ namespace osu.Game.Tests.Visual.Online
         }
 
         [Test]
+        public void TestRelationshipMutationIsSingleFlightAndUpdatesLocalState()
+        {
+            DeleteFriendRequest? pendingDelete = null;
+            int deletes = 0;
+            int adds = 0;
+            FollowersButton button = null!;
+            AddStep("show friend", () =>
+            {
+                dummyAPI.LocalUserState.Friends.Clear();
+                dummyAPI.LocalUserState.Friends.Add(new APIRelation { TargetID = nonFriend.OnlineID, RelationType = RelationType.Friend });
+                header.User.Value = new UserProfileData(nonFriend, new OsuRuleset().RulesetInfo);
+                dummyAPI.HandleRequest = request =>
+                {
+                    if (request is DeleteFriendRequest delete)
+                    {
+                        deletes++;
+                        pendingDelete = delete;
+                        return true;
+                    }
+                    if (request is AddFriendRequest)
+                    {
+                        adds++;
+                        return true;
+                    }
+                    return false;
+                };
+            });
+            AddUntilStep("button loaded", () => (button = header.ChildrenOfType<FollowersButton>().SingleOrDefault()!)?.IsLoaded == true);
+            AddStep("double click delete", () => { button.TriggerClick(); button.TriggerClick(); });
+            AddAssert("only one delete queued", () => deletes == 1 && adds == 0);
+            AddStep("acknowledge delete without friends refresh", () => pendingDelete!.TriggerSuccess());
+            AddUntilStep("acknowledged deletion updates friends", () => !API.LocalUserState.Friends.Any(friend => friend.TargetID == nonFriend.OnlineID));
+            AddStep("click again", () => button.TriggerClick());
+            AddAssert("next click adds instead of repeating delete", () => adds == 1 && deletes == 1);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestAddFriendResponseWithoutProfile(bool switchProfile)
+        {
+            AddFriendRequest? pendingAdd = null;
+            APIUser targetUser = nonFriend;
+            APIUser otherUser = new APIUser { Id = 728, Username = "Other user" };
+
+            AddStep("prepare add without refresh", () =>
+            {
+                dummyAPI.LocalUserState.Friends.Clear();
+                header.User.Value = new UserProfileData(targetUser, new OsuRuleset().RulesetInfo);
+                dummyAPI.HandleRequest = request =>
+                {
+                    if (request is not AddFriendRequest add)
+                        return false;
+
+                    pendingAdd = add;
+                    return true;
+                };
+            });
+            AddStep("add friend", () => header.ChildrenOfType<FollowersButton>().Single().TriggerClick());
+            AddUntilStep("request pending", () => pendingAdd != null);
+            AddStep("optionally switch profile", () =>
+            {
+                if (switchProfile)
+                    header.User.Value = new UserProfileData(otherUser, new OsuRuleset().RulesetInfo);
+            });
+            AddStep("acknowledge without target profile", () => pendingAdd!.TriggerSuccess(new AddFriendResponse
+            {
+                UserRelation = new APIRelation { TargetID = targetUser.OnlineID, RelationType = RelationType.Friend }
+            }));
+            AddUntilStep("friend profile retained", () => dummyAPI.LocalUserState.Friends.Count == 1
+                                                             && ReferenceEquals(dummyAPI.LocalUserState.Friends[0].TargetUser, targetUser));
+            AddAssert("correct profile still displayed", () => header.User.Value!.User.OnlineID == (switchProfile ? otherUser.OnlineID : targetUser.OnlineID));
+        }
+
+        [Test]
         public void TestAddFriendNonMutual()
         {
             AddStep("Setup request", () =>

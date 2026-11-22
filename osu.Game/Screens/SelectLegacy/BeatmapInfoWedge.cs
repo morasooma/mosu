@@ -338,7 +338,7 @@ namespace osu.Game.Screens.SelectLegacy
                         starRatingDisplay.FinishTransforms(true);
 
                     starRatingDisplay.FadeIn(transition_duration);
-                });
+                }, true);
 
                 mods.BindValueChanged(m =>
                 {
@@ -441,7 +441,7 @@ namespace osu.Game.Screens.SelectLegacy
                 }).With(d =>
                 {
                     d.AutoSizeAxes = Axes.Both;
-                    d.AddText("mapped by ");
+                    d.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5274);
                     d.AddUserLink(metadata.Author);
                 });
             }

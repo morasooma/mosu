@@ -3,12 +3,15 @@
 
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
+using osu.Game.Graphics;
 
 namespace osu.Game.Overlays.Toolbar
 {
     public partial class ToolbarSupporterQuestsButton : ToolbarOverlayToggleButton
     {
         protected override Anchor TooltipAnchor => Anchor.TopRight;
+
+        public ToolbarSupporterQuestsButton() => SetIcon(OsuIcon.NavigationCrown);
 
         [BackgroundDependencyLoader(true)]
         private void load(SupporterQuestsOverlay quests)

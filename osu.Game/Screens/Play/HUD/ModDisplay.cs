@@ -100,7 +100,7 @@ namespace osu.Game.Screens.Play.HUD
         {
             iconsContainer.Clear();
 
-            foreach (Mod mod in mods.NewValue.AsOrdered())
+            foreach (Mod mod in mods.NewValue.AsVisible().AsOrdered())
                 iconsContainer.Add(new ModIcon(mod, showExtendedInformation: showExtendedInformation) { Scale = new Vector2(MOD_ICON_SCALE) });
         }
 

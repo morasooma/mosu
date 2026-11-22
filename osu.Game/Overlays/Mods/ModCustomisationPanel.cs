@@ -40,6 +40,8 @@ namespace osu.Game.Overlays.Mods
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
 
+        private IBindable<float>? panelRadius;
+
         public readonly BindableBool Enabled = new BindableBool();
 
         public readonly Bindable<ModCustomisationPanelState> ExpandedState = new Bindable<ModCustomisationPanelState>();
@@ -138,6 +140,9 @@ namespace osu.Game.Overlays.Mods
                 content.BorderColour = colourProvider.Dark3;
                 contentBackground.Colour = colourProvider.Dark4;
             }, true);
+
+            panelRadius = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Panel, 10f);
+            panelRadius.BindValueChanged(r => content.CornerRadius = Math.Clamp(r.NewValue, 0f, 20f), true);
 
             FinishTransforms(true);
         }

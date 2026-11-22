@@ -68,7 +68,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Intro
                         [
                             title = new OsuSpriteText
                             {
-                                Text = "Refining star difficulty range...",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4940,
                                 Padding = new MarginPadding { Bottom = 20 },
                                 Font = OsuFont.Style.Title,
                                 Anchor = Anchor.TopCentre,
@@ -106,7 +106,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Intro
                             },
                             explainer = new OsuSpriteText
                             {
-                                Text = "Difficulty range is calculated to suit the two players.",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4941,
                                 Padding = new MarginPadding { Top = 20 },
                                 Font = OsuFont.Style.Heading2,
                                 Anchor = Anchor.TopCentre,
@@ -232,14 +232,14 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Intro
                              .ScaleTo(0)
                              .ScaleTo(1, 400, Easing.OutElasticQuarter);
 
-                    title.Text = "Star rating has been decided!";
+                    title.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4942;
 
                     using (BeginDelayedSequence(1050))
                     {
                         explainer.FadeInFromZero(200);
                         Schedule(() =>
                         {
-                            explainer.Text = "There's always a chance that you get maps outside this range";
+                            explainer.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4943;
                             noticeSample?.Play();
                         });
                     }

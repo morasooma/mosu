@@ -13,6 +13,6 @@ namespace osu.Game.Rulesets.Mania.Mods
         public override string Name => "Nine Keys";
         public override string Acronym => "9K";
         public override IconUsage? Icon => OsuIcon.ModNineKeys;
-        public override LocalisableString Description => @"Play with nine keys.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3647;
     }
 }

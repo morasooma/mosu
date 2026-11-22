@@ -1,0 +1,44 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup Label="Nuget">
+    <PackageId>ppy.Veldrid</PackageId>
+    <Version>0.0.0</Version>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>ppy.Veldrid</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn Condition="'$(Configuration)' == 'Debug'">1591</NoWarn>
+    <DefineConstants>$(DefineConstants);VALIDATE_USAGE</DefineConstants>
+    <LangVersion>12.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ppy.Vk" Version="1.0.26" Condition="'$(ExcludeVulkan)' != 'true'"/>
+    <PackageReference Include="Vortice.D3DCompiler" Version="2.4.2"/>
+    <PackageReference Include="Vortice.Direct3D11" Version="2.4.2"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ppy.Veldrid.MetalBindings" Version="4.9.69-ga405fe8484" />
+    <PackageReference Include="ppy.Veldrid.OpenGLBindings" Version="4.9.69-ga405fe8484" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="MTL/EmbeddedShaders/MTL_UnalignedBufferCopy_macOS.metallib">
+      <LogicalName>MTL_UnalignedBufferCopy_macOS</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="MTL/EmbeddedShaders/MTL_UnalignedBufferCopy_iOS.metallib">
+      <LogicalName>MTL_UnalignedBufferCopy_iOS</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <Description>A low-level, hardware-accelerated graphics and compute library for .NET, with backends for Vulkan, Metal, Direct3D 11, OpenGL, and OpenGL ES. Veldrid can be used to create high-performance 2D and 3D games, simulations, tools, and other graphical applications.</Description>
+    <PackageTags>3D Graphics Direct3D DirectX Vulkan OpenGL Metal Core Standard Game</PackageTags>
+  </PropertyGroup>
+
+</Project>

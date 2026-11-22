@@ -15,8 +15,12 @@ namespace osu.Game.Graphics.UserInterface
         public LocalisableString StatusText
         {
             get => ((InnerFilterTextBox)TextBox).StatusText.Text;
-            set => Schedule(() => ((InnerFilterTextBox)TextBox).StatusText.Text = value);
+            // Stable-style chrome keeps the modern filter hidden. Only the
+            // latest count needs publication when that tree resumes updating.
+            set => Scheduler.AddOnce(applyStatusText, value);
         }
+
+        private void applyStatusText(LocalisableString value) => ((InnerFilterTextBox)TextBox).StatusText.Text = value;
 
         public ShearedFilterTextBox()
         {

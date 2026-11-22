@@ -10,6 +10,7 @@ using osu.Framework.Localisation;
 using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Localisation;
 using osu.Game.Performance.Debug;
 
 namespace osu.Game.Overlays.Toolbar
@@ -28,7 +29,7 @@ namespace osu.Game.Overlays.Toolbar
             get
             {
                 PerformanceDebugSnapshot sample = telemetry?.Latest ?? default;
-                return $"Process RAM: {sample.WorkingSetMb:0} MB\nGC heap: {sample.GcHeapMb:0} MB\nAllocations: {sample.AllocationRateMbPerSecond:0.0} MB/s\nGC mode: {sample.GcMode}";
+                return PerformanceDebugStrings.MemoryTooltip(sample);
             }
         }
 
@@ -65,7 +66,7 @@ namespace osu.Game.Overlays.Toolbar
                 return;
 
             PerformanceDebugSnapshot sample = telemetry.Latest;
-            text.Text = $"RAM {sample.WorkingSetMb:0}M | GC {sample.GcHeapMb:0}M";
+            text.Text = PerformanceDebugStrings.MemoryToolbar(sample);
             lastUpdate = Time.Current;
         }
 

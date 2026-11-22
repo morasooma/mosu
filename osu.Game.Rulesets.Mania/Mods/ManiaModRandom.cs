@@ -15,7 +15,7 @@ namespace osu.Game.Rulesets.Mania.Mods
 {
     public class ManiaModRandom : ModRandom, IApplicableToBeatmap
     {
-        public override LocalisableString Description => @"Shuffle around the keys!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3651;
 
         public void ApplyToBeatmap(IBeatmap beatmap)
         {

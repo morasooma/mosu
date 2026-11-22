@@ -104,7 +104,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                         {
                             Anchor = Anchor.Centre,
                             Origin = Anchor.Centre,
-                            Text = "E   ВАРП",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4788,
                             Font = OsuFont.Default.With(size: 12, weight: FontWeight.Bold),
                         },
                     },
@@ -153,8 +153,8 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
             glyph.Colour = Unlocked ? colours.Blue0 : colours.Gray7;
 
             priceText.Text = Unlocked
-                ? TravelCost > 0 ? $"ПЕРЕХОД {TravelCost}" : "ПЕРЕХОД БЕСПЛАТНО"
-                : UnlockCost > 0 ? $"ОТКРЫТЬ {UnlockCost}" : "ОТКРЫТЬ БЕСПЛАТНО";
+                ? TravelCost > 0 ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4789(TravelCost) : global::osu.Game.Localisation.ClientTranslationStrings.J4790
+                : UnlockCost > 0 ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4791(UnlockCost) : global::osu.Game.Localisation.ClientTranslationStrings.J4792;
 
             priceText.Colour = Unlocked ? colours.Blue0 : colours.YellowLight;
         }

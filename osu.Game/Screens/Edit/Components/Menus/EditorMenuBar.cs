@@ -1,14 +1,13 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System.Collections.Generic;
+using System;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
-using osu.Framework.Graphics.Textures;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input.Events;
 using osu.Framework.Localisation;
@@ -23,8 +22,7 @@ namespace osu.Game.Screens.Edit.Components.Menus
 {
     public partial class EditorMenuBar : OsuMenu
     {
-        private const float heading_area = 114;
-
+        private FillFlowContainer heading = null!;
         private SpriteIcon brandIcon = null!;
         private ITextPart morasoomaPart = null!;
         private ITextPart editorPart = null!;
@@ -34,6 +32,8 @@ namespace osu.Game.Screens.Edit.Components.Menus
         internal Color4 BrandIconColour => brandIcon.Colour;
         internal Color4 MorasoomaTextColour => morasoomaPart.Drawables.OfType<SpriteText>().FirstOrDefault()?.Colour ?? Color4.White;
 
+        protected override bool ApplyGeometryRadius => false;
+
         public EditorMenuBar()
             : base(Direction.Horizontal, true)
         {
@@ -42,60 +42,71 @@ namespace osu.Game.Screens.Edit.Components.Menus
             MaskingContainer.CornerRadius = 0;
             ItemsContainer.Padding = new MarginPadding();
 
-            ContentContainer.Margin = new MarginPadding { Left = heading_area };
+            ContentContainer.RelativeSizeAxes = Axes.Y;
             ContentContainer.Masking = true;
         }
 
         [BackgroundDependencyLoader]
-        private void load(OverlayColourProvider colourProvider, TextureStore textures)
+        private void load(OverlayColourProvider colourProvider)
         {
             TextFlowContainer text;
 
-            AddRangeInternal(new[]
+            MaskingContainer.Add(heading = new FillFlowContainer
             {
-                new Container
+                RelativeSizeAxes = Axes.Y,
+                AutoSizeAxes = Axes.X,
+                Direction = FillDirection.Horizontal,
+                Padding = new MarginPadding { Horizontal = 8 },
+                Spacing = new Vector2(8, 0),
+                Children = new Drawable[]
                 {
-                    RelativeSizeAxes = Axes.Y,
-                    Width = heading_area,
-                    Padding = new MarginPadding(8),
-                    Children = new Drawable[]
+                    brandIcon = new SpriteIcon
                     {
-                        brandIcon = new SpriteIcon
-                        {
-                            Size = new Vector2(26),
-                            Anchor = Anchor.CentreLeft,
-                            Origin = Anchor.CentreLeft,
-                            Icon = OsuIcon.EditCircle,
-                        },
-                        text = new TextFlowContainer
-                        {
-                            Anchor = Anchor.CentreRight,
-                            Origin = Anchor.CentreRight,
-                            AutoSizeAxes = Axes.Both,
-                        }
+                        Size = new Vector2(26),
+                        Anchor = Anchor.CentreLeft,
+                        Origin = Anchor.CentreLeft,
+                        Icon = OsuIcon.EditCircle,
+                    },
+                    text = new TextFlowContainer
+                    {
+                        Anchor = Anchor.CentreLeft,
+                        Origin = Anchor.CentreLeft,
+                        AutoSizeAxes = Axes.Both,
                     }
-                },
+                }
             });
 
-            morasoomaPart = text.AddText(@"Morasooma ", t =>
+            morasoomaPart = text.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4293, t =>
             {
                 t.Font = OsuFont.TorusAlternate;
                 t.Colour = colourProvider.Content1;
             });
-            editorPart = text.AddText(@"editor", t =>
+            editorPart = text.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4294, t =>
             {
                 t.Font = OsuFont.TorusAlternate;
                 t.Colour = colourProvider.Highlight1;
             });
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-            themeColour.BindValueChanged(_ =>
+            void updateBarColours()
             {
                 BackgroundColour = colourProvider.Background3;
                 brandIcon.Colour = colourProvider.Content1;
                 foreach (var p in morasoomaPart.Drawables) p.Colour = colourProvider.Content1;
                 foreach (var p in editorPart.Drawables) p.Colour = colourProvider.Highlight1;
-            }, true);
+            }
+
+            themeColour.BindValueChanged(_ => updateBarColours(), true);
+            colourProvider.PaletteVersion.BindValueChanged(_ => updateBarColours());
+        }
+
+        protected override void UpdateAfterChildren()
+        {
+            base.UpdateAfterChildren();
+
+            // Reserve the actual localised title width instead of drawing the title back over the icon.
+            ContentContainer.X = heading.DrawWidth;
+            ContentContainer.Width = Math.Max(0, DrawWidth - heading.DrawWidth);
         }
 
         protected override Framework.Graphics.UserInterface.Menu CreateSubMenu() => new SubMenu
@@ -125,14 +136,17 @@ namespace osu.Game.Screens.Edit.Components.Menus
                 BackgroundColourHover = colourProvider.Background1;
 
                 themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-                themeColour.BindValueChanged(_ =>
+                void updateItemColours()
                 {
                     ForegroundColour = colourProvider.Light3;
                     BackgroundColour = colourProvider.Background2;
                     ForegroundColourHover = colourProvider.Content1;
                     BackgroundColourHover = colourProvider.Background1;
                     updateState();
-                });
+                }
+
+                themeColour.BindValueChanged(_ => updateItemColours());
+                colourProvider.PaletteVersion.BindValueChanged(_ => updateItemColours());
 
                 AddInternal(hoverClickSounds = new HoverClickSounds(HoverSampleSet.MenuOpen));
             }
@@ -245,6 +259,8 @@ namespace osu.Game.Screens.Edit.Components.Menus
 
         private partial class SubMenu : OsuMenu
         {
+            protected override bool ApplyGeometryRadius => false;
+
             public SubMenu()
                 : base(Direction.Vertical)
             {

@@ -1,7 +1,9 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
 using osu.Framework.Graphics;
+using osu.Game.Localisation;
 using osu.Framework.Localisation;
 using osu.Game.Online.API.Requests;
 using osu.Game.Overlays.Profile.Sections.Historical;
@@ -16,15 +18,18 @@ namespace osu.Game.Overlays.Profile.Sections
 
         public override string Identifier => @"historical";
 
-        public HistoricalSection()
+        public HistoricalSection(bool includeMostViewedReplays = false)
         {
-            Children = new Drawable[]
+            var sections = new List<Drawable>
             {
                 new PlayHistorySubsection(User),
                 new PaginatedMostPlayedBeatmapContainer(User),
                 new PaginatedScoreContainer(ScoreType.Recent, User, UsersStrings.ShowExtraHistoricalRecentPlaysTitle),
                 new ReplaysSubsection(User)
             };
+            if (includeMostViewedReplays)
+                sections.Add(new PaginatedScoreContainer(ScoreType.MostViewed, User, ReplayViewsStrings.MostViewed));
+            ChildrenEnumerable = sections;
         }
     }
 }

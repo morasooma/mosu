@@ -147,7 +147,9 @@ namespace osu.Game.Rulesets.Mania.UI
         {
             if (isDisposing)
             {
-                skin.SourceChanged -= onSkinChanged;
+                // A cancelled load may never have injected the skin source.
+                if (skin != null)
+                    skin.SourceChanged -= onSkinChanged;
 
                 if (boundPlayfieldScale != null)
                     boundPlayfieldScale.ValueChanged -= onPlayfieldScaleChanged;

@@ -23,12 +23,12 @@ namespace osu.Game.Rulesets.Osu.Mods
 
         public override IconUsage? Icon => OsuIcon.ModFreezeFrame;
 
-        public override LocalisableString Description => "Burn the notes into your memory.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3692;
 
         /// <remarks>
-        /// Incompatible with all mods that directly modify or indirectly depend on <see cref="OsuHitObject.TimePreempt"/>, or alter the behaviour of approach circles.
+        /// Incompatible with mods that alter approach circle behaviour. Hidden explicitly accounts for the preempt adjustment.
         /// </remarks>
-        public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[] { typeof(OsuModApproachDifferent), typeof(OsuModTransform), typeof(OsuModDepth), typeof(OsuModHidden) }).ToArray();
+        public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[] { typeof(OsuModApproachDifferent), typeof(OsuModTransform), typeof(OsuModDepth) }).ToArray();
 
         public override ModType Type => ModType.Fun;
 
@@ -58,7 +58,13 @@ namespace osu.Game.Rulesets.Osu.Mods
             void applyFadeInAdjustment(OsuHitObject osuObject)
             {
                 if (osuObject is not Spinner)
-                    osuObject.TimePreempt += osuObject.StartTime - lastNewComboTime;
+                {
+                    // Keep the adjustment separate so Hidden can use the pre-Freeze-Frame duration
+                    // even when it is applied after this mod. Replace rather than accumulate on reapplication.
+                    osuObject.TimePreempt -= osuObject.FreezeFramePreemptAdjustment;
+                    osuObject.FreezeFramePreemptAdjustment = osuObject.StartTime - lastNewComboTime;
+                    osuObject.TimePreempt += osuObject.FreezeFramePreemptAdjustment;
+                }
 
                 int repeatCount = 0;
 

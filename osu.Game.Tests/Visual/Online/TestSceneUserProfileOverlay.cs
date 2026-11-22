@@ -7,6 +7,8 @@ using System.Linq;
 using NUnit.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Configuration;
+using osu.Framework.Development;
+using osu.Game.Overlays.Profile;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Testing;
@@ -86,6 +88,179 @@ namespace osu.Game.Tests.Visual.Online
                 dummyAPI.Login("username", "password");
                 dummyAPI.AuthenticateSecondFactor("abcdefgh");
             });
+        }
+
+        [Test]
+        public void TestDailyChallengeContributionCountsAppearInHeader()
+        {
+            AddStep("local profile with daily contributions", () => dummyAPI.HandleRequest = request =>
+            {
+                if (request is not GetUserRequest userRequest) return false;
+                userRequest.TriggerSuccess(new APIUser
+                {
+                    Id = 42, Username = "daily contributor", PlayMode = "osu", ProfileOrder = Array.Empty<string>(),
+                    DailyChallengeProposalsCount = 12345, DailyChallengeMapsCount = 2345,
+                    Kudosu = new APIUser.KudosuCount()
+                });
+                return true;
+            });
+            AddStep("show profile", () => profile.ShowUser(new APIUser { Id = 42 }));
+            AddUntilStep("submitted count visible", () => profile.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>()
+                .Any(text => text.IsPresent && text.Text.ToString().Contains("12345", StringComparison.Ordinal)));
+            AddUntilStep("daily map count visible", () => profile.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>()
+                .Any(text => text.IsPresent && text.Text.ToString().Contains("2345", StringComparison.Ordinal)
+                    && !text.Text.ToString().Contains("12345", StringComparison.Ordinal)));
+            AddAssert("header accommodates its text", () =>
+            {
+                var header = profile.ChildrenOfType<osu.Game.Overlays.Profile.Header.BottomHeaderContainer>().Single();
+                return header.DrawHeight > 0 && header.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>()
+                    .All(text => text.DrawWidth <= header.DrawWidth);
+            });
+        }
+
+        [Test]
+        public void TestRequestedBeatmapSectionLoadsCards()
+        {
+            AddStep("local profile responses", () => dummyAPI.HandleRequest = request =>
+            {
+                if (request is GetUserRequest userRequest)
+                {
+                    userRequest.TriggerSuccess(new APIUser
+                    {
+                        Id = 42, Username = "fixture", PlayMode = "osu", ProfileOrder = new[] { "beatmaps" },
+                        Kudosu = new APIUser.KudosuCount()
+                    });
+                    return true;
+                }
+                if (request is GetUserBeatmapsRequest maps)
+                {
+                    maps.TriggerSuccess(new List<APIBeatmapSet> { CreateAPIBeatmapSet() });
+                    return true;
+                }
+                return false;
+            });
+            AddStep("show profile", () => profile.ShowUser(new APIUser { Id = 42 }));
+            AddUntilStep("section present", () => profile.ChildrenOfType<osu.Game.Overlays.Profile.Sections.BeatmapsSection>().Any());
+            AddStep("scroll to beatmaps", () => profile.ChildrenOfType<osu.Game.Graphics.Containers.SectionsContainer<osu.Game.Overlays.Profile.ProfileSection>>()
+                .Single().ScrollTo(profile.ChildrenOfType<osu.Game.Overlays.Profile.Sections.BeatmapsSection>().Single()));
+            AddUntilStep("cards present", () => profile.ChildrenOfType<osu.Game.Beatmaps.Drawables.Cards.BeatmapCard>().Any());
+        }
+
+        [TestCase(0)]
+        [TestCase(222)]
+        public void TestFirstHeaderDependencyLoadRunsOffUpdate(int hue)
+        {
+            HeaderLoadProbeOverlay probe = null!;
+            AddStep("create instrumented profile", () =>
+            {
+                Child = profile = probe = new HeaderLoadProbeOverlay();
+                dummyAPI.HandleRequest = request =>
+                {
+                    if (request is not GetUserRequest userRequest)
+                        return false;
+                    userRequest.TriggerSuccess(new APIUser
+                    {
+                        Id = 42, Username = "fixture", PlayMode = "osu", ProfileOrder = Array.Empty<string>(), ProfileHue = hue,
+                        Kudosu = new APIUser.KudosuCount()
+                    });
+                    return true;
+                };
+            });
+            AddStep("show profile", () => probe.ShowUser(new APIUser { Id = 42 }));
+            AddUntilStep("header attached", () => probe.Header.IsLoaded);
+            AddUntilStep("response applied", () => probe.Header.User.Value?.User.Id == 42);
+            AddAssert("dependency loading off Update", () => !((HeaderLoadProbe)probe.Header).LoadedOnUpdate);
+        }
+
+        [Test]
+        public void TestChangingProfileColourDisposesPreviousHeader()
+        {
+            HeaderLoadProbeOverlay probe = null!;
+            HeaderLoadProbe previous = null!;
+            AddStep("create instrumented profile", () =>
+            {
+                Child = profile = probe = new HeaderLoadProbeOverlay();
+                dummyAPI.HandleRequest = request =>
+                {
+                    if (request is not GetUserRequest userRequest)
+                        return false;
+                    int id = int.Parse(userRequest.Lookup);
+                    userRequest.TriggerSuccess(new APIUser
+                    {
+                        Id = id, Username = "fixture", PlayMode = "osu", ProfileOrder = Array.Empty<string>(),
+                        ProfileHue = id == 42 ? 222 : 50, Kudosu = new APIUser.KudosuCount()
+                    });
+                    return true;
+                };
+                probe.ShowUser(new APIUser { Id = 42 });
+            });
+            AddUntilStep("first profile ready", () => probe.Header.User.Value?.User.Id == 42);
+            AddStep("switch colour and user", () =>
+            {
+                previous = (HeaderLoadProbe)probe.Header;
+                probe.ShowUser(new APIUser { Id = 43 });
+            });
+            AddUntilStep("second profile ready", () => probe.Header.User.Value?.User.Id == 43);
+            AddUntilStep("old header disposed", () => previous.Disposed);
+        }
+
+        private partial class HeaderLoadProbeOverlay : UserProfileOverlay
+        {
+            protected override ProfileHeader CreateHeader() => new HeaderLoadProbe();
+        }
+
+        private partial class HeaderLoadProbe : ProfileHeader
+        {
+            public bool LoadedOnUpdate;
+            public bool Disposed => IsDisposed;
+
+            [BackgroundDependencyLoader]
+            private void load() => LoadedOnUpdate = ThreadSafety.IsUpdateThread;
+        }
+
+        [Test]
+        public void TestNewUserWhileHeaderLoadsUsesLatestRequest()
+        {
+            AddStep("local responses", () => dummyAPI.HandleRequest = request =>
+            {
+                if (request is not GetUserRequest userRequest)
+                    return false;
+                userRequest.TriggerSuccess(new APIUser
+                {
+                    Id = int.Parse(userRequest.Lookup), Username = "latest", PlayMode = "osu", ProfileOrder = Array.Empty<string>(),
+                    Kudosu = new APIUser.KudosuCount()
+                });
+                return true;
+            });
+            AddStep("replace user before header ready", () =>
+            {
+                profile.ShowUser(new APIUser { Id = 42 });
+                profile.ShowUser(new APIUser { Id = 43 });
+            });
+            AddUntilStep("latest user displayed", () => profile.Header.User.Value?.User.Id == 43);
+        }
+
+        [Test]
+        public void TestNewSelectionSupersedesColourHeaderLoad()
+        {
+            AddStep("local responses", () => dummyAPI.HandleRequest = request =>
+            {
+                if (request is not GetUserRequest userRequest)
+                    return false;
+                int id = int.Parse(userRequest.Lookup);
+                userRequest.TriggerSuccess(new APIUser
+                {
+                    Id = id, Username = "fixture", PlayMode = "osu", ProfileOrder = new[] { "beatmaps" },
+                    ProfileHue = id == 42 ? 222 : 50, Kudosu = new APIUser.KudosuCount()
+                });
+                if (id == 42)
+                    profile.ShowUser(new APIUser { Id = 43 });
+                return true;
+            });
+            AddStep("show initial user", () => profile.ShowUser(new APIUser { Id = 42 }));
+            AddUntilStep("new user displayed", () => profile.Header.User.Value?.User.Id == 43);
+            AddWaitStep("obsolete callbacks settle", 5);
+            AddAssert("new user retained", () => profile.Header.User.Value?.User.Id == 43);
         }
 
         [Test]
@@ -196,7 +371,7 @@ namespace osu.Game.Tests.Visual.Online
 
             AddStep("show user", () => profile.ShowUser(new APIUser { Id = 1 }));
 
-            AddWaitStep("wait some", 3);
+            AddUntilStep("request created after header load", () => pendingRequest != null);
             AddStep("complete request", () => pendingRequest.TriggerSuccess(new APIUser
             {
                 Username = $"Colorful #{hue}",
@@ -210,8 +385,13 @@ namespace osu.Game.Tests.Visual.Online
             int hue2 = 0;
 
             AddSliderStep("hue 2", 0, 360, 50, h => hue2 = h);
-            AddStep("show user", () => profile.ShowUser(new APIUser { Id = 2 }));
-            AddWaitStep("wait some", 3);
+            AddUntilStep("first coloured header ready", () => profile.Header.User.Value?.User.Id == 1);
+            AddStep("show user", () =>
+            {
+                pendingRequest = null!;
+                profile.ShowUser(new APIUser { Id = 2 });
+            });
+            AddUntilStep("second request created", () => pendingRequest != null);
 
             AddStep("complete request", () => pendingRequest.TriggerSuccess(new APIUser
             {
@@ -223,8 +403,13 @@ namespace osu.Game.Tests.Visual.Online
                 PlayMode = "osu",
             }));
 
-            AddStep("show user different ruleset", () => profile.ShowUser(new APIUser { Id = 2 }, new TaikoRuleset().RulesetInfo));
-            AddWaitStep("wait some", 3);
+            AddUntilStep("second coloured header ready", () => profile.Header.User.Value?.User.Id == 2);
+            AddStep("show user different ruleset", () =>
+            {
+                pendingRequest = null!;
+                profile.ShowUser(new APIUser { Id = 2 }, new TaikoRuleset().RulesetInfo);
+            });
+            AddUntilStep("ruleset request created", () => pendingRequest != null);
 
             AddStep("complete request", () => pendingRequest.TriggerSuccess(new APIUser
             {

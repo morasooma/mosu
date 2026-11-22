@@ -1,7 +1,9 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.IO;
+using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using osu.Framework.Platform;
@@ -55,7 +57,25 @@ namespace osu.Game.Performance.Diagnostics
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
 
-            File.WriteAllText(path, JsonConvert.SerializeObject(session, serializer_settings));
+            // Replace only after the complete document has reached disk. A crash must
+            // leave either the previous checkpoint or the new one, never partial JSON.
+            string temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                byte[] contents = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(session, serializer_settings));
+                using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    stream.Write(contents);
+                    stream.Flush(flushToDisk: true);
+                }
+
+                File.Move(temporaryPath, path, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                    File.Delete(temporaryPath);
+            }
         }
 
         public static void Delete(Storage storage)

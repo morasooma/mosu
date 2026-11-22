@@ -115,7 +115,7 @@ namespace osu.Game.Rulesets.Catch.Edit.Blueprints.Components
             int selectedCount = VertexStates.Count(state => state.IsSelected);
 
             if (selectedCount != 0)
-                yield return new OsuMenuItem($"Delete selected {(selectedCount == 1 ? "vertex" : $"{selectedCount} vertices")}", MenuItemType.Destructive, deleteSelectedVertices);
+                yield return new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3341((selectedCount == 1 ? "vertex" : $"{selectedCount} vertices")), MenuItemType.Destructive, deleteSelectedVertices);
         }
 
         private void selectOnly(int index)

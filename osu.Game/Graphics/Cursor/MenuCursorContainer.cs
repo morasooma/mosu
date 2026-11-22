@@ -289,11 +289,7 @@ namespace osu.Game.Graphics.Cursor
                 useSkinCursor = config.GetBindable<bool>(OsuSetting.ForkUseSkinCursorOutsideGameplay);
 
                 useSkinCursor.BindValueChanged(_ => rebuild(), true);
-                menuCursorScale.BindValueChanged(size =>
-                {
-                    if (!useSkinCursor.Value && cursorContainer != null)
-                        cursorContainer.Scale = new Vector2(size.NewValue * base_scale);
-                }, true);
+                menuCursorScale.BindValueChanged(_ => updateCursorScale(), true);
             }
 
             public void Expand() => skinnableCursor?.Expand();
@@ -329,7 +325,6 @@ namespace osu.Game.Graphics.Cursor
                         },
                     };
 
-                    cursorContainer.Scale = Vector2.One;
                 }
                 else
                 {
@@ -358,8 +353,15 @@ namespace osu.Game.Graphics.Cursor
                         },
                     };
 
-                    cursorContainer.Scale = new Vector2(menuCursorScale.Value * base_scale);
                 }
+
+                updateCursorScale();
+            }
+
+            private void updateCursorScale()
+            {
+                if (cursorContainer != null)
+                    cursorContainer.Scale = new Vector2(menuCursorScale.Value * (useSkinCursor.Value ? 1 : base_scale));
             }
         }
 

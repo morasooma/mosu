@@ -67,7 +67,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                     Anchor = Anchor.TopCentre,
                     Origin = Anchor.BottomCentre,
                     Y = 5,
-                    Text = "PLAYER",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4782,
                     Font = OsuFont.Default.With(size: 13, weight: FontWeight.Bold),
                     Shadow = true,
                 },
@@ -126,7 +126,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
 
         public void SetUser(APIUser user, OsuColour colours)
         {
-            username.Text = string.IsNullOrWhiteSpace(user.Username) ? "PLAYER" : user.Username;
+            username.Text = string.IsNullOrWhiteSpace(user.Username) ? global::osu.Game.Localisation.ClientTranslationStrings.J4782 : user.Username;
 
             Color4 accent = colours.Pink1;
             if (!string.IsNullOrWhiteSpace(user.Colour))

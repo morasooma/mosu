@@ -15,6 +15,8 @@ namespace osu.Game.Screens.Edit.Components.Timelines.Summary
 {
     public partial class TestGameplayButton : OsuButton
     {
+        protected override bool ApplyGeometryRadius => false;
+
         [Resolved]
         private OsuColour colours { get; set; } = null!;
 

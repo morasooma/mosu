@@ -40,6 +40,8 @@ namespace osu.Game.Overlays.Mods
 
         public BindableBool Collapsed { get; } = new BindableBool(true);
 
+        public IBindable<StarDifficulty> StarDifficulty { get; } = new Bindable<StarDifficulty>();
+
         private ModSettingChangeTracker? modSettingChangeTracker;
 
         [Resolved]
@@ -122,18 +124,26 @@ namespace osu.Game.Overlays.Mods
         private void updateStarDifficultyBindable()
         {
             cancellationSource?.Cancel();
+            cancellationSource?.Dispose();
+            cancellationSource = null;
+            starDifficulty?.UnbindAll();
+            StarDifficulty.UnbindBindings();
 
             if (BeatmapInfo.Value == null)
                 return;
 
-            starDifficulty = difficultyCache.GetBindableDifficulty(BeatmapInfo.Value, (cancellationSource = new CancellationTokenSource()).Token);
+            // This footer displays stars, not perfect-score PP. Do not start another full
+            // conversion/score simulation on every map or mod change (even while collapsed).
+            starDifficulty = difficultyCache.GetBindableDifficulty(BeatmapInfo.Value, (cancellationSource = new CancellationTokenSource()).Token,
+                computationDelay: Screens.Select.SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE, calculatePerformance: false);
+            StarDifficulty.BindTo(starDifficulty);
             starDifficulty.BindValueChanged(s =>
             {
                 starRatingDisplay.Current.Value = s.NewValue;
 
                 if (!starRatingDisplay.IsPresent)
                     starRatingDisplay.FinishTransforms(true);
-            });
+            }, true);
         }
 
         protected override bool OnHover(HoverEvent e)
@@ -223,6 +233,18 @@ namespace osu.Game.Overlays.Mods
         private void updateCollapsedState()
         {
             RightContent.FadeTo(Collapsed.Value && !IsHovered ? 0 : 1, transition_duration, Easing.OutQuint);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            cancellationSource?.Cancel();
+            cancellationSource?.Dispose();
+            starDifficulty?.UnbindAll();
+            StarDifficulty.UnbindAll();
+            modSettingChangeTracker?.Dispose();
+            bpmCancellationSource?.Cancel();
+            bpmCancellationSource?.Dispose();
+            base.Dispose(isDisposing);
         }
 
         public partial class BPMDisplay : RollingCounter<int>

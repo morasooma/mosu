@@ -1,7 +1,9 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using Newtonsoft.Json;
+using osu.Game.Rulesets.Edit;
 using osu.Framework.Graphics;
 using osu.Framework.Localisation;
 using osu.Game.Rulesets.Dodge.Judgements;
@@ -47,6 +49,18 @@ namespace osu.Game.Rulesets.Dodge.Objects
         /// <summary>Disable the player trail for the remainder of the map.</summary>
         [LocalisableDescription(typeof(DodgeEditorStrings), nameof(DodgeEditorStrings.TriggerTrailDisable))]
         TrailDisable,
+
+        [LocalisableDescription(typeof(DodgeEditorStrings), nameof(DodgeEditorStrings.TriggerResizeArena))]
+        ResizeArena,
+
+        [LocalisableDescription(typeof(DodgeEditorStrings), nameof(DodgeEditorStrings.TriggerCameraFollow))]
+        CameraFollow,
+
+        [LocalisableDescription(typeof(DodgeEditorStrings), nameof(DodgeEditorStrings.TriggerCameraFixed))]
+        CameraFixed,
+
+        [LocalisableDescription(typeof(DodgeEditorStrings), nameof(DodgeEditorStrings.TriggerMovePlayer))]
+        MovePlayer,
     }
 
     /// <summary>
@@ -54,19 +68,26 @@ namespace osu.Game.Rulesets.Dodge.Objects
     /// never take part in collision or graze, and are judged purely by clock time:
     /// the player never has to touch anything for them to fire.
     /// </summary>
-    public class DodgeTrigger : DodgeHitObject, IHasDuration, IHasPosition
+    public class DodgeTrigger : DodgeHitObject, IHasDuration, IHasPosition, IEditorTimelineEndTimeAdjustable
     {
-        public const double MAX_DURATION = 5000;
+        private double duration = 300;
 
         /// <summary>The state change applied when this trigger's time is reached.</summary>
         public DodgeTriggerAction Action { get; set; }
 
         /// <summary>
-        /// Length of the effect in milliseconds. Only meaningful for timed effects
-        /// (<see cref="DodgeTriggerAction.ScreenShake"/>, <see cref="DodgeTriggerAction.FlashEffect"/>);
+        /// Length of a visual effect, arena transition or player path in milliseconds;
         /// ignored by instant actions such as <see cref="DodgeTriggerAction.ClearBullets"/>.
         /// </summary>
-        public double Duration { get; set; } = 300;
+        public double Duration
+        {
+            get => IsTimedEffect ? duration : 0;
+            set => duration = double.IsFinite(value) ? Math.Max(0, value) : 0;
+        }
+
+        public bool CanAdjustEditorTimelineEndTime => IsTimedEffect;
+
+        public void SetEditorTimelineEndTime(double endTime) => Duration = endTime - StartTime;
 
         /// <summary>
         /// Effect intensity in the 0..1 range. Only meaningful for parameterised effects
@@ -78,6 +99,17 @@ namespace osu.Game.Rulesets.Dodge.Objects
         /// Editor-only canvas position for the trigger marker. It has no gameplay or collision meaning.
         /// </summary>
         public Vector2 Position { get; set; } = new Vector2(256, 32);
+
+        /// <summary>World-space start and target of an authored player move.</summary>
+        public Vector2 SourcePosition { get; set; } = UI.DodgePlayfield.BASE_SIZE / 2;
+
+        public bool MoveFromCurrentPosition { get; set; } = true;
+
+        public Vector2 TargetPosition { get; set; } = UI.DodgePlayfield.BASE_SIZE / 2;
+
+        public Vector2 TargetSize { get; set; } = UI.DodgePlayfield.BASE_SIZE;
+
+        public DodgeCameraEasing Easing { get; set; }
 
         public float X
         {
@@ -102,7 +134,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
         /// Whether this trigger's effect occupies a time range rather than being instantaneous.
         /// </summary>
         [JsonIgnore]
-        public bool IsTimedEffect => Action is DodgeTriggerAction.ScreenShake or DodgeTriggerAction.FlashEffect;
+        public bool IsTimedEffect => Action is DodgeTriggerAction.ScreenShake or DodgeTriggerAction.FlashEffect
+                                              or DodgeTriggerAction.ResizeArena or DodgeTriggerAction.MovePlayer;
 
         public override Judgement CreateJudgement() => new DodgeTriggerJudgement();
 

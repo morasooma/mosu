@@ -28,7 +28,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match
             [BackgroundDependencyLoader]
             private void load(OsuColour colours)
             {
-                Text = "History";
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4808;
                 Icon = FontAwesome.Solid.Globe;
                 AccentColour = colours.Lime1;
             }

@@ -121,7 +121,8 @@ namespace osu.Game.Overlays.Profile.Sections.Recent
                     };
 
                 case RecentActivityType.Achievement:
-                    return new DelayedLoadWrapper(new MedalIcon(activity.Achievement.Slug)
+                    return new DelayedLoadWrapper(new MedalIcon(activity.Achievement.Slug,
+                        !string.IsNullOrEmpty(activity.Achievement.IconUrl2x) ? activity.Achievement.IconUrl2x : activity.Achievement.IconUrl)
                     {
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre,

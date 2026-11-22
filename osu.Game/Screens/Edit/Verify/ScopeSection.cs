@@ -19,7 +19,7 @@ namespace osu.Game.Screens.Edit.Verify
             {
                 Anchor = Anchor.CentreLeft,
                 Origin = Anchor.CentreLeft,
-                TooltipText = "Select which type of checks to display",
+                TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J4349,
                 Current = verify.VerifyChecksScope.GetBoundCopy()
             });
         }

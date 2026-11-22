@@ -22,10 +22,10 @@ namespace osu.Game.Rulesets.Dodge.Skinning.Components
     /// </summary>
     public partial class DodgeGrazeCounter : FontAdjustableSkinComponent
     {
-        [SettingSource("Show label", "Whether the GRAZE label is displayed above the count.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5347), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5348))]
         public BindableBool ShowLabel { get; } = new BindableBool(true);
 
-        [SettingSource("Label colour")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5349))]
         public BindableColour4 LabelColour { get; } = new BindableColour4(new Colour4(185, 130, 255, 255));
 
         private readonly BindableInt grazeCount = new BindableInt();
@@ -49,7 +49,7 @@ namespace osu.Game.Rulesets.Dodge.Skinning.Components
                     {
                         Anchor = Anchor.TopRight,
                         Origin = Anchor.TopRight,
-                        Text = "GRAZE",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J5350,
                     },
                     count = new SkinSpriteText
                     {

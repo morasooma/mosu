@@ -184,6 +184,8 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
         public partial class Button : OsuButton
         {
+            protected override bool ApplyGeometryRadius => false;
+
             private TrianglesV2? triangles { get; set; }
 
             protected override float HoverLayerFinalAlpha => 0;
@@ -260,13 +262,13 @@ namespace osu.Game.Graphics.UserInterfaceV2
             {
                 Debug.Assert(triangleGradientSecondColour != null);
 
-                Background.FadeColour(triangleGradientSecondColour.Value, 300, Easing.OutQuint);
+                Background.FadeColour(triangleGradientSecondColour.Value, InterfaceAnimation.FadeDuration(300), Easing.OutQuint);
                 return base.OnHover(e);
             }
 
             protected override void OnHoverLost(HoverLostEvent e)
             {
-                Background.FadeColour(BackgroundColour, 300, Easing.OutQuint);
+                Background.FadeColour(BackgroundColour, InterfaceAnimation.FadeDuration(300), Easing.OutQuint);
                 base.OnHoverLost(e);
             }
         }

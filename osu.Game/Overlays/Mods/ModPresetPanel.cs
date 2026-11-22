@@ -19,6 +19,7 @@ using osu.Game.Graphics.UserInterface;
 using osu.Game.Resources.Localisation.Web;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.UI;
+using osu.Game.Utils;
 using osuTK;
 
 namespace osu.Game.Overlays.Mods
@@ -45,12 +46,16 @@ namespace osu.Game.Overlays.Mods
         private OsuSpriteText? shortcutKeyText;
 
         private IBindable<bool> showModsInPresetList = null!;
+        private IBindable<bool> mergePresetsWithShift = null!;
+
+        private bool ShouldMerge => mergePresetsWithShift.Value && GetContainingInputManager()?.CurrentState.Keyboard.ShiftPressed == true;
 
         private readonly FillFlowContainer modIconsFlow;
 
         public ModPresetPanel(Live<ModPreset> preset)
         {
             Preset = preset;
+            Action = Toggle;
             preset.PerformRead(value =>
             {
                 Title = value.Name;
@@ -82,6 +87,7 @@ namespace osu.Game.Overlays.Mods
         {
             AccentColour = colours.Orange1;
 
+            mergePresetsWithShift = config.GetBindable<bool>(OsuSetting.ForkMergeModPresetsWithShift);
             showModsInPresetList = config.GetBindable<bool>(OsuSetting.ForkShowModsInPresetList);
             showModsInPresetList.BindValueChanged(_ => updateModDisplay(), true);
 
@@ -114,7 +120,7 @@ namespace osu.Game.Overlays.Mods
 
         public void Toggle()
         {
-            if (!Active.Value)
+            if (ShouldMerge || !Active.Value)
                 Select();
             else
                 Deselect();
@@ -123,6 +129,21 @@ namespace osu.Game.Overlays.Mods
         protected override void Select()
         {
             ICollection<Mod> presetMods = Preset.Value.Mods;
+
+            if (ShouldMerge)
+            {
+                // Keep existing instances (and their settings). Check both directions of
+                // incompatibility, including duplicates and previously added preset mods.
+                var merged = selectedMods.Value.ToList();
+                foreach (var mod in presetMods)
+                {
+                    if (overlay.IsValidMod(mod) && ModUtils.CheckCompatibleSet(merged, mod))
+                        merged.Add(mod);
+                }
+
+                selectedMods.Value = merged.ToArray();
+                return;
+            }
 
             // this implicitly presumes that if a system mod declares incompatibility with a non-system mod,
             // the non-system mod should take precedence.

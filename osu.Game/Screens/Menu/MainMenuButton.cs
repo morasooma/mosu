@@ -1,9 +1,10 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
 using osu.Framework;
 using osu.Framework.Allocation;
+using osu.Game.Graphics;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Audio.Track;
@@ -237,7 +238,7 @@ namespace osu.Game.Screens.Menu
         {
             base.OnNewBeat(beatIndex, timingPoint, effectPoint, amplitudes);
 
-            if (!IsHovered) return;
+            if (!IsHovered || !InterfaceAnimation.AllowDecorativeMovement) return;
 
             double duration = timingPoint.BeatLength / 2;
 
@@ -258,6 +259,12 @@ namespace osu.Game.Screens.Menu
         {
             if (State != ButtonState.Expanded) return true;
 
+            if (!InterfaceAnimation.AllowDecorativeMovement)
+            {
+                sampleHover?.Play();
+                return true;
+            }
+
             double duration = TimeUntilNextBeat;
 
             icon.ClearTransforms();
@@ -265,7 +272,7 @@ namespace osu.Game.Screens.Menu
             icon.ScaleTo(new Vector2(HOVER_SCALE, HOVER_SCALE * BOUNCE_COMPRESSION), duration, Easing.Out);
 
             sampleHover?.Play();
-            background.ResizeTo(Vector2.Multiply(initialSize, new Vector2(1.5f, 1)), 500, Easing.OutElastic);
+            background.ResizeTo(Vector2.Multiply(initialSize, new Vector2(1.5f, 1)), InterfaceAnimation.TransitionDuration(500), InterfaceAnimation.TransitionEasing(Easing.OutElastic));
 
             return true;
         }
@@ -273,12 +280,12 @@ namespace osu.Game.Screens.Menu
         protected override void OnHoverLost(HoverLostEvent e)
         {
             icon.ClearTransforms();
-            icon.RotateTo(0, 500, Easing.Out);
-            icon.MoveTo(Vector2.Zero, 500, Easing.Out);
-            icon.ScaleTo(Vector2.One, 200, Easing.Out);
+            icon.RotateTo(0, InterfaceAnimation.MovementDuration(500), Easing.Out);
+            icon.MoveTo(Vector2.Zero, InterfaceAnimation.MovementDuration(500), Easing.Out);
+            icon.ScaleTo(Vector2.One, InterfaceAnimation.MovementDuration(200), Easing.Out);
 
             if (State == ButtonState.Expanded)
-                background.ResizeTo(initialSize, 500, Easing.OutElastic);
+                background.ResizeTo(initialSize, InterfaceAnimation.TransitionDuration(500), InterfaceAnimation.TransitionEasing(Easing.OutElastic));
         }
 
         [BackgroundDependencyLoader]
@@ -290,13 +297,13 @@ namespace osu.Game.Screens.Menu
 
         protected override bool OnMouseDown(MouseDownEvent e)
         {
-            boxHoverLayer.FadeTo(0.1f, 1000, Easing.OutQuint);
+            boxHoverLayer.FadeTo(0.1f, InterfaceAnimation.FadeDuration(1000), Easing.OutQuint);
             return base.OnMouseDown(e);
         }
 
         protected override void OnMouseUp(MouseUpEvent e)
         {
-            boxHoverLayer.FadeTo(0, 1000, Easing.OutQuint);
+            boxHoverLayer.FadeTo(0, InterfaceAnimation.FadeDuration(1000), Easing.OutQuint);
             base.OnMouseUp(e);
         }
 
@@ -339,6 +346,14 @@ namespace osu.Game.Screens.Menu
 
         protected override void Update()
         {
+            if (!InterfaceAnimation.AllowDecorativeMovement)
+            {
+                icon.ClearTransforms();
+                icon.Rotation = 0;
+                icon.Position = Vector2.Zero;
+                icon.Scale = Vector2.One;
+            }
+
             content.Alpha = Math.Clamp((background.Width / initialSize.X - 0.5f) / 0.3f, 0, 1);
             base.Update();
         }
@@ -372,27 +387,27 @@ namespace osu.Game.Screens.Menu
                     switch (ContractStyle)
                     {
                         default:
-                            background.ResizeTo(Vector2.Multiply(initialSize, new Vector2(0, 1)), 500, Easing.OutExpo);
-                            this.FadeOut(500);
+                            background.ResizeTo(Vector2.Multiply(initialSize, new Vector2(0, 1)), InterfaceAnimation.TransitionDuration(500), InterfaceAnimation.TransitionEasing(Easing.OutExpo));
+                            this.FadeOut(InterfaceAnimation.TransitionFadeDuration(500));
                             break;
 
                         case 1:
-                            background.ResizeTo(Vector2.Multiply(initialSize, new Vector2(0, 1)), 400, Easing.InSine);
-                            this.FadeOut(800);
+                            background.ResizeTo(Vector2.Multiply(initialSize, new Vector2(0, 1)), InterfaceAnimation.TransitionDuration(400), InterfaceAnimation.TransitionEasing(Easing.InSine));
+                            this.FadeOut(InterfaceAnimation.TransitionFadeDuration(800));
                             break;
                     }
 
                     break;
 
                 case ButtonState.Expanded:
-                    const int expand_duration = 500;
-                    background.ResizeTo(initialSize, expand_duration, Easing.OutExpo);
+                    double expand_duration = InterfaceAnimation.TransitionDuration(500);
+                    background.ResizeTo(initialSize, expand_duration, InterfaceAnimation.TransitionEasing(Easing.OutExpo));
                     this.FadeIn(expand_duration / 6f);
                     break;
 
                 case ButtonState.Exploded:
-                    const int explode_duration = 200;
-                    background.ResizeTo(Vector2.Multiply(initialSize, new Vector2(2, 1)), explode_duration, Easing.OutExpo);
+                    double explode_duration = InterfaceAnimation.TransitionDuration(200);
+                    background.ResizeTo(Vector2.Multiply(initialSize, new Vector2(2, 1)), explode_duration, InterfaceAnimation.TransitionEasing(Easing.OutExpo));
                     this.FadeOut(explode_duration / 4f * 3);
                     break;
             }

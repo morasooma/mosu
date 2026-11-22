@@ -53,7 +53,7 @@ namespace osu.Game.Overlays
 
             config.BindWith(OsuSetting.ShowFirstRunSetup, showFirstRunSetup);
 
-            if (showFirstRunSetup.Value) Show();
+            if (showFirstRunSetup.Value && config.Get<bool>(OsuSetting.ForkLibraryLocationChosen)) Show();
         }
 
         public override void Show()

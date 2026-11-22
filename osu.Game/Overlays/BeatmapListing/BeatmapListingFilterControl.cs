@@ -18,6 +18,8 @@ using osu.Framework.Logging;
 using osu.Framework.Threading;
 using osu.Game.Beatmaps.Drawables.Cards;
 using osu.Game.Configuration;
+using osu.Game.Graphics.UserInterfaceV2;
+using osu.Game.Graphics.Containers;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
@@ -66,11 +68,44 @@ namespace osu.Game.Overlays.BeatmapListing
         private readonly BeatmapListingSortTabControl sortControl;
         private readonly Box sortControlBackground;
         private IBindable<Colour4> themeColour = null!;
+        private bool headerBlockInitialisedThisFrame;
+        private bool firstHeaderUpdate = true;
 
         private ScheduledDelegate queryChangedDebounce;
 
+        private readonly OsuTextFlowContainer catalogueStatus;
+        private readonly Bindable<BeatmapCatalogueSource> selectedCatalogue = new Bindable<BeatmapCatalogueSource>();
+        private BeatmapCatalogueSource? sessionCatalogue;
+        private int filteredEmptyPages;
         private SearchBeatmapSetsRequest getSetsRequest;
         private SearchBeatmapSetsResponse lastResponse;
+        private bool lastPageHadResults;
+        private bool searchEnabled = true;
+        private bool searchPending;
+
+        /// <summary>Hidden overlays retain search criteria, but never fetch or paginate.</summary>
+        public bool SearchEnabled
+        {
+            get => searchEnabled;
+            set
+            {
+                if (searchEnabled == value)
+                    return;
+                searchEnabled = value;
+                if (!value)
+                {
+                    bool interrupted = getSetsRequest != null || queryChangedDebounce != null;
+                    queryChangedDebounce?.Cancel();
+                    queryChangedDebounce = null;
+                    var request = getSetsRequest;
+                    getSetsRequest = null;
+                    request?.Cancel();
+                    searchPending |= interrupted;
+                }
+                else if (searchPending || lastResponse == null)
+                    queueUpdateSearch();
+            }
+        }
 
         [Resolved]
         private IAPIProvider api { get; set; }
@@ -93,6 +128,24 @@ namespace osu.Game.Overlays.BeatmapListing
                 Spacing = new Vector2(0, 10),
                 Children = new Drawable[]
                 {
+                    new HeaderLoadBlock(admitHeaderBlock)
+                    {
+                        Depth = -1,
+                        Child = new FormEnumDropdown<BeatmapCatalogueSource>
+                        {
+                            Caption = global::osu.Game.Localisation.ClientTranslationStrings.J3882,
+                            Current = { BindTarget = selectedCatalogue },
+                        },
+                    },
+                    new HeaderLoadBlock(admitHeaderBlock)
+                    {
+                        Child = catalogueStatus = new OsuTextFlowContainer(t => t.Font = osu.Game.Graphics.OsuFont.GetFont(size: 16))
+                        {
+                            RelativeSizeAxes = Axes.X,
+                            AutoSizeAxes = Axes.Y,
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J3883,
+                        },
+                    },
                     new Container
                     {
                         RelativeSizeAxes = Axes.X,
@@ -107,36 +160,78 @@ namespace osu.Game.Overlays.BeatmapListing
                         },
                         Child = searchControl = new BeatmapListingSearchControl
                         {
-                            TypingStarted = () => TypingStarted?.Invoke()
+                            TypingStarted = () => TypingStarted?.Invoke(),
+                            FiltersLoaded = () => { resetSortControl(); queueUpdateSearch(); }
                         }
                     },
-                    new Container
+                    new HeaderLoadBlock(admitHeaderBlock)
                     {
-                        RelativeSizeAxes = Axes.X,
-                        Height = 40,
-                        Children = new Drawable[]
+                        Child = new Container
                         {
-                            sortControlBackground = new Box
+                            RelativeSizeAxes = Axes.X,
+                            Height = 40,
+                            Children = new Drawable[]
                             {
-                                RelativeSizeAxes = Axes.Both
-                            },
-                            sortControl = new BeatmapListingSortTabControl
-                            {
-                                Anchor = Anchor.CentreLeft,
-                                Origin = Anchor.CentreLeft,
-                                Margin = new MarginPadding { Left = 20 }
-                            },
-                            new BeatmapListingCardSizeTabControl
-                            {
-                                Anchor = Anchor.CentreRight,
-                                Origin = Anchor.CentreRight,
-                                Margin = new MarginPadding { Right = 20 },
-                                Current = { BindTarget = CardSize }
+                                sortControlBackground = new Box
+                                {
+                                    RelativeSizeAxes = Axes.Both
+                                },
+                                sortControl = new BeatmapListingSortTabControl
+                                {
+                                    Anchor = Anchor.CentreLeft,
+                                    Origin = Anchor.CentreLeft,
+                                    Margin = new MarginPadding { Left = 20 }
+                                },
+                                new BeatmapListingCardSizeTabControl
+                                {
+                                    Anchor = Anchor.CentreRight,
+                                    Origin = Anchor.CentreRight,
+                                    Margin = new MarginPadding { Right = 20 },
+                                    Current = { BindTarget = CardSize }
+                                }
                             }
                         }
                     }
                 }
             };
+        }
+
+        // These blocks are already dependency-loaded. Bound only their first
+        // LoadComplete/layout; search and its focused text box stay attached
+        // from the start, and loaded controls keep their ordinary Update path.
+        internal partial class HeaderLoadBlock : Container
+        {
+            private readonly Func<bool> admit;
+
+            public HeaderLoadBlock(Func<bool> admit)
+            {
+                this.admit = admit;
+                RelativeSizeAxes = Axes.X;
+                AutoSizeAxes = Axes.Y;
+            }
+
+            public override bool UpdateSubTree()
+            {
+                if (!IsLoaded && LoadState == LoadState.Ready && !admit())
+                    return false;
+                return base.UpdateSubTree();
+            }
+        }
+
+        private bool admitHeaderBlock()
+        {
+            if (headerBlockInitialisedThisFrame)
+                return false;
+            headerBlockInitialisedThisFrame = true;
+            return true;
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+            // Leave the first frame to the surrounding overlay/search skeleton.
+            headerBlockInitialisedThisFrame = firstHeaderUpdate;
+            firstHeaderUpdate = false;
         }
 
         [Resolved]
@@ -147,6 +242,13 @@ namespace osu.Game.Overlays.BeatmapListing
         {
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
             themeColour.BindValueChanged(colour => sortControlBackground.Colour = colour.NewValue, true);
+
+            // Populate the configured catalogue's initial tabs on the loader,
+            // before the first visible Update/layout. Search still waits for
+            // every staged filter's LoadComplete and its final defaults.
+            config.BindWith(OsuSetting.BeatmapListingCardSize, cardSize);
+            config.BindWith(OsuSetting.BeatmapCatalogueSource, selectedCatalogue);
+            resetSortControl();
         }
 
         public void Search(string query)
@@ -165,7 +267,13 @@ namespace osu.Game.Overlays.BeatmapListing
         {
             base.LoadComplete();
 
-            config.BindWith(OsuSetting.BeatmapListingCardSize, cardSize);
+            selectedCatalogue.BindValueChanged(_ =>
+            {
+                sessionCatalogue = null;
+                resetSortControl();
+                queueUpdateSearch();
+            });
+            resetSortControl();
 
             searchControl.Query.BindValueChanged(_ =>
             {
@@ -180,10 +288,10 @@ namespace osu.Game.Overlays.BeatmapListing
             });
 
             searchControl.General.CollectionChanged += (_, _) => queueUpdateSearch();
-            searchControl.Ruleset.BindValueChanged(_ => queueUpdateSearch());
+            searchControl.Ruleset.BindValueChanged(_ => { resetSortControl(); queueUpdateSearch(); });
             searchControl.Genre.BindValueChanged(_ => queueUpdateSearch());
             searchControl.Language.BindValueChanged(_ => queueUpdateSearch());
-            searchControl.Extra.CollectionChanged += (_, _) => queueUpdateSearch();
+            searchControl.Extra.CollectionChanged += (_, _) => { resetSortControl(); queueUpdateSearch(); };
             searchControl.Ranks.CollectionChanged += (_, _) => queueUpdateSearch();
             searchControl.Played.BindValueChanged(_ => queueUpdateSearch());
             searchControl.ExplicitContent.BindValueChanged(_ => queueUpdateSearch());
@@ -202,6 +310,10 @@ namespace osu.Game.Overlays.BeatmapListing
         /// </summary>
         public void FetchNextPage()
         {
+            // Hidden catalogues must not create cards/network traffic in the background.
+            if (!SearchEnabled || !searchControl.FiltersReady)
+                return;
+
             // there may be no results left.
             if (noMoreResults)
                 return;
@@ -210,13 +322,18 @@ namespace osu.Game.Overlays.BeatmapListing
             if (getSetsRequest != null)
                 return;
 
-            if (lastResponse != null)
+            if (lastPageHadResults)
                 CurrentPage++;
 
             performRequest();
         }
 
-        private void resetSortControl() => sortControl.Reset(searchControl.Category.Value, !string.IsNullOrEmpty(searchControl.Query.Value));
+        private void resetSortControl()
+        {
+            bool exclusive = searchControl.Ruleset.Value?.OnlineID == 10 || searchControl.Extra.Contains(SearchExtra.ServerExclusive);
+            sortControl.SetCatalogue(exclusive ? BeatmapCatalogueSource.Official : selectedCatalogue.Value,
+                searchControl.Category.Value, !string.IsNullOrEmpty(searchControl.Query.Value));
+        }
 
         private void queueUpdateSearch(bool queryTextChanged = false)
         {
@@ -224,11 +341,16 @@ namespace osu.Game.Overlays.BeatmapListing
 
             resetSearch();
 
-            if (!api.IsLoggedIn)
+            searchPending = true;
+            if (!SearchEnabled || !api.IsLoggedIn || !searchControl.FiltersReady)
                 return;
 
             queryChangedDebounce = Scheduler.AddDelayed(() =>
             {
+                queryChangedDebounce = null;
+                if (!SearchEnabled)
+                    return;
+                searchPending = false;
                 resetSearch();
                 FetchNextPage();
             }, queryTextChanged ? 500 : 100);
@@ -249,7 +371,12 @@ namespace osu.Game.Overlays.BeatmapListing
                 searchControl.Extra,
                 searchControl.Ranks,
                 searchControl.Played.Value,
-                searchControl.ExplicitContent.Value);
+                searchControl.ExplicitContent.Value)
+            {
+                CatalogueSource = sessionCatalogue ?? selectedCatalogue.Value,
+            };
+            catalogueStatus.Text = request.ServerExclusiveOnly ? global::osu.Game.Localisation.ClientTranslationStrings.J3884
+                : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3885(request.CatalogueSource);
 
             request.Success += response =>
             {
@@ -259,17 +386,23 @@ namespace osu.Game.Overlays.BeatmapListing
                 if (!ReferenceEquals(getSetsRequest, request))
                     return;
 
+                sessionCatalogue = request.ActualCatalogueSource;
+                catalogueStatus.Text = request.ServerExclusiveOnly ? global::osu.Game.Localisation.ClientTranslationStrings.J3884
+                    : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3886(request.ActualCatalogueSource?.ToString() ?? "osu!");
                 var sets = response.BeatmapSets.ToList();
                 bool serverExclusiveOnly = request.ServerExclusiveOnly;
 
                 // If the previous request returned a null cursor, the API is indicating we can't paginate further (maybe there are no more beatmaps left).
-                if (sets.Count == 0 || response.Cursor == null)
+                if ((sets.Count == 0 && request.ActualCatalogueSource == null) || response.Cursor == null)
                     noMoreResults = true;
 
                 if (CurrentPage == 0)
                     searchControl.BeatmapSet = sets.FirstOrDefault();
 
-                lastResponse = response;
+                // Pagination only needs cursor and cardinality. Do not retain
+                // the deserialised last page alongside the listing's disk store.
+                lastPageHadResults = sets.Count > 0;
+                lastResponse = new SearchBeatmapSetsResponse { Cursor = response.Cursor, Total = response.Total, BeatmapSets = Array.Empty<APIBeatmapSet>() };
                 getSetsRequest = null;
 
                 // check if a non-supporter used supporter-only filters
@@ -277,7 +410,7 @@ namespace osu.Game.Overlays.BeatmapListing
                     ? beatmapApi.OfficialApi.LocalUser.Value
                     : api.LocalUser.Value;
 
-                if (!searchUser.IsSupporter)
+                if ((serverExclusiveOnly || request.CatalogueSource == BeatmapCatalogueSource.Official) && !searchUser.IsSupporter)
                 {
                     List<LocalisableString> filters = new List<LocalisableString>();
 
@@ -295,6 +428,26 @@ namespace osu.Game.Overlays.BeatmapListing
                     }
                 }
 
+                if (sets.Count == 0 && response.Cursor != null && request.ActualCatalogueSource != null)
+                {
+                    // NSFW post-filtering can hide a whole raw page. Keep its cursor,
+                    // but do not fan out immediately through arbitrarily many hidden pages.
+                    if (++filteredEmptyPages >= 3)
+                    {
+                        noMoreResults = true;
+                        const string message = "В первых трёх страницах нет карт по выбранным условиям. Это не весь каталог: уточните запрос или выберите другое зеркало.";
+                        catalogueStatus.Text = message;
+                        SearchFinished?.Invoke(SearchResult.ErrorReturned(message));
+                        return;
+                    }
+                    queryChangedDebounce = Scheduler.AddDelayed(() =>
+                    {
+                        queryChangedDebounce = null;
+                        FetchNextPage();
+                    }, 750);
+                    return;
+                }
+                filteredEmptyPages = 0;
                 var resultsReturned = SearchResult.ResultsReturned(sets);
                 SearchFinished?.Invoke(resultsReturned);
             };
@@ -309,7 +462,8 @@ namespace osu.Game.Overlays.BeatmapListing
 
                 getSetsRequest = null;
                 noMoreResults = true;
-                SearchFinished?.Invoke(SearchResult.ResultsReturned(new List<APIBeatmapSet>()));
+                catalogueStatus.Text = "Ошибка каталога: " + e.Message;
+                SearchFinished?.Invoke(SearchResult.ErrorReturned(e.Message));
             };
             beatmapApi.Queue(request);
         }
@@ -320,11 +474,15 @@ namespace osu.Game.Overlays.BeatmapListing
             CurrentPage = 0;
 
             lastResponse = null;
+            lastPageHadResults = false;
+            sessionCatalogue = null;
+            filteredEmptyPages = 0;
 
             getSetsRequest?.Cancel();
             getSetsRequest = null;
 
             queryChangedDebounce?.Cancel();
+            queryChangedDebounce = null;
         }
 
         protected override void Dispose(bool isDisposing)
@@ -347,7 +505,8 @@ namespace osu.Game.Overlays.BeatmapListing
             /// <summary>
             /// The user is not a supporter, but used supporter-only search filters.
             /// </summary>
-            SupporterOnlyFilters
+            SupporterOnlyFilters,
+            Error,
         }
 
         /// <summary>
@@ -362,6 +521,10 @@ namespace osu.Game.Overlays.BeatmapListing
             /// Valid for read if and only if <see cref="Type"/> is <see cref="SearchResultType.ResultsReturned"/>.
             /// </summary>
             public List<APIBeatmapSet> Results { get; private set; }
+
+            public string ErrorMessage { get; private set; }
+
+            public static SearchResult ErrorReturned(string message) => new SearchResult { Type = SearchResultType.Error, ErrorMessage = message };
 
             /// <summary>
             /// Contains the names of supporter-only filters requested by the user.

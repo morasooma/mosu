@@ -57,6 +57,11 @@ namespace osu.Game.Rulesets.Dodge.Objects
         {
             get
             {
+                if (ContinueUntilExit && ArenaTimeline is { } arena)
+                    return DodgeWorldGeometry.ExitTime(WorldBounds ?? new osu.Framework.Graphics.Primitives.RectangleF(0, 0, UI.DodgePlayfield.WIDTH, UI.DodgePlayfield.HEIGHT),
+                        arena, StartTime, Duration, Position, EndPosition, BulletSize,
+                        MovementType, WaveAmplitude, WaveCycles, WavePhase, MovementEasing);
+
                 double exitTime = DodgeTrajectory.CalculateExitTime(
                     StartTime,
                     Duration,
@@ -73,17 +78,7 @@ namespace osu.Game.Rulesets.Dodge.Objects
             }
         }
 
-        public Vector2 TrajectoryEndPosition => ContinueUntilExit
-            ? DodgeTrajectory.CalculateExitPosition(
-                Position,
-                EndPosition,
-                BulletSize,
-                MovementType,
-                WaveAmplitude,
-                WaveCycles,
-                WavePhase,
-                MovementEasing)
-            : EndPosition;
+        public Vector2 TrajectoryEndPosition => ContinueUntilExit ? PositionAt(MovementEndTime) : EndPosition;
 
         protected override void ApplyDefaultsToSelf(ControlPointInfo controlPointInfo, IBeatmapDifficultyInfo difficulty)
         {

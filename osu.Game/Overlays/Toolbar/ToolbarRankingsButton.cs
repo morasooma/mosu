@@ -3,12 +3,15 @@
 
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
+using osu.Game.Graphics;
 
 namespace osu.Game.Overlays.Toolbar
 {
     public partial class ToolbarRankingsButton : ToolbarOverlayToggleButton
     {
         protected override Anchor TooltipAnchor => Anchor.TopRight;
+
+        public ToolbarRankingsButton() => SetIcon(OsuIcon.Ranking);
 
         [BackgroundDependencyLoader(true)]
         private void load(RankingsOverlay rankings)

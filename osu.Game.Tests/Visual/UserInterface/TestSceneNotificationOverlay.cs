@@ -85,6 +85,28 @@ namespace osu.Game.Tests.Visual.UserInterface
         }
 
         [Test]
+        public void TestToastLifetimePausesOnHover()
+        {
+            SimpleNotification notification = null!;
+
+            AddStep("post short toast", () => notificationOverlay.Post(notification = new SimpleNotification
+            {
+                Text = "Hover to pause dismissal",
+                IsImportant = false,
+            }));
+            AddUntilStep("toast visible", () => notification.IsInToastTray && notification.ToastLifetimeProgress < 1);
+            AddStep("hover toast", () => InputManager.MoveMouseTo(notification));
+            AddUntilStep("toast hovered", () => notification.IsHovered);
+            float pausedProgress = 0;
+            AddStep("capture progress", () => pausedProgress = notification.ToastLifetimeProgress);
+            AddWaitStep("stay hovered", 180);
+            AddAssert("progress paused", () => notification.ToastLifetimeProgress, () => Is.EqualTo(pausedProgress).Within(0.001f));
+            AddStep("leave toast", () => InputManager.MoveMouseTo(Vector2.Zero));
+            AddUntilStep("progress resumes", () => notification.ToastLifetimeProgress < pausedProgress);
+            AddUntilStep("toast dismissed", () => !notification.IsInToastTray);
+        }
+
+        [Test]
         public void TestNormalDoesForwardToOverlay()
         {
             SimpleNotification notification = null!;
@@ -116,6 +138,18 @@ namespace osu.Game.Tests.Visual.UserInterface
             AddUntilStep("wait for dismissed", () => notification.IsInToastTray, () => Is.False);
 
             checkDisplayedCount(0);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestCalculationNotificationExpiresWithoutHistory(bool panelOpen)
+        {
+            BeatmapCalculationNotification notification = null!;
+            setState(panelOpen ? Visibility.Visible : Visibility.Hidden);
+            AddStep("post calculation toast", () => notificationOverlay.Post(notification = new BeatmapCalculationNotification()));
+            AddUntilStep("notification loaded", () => notification.IsLoaded);
+            AddUntilStep("notification closes quickly", () => notification.WasClosed);
+            AddUntilStep("no unread history", () => notificationOverlay.UnreadCount.Value == 0 && notificationOverlay.ToastCount == 0);
         }
 
         [Test]

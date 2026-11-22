@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -24,13 +24,17 @@ namespace osu.Game.Overlays.Settings.Sections.Gameplay
                 {
                     Caption = GameplaySettingsStrings.HUDVisibilityMode,
                     Current = config.GetBindable<HUDVisibilityMode>(OsuSetting.HUDVisibilityMode)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.HUDVisibilityMode",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GameplaySettingsStrings.ShowReplaySettingsOverlay,
                     Current = config.GetBindable<bool>(OsuSetting.ReplaySettingsOverlay),
                 })
                 {
+                    FavouriteId = "OsuSetting.ReplaySettingsOverlay",
                     Keywords = new[] { "hide" },
                 },
                 new SettingsItemV2(new FormCheckBox
@@ -39,29 +43,40 @@ namespace osu.Game.Overlays.Settings.Sections.Gameplay
                     Current = config.GetBindable<bool>(OsuSetting.KeyOverlay),
                 })
                 {
+                    FavouriteId = "OsuSetting.KeyOverlay",
                     Keywords = new[] { "counter" },
                 },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GameplaySettingsStrings.AlwaysShowGameplayLeaderboard,
                     Current = config.GetBindable<bool>(OsuSetting.GameplayLeaderboard),
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.GameplayLeaderboard",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GameplaySettingsStrings.AlwaysRequireHoldForMenu,
                     Current = config.GetBindable<bool>(OsuSetting.AlwaysRequireHoldingForPause),
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.AlwaysRequireHoldingForPause",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GameplaySettingsStrings.AlwaysShowHoldForMenuButton,
                     Current = config.GetBindable<bool>(OsuSetting.AlwaysShowHoldForMenuButton),
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.AlwaysShowHoldForMenuButton",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GameplaySettingsStrings.ShowHealthDisplayWhenCantFail,
                     Current = config.GetBindable<bool>(OsuSetting.ShowHealthDisplayWhenCantFail),
                 })
                 {
+                    FavouriteId = "OsuSetting.ShowHealthDisplayWhenCantFail",
                     Keywords = new[] { "hp", "bar" },
                     ApplyClassicDefault = c => ((IHasCurrentValue<bool>)c).Current.Value = false,
                 },

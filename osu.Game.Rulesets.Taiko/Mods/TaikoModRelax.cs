@@ -12,7 +12,7 @@ namespace osu.Game.Rulesets.Taiko.Mods
 {
     public class TaikoModRelax : ModRelax, IApplicableToDrawableHitObject
     {
-        public override LocalisableString Description => @"No need to remember which key is correct anymore!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3752;
 
         public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[] { typeof(TaikoModSingleTap) }).ToArray();
 

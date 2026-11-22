@@ -33,6 +33,7 @@ namespace osu.Game.Screens.Select
             private readonly FooterButtonOptions footerButton;
 
             private readonly BeatmapInfo beatmap;
+            private IBindable<int>? paletteVersionBindable;
 
             // Can't use DI for these due to popover being initialised from a footer button which ends up being on the global
             // PopoverContainer.
@@ -49,6 +50,13 @@ namespace osu.Game.Screens.Select
             private void load(OsuColour colours)
             {
                 Background.Colour = Arrow.Colour = ColourProvider.Background4;
+
+                paletteVersionBindable = ColourProvider.PaletteVersion.GetBoundCopy();
+                paletteVersionBindable.BindValueChanged(_ =>
+                {
+                    Background.FadeColour(ColourProvider.Background4, OverlayColourProvider.ThemeTransitionDuration(150), Easing.OutQuint);
+                    Arrow.FadeColour(ColourProvider.Background4, OverlayColourProvider.ThemeTransitionDuration(150), Easing.OutQuint);
+                });
 
                 Content.Padding = new MarginPadding(5);
 
@@ -173,6 +181,7 @@ namespace osu.Game.Screens.Select
             {
                 private readonly OverlayColourProvider colourProvider;
                 private IBindable<Colour4> themeColour = null!;
+                private IBindable<float>? radiusBindable;
                 private SpriteIcon icon = null!;
 
                 public IconUsage Icon { get; init; }
@@ -189,7 +198,9 @@ namespace osu.Game.Screens.Select
                 {
                     themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
                     themeColour.BindValueChanged(_ => updateColours(), true);
-                    Content.CornerRadius = 10;
+
+                    radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Button, 10f);
+                    radiusBindable.BindValueChanged(r => Content.CornerRadius = Math.Min(r.NewValue, 25f), true);
 
                     Add(icon = new SpriteIcon
                     {

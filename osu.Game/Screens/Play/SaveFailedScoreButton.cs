@@ -86,24 +86,24 @@ namespace osu.Game.Screens.Play
                 switch (state.NewValue)
                 {
                     case DownloadState.LocallyAvailable:
-                        button.TooltipText = @"watch replay";
+                        button.TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5071;
                         button.Enabled.Value = true;
                         break;
 
                     case DownloadState.Importing:
-                        button.TooltipText = @"importing score";
+                        button.TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5072;
                         button.Enabled.Value = false;
                         break;
 
                     default:
                         if (importFailedScore != null)
                         {
-                            button.TooltipText = @"save score";
+                            button.TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5073;
                             button.Enabled.Value = true;
                         }
                         else
                         {
-                            button.TooltipText = @"replay unavailable";
+                            button.TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5074;
                             button.Enabled.Value = false;
                         }
 
@@ -126,6 +126,8 @@ namespace osu.Game.Screens.Play
                     return true;
 
                 case GlobalAction.ExportReplay:
+                    // Repeated presses while importing must not queue duplicate exports.
+                    state.ValueChanged -= exportWhenReady;
                     state.BindValueChanged(exportWhenReady, true);
 
                     // start the import via button
@@ -146,9 +148,9 @@ namespace osu.Game.Screens.Play
         {
             if (state.NewValue != DownloadState.LocallyAvailable) return;
 
-            if (importedScore != null) scoreManager.Export(importedScore.Value);
-
             this.state.ValueChanged -= exportWhenReady;
+
+            if (importedScore != null) scoreManager.Export(importedScore.Value);
         }
 
         #endregion

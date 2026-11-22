@@ -20,11 +20,19 @@ namespace osu.Game.Screens.Play
     {
         public Func<Task<ScoreInfo>>? SaveReplay { get; init; }
 
+        public Action? OnPracticeContinue { get; init; }
+
         public override LocalisableString Header => GameplayMenuOverlayStrings.FailedHeader;
 
         [BackgroundDependencyLoader]
         private void load()
         {
+            if (OnPracticeContinue != null)
+            {
+                SupplementaryButtons.Alpha = 1;
+                SupplementaryButtons.Add(CreateButton(PracticeStrings.Continue, new osuTK.Graphics.Color4(80, 200, 160, 255), OnPracticeContinue));
+            }
+
             // from #10339 maybe this is a better visual effect
             FooterContent.Add(new Container
             {

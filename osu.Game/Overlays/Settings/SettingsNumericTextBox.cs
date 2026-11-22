@@ -14,6 +14,7 @@ using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Graphics.UserInterfaceV2;
+using osu.Game.Localisation;
 
 namespace osu.Game.Overlays.Settings
 {
@@ -47,8 +48,8 @@ namespace osu.Game.Overlays.Settings
             InternalChild = numberBox = new FormTextBox
             {
                 RelativeSizeAxes = Axes.X,
-                Caption = "Exact value",
-                HintText = "Type a precise value for this setting.",
+                Caption = ForkSettingsStrings.SettingsExactValueCaption,
+                HintText = ForkSettingsStrings.SettingsNumericExactValueHint,
             };
         }
 

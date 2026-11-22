@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using MosuRxPureCs;
 using osu.Game.Beatmaps;
 using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
 using osu.Game.Utils;
@@ -48,6 +49,20 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.Realistik
             if (!IsRelax(mods))
                 return;
 
+            if (osu.Game.Configuration.RelaxPpSystemSelection.Current == osu.Game.Configuration.ForkRelaxPpSystem.TazikPp
+                && mods.Any(m => m is OsuModRelax))
+            {
+                TazikPpRelax.TazikPpRelaxCalculator.Prepare(beatmap, mods, attributes);
+                return;
+            }
+
+            if (osu.Game.Configuration.RelaxPpSystemSelection.Current == osu.Game.Configuration.ForkRelaxPpSystem.MosuPp
+                && mods.Any(m => m is OsuModRelax))
+            {
+                MosuPpRelax.MosuPpRelaxCalculator.Prepare(beatmap, mods);
+                return;
+            }
+
             try
             {
                 RxBeatmap converted = RealistikBeatmapConverter.Convert(beatmap);
@@ -59,9 +74,6 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.Realistik
                 // Only callers which explicitly requested performance preparation reach here.
                 // Star-rating-only carousel panels skip Prepare entirely.
                 beatmapsByAttributes.AddOrUpdate(attributes, converted);
-
-                // MosuPp keeps its own converted beatmap (separate calculator, see Relax/MosuPpRelax).
-                MosuPpRelax.MosuPpRelaxCalculator.Prepare(beatmap, mods);
             }
             catch (Exception exception)
             {
@@ -79,6 +91,20 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.Realistik
             if (!IsRelax(mods))
                 return;
 
+            if (osu.Game.Configuration.RelaxPpSystemSelection.Current == osu.Game.Configuration.ForkRelaxPpSystem.TazikPp
+                && mods.Any(m => m is OsuModRelax))
+            {
+                TazikPpRelax.TazikPpRelaxCalculator.Prepare(beatmap, mods, attributes);
+                return;
+            }
+
+            if (osu.Game.Configuration.RelaxPpSystemSelection.Current == osu.Game.Configuration.ForkRelaxPpSystem.MosuPp
+                && mods.Any(m => m is OsuModRelax))
+            {
+                MosuPpRelax.MosuPpRelaxCalculator.Prepare(beatmap, mods);
+                return;
+            }
+
             try
             {
                 RxBeatmap converted = RealistikBeatmapConverter.Convert(beatmap);
@@ -89,9 +115,6 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.Realistik
 
                 foreach (OsuDifficultyAttributes attribute in attributes)
                     beatmapsByAttributes.AddOrUpdate(attribute, converted);
-
-                // MosuPp keeps its own converted beatmap (separate calculator, see Relax/MosuPpRelax).
-                MosuPpRelax.MosuPpRelaxCalculator.Prepare(beatmap, mods);
             }
             catch (Exception exception)
             {

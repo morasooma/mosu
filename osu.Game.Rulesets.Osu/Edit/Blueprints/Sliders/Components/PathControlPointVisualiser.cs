@@ -564,7 +564,7 @@ namespace osu.Game.Rulesets.Osu.Edit.Blueprints.Sliders.Components
 
                 var menuItems = new List<MenuItem>
                 {
-                    new OsuMenuItem("Curve type")
+                    new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J3344)
                     {
                         Items = curveTypeItems
                     }
@@ -572,13 +572,13 @@ namespace osu.Game.Rulesets.Osu.Edit.Blueprints.Sliders.Components
 
                 if (splittableCount > 0)
                 {
-                    menuItems.Add(new OsuMenuItem($"Split {"control point".ToQuantity(splittableCount, splittableCount > 1 ? ShowQuantityAs.Numeric : ShowQuantityAs.None)}",
+                    menuItems.Add(new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3345("control point".ToQuantity(splittableCount, splittableCount > 1 ? ShowQuantityAs.Numeric : ShowQuantityAs.None)),
                         MenuItemType.Destructive,
                         () => splitSelected()));
                 }
 
                 menuItems.Add(
-                    new OsuMenuItem($"Delete {"control point".ToQuantity(count, count > 1 ? ShowQuantityAs.Numeric : ShowQuantityAs.None)}",
+                    new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3346("control point".ToQuantity(count, count > 1 ? ShowQuantityAs.Numeric : ShowQuantityAs.None)),
                         MenuItemType.Destructive,
                         () => DeleteSelected())
                 );

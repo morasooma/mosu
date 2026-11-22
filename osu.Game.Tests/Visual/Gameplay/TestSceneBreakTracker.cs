@@ -6,6 +6,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using osu.Framework.Allocation;
+using osu.Game.Configuration;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Timing;
@@ -20,6 +22,14 @@ namespace osu.Game.Tests.Visual.Gameplay
     [TestFixture]
     public partial class TestSceneBreakTracker : OsuTestScene
     {
+        private OsuConfigManager config = null!;
+
+        [BackgroundDependencyLoader]
+        private void load()
+        {
+            config = Dependencies.Get<OsuConfigManager>();
+        }
+
         private readonly BreakOverlay breakOverlay;
 
         private readonly TestBreakTracker breakTracker;
@@ -121,6 +131,26 @@ namespace osu.Game.Tests.Visual.Gameplay
 
             seekAndAssertBreak("seek to break intro time", -100, true);
             seekAndAssertBreak("seek to break intro time", 0, false);
+        }
+
+        [Test]
+        public void TestPresentationSwitchDuringBreak()
+        {
+            setClock(true);
+            loadBreaksStep("break", new[] { new BreakPeriod(1000, 10000) });
+            seekAndAssertBreak("seek to section display", 5850, true);
+            AddStep("default visuals", () => config.SetValue(OsuSetting.ForkBreakStyle, ForkBreakStyle.Default));
+            AddUntilStep("default visible", () => breakOverlay.IsVisualVisible);
+            AddStep("hide visuals", () => config.SetValue(OsuSetting.ForkBreakStyle, ForkBreakStyle.Hidden));
+            AddUntilStep("no visuals", () => !breakOverlay.IsVisualVisible);
+            AddAssert("still in break", () => breakTracker.IsBreakTime.Value);
+            AddStep("legacy visuals", () => config.SetValue(OsuSetting.ForkBreakStyle, ForkBreakStyle.Legacy));
+            AddUntilStep("legacy visible", () => breakOverlay.IsVisualVisible);
+            seekAndAssertBreak("seek beyond section", 7500, true);
+            AddUntilStep("section gone", () => !breakOverlay.IsVisualVisible);
+            seekAndAssertBreak("rewind to section", 5850, true);
+            AddUntilStep("section visible after rewind", () => breakOverlay.IsVisualVisible);
+            AddStep("restore default", () => config.SetValue(OsuSetting.ForkBreakStyle, ForkBreakStyle.Default));
         }
 
         private void addShowBreakStep(double seconds)

@@ -17,7 +17,7 @@ namespace osu.Game.Rulesets.Mods
         public override string Acronym => "SD";
         public override IconUsage? Icon => OsuIcon.ModSuddenDeath;
         public override ModType Type => ModType.DifficultyIncrease;
-        public override LocalisableString Description => "Miss and fail.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4256;
         public override bool Ranked => true;
         public override bool ValidForFreestyleAsRequiredMod => true;
 

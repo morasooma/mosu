@@ -49,8 +49,6 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
 
         private Container titleContainer = null!;
 
-        private bool beatmapBackgroundLoaded;
-
         private bool animationBegan;
 
         private IBindable<StarDifficulty> starDifficulty = null!;
@@ -331,9 +329,6 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
             }, c =>
             {
                 beatmapBackground.Add(c);
-
-                beatmapBackgroundLoaded = true;
-                updateAnimationState();
             });
 
             if (config.Get<bool>(OsuSetting.AutomaticallyDownloadMissingBeatmaps))
@@ -372,7 +367,9 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
 
         private void updateAnimationState()
         {
-            if (!beatmapBackgroundLoaded || !this.IsCurrentScreen())
+            // Remote artwork is decorative. A slow cover request must not block the intro
+            // or access to the challenge; the background container already has a fallback colour.
+            if (!this.IsCurrentScreen())
                 return;
 
             if (animationBegan)

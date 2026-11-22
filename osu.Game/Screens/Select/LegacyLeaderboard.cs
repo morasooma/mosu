@@ -49,6 +49,7 @@ namespace osu.Game.Screens.Select
     public partial class LegacyLeaderboard : CompositeDrawable
     {
         public readonly Bindable<BeatmapLeaderboardScope> Scope = new Bindable<BeatmapLeaderboardScope>(BeatmapLeaderboardScope.Local);
+        public readonly Bindable<LeaderboardSortMode> Sorting = new Bindable<LeaderboardSortMode>();
 
         /// <summary>
         /// torii: lo dispara SongSelect (con carousel.ScrollToSelection). hoverear la leaderboard hace
@@ -161,12 +162,21 @@ namespace osu.Game.Screens.Select
                     Anchor = Anchor.TopLeft,
                     Origin = Anchor.TopLeft,
                     Position = new Vector2(8, 117),
-                    Width = 309,
+                    Width = 220,
                     AccentColour = new Color4(31 / 255f, 184 / 255f, 255 / 255f, 1f),
                     HoverColour = new Color4(255 / 255f, 102 / 255f, 171 / 255f, 1f),
                     Items = Enum.GetValues<BeatmapLeaderboardScope>(),
                     ItemText = scope => $@"{scope} Ranking",
                     Current = { BindTarget = Scope },
+                },
+                new LegacyStableDropdown<LeaderboardSortMode>
+                {
+                    Position = new Vector2(236, 117),
+                    Width = 174,
+                    AccentColour = new Color4(31 / 255f, 184 / 255f, 255 / 255f, 1f),
+                    HoverColour = new Color4(255 / 255f, 102 / 255f, 171 / 255f, 1f),
+                    Items = Enum.GetValues<LeaderboardSortMode>(),
+                    Current = { BindTarget = Sorting },
                 },
             };
         }
@@ -227,6 +237,8 @@ namespace osu.Game.Screens.Select
                     refetch();
             });
             Scope.BindValueChanged(_ => refetch(forceRefresh: true));
+            config.BindWith(OsuSetting.BeatmapLeaderboardSortMode, Sorting);
+            Sorting.BindValueChanged(_ => refetch());
             legacyStyle.BindValueChanged(active =>
             {
                 if (active.NewValue.UsesStableStyle())
@@ -255,7 +267,7 @@ namespace osu.Game.Screens.Select
             var beatmapInfo = beatmap.Value?.BeatmapInfo;
             var fetchRuleset = GetLeaderboardRuleset(ruleset.Value ?? beatmapInfo?.Ruleset, mods.Value);
 
-            lastFetchedCriteria = new LeaderboardCriteria(beatmapInfo, fetchRuleset, Scope.Value, null);
+            lastFetchedCriteria = new LeaderboardCriteria(beatmapInfo, fetchRuleset, Scope.Value, null, Sorting.Value);
             reclaimedForeignFetch = false;
             leaderboardManager.FetchWithCriteria(lastFetchedCriteria, forceRefresh);
         }
@@ -355,7 +367,7 @@ namespace osu.Game.Screens.Select
 
             for (int i = 0; i < list.Count; i++)
             {
-                long? diff = i < list.Count - 1 ? list[i].TotalScore - list[i + 1].TotalScore : null;
+                long? diff = Sorting.Value == LeaderboardSortMode.Score && i < list.Count - 1 ? list[i].TotalScore - list[i + 1].TotalScore : null;
                 addAnimated(scoreContainer, new LegacyScoreRow(list[i], list[i].User.Username, diff) { Y = i * row_step }, cascade++);
             }
 
@@ -365,7 +377,7 @@ namespace osu.Game.Screens.Select
                 Anchor = Anchor.TopLeft,
                 Origin = Anchor.TopCentre,
                 Position = new Vector2(list_width / 2, 0),
-                Text = @"Personal Best",
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J5166,
                 Font = LegacyFonts.Get(20, FontWeight.Bold),
             }, cascade++);
 
@@ -402,7 +414,7 @@ namespace osu.Game.Screens.Select
                         {
                             Anchor = Anchor.Centre,
                             Origin = Anchor.Centre,
-                            Text = @"No personal record set",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5167,
                             Font = LegacyFonts.Get(20, FontWeight.Light),
                         },
                     },

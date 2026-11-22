@@ -15,6 +15,7 @@ using osu.Game.Rulesets.Objects.Drawables;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.Objects.Drawables;
+using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.UI;
 using osu.Game.Screens.Play;
 using osuTK;
@@ -55,7 +56,11 @@ namespace osu.Game.Rulesets.Osu.UI
         private RelaxController? relaxController;
         private DrawableRuleset? drawableRuleset;
         private OsuModMosuAimAssist? mosuAimAssistMod;
+        private DrawableRuleset? cachedModRuleset;
         private OsuModMosuAntiAimAssist? mosuAntiAimAssistMod;
+
+        [Resolved(canBeNull: true)]
+        private ScoreProcessor? scoreProcessor { get; set; }
 
         private DrawableOsuHitObject? lockedTarget;
         private Vector2 assistOffset;
@@ -140,6 +145,9 @@ namespace osu.Game.Rulesets.Osu.UI
         public float CurrentOffsetMagnitude => assistOffset.Length;
         public float CurrentAssistAuthority { get; private set; }
         public bool IsAimAssistEnabled => getMosuAimAssistProfile().HasValue || enabled.Value;
+        public bool IsAimAssistDeclaredMod => mosuAimAssistMod != null;
+        public long AdjustedFrameCount { get; private set; }
+        public float MaxAdjustmentMagnitude { get; private set; }
         public float CurrentIntentScore { get; private set; }
         public bool IsAntiJitterActive => antiJitterRemaining > 0;
         public string CurrentModeName { get; private set; } = @"idle";
@@ -217,6 +225,14 @@ namespace osu.Game.Rulesets.Osu.UI
             if (inputManager == null || playfield == null)
                 return;
 
+            // Completion hands cursor ownership to the end tag. Do not keep applying residual
+            // offsets (including Maple's stationary offset) after the final judgement.
+            if (scoreProcessor?.HasCompleted.Value == true)
+            {
+                StopCursorTracking();
+                return;
+            }
+
             if (inputManager.ReplayInputHandler != null)
             {
                 hasLastRawPosition = false;
@@ -259,6 +275,23 @@ namespace osu.Game.Rulesets.Osu.UI
             if (!isAssistEnabled())
             {
                 clearState(rawPosition);
+                return;
+            }
+
+            MosuAimAssistAlgorithm algorithm = mosuAntiAimAssistMod == null
+                ? mosuAimAssistMod?.Algorithm.Value ?? MosuAimAssistAlgorithm.Mosu
+                : MosuAimAssistAlgorithm.Mosu;
+
+            if (algorithm != activeAlgorithm)
+            {
+                clearState(rawPosition);
+                activeAlgorithm = algorithm;
+                rawDelta = Vector2.Zero;
+            }
+
+            if (algorithm is MosuAimAssistAlgorithm.MapleV2 or MosuAimAssistAlgorithm.MapleV3)
+            {
+                updateMaple(rawPosition, rawDelta);
                 return;
             }
 
@@ -328,7 +361,8 @@ namespace osu.Game.Rulesets.Osu.UI
             {
                 bool preserveInsideFreedom = CurrentAssistStateName == @"inside";
                 assistOffset = updateAssistOffset(targetOffset, activation.Passed || preserveInsideFreedom, rawDelta, elapsed,
-                    preserveInsideFreedom ? 1 : activation.EngageAmount, pointMode, shortRepeatSliderMode, streamMode, contextStrengthFactor);
+                    preserveInsideFreedom ? 1 : activation.EngageAmount, pointMode, shortRepeatSliderMode, streamMode, contextStrengthFactor,
+                    !preserveInsideFreedom && canRecoverNearTarget(context, rawPosition));
             }
 
             applyOutput(rawPosition);
@@ -372,9 +406,16 @@ namespace osu.Game.Rulesets.Osu.UI
             assistOffset = smoothDamp(assistOffset, targetAntiOffset, ref antiAssistVelocity, 0.05f, 10000f, dt);
         }
 
+        internal void StopCursorTracking()
+        {
+            hasLastRawPosition = false;
+            clearState(inputManager?.CurrentState.Mouse.Position ?? Vector2.Zero, restoreOriginalPosition: false);
+        }
+
         private void clearState(Vector2 rawPosition, bool restoreOriginalPosition = true)
         {
             clearTargetState();
+            resetMapleState();
             assistOffset = Vector2.Zero;
             fastRawVelocity = slowRawVelocity = averagedVelocity = Vector2.Zero;
             antiAssistVelocity = Vector2.Zero;
@@ -814,7 +855,22 @@ namespace osu.Game.Rulesets.Osu.UI
 
         private void cacheMosuAimAssistMod()
         {
-            mosuAimAssistMod = drawableRuleset?.Mods.OfType<OsuModMosuAimAssist>().FirstOrDefault();
+            // Cache absence too. Mods are fixed for the lifetime of a drawable ruleset;
+            // settings on the mod instance remain live.
+            if (drawableRuleset == null || ReferenceEquals(cachedModRuleset, drawableRuleset))
+                return;
+
+            cachedModRuleset = drawableRuleset;
+            mosuAimAssistMod = null;
+            var mods = drawableRuleset.Mods;
+            for (int i = 0; i < mods.Count; i++)
+            {
+                if (mods[i] is OsuModMosuAimAssist mod)
+                {
+                    mosuAimAssistMod = mod;
+                    break;
+                }
+            }
         }
 
         private MosuAimAssistProfile? getMosuAimAssistProfile() => mosuAimAssistMod?.DerivedProfile;

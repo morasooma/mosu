@@ -20,18 +20,6 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Simulation
     /// <summary>
     /// A mob population the simulation should keep alive within an area.
     /// </summary>
-    /// <param name="EntityId">Identifier of the mob spawn entity.</param>
-    /// <param name="Centre">Centre of the spawn area.</param>
-    /// <param name="Size">Size of the spawn area.</param>
-    /// <param name="Count">Maximum number of alive mobs.</param>
-    /// <param name="MaxHealth">Maximum health of each mob.</param>
-    /// <param name="ContactDamage">Damage dealt on contact.</param>
-    /// <param name="DetectionRadius">Radius to detect players.</param>
-    /// <param name="ProjectileCount">Number of projectiles fired.</param>
-    /// <param name="ProjectileDamage">Damage of each projectile.</param>
-    /// <param name="ProjectileSpeed">Speed of projectiles.</param>
-    /// <param name="ProjectileRange">Range of projectiles.</param>
-    /// <param name="AttackCooldown">Cooldown between attacks in milliseconds.</param>
     /// <param name="Speed">
     /// How fast its mobs move, in world units per second. Zero holds them still, which is how a turret
     /// is authored.

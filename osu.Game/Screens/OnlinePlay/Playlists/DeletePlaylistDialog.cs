@@ -12,7 +12,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
     {
         public DeletePlaylistDialog(Room room, Action deleteAction)
         {
-            HeaderText = "Are you sure you want to completely delete this playlist?";
+            HeaderText = global::osu.Game.Localisation.ClientTranslationStrings.J5012;
             BodyText = room.Name;
             DangerousAction = deleteAction;
         }

@@ -20,7 +20,7 @@ namespace osu.Game.Overlays.Profile.Sections.Ranks
         private readonly ScoreType type;
 
         public PaginatedScoreContainer(ScoreType type, Bindable<UserProfileData?> user, LocalisableString headerText)
-            : base(user, headerText)
+            : base(user, headerText, counterVisibilityState: type == ScoreType.MostViewed ? CounterVisibilityState.AlwaysHidden : CounterVisibilityState.AlwaysVisible)
         {
             this.type = type;
         }
@@ -65,6 +65,18 @@ namespace osu.Game.Overlays.Profile.Sections.Ranks
 
         private int drawableItemIndex;
 
+        protected override Func<SoloScoreInfo, Drawable?> CreateDrawableItemFactory(int itemCount)
+        {
+            if (type != ScoreType.Best)
+                return base.CreateDrawableItemFactory(itemCount);
+
+            // Reserve indices on Update. Cancelled background batches must not race
+            // a new user's index reset or consume that user's weighting sequence.
+            int index = drawableItemIndex;
+            drawableItemIndex += itemCount;
+            return model => new DrawableProfileWeightedScore(model, Math.Pow(0.95, index++));
+        }
+
         protected override Drawable CreateDrawableItem(SoloScoreInfo model)
         {
             switch (type)
@@ -74,6 +86,9 @@ namespace osu.Game.Overlays.Profile.Sections.Ranks
 
                 case ScoreType.Best:
                     return new DrawableProfileWeightedScore(model, Math.Pow(0.95, drawableItemIndex++));
+
+                case ScoreType.MostViewed:
+                    return new DrawableProfileReplayScore(model);
             }
         }
     }

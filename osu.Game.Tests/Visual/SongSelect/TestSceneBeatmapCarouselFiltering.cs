@@ -31,14 +31,17 @@ namespace osu.Game.Tests.Visual.SongSelect
         [Test]
         public void TestBasicFiltering()
         {
+            int initialInvocationCount = 0;
             AddBeatmaps(10, 3);
             WaitForDrawablePanels();
 
-            AddUntilStep("invocation count correct", () => NewItemsPresentedInvocationCount, () => Is.EqualTo(1));
+            // The initial empty-library filter may complete before the test adds its
+            // beatmaps. Count publications caused by the explicit searches below.
+            AddStep("record initial publication count", () => initialInvocationCount = NewItemsPresentedInvocationCount);
 
             ApplyToFilterAndWaitForFilter("filter", c => c.SearchText = BeatmapSets[2].Metadata.Title);
 
-            AddUntilStep("invocation count correct", () => NewItemsPresentedInvocationCount, () => Is.EqualTo(2));
+            AddUntilStep("one search publication", () => NewItemsPresentedInvocationCount, () => Is.EqualTo(initialInvocationCount + 1));
 
             CheckDisplayedBeatmapSetsCount(1);
             CheckDisplayedBeatmapsCount(3);
@@ -53,7 +56,7 @@ namespace osu.Game.Tests.Visual.SongSelect
 
             ApplyToFilterAndWaitForFilter("remove filter", c => c.SearchText = string.Empty);
 
-            AddUntilStep("invocation count correct", () => NewItemsPresentedInvocationCount, () => Is.EqualTo(3));
+            AddUntilStep("one clear publication", () => NewItemsPresentedInvocationCount, () => Is.EqualTo(initialInvocationCount + 2));
 
             CheckDisplayedBeatmapSetsCount(10);
             CheckDisplayedBeatmapsCount(30);

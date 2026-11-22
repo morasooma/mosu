@@ -17,11 +17,11 @@ namespace osu.Game.Localisation
         /// <summary>
         /// "By turning off the &quot;Featured Artist&quot; filter, all user-uploaded content will be displayed.
         ///
-        /// This includes content that may not be correctly licensed for osu! usage. Browse at your own risk."
+        /// This includes content that may not be correctly licensed for use in Morasooma. Browse at your own risk."
         /// </summary>
         public static LocalisableString UserContentDisclaimerDescription => new TranslatableString(getKey(@"by_turning_off_the_featured"), @"By turning off the ""Featured Artist"" filter, all user-uploaded content will be displayed.
 
-This includes content that may not be correctly licensed for osu! usage. Browse at your own risk.");
+This includes content that may not be correctly licensed for use in Morasooma. Browse at your own risk.");
 
         /// <summary>
         /// "I understand"

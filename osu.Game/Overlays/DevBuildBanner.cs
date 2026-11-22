@@ -32,7 +32,7 @@ namespace osu.Game.Overlays
                     Origin = Anchor.BottomCentre,
                     Font = OsuFont.Numeric.With(weight: FontWeight.Bold, size: 12),
                     Colour = colours.YellowDark,
-                    Text = @"DEVELOPER BUILD",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J3868,
                 },
                 new Sprite
                 {

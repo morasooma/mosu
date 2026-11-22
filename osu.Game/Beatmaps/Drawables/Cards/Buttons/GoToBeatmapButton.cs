@@ -16,7 +16,9 @@ namespace osu.Game.Beatmaps.Drawables.Cards.Buttons
         public IBindable<DownloadState> State => state;
         private readonly Bindable<DownloadState> state = new Bindable<DownloadState>();
 
-        private readonly APIBeatmapSet beatmapSet;
+        private APIBeatmapSet beatmapSet;
+
+        internal void ChangeBeatmapSet(APIBeatmapSet set) => beatmapSet = set;
         private readonly bool allowNavigationToBeatmap;
 
         public GoToBeatmapButton(APIBeatmapSet beatmapSet, bool allowNavigationToBeatmap)

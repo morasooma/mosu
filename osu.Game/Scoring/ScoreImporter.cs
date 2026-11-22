@@ -195,7 +195,9 @@ namespace osu.Game.Scoring
 
             if (model.RealmUser.OnlineID > 1)
             {
-                model.User = lookupUserById(model.RealmUser.OnlineID) ?? model.User;
+                // Enrich the known account without replacing the name recorded in the replay.
+                // Locally played scores may intentionally use a custom display username.
+                model.User = lookupUserById(model.RealmUser.OnlineID)?.WithDisplayUsername(model.RealmUser.Username) ?? model.User;
                 return;
             }
 

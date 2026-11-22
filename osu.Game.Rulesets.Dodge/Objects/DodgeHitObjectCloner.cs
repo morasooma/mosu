@@ -33,6 +33,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
                     AimPosition = emitter.AimPosition + positionOffset,
                     MovementEndPosition = emitter.MovementEndPosition + positionOffset,
                     MoveSource = emitter.MoveSource,
+                    LoopScope = emitter.LoopScope,
+                    LoopOffset = emitter.LoopOffset,
                     BulletCount = emitter.BulletCount,
                     SpreadAngle = emitter.SpreadAngle,
                     BurstCount = emitter.BurstCount,
@@ -54,6 +56,7 @@ namespace osu.Game.Rulesets.Dodge.Objects
                     Duration = arena.Duration,
                     TargetPosition = arena.TargetPosition + positionOffset,
                     TargetSize = arena.TargetSize,
+                    WorldSpace = arena.WorldSpace,
                     TargetRotation = arena.TargetRotation,
                     KiaiShakeAngle = arena.KiaiShakeAngle,
                     BorderOpacity = arena.BorderOpacity,
@@ -65,6 +68,7 @@ namespace osu.Game.Rulesets.Dodge.Objects
                     Position = camera.Position + positionOffset,
                     EndPosition = camera.EndPosition + positionOffset,
                     Continuous = camera.Continuous,
+                    Mode = camera.Mode,
                     Easing = camera.Easing,
                 },
                 DodgeTrigger trigger => new DodgeTrigger
@@ -72,11 +76,18 @@ namespace osu.Game.Rulesets.Dodge.Objects
                     Duration = trigger.Duration,
                     Action = trigger.Action,
                     Strength = trigger.Strength,
+                    SourcePosition = trigger.SourcePosition + positionOffset,
+                    MoveFromCurrentPosition = trigger.MoveFromCurrentPosition,
+                    TargetPosition = trigger.TargetPosition + positionOffset,
+                    TargetSize = trigger.TargetSize,
+                    Easing = trigger.Easing,
                     Position = trigger.Position + positionOffset,
                 },
                 _ => throw new ArgumentException($"Unsupported Dodge object {source.GetType().Name}.", nameof(source)),
             };
 
+            clone.WorldBounds = source.WorldBounds;
+            clone.ArenaTimeline = source.ArenaTimeline;
             clone.StartTime = source.StartTime + timeOffset;
             clone.Colour = source.Colour;
             clone.OutlineColour = source.OutlineColour;

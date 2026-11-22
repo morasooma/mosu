@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Utils;
@@ -29,10 +28,16 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
 
             double deltaDifferenceEpsilon = ((OsuDifficultyHitObject)current).HitWindowGreat * 0.3;
 
-            var island = new Island(int.MaxValue);
-            var previousIsland = new Island(int.MaxValue);
-
-            var islands = new List<Island>();
+            // Keep bounded rhythm history on the stack. Indices preserve aliasing when
+            // previousIsland is also remembered in the occurrences list.
+            Span<Island> islandBuffer = stackalloc Island[history_objects_max + 3];
+            int islandCount = 2;
+            ref Island island = ref islandBuffer[1];
+            ref Island previousIsland = ref islandBuffer[0];
+            island = new Island(int.MaxValue);
+            previousIsland = new Island(int.MaxValue);
+            Span<int> islands = stackalloc int[history_objects_max];
+            int rememberedIslandCount = 0;
 
             double startDifficulty = 0; // store the difficulty of the current start of an island to buff for tighter rhythms
 
@@ -134,8 +139,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
 
                         bool found = false;
 
-                        foreach (var existingIsland in islands)
+                        for (int j = 0; j < rememberedIslandCount; j++)
                         {
+                            ref Island existingIsland = ref islandBuffer[islands[j]];
                             if (existingIsland.AlmostEquals(island, deltaDifferenceEpsilon))
                             {
                                 // only increase island occurrences if they're going one after another
@@ -152,7 +158,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
                         }
 
                         if (!found && island.DeltaCount > 0)
-                            islands.Add(island);
+                            islands[rememberedIslandCount++] = islandCount - 1;
 
                         // scale down the difficulty if the object is double-tappable
                         effectiveDifficulty *= 1 - prevObj.CalculateDoubleTapFeasibility(currObj) * 0.75;
@@ -172,7 +178,8 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
                         if (prevDelta + deltaDifferenceEpsilon < currDelta) // we're slowing down, stop counting
                             firstDeltaSwitch = false; // if we're speeding up, this stays true and we keep counting island size.
 
-                        previousIsland = island;
+                        previousIsland = ref island;
+                        island = ref islandBuffer[islandCount++];
                         island = new Island((int)currDelta);
                     }
                 }
@@ -192,6 +199,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
 
                     startDifficulty = effectiveDifficulty;
 
+                    island = ref islandBuffer[islandCount++];
                     island = new Island((int)currDelta);
                 }
 
@@ -219,7 +227,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed
         /// <summary>
         /// An island is a group of consecutive objects with the same delta time.
         /// </summary>
-        private class Island
+        private struct Island
         {
             /// <summary>
             /// Delta time of every object in this island

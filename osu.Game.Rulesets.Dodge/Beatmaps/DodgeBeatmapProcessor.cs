@@ -21,6 +21,12 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
         {
         }
 
+        public override void PreProcess()
+        {
+            base.PreProcess();
+            DodgeWorldGeometry.ApplyArenaTimeline(Beatmap.HitObjects.OfType<DodgeHitObject>());
+        }
+
         public IEnumerable<HitObject> GetBreakRelevantHitObjects()
             => Beatmap.HitObjects.Where(hitObject => hitObject is DodgeBullet or DodgeEmitter or DodgeBeam);
 

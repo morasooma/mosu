@@ -395,6 +395,7 @@ namespace osu.Game.Online.Rooms
             Name = other.Name;
             Description = other.Description;
             Category = other.Category;
+            Pinned = other.Pinned;
             Host = other.Host;
             ChannelId = other.ChannelId;
             Status = other.Status;

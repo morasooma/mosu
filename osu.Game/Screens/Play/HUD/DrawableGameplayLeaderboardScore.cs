@@ -77,6 +77,7 @@ namespace osu.Game.Screens.Play.HUD
         public readonly bool Tracked;
 
         private FillFlowContainer scorePanel = null!;
+        private LeaderboardPanelOutline panelOutline = null!;
         private Container leftLayer = null!;
         private Box leftLayerGradient = null!;
         private Container rightLayer = null!;
@@ -91,6 +92,10 @@ namespace osu.Game.Screens.Play.HUD
         private IBindable<ScoringMode> scoreDisplayMode = null!;
 
         private bool isFriend;
+        private readonly GameplayLeaderboardScore score;
+        private Container avatarLayer = null!;
+        private Container avatarMask = null!;
+        private ScoreAvatar avatar = null!;
 
         [Resolved]
         private OsuConfigManager config { get; set; } = null!;
@@ -108,6 +113,7 @@ namespace osu.Game.Screens.Play.HUD
         /// </summary>
         public DrawableGameplayLeaderboardScore(GameplayLeaderboardScore score)
         {
+            this.score = score;
             User = score.User;
             Tracked = score.Tracked;
             TotalScore.BindTo(score.TotalScore);
@@ -134,12 +140,10 @@ namespace osu.Game.Screens.Play.HUD
         {
             const float corner_radius = 10;
 
-            Container avatarLayer;
-
             InternalChild = scorePanel = new FillFlowContainer
             {
                 CornerRadius = corner_radius,
-                BorderThickness = 2f,
+                MaskingSmoothness = 1.5f,
                 Masking = true,
                 AutoSizeAxes = Axes.X,
                 RelativeSizeAxes = Axes.Y,
@@ -187,12 +191,14 @@ namespace osu.Game.Screens.Play.HUD
                         Padding = new MarginPadding(1.3f),
                         // negative left margin to place the avatar's center directly at the edge of the left layer.
                         Margin = new MarginPadding { Left = -avatar_size / 2 },
-                        Child = new Container
+                        Child = avatarMask = new Container
                         {
                             RelativeSizeAxes = Axes.Both,
+                            Anchor = Anchor.Centre,
+                            Origin = Anchor.Centre,
                             CornerRadius = corner_radius,
                             Masking = true,
-                            Child = new ScoreAvatar(User)
+                            Child = avatar = new ScoreAvatar(User)
                             {
                                 Anchor = Anchor.Centre,
                                 Origin = Anchor.Centre,
@@ -297,6 +303,7 @@ namespace osu.Game.Screens.Play.HUD
                     avatarLayer.CreateProxy(),
                 }
             };
+            AddInternal(panelOutline = new LeaderboardPanelOutline { Thickness = 2 });
         }
 
         protected override void LoadComplete()
@@ -318,6 +325,7 @@ namespace osu.Game.Screens.Play.HUD
             HasQuit.BindValueChanged(_ => updatePanelState());
             ScorePosition.BindValueChanged(_ => updatePanelState(), true);
 
+            initialiseAppearance();
             FinishTransforms(true);
         }
 
@@ -332,7 +340,7 @@ namespace osu.Game.Screens.Play.HUD
             }
             else
             {
-                rightLayer.ResizeWidthTo(avatar_size / 2, panel_transition_duration, Easing.OutQuint);
+                rightLayer.ResizeWidthTo(currentAvatarSize / 2, panel_transition_duration, Easing.OutQuint);
                 scoreComponents.FadeOut(text_transition_duration, Easing.OutQuint);
             }
         }
@@ -367,6 +375,11 @@ namespace osu.Game.Screens.Play.HUD
             else
                 setPanelColour(BackgroundColour ?? colours.Blue4);
 
+            if (Style.Value == GameplayLeaderboardStyle.Morasooma)
+            {
+                usernameColour = HasQuit.Value ? colours.Red2 : theme.Content1;
+                applyThemedPanel();
+            }
             usernameText.FadeColour(usernameColour, text_transition_duration, Easing.OutQuint);
 
             scorePanel.MoveToX(widthExtension ? 0 : left_panel_extension_width, panel_transition_duration, Easing.OutElastic);
@@ -375,14 +388,17 @@ namespace osu.Game.Screens.Play.HUD
 
         private void setPanelColour(Color4 baseColour)
         {
-            leftLayerGradient.Colour = ColourInfo.GradientVertical(baseColour.Opacity(0.2f), baseColour.Opacity(0.5f));
-            rightLayerGradient.Colour = ColourInfo.GradientVertical(baseColour.Opacity(0.1f), baseColour.Opacity(0.3f));
-            scorePanel.BorderColour = ColourInfo.GradientVertical(baseColour.Opacity(0.2f), baseColour);
+            panelOutline.Thickness = 2;
+            bool solid = PanelStyle.Value == GameplayLeaderboardPanelStyle.Solid;
+            leftLayerGradient.Colour = solid ? ColourInfo.SingleColour(baseColour.Opacity(1)) : ColourInfo.GradientVertical(baseColour.Opacity(0.2f), baseColour.Opacity(0.5f));
+            rightLayerGradient.Colour = solid ? ColourInfo.SingleColour(baseColour.Opacity(1)) : ColourInfo.GradientVertical(baseColour.Opacity(0.1f), baseColour.Opacity(0.3f));
+            panelOutline.Colour = ColourInfo.GradientVertical(baseColour.Opacity(0.2f), baseColour);
         }
 
         protected override void Update()
         {
             base.Update();
+            updateExtraInformation();
 
             if (!drawSizeLayout.IsValid)
             {
@@ -397,13 +413,22 @@ namespace osu.Game.Screens.Play.HUD
 
             bool showAccuracyAndCombo = rightLayer.Width >= accuracy_combo_width_cutoff;
 
-            accuracyText.Alpha = showAccuracyAndCombo ? 1 : 0;
-            comboText.Alpha = showAccuracyAndCombo ? 1 : 0;
+            accuracyText.Alpha = showAccuracyAndCombo && ShowAccuracy.Value ? 1 : 0;
+            comboText.Alpha = showAccuracyAndCombo && ShowCombo.Value ? 1 : 0;
 
             bool showUsernameAndScore = rightLayer.Width >= username_score_width_cutoff;
 
             usernameText.Alpha = showUsernameAndScore ? 1 : 0;
             scoreText.Alpha = showUsernameAndScore ? 1 : 0;
+        }
+
+        protected override void UpdateAfterChildren()
+        {
+            base.UpdateAfterChildren();
+            // Read the flow size after its layout update.
+            panelOutline.Position = scorePanel.Position;
+            panelOutline.Size = scorePanel.DrawSize;
+            panelOutline.Radius = scorePanel.CornerRadius;
         }
 
         private float computeRightLayerWidth() => Math.Max(0, DrawWidth - extended_left_panel_width - avatar_size / 2);

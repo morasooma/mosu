@@ -9,7 +9,8 @@ using osu.Framework.Localisation;
 using osu.Framework.Screens;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Screens;
-using osu.Game.Screens.Play;
+using osu.Game.Online.Metadata;
+using osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay;
 
 namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
 {
@@ -22,6 +23,9 @@ namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
         [Resolved]
         private IPerformFromScreenRunner? performer { get; set; }
 
+        [Resolved]
+        private MetadataClient metadata { get; set; } = null!;
+
         protected OnlineUserPanel(APIUser user)
         {
             User = user;
@@ -30,7 +34,7 @@ namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
 
         protected void BeginSpectating()
         {
-            performer?.PerformFromScreen(s => s.Push(new SoloSpectatorScreen(User)));
+            performer?.PerformFromScreen(s => s.Push(RankedPlaySpectatorLoader.Create(User, metadata)));
         }
 
         public IEnumerable<LocalisableString> FilterTerms { get; }

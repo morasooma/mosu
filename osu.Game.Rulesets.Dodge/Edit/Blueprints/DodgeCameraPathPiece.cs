@@ -27,6 +27,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         private Vector2 cachedStart;
         private Vector2 cachedEnd;
         private bool stateValid;
+        private DodgeCameraMode cachedMode;
 
         public RectangleF GamefieldBounds { get; private set; }
 
@@ -63,11 +64,16 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
 
         public void UpdateFrom(DodgeCameraChange change)
         {
-            if (stateValid && cachedStart == change.Position && cachedEnd == change.EndPosition)
+            if (stateValid && cachedStart == change.Position && cachedEnd == change.EndPosition && cachedMode == change.Mode)
                 return;
 
+            cachedMode = change.Mode;
             cachedStart = change.Position;
             cachedEnd = change.EndPosition;
+            bool scroll = change.Mode == DodgeCameraMode.Scroll;
+            path.Alpha = scroll ? 0.5f : 0;
+            end.Alpha = scroll ? 0.8f : 0;
+            start.Colour = change.Mode == DodgeCameraMode.FollowPlayer ? Color4.Cyan : Color4.Yellow;
             stateValid = true;
 
             start.Position = change.Position;
@@ -80,6 +86,11 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             // Offset that normalisation so playfield coordinates remain aligned with the nodes.
             path.Position = -path.PositionInBoundingBox(Vector2.Zero);
 
+            if (!scroll)
+            {
+                GamefieldBounds = new RectangleF(change.Position.X - node_size / 2, change.Position.Y - node_size / 2, node_size, node_size);
+                return;
+            }
             float left = Math.Min(change.Position.X, change.EndPosition.X);
             float top = Math.Min(change.Position.Y, change.EndPosition.Y);
             float right = Math.Max(change.Position.X, change.EndPosition.X);

@@ -35,6 +35,9 @@ namespace osu.Game.Tests.Visual.Multiplayer
 {
     public partial class TestSceneMultiplayerMatchSongSelect : MultiplayerTestScene
     {
+        // The scene owns a RealmAccess in addition to the host's; use a separate database.
+        protected override bool UseFreshStoragePerRun => true;
+
         private BeatmapManager manager = null!;
         private RulesetStore rulesets = null!;
 
@@ -108,6 +111,34 @@ namespace osu.Game.Tests.Visual.Multiplayer
             AddUntilStep("beatmap panel loaded", () => songSelect.ChildrenOfType<PanelBeatmapSet>().FirstOrDefault(), () => Is.Not.Null);
             AddAssert("online panel keeps modern height", () => songSelect.ChildrenOfType<PanelBeatmapSet>().First().Item?.DrawHeight, () => Is.EqualTo(PanelBeatmapSet.HEIGHT));
             AddAssert("online panel has no selected difficulty header", () => songSelect.ChildrenOfType<PanelBeatmapSet>().First().ShowsSelectedDifficulty, () => Is.False);
+            AddAssert("modern filter accepts input", () => songSelect.ChildrenOfType<FilterControl>().Single().State.Value,
+                () => Is.EqualTo(osu.Framework.Graphics.Containers.Visibility.Visible));
+            AddAssert("online filter does not force converts", () => songSelect.ChildrenOfType<FilterControl>().Single().CreateCriteria().AllowConvertedBeatmaps,
+                () => Is.EqualTo(configManager.Get<bool>(OsuSetting.ShowConvertedBeatmaps)));
+
+            BeatmapInfo previousBeatmap = null!;
+            AddStep("remember selected beatmap", () => previousBeatmap = Beatmap.Value.BeatmapInfo);
+            AddStep("navigate modern carousel", () => InputManager.Key(Key.Down));
+            AddUntilStep("selection changes", () => Beatmap.Value.BeatmapInfo.ID, () => Is.Not.EqualTo(previousBeatmap.ID));
+            PanelBeatmap targetPanel = null!;
+            AddUntilStep("another difficulty visible", () =>
+            {
+                targetPanel = songSelect.ChildrenOfType<PanelBeatmap>().FirstOrDefault(panel => panel.Item?.IsVisible == true
+                    && panel.Item.Model is GroupedBeatmap grouped && grouped.Beatmap.ID != Beatmap.Value.BeatmapInfo.ID)!;
+                return targetPanel != null;
+            });
+            AddStep("click another difficulty", () =>
+            {
+                InputManager.MoveMouseTo(targetPanel.TopLevelContent);
+                InputManager.Click(MouseButton.Left);
+            });
+            AddUntilStep("mouse changes selection", () => Beatmap.Value.BeatmapInfo.ID,
+                () => Is.EqualTo(((GroupedBeatmap)targetPanel.Item!.Model).Beatmap.ID));
+            AddStep("search in modern filter", () => songSelect.ChildrenOfType<FilterControl>().Single().Search("no matching beatmap"));
+            AddUntilStep("search filters carousel", () => !songSelect.IsFiltering && songSelect.ChildrenOfType<BeatmapCarousel>().Single().MatchedBeatmapsCount == 0);
+            AddStep("clear search", () => songSelect.ChildrenOfType<FilterControl>().Single().Search(string.Empty));
+            AddUntilStep("beatmaps return", () => !songSelect.IsFiltering && songSelect.ChildrenOfType<BeatmapCarousel>().Single().MatchedBeatmapsCount > 0);
+            AddStep("restore modern style", () => configManager.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.Modern));
         }
 
         [Test]

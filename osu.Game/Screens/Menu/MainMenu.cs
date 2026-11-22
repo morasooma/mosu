@@ -162,7 +162,7 @@ namespace osu.Game.Screens.Menu
                             OnMultiplayer = () => this.Push(new Multiplayer()),
                             OnQuickPlay = loadQuickPlay,
                             OnRankedPlay = loadRankedPlay,
-                            OnDodgeWorld = () => this.Push(new DodgeWorldScreen()),
+                            OnDodgeWorld = () => this.Push(new DodgeWorldScreen(allowLocalPreview: true)),
                             OnPlaylists = () => this.Push(new Playlists()),
                             OnDailyChallenge = room =>
                             {
@@ -227,12 +227,12 @@ namespace osu.Game.Screens.Menu
                 {
                     case ButtonSystemState.Initial:
                     case ButtonSystemState.Exit:
-                        ApplyToBackground(b => b.FadeColour(OsuColour.Gray(baseDim), 500, Easing.OutSine));
+                        ApplyToBackground(b => b.FadeColour(OsuColour.Gray(baseDim), InterfaceAnimation.FadeDuration(500), Easing.OutSine));
                         onlineMenuBanner.State.Value = Visibility.Hidden;
                         break;
 
                     default:
-                        ApplyToBackground(b => b.FadeColour(OsuColour.Gray(baseDim * 0.8f), 500, Easing.OutSine));
+                        ApplyToBackground(b => b.FadeColour(OsuColour.Gray(baseDim * 0.8f), InterfaceAnimation.FadeDuration(500), Easing.OutSine));
                         onlineMenuBanner.State.Value = Visibility.Visible;
                         break;
                 }
@@ -244,9 +244,12 @@ namespace osu.Game.Screens.Menu
             reappearSampleSwoosh = audio.Samples.Get(@"Menu/reappear-swoosh");
         }
 
+        private IBindable<InterfaceAnimationMode>? animationMode;
+
         protected override void LoadComplete()
         {
             base.LoadComplete();
+            animationMode = InterfaceAnimation.Observe(this, true);
             GetContainingInputManager();
         }
 
@@ -255,7 +258,7 @@ namespace osu.Game.Screens.Menu
         public override void OnEntering(ScreenTransitionEvent e)
         {
             base.OnEntering(e);
-            Buttons.FadeInFromZero(500);
+            Buttons.FadeInFromZero(InterfaceAnimation.FadeDuration(500));
 
             if (e.Last is IntroScreen && musicController.TrackLoaded)
             {
@@ -279,8 +282,8 @@ namespace osu.Game.Screens.Menu
 
             Buttons.SetOsuLogo(logo);
 
-            logo.FadeColour(Color4.White, 100, Easing.OutQuint);
-            logo.FadeIn(100, Easing.OutQuint);
+            logo.FadeColour(Color4.White, InterfaceAnimation.FadeDuration(100), Easing.OutQuint);
+            logo.FadeIn(InterfaceAnimation.FadeDuration(100), Easing.OutQuint);
 
             logoProxy = logo.ProxyToContainer(logoTarget);
 
@@ -288,10 +291,10 @@ namespace osu.Game.Screens.Menu
             {
                 Buttons.State = ButtonSystemState.TopLevel;
 
-                this.FadeIn(FADE_IN_DURATION, Easing.OutQuint);
-                buttonsContainer.MoveTo(new Vector2(0, 0), FADE_IN_DURATION, Easing.OutQuint);
+                this.FadeIn(InterfaceAnimation.TransitionFadeDuration(FADE_IN_DURATION), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+                buttonsContainer.MoveTo(new Vector2(0, 0), InterfaceAnimation.TransitionDuration(FADE_IN_DURATION), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
 
-                sideFlashes.Delay(FADE_IN_DURATION).FadeIn(64, Easing.InQuint);
+                sideFlashes.Delay(InterfaceAnimation.TransitionDuration(FADE_IN_DURATION)).FadeIn(InterfaceAnimation.FadeDuration(64), Easing.InQuint);
             }
             else
             {
@@ -325,8 +328,8 @@ namespace osu.Game.Screens.Menu
 
         protected override void LogoSuspending(OsuLogo logo)
         {
-            var seq = logo.FadeOut(300, Easing.InSine)
-                          .ScaleTo(0.2f, 300, Easing.InSine);
+            var seq = logo.FadeOut(InterfaceAnimation.TransitionFadeDuration(300), InterfaceAnimation.TransitionEasing(Easing.InSine))
+                          .ScaleTo(0.2f, InterfaceAnimation.TransitionDuration(300), InterfaceAnimation.TransitionEasing(Easing.InSine));
 
             logoProxy?.Dispose();
             logoProxy = null;
@@ -349,17 +352,17 @@ namespace osu.Game.Screens.Menu
 
             Buttons.State = ButtonSystemState.EnteringMode;
 
-            this.FadeOut(FADE_OUT_DURATION, Easing.InSine);
-            buttonsContainer.MoveTo(new Vector2(-800, 0), FADE_OUT_DURATION, Easing.InSine);
+            this.FadeOut(InterfaceAnimation.TransitionFadeDuration(FADE_OUT_DURATION), InterfaceAnimation.TransitionEasing(Easing.InSine));
+            buttonsContainer.MoveTo(new Vector2(-800, 0), InterfaceAnimation.TransitionDuration(FADE_OUT_DURATION), InterfaceAnimation.TransitionEasing(Easing.InSine));
 
-            sideFlashes.FadeOut(64, Easing.OutQuint);
+            sideFlashes.FadeOut(InterfaceAnimation.FadeDuration(64), Easing.OutQuint);
 
             bottomElementsFlow
-                .ScaleTo(0.9f, 1000, Easing.OutQuint)
-                .FadeOut(500, Easing.OutQuint);
+                .ScaleTo(0.9f, InterfaceAnimation.TransitionDuration(1000), InterfaceAnimation.TransitionEasing(Easing.OutQuint))
+                .FadeOut(InterfaceAnimation.TransitionFadeDuration(500), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
 
             supporterDisplay
-                .FadeOut(500, Easing.OutQuint);
+                .FadeOut(InterfaceAnimation.TransitionFadeDuration(500), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
 
             samplePlaybackDisabled.Value = true;
         }
@@ -380,8 +383,8 @@ namespace osu.Game.Screens.Menu
             menuTipDisplay.ShowNextTip();
 
             bottomElementsFlow
-                .ScaleTo(1, 1000, Easing.OutQuint)
-                .FadeIn(1000, Easing.OutQuint);
+                .ScaleTo(1, InterfaceAnimation.TransitionDuration(1000), InterfaceAnimation.TransitionEasing(Easing.OutQuint))
+                .FadeIn(InterfaceAnimation.TransitionFadeDuration(1000), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
 
             samplePlaybackDisabled.Value = false;
         }
@@ -426,13 +429,13 @@ namespace osu.Game.Screens.Menu
 
             songTicker.Hide();
 
-            this.FadeOut(3000);
+            this.FadeOut(InterfaceAnimation.FadeDuration(3000));
 
             bottomElementsFlow
-                .FadeOut(500, Easing.OutQuint);
+                .FadeOut(InterfaceAnimation.FadeDuration(500), Easing.OutQuint);
 
             supporterDisplay
-                .FadeOut(500, Easing.OutQuint);
+                .FadeOut(InterfaceAnimation.FadeDuration(500), Easing.OutQuint);
 
             return base.OnExiting(e);
         }

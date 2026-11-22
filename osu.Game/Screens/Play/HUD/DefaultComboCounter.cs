@@ -7,15 +7,18 @@ using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Rulesets.Scoring;
+using osu.Game.Skinning;
 
 namespace osu.Game.Screens.Play.HUD
 {
     public partial class DefaultComboCounter : ComboCounter
     {
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+
         [BackgroundDependencyLoader]
         private void load(OsuColour colours, ScoreProcessor scoreProcessor)
         {
-            Colour = colours.BlueLighter;
+            themeColours.Bind(action => Scheduler.Add(action), () => Colour = themeColours.GetColour(Overlays.OverlayColour.Content1, colours.BlueLighter));
             Current.BindTo(scoreProcessor.Combo);
         }
 

@@ -14,7 +14,7 @@ namespace osu.Game.Rulesets.Osu.Mods
         public override string Name => @"Single Tap";
         public override string Acronym => @"SG";
         public override IconUsage? Icon => OsuIcon.ModSingleTap;
-        public override LocalisableString Description => @"You must only use one key!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3731;
         public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[] { typeof(OsuModAlternate) }).ToArray();
         public override bool Ranked => true;
 

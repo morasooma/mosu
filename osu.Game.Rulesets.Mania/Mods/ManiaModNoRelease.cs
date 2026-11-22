@@ -24,7 +24,7 @@ namespace osu.Game.Rulesets.Mania.Mods
 
         public override string Acronym => "NR";
 
-        public override LocalisableString Description => "No more timing the end of hold notes.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3649;
 
         public override IconUsage? Icon => OsuIcon.ModNoRelease;
 

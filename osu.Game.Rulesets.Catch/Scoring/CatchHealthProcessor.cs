@@ -41,6 +41,9 @@ namespace osu.Game.Rulesets.Catch.Scoring
 
         protected override double GetHealthIncreaseFor(HitObject hitObject, HitResult result)
         {
+            if (hitObject is FruitNinjaFruit { IsBomb: true })
+                return result == HitResult.ComboBreak ? -0.15 : 0;
+
             double increase = 0;
 
             switch (result)
@@ -57,6 +60,14 @@ namespace osu.Game.Rulesets.Catch.Scoring
                     break;
 
                 case HitResult.LargeTickHit:
+                    increase = 0.015;
+                    break;
+
+                case HitResult.Meh:
+                    increase = 0.005;
+                    break;
+
+                case HitResult.Ok:
                     increase = 0.015;
                     break;
 

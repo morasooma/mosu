@@ -11,13 +11,22 @@ namespace osu.Game.Online.API.Requests
 {
     public class GetRelaxRankedPoolRequest : APIRequest<RelaxRankedPoolResponse>
     {
-        protected override string Uri => $@"{API!.Endpoints.APIUrl}/api/v2/matchmaking/relax-pool";
+        [JsonIgnore]
+        public int RulesetId { get; init; } = 4;
+        protected override string Uri => $@"{API!.Endpoints.APIUrl}/api/v2/matchmaking/ranked-pools/{RulesetId}/";
         protected override string Target => throw new NotSupportedException();
     }
 
     public class ReplaceRelaxRankedPoolRequest : APIRequest<ReplaceRelaxRankedPoolResponse>
     {
-        protected override string Uri => $@"{API!.Endpoints.APIUrl}/api/v2/matchmaking/relax-pool";
+        [JsonIgnore]
+        public bool HasRevisionConflict => WebRequest?.ResponseStatusCode == System.Net.HttpStatusCode.Conflict;
+
+        [JsonIgnore]
+        public int RulesetId { get; init; } = 4;
+        [JsonProperty("revision")]
+        public long Revision { get; init; }
+        protected override string Uri => $@"{API!.Endpoints.APIUrl}/api/v2/matchmaking/ranked-pools/{RulesetId}/";
         protected override string Target => throw new NotSupportedException();
 
         [JsonProperty("beatmap_ids")]
@@ -35,6 +44,15 @@ namespace osu.Game.Online.API.Requests
 
     public class RelaxRankedPoolResponse
     {
+        [JsonProperty("ruleset_id")]
+        public int RulesetId { get; set; } = 4;
+
+        [JsonProperty("revision")]
+        public long Revision { get; set; }
+
+        [JsonProperty("editors")]
+        public List<RelaxRankedPoolOwner> Editors { get; set; } = [];
+
         [JsonProperty("can_manage")]
         public bool CanManage { get; set; }
 
@@ -62,6 +80,15 @@ namespace osu.Game.Online.API.Requests
 
     public class RelaxRankedPoolBeatmap
     {
+        [JsonProperty("added_by")]
+        public int? AddedBy { get; set; }
+
+        [JsonProperty("added_by_username")]
+        public string? AddedByUsername { get; set; }
+
+        [JsonProperty("added_at")]
+        public DateTimeOffset AddedAt { get; set; }
+
         [JsonProperty("beatmap_id")]
         public int BeatmapId { get; set; }
 

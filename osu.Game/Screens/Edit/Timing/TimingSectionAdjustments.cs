@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Utils;
@@ -13,6 +14,42 @@ namespace osu.Game.Screens.Edit.Timing
 {
     public static class TimingSectionAdjustments
     {
+        /// <summary>
+        /// Moves selected rows and the following effect rows belonging to selected timing points.
+        /// Membership is captured before modifying any offsets so overlapping selections only move once.
+        /// </summary>
+        public static ControlPointGroup[] MoveControlPointGroups(IBeatmap beatmap, IReadOnlyList<ControlPointGroup> selectedGroups, double adjustment, bool adjustHitObjects)
+        {
+            var info = beatmap.ControlPointInfo;
+            var timingPoints = selectedGroups.SelectMany(g => g.ControlPoints).OfType<TimingControlPoint>().ToArray();
+            var ranges = timingPoints.Select(t => (Start: t.Time, End: info.TimingPointAfter(t.Time)?.Time ?? double.PositiveInfinity)).ToArray();
+            var moving = info.Groups.Where(g => selectedGroups.Contains(g) || ranges.Any(r => g.Time >= r.Start && g.Time < r.End))
+                             .Select(g => (Group: g, Time: g.Time + adjustment, Points: g.ControlPoints.ToArray())).ToArray();
+
+            if (!double.IsFinite(adjustment) || moving.Any(g => !double.IsFinite(g.Time)))
+                throw new ArgumentOutOfRangeException(nameof(adjustment));
+
+            var hitObjects = adjustHitObjects
+                ? timingPoints.SelectMany(t => HitObjectsInTimingRange(beatmap, t)).Distinct().ToArray()
+                : Array.Empty<HitObject>();
+
+            foreach (var hitObject in hitObjects)
+                hitObject.StartTime += adjustment;
+
+            // Remove all sources first, otherwise moving one selected row onto another would overwrite its points.
+            foreach (var entry in moving)
+                info.RemoveGroup(entry.Group);
+
+            foreach (var entry in moving)
+            {
+                var destination = info.GroupAt(entry.Time, true);
+                foreach (var point in entry.Points)
+                    destination.Add(point);
+            }
+
+            return selectedGroups.Select(g => info.GroupAt(g.Time + adjustment)).ToArray();
+        }
+
         /// <summary>
         /// Returns all objects from <paramref name="beatmap"/> which are affected by the supplied <paramref name="timingControlPoint"/>.
         /// </summary>

@@ -8,7 +8,10 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Game.Graphics;
+using osu.Game.Graphics.Sprites;
+using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Overlays;
+using osu.Game.Localisation;
 using osu.Game.Rulesets.Edit;
 using osuTK;
 
@@ -19,30 +22,38 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
         public Timeline Timeline = null!;
 
         private readonly Drawable userContent;
+        private readonly bool enableHitSoundTracks;
 
         private Box timelineBackground = null!;
+        private Box rightBox = null!;
+        private Box zoomControlsBox = null!;
+        private IBindable<Colour4>? rightBoxColourBindable;
+        private IBindable<Colour4>? timelineBgColourBindable;
+        private IBindable<Colour4>? zoomControlsColourBindable;
         private readonly Bindable<bool> composerFocusMode = new Bindable<bool>();
 
-        public TimelineArea(Drawable? content = null)
+        public TimelineArea(Drawable? content = null, bool enableHitSoundTracks = false)
         {
             RelativeSizeAxes = Axes.X;
             AutoSizeAxes = Axes.Y;
 
             userContent = content ?? Empty();
+            this.enableHitSoundTracks = enableHitSoundTracks;
         }
 
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider, OsuColour colours, Editor? editor)
         {
             const float padding = 10;
+            Container? trackLabels = null;
 
             InternalChildren = new Drawable[]
             {
-                new Box
+                rightBox = new Box
                 {
                     Anchor = Anchor.TopRight,
                     Origin = Anchor.TopRight,
-                    Width = 35 + HitObjectComposer.TOOLBOX_CONTRACTED_SIZE_RIGHT,
+                    Width = (enableHitSoundTracks ? 70 : 0) + 35 + HitObjectComposer.TOOLBOX_CONTRACTED_SIZE_RIGHT,
                     RelativeSizeAxes = Axes.Y,
                     Colour = colourProvider.Background4
                 },
@@ -57,6 +68,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                     ColumnDimensions = new[]
                     {
                         new Dimension(),
+                        new Dimension(GridSizeMode.Absolute, enableHitSoundTracks ? 70 : 0),
                         new Dimension(GridSizeMode.Absolute, 35),
                         new Dimension(GridSizeMode.Absolute, HitObjectComposer.TOOLBOX_CONTRACTED_SIZE_RIGHT),
                     },
@@ -76,8 +88,28 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                                         Depth = float.MaxValue,
                                         Colour = colourProvider.Background5
                                     },
-                                    Timeline = new Timeline(userContent),
+                                    Timeline = new Timeline(userContent) { EnableHitSoundTracks = enableHitSoundTracks },
                                 }
+                            },
+                            new Container
+                            {
+                                RelativeSizeAxes = Axes.Both,
+                                Name = @"Sound controls",
+                                Padding = new MarginPadding { Right = 5 },
+                                Child = enableHitSoundTracks ? new RoundedButton
+                                {
+                                    Name = @"Toggle hit sound tracks",
+                                    RelativeSizeAxes = Axes.X,
+                                    Height = 24,
+                                    Y = 28,
+                                    Text = HitSoundTracksStrings.Sounds,
+                                    Action = () =>
+                                    {
+                                        Timeline.ToggleHitSoundTracks();
+                                        if (trackLabels != null)
+                                            trackLabels.Alpha = Timeline.HitSoundTracksExpanded ? 1 : 0;
+                                    },
+                                } : Empty(),
                             },
                             new Container
                             {
@@ -86,7 +118,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                                 Padding = new MarginPadding { Right = padding },
                                 Children = new Drawable[]
                                 {
-                                    new Box
+                                    zoomControlsBox = new Box
                                     {
                                         RelativeSizeAxes = Axes.Both,
                                         Colour = colourProvider.Background2,
@@ -124,8 +156,38 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                 }
             };
 
+            if (enableHitSoundTracks)
+            {
+                trackLabels = new Container
+                {
+                    Y = Timeline.ObjectAreaHeight,
+                    Width = 70,
+                    Height = HitSoundTrackEditor.TRACK_HEIGHT,
+                    Alpha = 0,
+                    Children = new Drawable[]
+                    {
+                        new Box { RelativeSizeAxes = Axes.Both, Colour = colourProvider.Background5 },
+                        new OsuSpriteText { Text = HitSoundTracksStrings.Whistle, Y = 2, Font = OsuFont.Default.With(size: 12) },
+                        new OsuSpriteText { Text = HitSoundTracksStrings.Finish, Y = 24, Font = OsuFont.Default.With(size: 12) },
+                        new OsuSpriteText { Text = HitSoundTracksStrings.Clap, Y = 46, Font = OsuFont.Default.With(size: 12) },
+                        new OsuSpriteText { Text = HitSoundTracksStrings.Bank, Y = 70, Font = OsuFont.Default.With(size: 12) },
+                        new OsuSpriteText { Text = HitSoundTracksStrings.Volume, Y = 94, Font = OsuFont.Default.With(size: 12) },
+                    },
+                };
+                AddInternal(trackLabels);
+            }
+
             if (editor != null)
                 composerFocusMode.BindTo(editor.ComposerFocusMode);
+
+            rightBoxColourBindable = colourProvider.GetColourBindable(OverlayColour.Background4);
+            rightBoxColourBindable.BindValueChanged(c => rightBox.Colour = c.NewValue, true);
+
+            timelineBgColourBindable = colourProvider.GetColourBindable(OverlayColour.Background5);
+            timelineBgColourBindable.BindValueChanged(c => timelineBackground.Colour = c.NewValue, true);
+
+            zoomControlsColourBindable = colourProvider.GetColourBindable(OverlayColour.Background2);
+            zoomControlsColourBindable.BindValueChanged(c => zoomControlsBox.Colour = c.NewValue, true);
         }
 
         protected override void LoadComplete()

@@ -25,6 +25,8 @@ namespace osu.Game.Screens.Play.HUD
 
         protected abstract FillFlowContainer<KeyCounter> KeyFlow { get; }
 
+        protected virtual Axes DisplayAutoSizeAxes => Axes.Both;
+
         protected readonly Bindable<bool> ConfigVisibility = new Bindable<bool>();
 
         private readonly IBindableList<InputTrigger> triggers = new BindableList<InputTrigger>();
@@ -48,7 +50,7 @@ namespace osu.Game.Screens.Play.HUD
         [BackgroundDependencyLoader]
         private void load(OsuConfigManager config, DrawableRuleset? drawableRuleset)
         {
-            AutoSizeAxes = Axes.Both;
+            AutoSizeAxes = DisplayAutoSizeAxes;
 
             config.BindWith(OsuSetting.KeyOverlay, ConfigVisibility);
 

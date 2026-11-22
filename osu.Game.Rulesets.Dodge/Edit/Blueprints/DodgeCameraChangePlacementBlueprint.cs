@@ -32,6 +32,9 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         [Resolved]
         private DodgeHitObjectComposer composer { get; set; } = null!;
 
+        [Resolved]
+        private DodgeEditorSettings settings { get; set; } = null!;
+
         public DodgeCameraChangePlacementBlueprint()
             : base(new DodgeCameraChange())
         {
@@ -52,9 +55,15 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
 
         protected override bool OnMouseDown(MouseDownEvent e)
         {
-            if (e.Button != MouseButton.Left)
+            if (e.Button != MouseButton.Left || !composer.CursorInPlacementArea)
                 return base.OnMouseDown(e);
 
+            UpdateTimeAndPosition(e.ScreenSpaceMousePosition, editorBeatmap.SnapTime(EditorClock.CurrentTime, null));
+            if (settings.CameraMode.Value != DodgeCameraMode.Scroll)
+            {
+                EndPlacement(true);
+                return true;
+            }
             switch (PlacementActive)
             {
                 case PlacementState.Waiting:
@@ -83,11 +92,13 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
 
             if (PlacementActive == PlacementState.Waiting)
             {
-                if (!editorBeatmap.HitObjects.OfType<DodgeCameraChange>().Any())
-                    HitObject.StartTime = 0;
+                HitObject.Mode = settings.CameraMode.Value;
+                HitObject.Continuous = settings.CameraContinuousScroll.Value;
+                HitObject.Easing = settings.CameraEasing.Value;
 
                 HitObject.Position = HitObject.EndPosition = position;
-                HitObject.Duration = beatSnapProvider.GetBeatLengthAtTime(HitObject.StartTime) * 4;
+                HitObject.Duration = HitObject.Mode == DodgeCameraMode.Scroll
+                    ? beatSnapProvider.GetBeatLengthAtTime(HitObject.StartTime) * 4 : 0;
             }
             else if (PlacementActive == PlacementState.Active)
             {

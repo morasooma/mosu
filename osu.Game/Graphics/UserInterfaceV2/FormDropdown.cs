@@ -264,8 +264,8 @@ namespace osu.Game.Graphics.UserInterfaceV2
             private void updateChevron()
             {
                 bool open = Dropdown.Menu.State == MenuState.Open;
-                chevron.ScaleTo(open ? new Vector2(1f, -1f) : Vector2.One, 300, Easing.OutQuint);
-                chevron.MoveToY(open ? -chevron.DrawHeight : 0, 300, Easing.OutQuint);
+                chevron.ScaleTo(open ? new Vector2(1f, -1f) : Vector2.One, InterfaceAnimation.MovementDuration(300), Easing.OutQuint);
+                chevron.MoveToY(open ? -chevron.DrawHeight : 0, InterfaceAnimation.MovementDuration(300), Easing.OutQuint);
             }
         }
 
@@ -298,7 +298,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
             [BackgroundDependencyLoader]
             private void load(OverlayColourProvider colourProvider)
             {
-                ItemsContainer.Padding = new MarginPadding(9);
+                ItemsContainer.Padding = new MarginPadding(6);
 
                 MaskingContainer.BorderThickness = FormControlBackground.BORDER_THICKNESS;
                 MaskingContainer.CornerExponent = FormControlBackground.CORNER_EXPONENT;

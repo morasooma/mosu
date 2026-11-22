@@ -11,7 +11,7 @@ namespace osu.Game.Rulesets.Osu.Scoring
 {
     public class OsuScoreMultiplierCalculatorV2 : ScoreMultiplierCalculator
     {
-        public OsuScoreMultiplierCalculatorV2(ScoreMultiplierContext context)
+        public OsuScoreMultiplierCalculatorV2(ScoreMultiplierContext context, bool historicalMultipliers = false)
             : base(context)
         {
             #region Difficulty Reduction
@@ -58,7 +58,9 @@ namespace osu.Game.Rulesets.Osu.Scoring
             #region Conversion
 
             Single<OsuModTargetPractice>(hasMultiplier: 0.01);
-            Single<OsuModDifficultyAdjust>(hasMultiplier: difficultyAdjust => difficultyAdjustMultiplier(difficultyAdjust, Context.BeatmapDifficultyWithoutMods));
+            Single<OsuModDifficultyAdjust>(hasMultiplier: difficultyAdjust => historicalMultipliers
+                ? historicalDifficultyAdjustMultiplier(difficultyAdjust, Context.BeatmapDifficultyWithoutMods)
+                : difficultyAdjustMultiplier(difficultyAdjust, Context.BeatmapDifficultyWithoutMods));
             Single<OsuModClassic>(hasMultiplier: classic => classic.ClassicNoteLock.Value ? 0.985 : 0.96);
             Single<OsuModRandom>(hasMultiplier: 0.7);
             // Mirror (1.0x)
@@ -71,9 +73,7 @@ namespace osu.Game.Rulesets.Osu.Scoring
 
             // Autoplay (1.0x)
             // Cinema (1.0x)
-            // Mosu: Relax (RX) has no score penalty (upstream: 0.1x). Only V2 is changed: V1 describes the multipliers
-            // old scores were stored with and is used to migrate them, so it must keep 0.1x.
-            Single<OsuModRelax>(hasMultiplier: 1.0);
+            Single<OsuModRelax>(hasMultiplier: historicalMultipliers ? 0.1 : 1.0);
             Single<OsuModAutopilot>(hasMultiplier: 0.1);
             Single<OsuModSpunOut>(hasMultiplier: 0.95);
 
@@ -176,30 +176,27 @@ namespace osu.Game.Rulesets.Osu.Scoring
 
         private static double difficultyAdjustMultiplier(OsuModDifficultyAdjust difficultyAdjust, IBeatmapDifficultyInfo beatmapDifficulty)
         {
-            // Mosu DA score multipliers (signed change = selected value - beatmap value), per 0.1 of change:
-            //   CS: +0.004x when raised, -0.03x when lowered.
-            //   OD: +0.001x when raised, -0.02x when lowered.
-            //   AR: -0.005x in both directions.
-            //   HP: no effect.
-            // Each parameter and the product are clamped to at least 0.1x.
             double csChange = (difficultyAdjust.CircleSize.Value ?? beatmapDifficulty.CircleSize) - beatmapDifficulty.CircleSize;
             double odChange = (difficultyAdjust.OverallDifficulty.Value ?? beatmapDifficulty.OverallDifficulty) - beatmapDifficulty.OverallDifficulty;
             double arChange = (difficultyAdjust.ApproachRate.Value ?? beatmapDifficulty.ApproachRate) - beatmapDifficulty.ApproachRate;
 
-            double csMultiplier = signedChangeMultiplier(csChange, raisePerUnit: 0.04, lowerPerUnit: 0.3);
-            double odMultiplier = signedChangeMultiplier(odChange, raisePerUnit: 0.01, lowerPerUnit: 0.2);
-            double arMultiplier = Math.Max(0.1, 1.0 - Math.Abs(arChange) * 0.05);
-
+            double csMultiplier = signedChangeMultiplier(csChange, 0.04, 0.3);
+            double odMultiplier = signedChangeMultiplier(odChange, 0.01, 0.2);
+            double arMultiplier = Math.Max(0.1, 1 - Math.Abs(arChange) * 0.05);
             return Math.Max(0.1, csMultiplier * odMultiplier * arMultiplier);
         }
 
-        /// <summary>
-        /// 1 + raisePerUnit * change when the value is raised, 1 - lowerPerUnit * |change| when it is lowered (per 1.0 of change), at least 0.1.
-        /// </summary>
+        private static double historicalDifficultyAdjustMultiplier(OsuModDifficultyAdjust mod, IBeatmapDifficultyInfo map)
+        {
+            double cs = Math.Max(0.1, 1 - Math.Abs((mod.CircleSize.Value ?? map.CircleSize) - map.CircleSize) * 0.5);
+            double hp = Math.Max(0.1, 1 - Math.Abs((mod.DrainRate.Value ?? map.DrainRate) - map.DrainRate) * 0.5);
+            double od = Math.Max(0.1, 1 - Math.Abs((mod.OverallDifficulty.Value ?? map.OverallDifficulty) - map.OverallDifficulty) * 0.5);
+            double ar = Math.Max(0.1, 1 - Math.Abs((mod.ApproachRate.Value ?? map.ApproachRate) - map.ApproachRate) * 0.5);
+            return Math.Max(0.1, cs * hp * od * ar);
+        }
+
         private static double signedChangeMultiplier(double change, double raisePerUnit, double lowerPerUnit)
-            => change >= 0
-                ? 1.0 + change * raisePerUnit
-                : Math.Max(0.1, 1.0 + change * lowerPerUnit);
+            => Math.Max(0.1, 1 + change * (change >= 0 ? raisePerUnit : lowerPerUnit));
 
         private static double timeRampMultiplier(ModTimeRamp timeRamp)
         {

@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -25,27 +25,37 @@ namespace osu.Game.Overlays.Settings.Sections.Gameplay
                     Current = config.GetBindable<double>(OsuSetting.DimLevel),
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.DimLevel",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = GameplaySettingsStrings.BackgroundBlur,
                     Current = config.GetBindable<double>(OsuSetting.BlurLevel),
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.BlurLevel",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GameplaySettingsStrings.LightenDuringBreaks,
                     Current = config.GetBindable<bool>(OsuSetting.LightenDuringBreaks),
                 })
                 {
+                    FavouriteId = "OsuSetting.LightenDuringBreaks",
                     Keywords = new[] { "dim", "level" }
                 },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GameplaySettingsStrings.FadePlayfieldWhenHealthLow,
                     Current = config.GetBindable<bool>(OsuSetting.FadePlayfieldWhenHealthLow),
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.FadePlayfieldWhenHealthLow",
+                },
             };
         }
     }

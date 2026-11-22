@@ -10,6 +10,6 @@ namespace osu.Game.Graphics.UserInterface
     /// </summary>
     public partial class TimeSlider : RoundedSliderBar<double>
     {
-        public override LocalisableString TooltipText => $"{base.TooltipText} ms";
+        public override LocalisableString TooltipText => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3599(base.TooltipText);
     }
 }

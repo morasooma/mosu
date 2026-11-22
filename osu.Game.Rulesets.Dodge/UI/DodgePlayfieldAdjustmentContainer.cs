@@ -16,6 +16,9 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         private readonly ScalingContainer content;
 
+        protected virtual float ViewZoom => 1;
+        protected virtual Vector2 ViewCentre => DodgePlayfield.BASE_SIZE / 2;
+
         public DodgePlayfieldAdjustmentContainer()
         {
             Anchor = Anchor.Centre;
@@ -29,18 +32,29 @@ namespace osu.Game.Rulesets.Dodge.UI
                 RelativeSizeAxes = Axes.Both,
                 FillMode = FillMode.Fit,
                 FillAspectRatio = DodgePlayfield.WIDTH / DodgePlayfield.HEIGHT,
-                Child = content = new ScalingContainer { RelativeSizeAxes = Axes.Both },
+                Child = content = new ScalingContainer(this)
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Anchor = Anchor.Centre,
+                    Origin = Anchor.Centre,
+                },
             };
         }
 
         private partial class ScalingContainer : Container
         {
+            private readonly DodgePlayfieldAdjustmentContainer owner;
+
+            public ScalingContainer(DodgePlayfieldAdjustmentContainer owner) => this.owner = owner;
+
             protected override void Update()
             {
                 base.Update();
 
-                Scale = new Vector2(Parent!.ChildSize.X / DodgePlayfield.WIDTH);
-                Size = Vector2.Divide(Vector2.One, Scale);
+                float baseScale = Parent!.ChildSize.X / DodgePlayfield.WIDTH;
+                Scale = new Vector2(baseScale * owner.ViewZoom);
+                Size = new Vector2(1 / baseScale);
+                Position = (DodgePlayfield.BASE_SIZE / 2 - owner.ViewCentre) * baseScale * owner.ViewZoom;
             }
         }
     }

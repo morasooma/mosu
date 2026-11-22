@@ -133,12 +133,12 @@ namespace osu.Game.Configuration
                     continue;
 
                 object value = property.GetValue(obj)!;
-                yield return createSettingControl(obj, attr, value);
+                yield return applySettingVisibility(obj, property.Name, createSettingControl(obj, attr, value));
 
                 Drawable? exactInput = createExactNumericInput(value, allowNumericInput);
 
                 if (exactInput != null)
-                    yield return exactInput;
+                    yield return applySettingVisibility(obj, property.Name, exactInput);
             }
         }
 

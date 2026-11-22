@@ -98,6 +98,66 @@ namespace osu.Game.Rulesets.Osu.Difficulty
         [JsonIgnore]
         public string? MosuPpRpRemainderType { get; set; }
 
+        /// <summary>TazikPp "RP Balance (RX)": respect points of the map + mods (diagnostics, not serialised). Null outside TazikPp.</summary>
+        [JsonIgnore]
+        public double? TazikPpRespectPoints { get; set; }
+
+        /// <summary>TazikPp "RP Balance (RX)": multiplier applied to this score's PP (diagnostics, not serialised). Null outside TazikPp.</summary>
+        [JsonIgnore]
+        public double? TazikPpRespectPointsMultiplier { get; set; }
+
+        /// <summary>TazikPp "Aim Control (RX)": control PP of the map + mods (diagnostics, not serialised). Null outside TazikPp.</summary>
+        [JsonIgnore]
+        public double? TazikPpControlPp { get; set; }
+
+        /// <summary>TazikPp "Aim Control (RX)": multiplier applied to this score's PP (diagnostics, not serialised). Null outside TazikPp.</summary>
+        [JsonIgnore]
+        public double? TazikPpControlMultiplier { get; set; }
+
+        /// <summary>TazikPp Arles content confidence (0–1), shared with the lab. Null outside TazikPp.</summary>
+        [JsonIgnore]
+        public double? TazikPpArlesConfidence { get; set; }
+
+        /// <summary>TazikPp Arles multiplier (1–1.3), independent of score accuracy and misses.</summary>
+        [JsonIgnore]
+        public double? TazikPpArlesMultiplier { get; set; }
+
+        /// <summary>TazikPp: Realistik "spike + filler" weight used by this score (diagnostics, not serialised). Null outside TazikPp.</summary>
+        [JsonIgnore]
+        public double? TazikPpSpikeFillerWeight { get; set; }
+
+        /// <summary>TazikPp "CS Reduction (RX)": multiplier applied for bigger circles than the map has (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public double? TazikPpCsReductionMultiplier { get; set; }
+
+        /// <summary>TazikPp: multiplier of every rule in calculation order, "aim:" keys scale the aim part only (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public List<KeyValuePair<string, double>>? TazikPpBreakdown { get; set; }
+
+        /// <summary>TazikPp: RP type of the map as played (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public string? TazikPpRpType { get; set; }
+
+        /// <summary>TazikPp: share of the map's difficulty by pattern — jumps, streams, aim control, sliders (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public Dictionary<string, double>? TazikPpComposition { get; set; }
+
+        /// <summary>TazikPp: share of the map's PP earned in its streams, by section difficulty (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public double? TazikPpStreamWeight { get; set; }
+
+        /// <summary>TazikPp CS Gain: final SS PP with the same mods at the reference CS (diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public double? TazikPpCsReferencePp { get; set; }
+
+        /// <summary>TazikPp: type of a stream map outside its streams (Section Types; diagnostics, not serialised).</summary>
+        [JsonIgnore]
+        public string? TazikPpRpRemainderType { get; set; }
+
+        /// <summary>Loaded map sections used by the original tazikpp 2.0.0 calculation; never serialised.</summary>
+        [JsonIgnore]
+        internal Relax.TazikPpRelax.RxLoadSections.Result? TazikPpLoad { get; set; }
+
         public override IEnumerable<PerformanceDisplayAttribute> GetAttributesForDisplay()
         {
             foreach (var attribute in base.GetAttributesForDisplay())

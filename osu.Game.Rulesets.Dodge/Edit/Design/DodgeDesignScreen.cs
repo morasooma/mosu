@@ -172,6 +172,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
             {
                 RelativeSizeAxes = Axes.Both,
                 ObjectRangeChanged = retimeSelected,
+                ObjectRangesChanged = retimeStoryboardObjects,
                 CommandRangeChanged = retimeSelectedCommand,
                 CommandSelected = rememberSelectedCommand,
                 SpriteSelected = (layer, sprite) => select(layer, sprite),
@@ -248,10 +249,10 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                 Spacing = new Vector2(5),
                 Children = new Drawable[]
                 {
-                    creationToggle = button("＋  Добавить объект…", () =>
+                    creationToggle = button(global::osu.Game.Localisation.ClientTranslationStrings.J3373, () =>
                     {
                         creationExpanded = !creationExpanded;
-                        creationToggle.Text = creationExpanded ? "−  Скрыть добавление" : "＋  Добавить объект…";
+                        creationToggle.Text = creationExpanded ? global::osu.Game.Localisation.ClientTranslationStrings.J3374 : global::osu.Game.Localisation.ClientTranslationStrings.J3373;
                         if (creationExpanded)
                             creationForm.Show();
                         else
@@ -403,13 +404,13 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                             gridButton = compactButton("Сетка: вкл", () =>
                             {
                                 canvas.ToggleGrid();
-                                gridButton.Text = canvas.GridVisible ? "Сетка: вкл" : "Сетка: выкл";
+                                gridButton.Text = canvas.GridVisible ? global::osu.Game.Localisation.ClientTranslationStrings.J3375 : global::osu.Game.Localisation.ClientTranslationStrings.J3376;
                                 gridButton.BackgroundColour = canvas.GridVisible ? editorColours.Highlight1 : editorColours.Background3;
                             }),
                             gameplayButton = compactButton("Игра: выкл", () =>
                             {
                                 canvas.ToggleGameplayPreview();
-                                gameplayButton.Text = canvas.GameplayVisible ? "Игра: вкл" : "Игра: выкл";
+                                gameplayButton.Text = canvas.GameplayVisible ? global::osu.Game.Localisation.ClientTranslationStrings.J3377 : global::osu.Game.Localisation.ClientTranslationStrings.J3378;
                                 gameplayButton.BackgroundColour = canvas.GameplayVisible ? editorColours.Highlight1 : editorColours.Background3;
                             }),
                         },
@@ -433,7 +434,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                             },
                             new OsuSpriteText
                             {
-                                Text = "ЛКМ: выбор/перемещение  •  колесо: масштаб  •  средняя кнопка: панорама  •  Alt: без привязки",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J3379,
                                 Font = OsuFont.GetFont(size: 11),
                                 Colour = editorColours.Content1,
                             },
@@ -475,7 +476,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
             widescreenCheckbox = new OsuCheckbox
             {
                 Name = "Widescreen storyboard toggle",
-                LabelText = "Широкий холст (854 × 480)",
+                LabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3380,
             };
             widescreenCheckbox.Current.Value = EditorBeatmap.WidescreenStoryboard;
             widescreenCheckbox.Current.BindValueChanged(value =>
@@ -1460,6 +1461,28 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
             replaceSelected(DodgeStoryboardEditing.Retime(selectedSprite, startTime, endTime));
         }
 
+        private void retimeStoryboardObjects(IReadOnlyList<(StoryboardLayer Layer, StoryboardSprite Sprite, double Start, double End)> ranges)
+        {
+            var replacements = ranges
+                .Where(item => item.Layer.Elements.Contains(item.Sprite) && DodgeStoryboardEditing.CanRetime(item.Sprite))
+                .Select(item => (item.Layer, Original: item.Sprite, Replacement: DodgeStoryboardEditing.Retime(item.Sprite, item.Start, item.End)))
+                .ToArray();
+            if (replacements.Length == 0)
+                return;
+
+            mutate(() =>
+            {
+                foreach (var item in replacements)
+                    item.Layer.Elements[item.Layer.Elements.IndexOf(item.Original)] = item.Replacement;
+            });
+
+            var primary = replacements.FirstOrDefault(item => ReferenceEquals(item.Original, selectedSprite));
+            if (primary.Replacement == null)
+                primary = replacements[0];
+            select(primary.Layer, primary.Replacement, true);
+            timeline.RestoreObjectSelection(replacements.Select(item => item.Replacement).ToArray());
+        }
+
         private void retimeSelectedCommand(IStoryboardCommand command, double startTime, double endTime)
         {
             if (selectedSprite == null || selectedLayer == null || !DodgeStoryboardEditing.CanRetime(selectedSprite))
@@ -2005,7 +2028,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
             float width = beatmap.WidescreenStoryboard ? WIDESCREEN_WIDTH : NORMAL_WIDTH;
             camera.Size = canvas.Size = new Vector2(width, CANVAS_HEIGHT);
             canvasModeLabel.Text = beatmap.WidescreenStoryboard
-                ? $"Широкий сториборд: {WIDESCREEN_WIDTH:0} × {CANVAS_HEIGHT:0} (координаты osu! остаются по центру)"
+                ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3381(WIDESCREEN_WIDTH, CANVAS_HEIGHT)
                 : DodgeEditorStrings.StoryboardCanvasCoordinates;
             rebuildGrid();
             rebuildPreview();
@@ -2285,7 +2308,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                     Anchor = Anchor.TopRight,
                     Origin = Anchor.TopRight,
                     Position = new Vector2(-12, 10),
-                    Text = "HUD  0000000  100.00%",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J3382,
                     Font = OsuFont.GetFont(size: 14, weight: FontWeight.Bold),
                 },
             },
@@ -2344,7 +2367,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                 label = new OsuSpriteText
                 {
                     Text = selected
-                        ? $"{sprite.Path} | перетаскивание: позиция | углы: размер | Shift: пропорционально"
+                        ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3383(sprite.Path)
                         : sprite.Path,
                     Font = OsuFont.GetFont(size: 10, weight: FontWeight.Bold),
                     Alpha = selected ? 1 : 0,

@@ -124,9 +124,29 @@ namespace osu.Game.Graphics
         public static IconUsage Tortoise => get(OsuIconMapping.Tortoise);
         public static IconUsage Hare => get(OsuIconMapping.Hare);
 
+        // Consistent outline navigation, separate from accepted mode/mod artwork.
+        public static IconUsage NavigationCrown => get(OsuIconMapping.NavigationCrown);
+        public static IconUsage NavigationPalette => get(OsuIconMapping.NavigationPalette);
+        public static IconUsage NavigationCompass => get(OsuIconMapping.NavigationCompass);
+        public static IconUsage NavigationPlug => get(OsuIconMapping.NavigationPlug);
+        public static IconUsage NavigationSliders => get(OsuIconMapping.NavigationSliders);
+        public static IconUsage NavigationGauge => get(OsuIconMapping.NavigationGauge);
+        public static IconUsage NavigationBrain => get(OsuIconMapping.NavigationBrain);
+        public static IconUsage NavigationBug => get(OsuIconMapping.NavigationBug);
+        public static IconUsage NavigationUsers => get(OsuIconMapping.NavigationUsers);
+        public static IconUsage NavigationBackup => get(OsuIconMapping.NavigationBackup);
+        public static IconUsage NavigationServers => get(OsuIconMapping.NavigationServers);
+        public static IconUsage NavigationExpand => get(OsuIconMapping.NavigationExpand);
+        public static IconUsage NavigationSettings => get(OsuIconMapping.NavigationSettings);
+
         // mod icons
 
         public static IconUsage ModNoMod => get(OsuIconMapping.ModNoMod);
+        public static IconUsage ModMosuAimAssist => get(OsuIconMapping.ModMosuAimAssist);
+        public static IconUsage ModMosuAntiAimAssist => get(OsuIconMapping.ModMosuAntiAimAssist);
+        public static IconUsage ModMosuStaticBpm => get(OsuIconMapping.ModMosuStaticBpm);
+        public static IconUsage ModMosuTargetDifficulty => get(OsuIconMapping.ModMosuTargetDifficulty);
+        public static IconUsage ModMosuMalevich => get(OsuIconMapping.ModMosuMalevich);
 
         /*
          can be regenerated semi-automatically using osu-web's mod database via
@@ -210,315 +230,315 @@ namespace osu.Game.Graphics
 
         private enum OsuIconMapping
         {
-            [Description(@"Logo")]
+            [Description(@"Logo"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3398))]
             Logo,
 
-            [Description(@"RulesetOsu")]
+            [Description(@"RulesetOsu"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3399))]
             RulesetOsu,
 
-            [Description(@"RulesetMania")]
+            [Description(@"RulesetMania"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3400))]
             RulesetMania,
 
-            [Description(@"RulesetCatch")]
+            [Description(@"RulesetCatch"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3401))]
             RulesetCatch,
 
-            [Description(@"RulesetTaiko")]
+            [Description(@"RulesetTaiko"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3402))]
             RulesetTaiko,
 
-            [Description(@"RulesetDodge")]
+            [Description(@"RulesetDodge"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3403))]
             RulesetDodge,
 
-            [Description(@"EditCircle")]
+            [Description(@"EditCircle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3404))]
             EditCircle,
 
-            [Description(@"LeftCircle")]
+            [Description(@"LeftCircle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3405))]
             LeftCircle,
 
-            [Description(@"RightCircle")]
+            [Description(@"RightCircle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3406))]
             RightCircle,
 
-            [Description(@"audio")]
+            [Description(@"audio"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3407))]
             Audio,
 
-            [Description(@"beatmap")]
+            [Description(@"beatmap"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3408))]
             Beatmap,
 
-            [Description(@"calendar")]
+            [Description(@"calendar"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3409))]
             Calendar,
 
-            [Description(@"changelog-a")]
+            [Description(@"changelog-a"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3410))]
             ChangelogA,
 
-            [Description(@"changelog-b")]
+            [Description(@"changelog-b"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3411))]
             ChangelogB,
 
-            [Description(@"chat")]
+            [Description(@"chat"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3412))]
             Chat,
 
-            [Description(@"check-circle")]
+            [Description(@"check-circle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3413))]
             CheckCircle,
 
-            [Description(@"clock")]
+            [Description(@"clock"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3414))]
             Clock,
 
-            [Description(@"collapse-a")]
+            [Description(@"collapse-a"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3415))]
             CollapseA,
 
-            [Description(@"collections")]
+            [Description(@"collections"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3416))]
             Collections,
 
-            [Description(@"cross")]
+            [Description(@"cross"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3417))]
             Cross,
 
-            [Description(@"cross-circle")]
+            [Description(@"cross-circle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3418))]
             CrossCircle,
 
-            [Description(@"crown")]
+            [Description(@"crown"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3419))]
             Crown,
 
-            [Description(@"daily-challenge")]
+            [Description(@"daily-challenge"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3420))]
             DailyChallenge,
 
-            [Description(@"debug")]
+            [Description(@"debug"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3421))]
             Debug,
 
-            [Description(@"delete")]
+            [Description(@"delete"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3422))]
             Delete,
 
-            [Description(@"details")]
+            [Description(@"details"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3423))]
             Details,
 
-            [Description(@"discord")]
+            [Description(@"discord"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3424))]
             Discord,
 
-            [Description(@"ellipsis-horizontal")]
+            [Description(@"ellipsis-horizontal"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3425))]
             EllipsisHorizontal,
 
-            [Description(@"ellipsis-vertical")]
+            [Description(@"ellipsis-vertical"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3426))]
             EllipsisVertical,
 
-            [Description(@"expand-a")]
+            [Description(@"expand-a"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3427))]
             ExpandA,
 
-            [Description(@"expand-b")]
+            [Description(@"expand-b"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3428))]
             ExpandB,
 
-            [Description(@"featured-artist")]
+            [Description(@"featured-artist"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3429))]
             FeaturedArtist,
 
-            [Description(@"featured-artist-circle")]
+            [Description(@"featured-artist-circle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3430))]
             FeaturedArtistCircle,
 
-            [Description(@"gameplay-a")]
+            [Description(@"gameplay-a"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3431))]
             GameplayA,
 
-            [Description(@"gameplay-b")]
+            [Description(@"gameplay-b"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3432))]
             GameplayB,
 
-            [Description(@"gameplay-c")]
+            [Description(@"gameplay-c"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3433))]
             GameplayC,
 
-            [Description(@"global")]
+            [Description(@"global"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3434))]
             Global,
 
-            [Description(@"graphics")]
+            [Description(@"graphics"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3435))]
             Graphics,
 
-            [Description(@"heart")]
+            [Description(@"heart"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3436))]
             Heart,
 
-            [Description(@"home")]
+            [Description(@"home"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3437))]
             Home,
 
-            [Description(@"input")]
+            [Description(@"input"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3438))]
             Input,
 
-            [Description(@"maintenance")]
+            [Description(@"maintenance"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3439))]
             Maintenance,
 
-            [Description(@"megaphone")]
+            [Description(@"megaphone"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3440))]
             Megaphone,
 
-            [Description(@"metronome")]
+            [Description(@"metronome"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3441))]
             Metronome,
 
-            [Description(@"music")]
+            [Description(@"music"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3442))]
             Music,
 
-            [Description(@"news")]
+            [Description(@"news"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3443))]
             News,
 
-            [Description(@"next")]
+            [Description(@"next"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3444))]
             Next,
 
-            [Description(@"next-circle")]
+            [Description(@"next-circle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3445))]
             NextCircle,
 
-            [Description(@"notification")]
+            [Description(@"notification"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3446))]
             Notification,
 
-            [Description(@"online")]
+            [Description(@"online"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3447))]
             Online,
 
-            [Description(@"play")]
+            [Description(@"play"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3448))]
             Play,
 
-            [Description(@"player")]
+            [Description(@"player"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3449))]
             Player,
 
-            [Description(@"player-follow")]
+            [Description(@"player-follow"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3450))]
             PlayerFollow,
 
-            [Description(@"prev")]
+            [Description(@"prev"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3451))]
             Prev,
 
-            [Description(@"prev-circle")]
+            [Description(@"prev-circle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3452))]
             PrevCircle,
 
-            [Description(@"ranking")]
+            [Description(@"ranking"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3453))]
             Ranking,
 
-            [Description(@"rulesets")]
+            [Description(@"rulesets"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3454))]
             Rulesets,
 
-            [Description(@"search")]
+            [Description(@"search"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3455))]
             Search,
 
-            [Description(@"settings")]
+            [Description(@"settings"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3456))]
             Settings,
 
-            [Description(@"skin-a")]
+            [Description(@"skin-a"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3457))]
             SkinA,
 
-            [Description(@"skin-b")]
+            [Description(@"skin-b"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3458))]
             SkinB,
 
-            [Description(@"star")]
+            [Description(@"star"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3459))]
             Star,
 
-            [Description(@"storyboard")]
+            [Description(@"storyboard"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3460))]
             Storyboard,
 
-            [Description(@"team")]
+            [Description(@"team"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3461))]
             Team,
 
-            [Description(@"thumbs-up")]
+            [Description(@"thumbs-up"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3462))]
             ThumbsUp,
 
-            [Description(@"tournament")]
+            [Description(@"tournament"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3463))]
             Tournament,
 
-            [Description(@"twitter")]
+            [Description(@"twitter"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3464))]
             Twitter,
 
-            [Description(@"undo")]
+            [Description(@"undo"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3465))]
             Undo,
 
-            [Description(@"user-interface")]
+            [Description(@"user-interface"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3466))]
             UserInterface,
 
-            [Description(@"wiki")]
+            [Description(@"wiki"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3467))]
             Wiki,
 
-            [Description(@"Editor/hitcircle")]
+            [Description(@"Editor/hitcircle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3468))]
             EditorHitCircle,
 
-            [Description(@"Editor/slider")]
+            [Description(@"Editor/slider"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3469))]
             EditorSlider,
 
-            [Description(@"Editor/spinner")]
+            [Description(@"Editor/spinner"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3470))]
             EditorSpinner,
 
-            [Description(@"Editor/hit")]
+            [Description(@"Editor/hit"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3471))]
             EditorHit,
 
-            [Description(@"Editor/drum-roll")]
+            [Description(@"Editor/drum-roll"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3472))]
             EditorDrumRoll,
 
-            [Description(@"Editor/swell")]
+            [Description(@"Editor/swell"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3473))]
             EditorSwell,
 
-            [Description(@"Editor/fruit")]
+            [Description(@"Editor/fruit"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3474))]
             EditorFruit,
 
-            [Description(@"Editor/juice-stream")]
+            [Description(@"Editor/juice-stream"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3475))]
             EditorJuiceStream,
 
-            [Description(@"Editor/banana-shower")]
+            [Description(@"Editor/banana-shower"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3476))]
             EditorBananaShower,
 
-            [Description(@"Editor/note")]
+            [Description(@"Editor/note"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3477))]
             EditorNote,
 
-            [Description(@"Editor/hold-note")]
+            [Description(@"Editor/hold-note"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3478))]
             EditorHoldNote,
 
-            [Description(@"Editor/grid")]
+            [Description(@"Editor/grid"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3479))]
             EditorGrid,
 
-            [Description(@"Editor/add-control-point")]
+            [Description(@"Editor/add-control-point"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3480))]
             EditorAddControlPoint = 1000,
 
-            [Description(@"Editor/convert-to-stream")]
+            [Description(@"Editor/convert-to-stream"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3481))]
             EditorConvertToStream,
 
-            [Description(@"Editor/distance-snap")]
+            [Description(@"Editor/distance-snap"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3482))]
             EditorDistanceSnap,
 
-            [Description(@"Editor/finish")]
+            [Description(@"Editor/finish"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3483))]
             EditorFinish,
 
-            [Description(@"Editor/grid-snap")]
+            [Description(@"Editor/grid-snap"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3484))]
             EditorGridSnap,
 
-            [Description(@"Editor/new-combo-sparkles")]
+            [Description(@"Editor/new-combo-sparkles"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3485))]
             EditorNewComboSparkles,
 
-            [Description(@"Editor/select")]
+            [Description(@"Editor/select"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3486))]
             EditorSelect,
 
-            [Description(@"Editor/sound")]
+            [Description(@"Editor/sound"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3487))]
             EditorSound,
 
-            [Description(@"Editor/whistle")]
+            [Description(@"Editor/whistle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3488))]
             EditorWhistle,
 
-            [Description(@"Editor/clap")]
+            [Description(@"Editor/clap"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3489))]
             EditorClap,
 
-            [Description(@"Editor/bank-auto")]
+            [Description(@"Editor/bank-auto"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3490))]
             EditorBankAuto,
 
-            [Description(@"Editor/bank-auto-compact")]
+            [Description(@"Editor/bank-auto-compact"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3491))]
             EditorBankAutoCompact,
 
-            [Description(@"Editor/bank-normal")]
+            [Description(@"Editor/bank-normal"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3492))]
             EditorBankNormal,
 
-            [Description(@"Editor/bank-normal-compact")]
+            [Description(@"Editor/bank-normal-compact"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3493))]
             EditorBankNormalCompact,
 
-            [Description(@"Editor/bank-soft")]
+            [Description(@"Editor/bank-soft"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3494))]
             EditorBankSoft,
 
-            [Description(@"Editor/bank-soft-compact")]
+            [Description(@"Editor/bank-soft-compact"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3495))]
             EditorBankSoftCompact,
 
-            [Description(@"Editor/bank-drum")]
+            [Description(@"Editor/bank-drum"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3496))]
             EditorBankDrum,
 
-            [Description(@"Editor/bank-drum-compact")]
+            [Description(@"Editor/bank-drum-compact"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3497))]
             EditorBankDrumCompact,
 
-            [Description(@"tortoise")]
+            [Description(@"tortoise"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3498))]
             Tortoise,
 
-            [Description(@"hare")]
+            [Description(@"hare"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3499))]
             Hare,
 
             // mod icons
 
-            [Description(@"Mods/mod-no-mod")]
+            [Description(@"Mods/mod-no-mod"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3500))]
             ModNoMod,
 
             /*
@@ -527,212 +547,241 @@ namespace osu.Game.Graphics
                awk '{kebab = $0; gsub(" ", "-", kebab); pascal = $0; gsub(" ", "", pascal); print "[Description(@\"Mods/mod-" tolower(kebab) "\")]\nMod" pascal ",\n" }' | pbcopy
              */
 
-            [Description(@"Mods/mod-accuracy-challenge")]
+            [Description(@"Mods/mod-accuracy-challenge"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3501))]
             ModAccuracyChallenge,
 
-            [Description(@"Mods/mod-adaptive-speed")]
+            [Description(@"Mods/mod-adaptive-speed"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3502))]
             ModAdaptiveSpeed,
 
-            [Description(@"Mods/mod-alternate")]
+            [Description(@"Mods/mod-alternate"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3503))]
             ModAlternate,
 
-            [Description(@"Mods/mod-approach-different")]
+            [Description(@"Mods/mod-approach-different"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3504))]
             ModApproachDifferent,
 
-            [Description(@"Mods/mod-autopilot")]
+            [Description(@"Mods/mod-autopilot"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3505))]
             ModAutopilot,
 
-            [Description(@"Mods/mod-autoplay")]
+            [Description(@"Mods/mod-autoplay"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3506))]
             ModAutoplay,
 
-            [Description(@"Mods/mod-barrel-roll")]
+            [Description(@"Mods/mod-barrel-roll"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3507))]
             ModBarrelRoll,
 
-            [Description(@"Mods/mod-blinds")]
+            [Description(@"Mods/mod-blinds"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3508))]
             ModBlinds,
 
-            [Description(@"Mods/mod-bloom")]
+            [Description(@"Mods/mod-bloom"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3509))]
             ModBloom,
 
-            [Description(@"Mods/mod-bubbles")]
+            [Description(@"Mods/mod-bubbles"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3510))]
             ModBubbles,
 
-            [Description(@"Mods/mod-cinema")]
+            [Description(@"Mods/mod-cinema"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3511))]
             ModCinema,
 
-            [Description(@"Mods/mod-classic")]
+            [Description(@"Mods/mod-classic"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3512))]
             ModClassic,
 
-            [Description(@"Mods/mod-constant-speed")]
+            [Description(@"Mods/mod-constant-speed"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3513))]
             ModConstantSpeed,
 
-            [Description(@"Mods/mod-cover")]
+            [Description(@"Mods/mod-cover"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3514))]
             ModCover,
 
-            [Description(@"Mods/mod-daycore")]
+            [Description(@"Mods/mod-daycore"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3515))]
             ModDaycore,
 
-            [Description(@"Mods/mod-deflate")]
+            [Description(@"Mods/mod-deflate"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3516))]
             ModDeflate,
 
-            [Description(@"Mods/mod-depth")]
+            [Description(@"Mods/mod-depth"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3517))]
             ModDepth,
 
-            [Description(@"Mods/mod-difficulty-adjust")]
+            [Description(@"Mods/mod-difficulty-adjust"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3518))]
             ModDifficultyAdjust,
 
-            [Description(@"Mods/mod-double-time")]
+            [Description(@"Mods/mod-double-time"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3519))]
             ModDoubleTime,
 
-            [Description(@"Mods/mod-dual-stages")]
+            [Description(@"Mods/mod-dual-stages"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3520))]
             ModDualStages,
 
-            [Description(@"Mods/mod-easy")]
+            [Description(@"Mods/mod-easy"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3521))]
             ModEasy,
 
-            [Description(@"Mods/mod-eight-keys")]
+            [Description(@"Mods/mod-eight-keys"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3522))]
             ModEightKeys,
 
-            [Description(@"Mods/mod-fade-in")]
+            [Description(@"Mods/mod-fade-in"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3523))]
             ModFadeIn,
 
-            [Description(@"Mods/mod-five-keys")]
+            [Description(@"Mods/mod-five-keys"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3524))]
             ModFiveKeys,
 
-            [Description(@"Mods/mod-flashlight")]
+            [Description(@"Mods/mod-flashlight"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3525))]
             ModFlashlight,
 
-            [Description(@"Mods/mod-floating-fruits")]
+            [Description(@"Mods/mod-floating-fruits"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3526))]
             ModFloatingFruits,
 
-            [Description(@"Mods/mod-four-keys")]
+            [Description(@"Mods/mod-four-keys"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3527))]
             ModFourKeys,
 
-            [Description(@"Mods/mod-freeze-frame")]
+            [Description(@"Mods/mod-freeze-frame"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3528))]
             ModFreezeFrame,
 
-            [Description(@"Mods/mod-grow")]
+            [Description(@"Mods/mod-grow"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3529))]
             ModGrow,
 
-            [Description(@"Mods/mod-half-time")]
+            [Description(@"Mods/mod-half-time"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3530))]
             ModHalfTime,
 
-            [Description(@"Mods/mod-hard-rock")]
+            [Description(@"Mods/mod-hard-rock"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3531))]
             ModHardRock,
 
-            [Description(@"Mods/mod-hidden")]
+            [Description(@"Mods/mod-hidden"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3532))]
             ModHidden,
 
-            [Description(@"Mods/mod-hold-off")]
+            [Description(@"Mods/mod-hold-off"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3533))]
             ModHoldOff,
 
-            [Description(@"Mods/mod-invert")]
+            [Description(@"Mods/mod-invert"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3534))]
             ModInvert,
 
-            [Description(@"Mods/mod-magnetised")]
+            [Description(@"Mods/mod-magnetised"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3535))]
             ModMagnetised,
 
-            [Description(@"Mods/mod-mirror")]
+            [Description(@"Mods/mod-mirror"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3536))]
             ModMirror,
 
-            [Description(@"Mods/mod-moving-fast")]
+            [Description(@"Mods/mod-moving-fast"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3537))]
             ModMovingFast,
 
-            [Description(@"Mods/mod-muted")]
+            [Description(@"Mods/mod-muted"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3538))]
             ModMuted,
 
-            [Description(@"Mods/mod-nightcore")]
+            [Description(@"Mods/mod-nightcore"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3539))]
             ModNightcore,
 
-            [Description(@"Mods/mod-nine-keys")]
+            [Description(@"Mods/mod-nine-keys"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3540))]
             ModNineKeys,
 
-            [Description(@"Mods/mod-no-fail")]
+            [Description(@"Mods/mod-no-fail"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3541))]
             ModNoFail,
 
-            [Description(@"Mods/mod-no-release")]
+            [Description(@"Mods/mod-no-release"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3542))]
             ModNoRelease,
 
-            [Description(@"Mods/mod-no-scope")]
+            [Description(@"Mods/mod-no-scope"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3543))]
             ModNoScope,
 
-            [Description(@"Mods/mod-one-key")]
+            [Description(@"Mods/mod-one-key"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3544))]
             ModOneKey,
 
-            [Description(@"Mods/mod-perfect")]
+            [Description(@"Mods/mod-perfect"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3545))]
             ModPerfect,
 
-            [Description(@"Mods/mod-random")]
+            [Description(@"Mods/mod-random"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3546))]
             ModRandom,
 
-            [Description(@"Mods/mod-relax")]
+            [Description(@"Mods/mod-relax"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3547))]
             ModRelax,
 
-            [Description(@"Mods/mod-repel")]
+            [Description(@"Mods/mod-repel"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3548))]
             ModRepel,
 
-            [Description(@"Mods/mod-score-v2")]
+            [Description(@"Mods/mod-score-v2"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3549))]
             ModScoreV2,
 
-            [Description(@"Mods/mod-seven-keys")]
+            [Description(@"Mods/mod-seven-keys"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3550))]
             ModSevenKeys,
 
-            [Description(@"Mods/mod-simplified-rhythm")]
+            [Description(@"Mods/mod-simplified-rhythm"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3551))]
             ModSimplifiedRhythm,
 
-            [Description(@"Mods/mod-single-tap")]
+            [Description(@"Mods/mod-single-tap"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3552))]
             ModSingleTap,
 
-            [Description(@"Mods/mod-six-keys")]
+            [Description(@"Mods/mod-six-keys"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3553))]
             ModSixKeys,
 
-            [Description(@"Mods/mod-spin-in")]
+            [Description(@"Mods/mod-spin-in"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3554))]
             ModSpinIn,
 
-            [Description(@"Mods/mod-spun-out")]
+            [Description(@"Mods/mod-spun-out"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3555))]
             ModSpunOut,
 
-            [Description(@"Mods/mod-strict-tracking")]
+            [Description(@"Mods/mod-strict-tracking"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3556))]
             ModStrictTracking,
 
-            [Description(@"Mods/mod-sudden-death")]
+            [Description(@"Mods/mod-sudden-death"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3557))]
             ModSuddenDeath,
 
-            [Description(@"Mods/mod-swap")]
+            [Description(@"Mods/mod-swap"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3558))]
             ModSwap,
 
-            [Description(@"Mods/mod-synesthesia")]
+            [Description(@"Mods/mod-synesthesia"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3559))]
             ModSynesthesia,
 
-            [Description(@"Mods/mod-target-practice")]
+            [Description(@"Mods/mod-target-practice"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3560))]
             ModTargetPractice,
 
-            [Description(@"Mods/mod-ten-keys")]
+            [Description(@"Mods/mod-ten-keys"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3561))]
             ModTenKeys,
 
-            [Description(@"Mods/mod-three-keys")]
+            [Description(@"Mods/mod-three-keys"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3562))]
             ModThreeKeys,
 
-            [Description(@"Mods/mod-touch-device")]
+            [Description(@"Mods/mod-touch-device"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3563))]
             ModTouchDevice,
 
-            [Description(@"Mods/mod-traceable")]
+            [Description(@"Mods/mod-traceable"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3564))]
             ModTraceable,
 
-            [Description(@"Mods/mod-transform")]
+            [Description(@"Mods/mod-transform"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3565))]
             ModTransform,
 
-            [Description(@"Mods/mod-two-keys")]
+            [Description(@"Mods/mod-two-keys"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3566))]
             ModTwoKeys,
 
-            [Description(@"Mods/mod-wiggle")]
+            [Description(@"Mods/mod-wiggle"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3567))]
             ModWiggle,
 
-            [Description(@"Mods/mod-wind-down")]
+            [Description(@"Mods/mod-wind-down"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3568))]
             ModWindDown,
 
-            [Description(@"Mods/mod-wind-up")]
+            [Description(@"Mods/mod-wind-up"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3569))]
             ModWindUp,
+
+            [Description(@"Mods/mod-mosu-aim-assist"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3570))]
+            ModMosuAimAssist,
+
+            [Description(@"Mods/mod-mosu-anti-aim-assist"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3571))]
+            ModMosuAntiAimAssist,
+
+            [Description(@"Mods/mod-mosu-static-bpm"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3572))]
+            ModMosuStaticBpm,
+
+            [Description(@"Mods/mod-mosu-target-difficulty"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3573))]
+            ModMosuTargetDifficulty,
+
+            [Description(@"Mods/mod-mosu-malevich"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3574))]
+            ModMosuMalevich,
+
+            [Description(@"Navigation/crown"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3575))] NavigationCrown,
+            [Description(@"Navigation/palette"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3576))] NavigationPalette,
+            [Description(@"Navigation/compass"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3577))] NavigationCompass,
+            [Description(@"Navigation/plug"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3578))] NavigationPlug,
+            [Description(@"Navigation/sliders-horizontal"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3579))] NavigationSliders,
+            [Description(@"Navigation/gauge"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3580))] NavigationGauge,
+            [Description(@"Navigation/brain"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3581))] NavigationBrain,
+            [Description(@"Navigation/bug"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3582))] NavigationBug,
+            [Description(@"Navigation/users"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3583))] NavigationUsers,
+            [Description(@"Navigation/floppy-disk"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3584))] NavigationBackup,
+            [Description(@"Navigation/hard-drives"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3585))] NavigationServers,
+            [Description(@"Navigation/caret-down"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3586))] NavigationExpand,
+            [Description(@"Navigation/gear-six"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3587))] NavigationSettings,
         }
 
         public class OsuIconStore : ITextureStore, ITexturedGlyphLookupStore

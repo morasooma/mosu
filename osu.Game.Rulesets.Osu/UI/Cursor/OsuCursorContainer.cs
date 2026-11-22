@@ -73,6 +73,7 @@ namespace osu.Game.Rulesets.Osu.UI.Cursor
                     cursorTrail = new SkinnableDrawable(new OsuSkinComponentLookup(OsuSkinComponents.CursorTrail), _ => new DefaultCursorTrail(), confineMode: ConfineMode.NoScaling),
                     rippleVisualiser = new CursorRippleVisualiser(),
                     new SkinnableDrawable(new OsuSkinComponentLookup(OsuSkinComponents.CursorParticles), confineMode: ConfineMode.NoScaling),
+                    new AimAssistRealCursor(),
                 }
             };
         }

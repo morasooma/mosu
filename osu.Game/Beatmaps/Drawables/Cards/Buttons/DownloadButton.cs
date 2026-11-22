@@ -17,7 +17,14 @@ namespace osu.Game.Beatmaps.Drawables.Cards.Buttons
     {
         public Bindable<DownloadState> State { get; } = new Bindable<DownloadState>();
 
-        private readonly APIBeatmapSet beatmapSet;
+        private APIBeatmapSet beatmapSet;
+
+        internal void ChangeBeatmapSet(APIBeatmapSet set)
+        {
+            beatmapSet = set;
+            if (IsLoaded)
+                updateState();
+        }
 
         private Bindable<bool> preferNoVideo = null!;
 
@@ -46,6 +53,9 @@ namespace osu.Game.Beatmaps.Drawables.Cards.Buttons
 
         private void updateState()
         {
+            Enabled.Value = true;
+            this.FadeIn();
+            SetLoading(false);
             switch (State.Value)
             {
                 case DownloadState.Unknown:

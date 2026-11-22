@@ -20,7 +20,7 @@ namespace osu.Game.Rulesets.Edit
 
             Selected.BindDisabledChanged(isDisabled =>
             {
-                TooltipText = isDisabled ? "Add at least one timing point first!" : Tool.TooltipText;
+                TooltipText = isDisabled ? global::osu.Game.Localisation.ClientTranslationStrings.J4090 : Tool.TooltipText;
             }, true);
         }
     }

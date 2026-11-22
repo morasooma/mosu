@@ -23,7 +23,7 @@ namespace osu.Game.Screens.Play.HUD
 
         private const float alpha_when_invalid = 0.3f;
 
-        [SettingSource("Wireframe opacity", "Controls the opacity of the wireframes behind the digits.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5081), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5082))]
         public BindableFloat WireframeOpacity { get; } = new BindableFloat(0.25f)
         {
             Precision = 0.01f,

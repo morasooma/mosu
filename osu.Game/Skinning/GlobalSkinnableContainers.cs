@@ -10,13 +10,13 @@ namespace osu.Game.Skinning
     /// </summary>
     public enum GlobalSkinnableContainers
     {
-        [Description("HUD")]
+        [Description("HUD"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5341))]
         MainHUDComponents,
 
-        [Description("Song select")]
+        [Description("Song select"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5342))]
         SongSelect,
 
-        [Description("Playfield")]
+        [Description("Playfield"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5343))]
         Playfield
     }
 }

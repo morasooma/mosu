@@ -71,7 +71,7 @@ namespace osu.Game.Screens.OnlinePlay.Components
 
             if (beatmap == null)
             {
-                textFlow.AddText("No beatmap selected", s =>
+                textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4366, s =>
                 {
                     s.Font = s.Font.With(size: TextSize);
                     s.Colour = colours.PinkLight;

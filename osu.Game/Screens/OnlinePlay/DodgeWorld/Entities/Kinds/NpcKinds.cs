@@ -98,17 +98,17 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities.Kinds
 
         protected override IEnumerable<EntityField> DescribeFields()
         {
-            yield return Switch("Живое существо", "выключено — это предмет: без имени над ним и с коротким «E»",
+            yield return Switch(global::osu.Game.Localisation.ClientTranslationStrings.J4691, global::osu.Game.Localisation.ClientTranslationStrings.J4692,
                 npc => npc.Alive, (npc, alive) => npc.Alive = alive);
 
-            yield return Switch("Тень", "выключено — предмет не отбрасывает тень",
+            yield return Switch(global::osu.Game.Localisation.ClientTranslationStrings.J4693, global::osu.Game.Localisation.ClientTranslationStrings.J4694,
                 npc => npc.CastsShadow, (npc, shadow) => npc.CastsShadow = shadow);
 
-            yield return Field("Ширина", "единиц; вместе с высотой задаёт, какого размера картинка",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4695, global::osu.Game.Localisation.ClientTranslationStrings.J4696,
                 npc => EditorValue.Format(npc.Size.X),
                 (npc, text) => npc.Size = new Vector2(EditorValue.Float(text, npc.Size.X, 32, DodgeWorldDefaults.MAXIMUM_MAP_SIZE.X), npc.Size.Y));
 
-            yield return Field("Высота", "единиц",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4697, global::osu.Game.Localisation.ClientTranslationStrings.J4670,
                 npc => EditorValue.Format(npc.Size.Y),
                 (npc, text) => npc.Size = new Vector2(npc.Size.X, EditorValue.Float(text, npc.Size.Y, 32, DodgeWorldDefaults.MAXIMUM_MAP_SIZE.Y)));
         }

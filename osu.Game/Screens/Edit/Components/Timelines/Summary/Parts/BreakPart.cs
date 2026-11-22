@@ -74,7 +74,7 @@ namespace osu.Game.Screens.Edit.Components.Timelines.Summary.Parts
                 Alpha = 0.4f;
             }
 
-            public LocalisableString TooltipText => $"{breakPeriod.StartTime.ToEditorFormattedString()} - {breakPeriod.EndTime.ToEditorFormattedString()} break time";
+            public LocalisableString TooltipText => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4296(breakPeriod.StartTime.ToEditorFormattedString(), breakPeriod.EndTime.ToEditorFormattedString());
         }
     }
 }

@@ -300,7 +300,7 @@ namespace osu.Game.Overlays.Comments
                         new OsuSpriteText
                         {
                             Font = font,
-                            Text = "edited ",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J3919,
                             Colour = colour
                         },
                         new DrawableDate(Comment.EditedAt.Value)
@@ -311,7 +311,7 @@ namespace osu.Game.Overlays.Comments
                         new OsuSpriteText
                         {
                             Font = font,
-                            Text = $@" by {Comment.EditedUser.Username}",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3920(Comment.EditedUser.Username),
                             Colour = colour
                         },
                     }

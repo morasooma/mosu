@@ -25,6 +25,7 @@ namespace osu.Game.Overlays.Toolbar
         public ToolbarNotificationButton()
         {
             Hotkey = GlobalAction.ToggleNotifications;
+            SetIcon(OsuIcon.Notification);
 
             Add(countDisplay = new CountCircle
             {

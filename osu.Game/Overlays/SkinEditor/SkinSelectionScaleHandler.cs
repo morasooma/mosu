@@ -43,6 +43,13 @@ namespace osu.Game.Overlays.SkinEditor
             updateState();
         }
 
+        protected override void Update()
+        {
+            base.Update();
+            // Size mode can change while the same component remains selected.
+            updateState();
+        }
+
         private void updateState()
         {
             CanScaleX.Value = allSelectedSupportManualSizing(Axes.X);

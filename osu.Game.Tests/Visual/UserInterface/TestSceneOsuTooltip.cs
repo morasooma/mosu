@@ -78,6 +78,52 @@ namespace osu.Game.Tests.Visual.UserInterface
             AddAssert("Check tooltip is under width limit", () => tooltip != null && tooltip.Width <= 500);
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestSharedPositionFiltering(bool customTooltip)
+        {
+            InspectableTooltipContainer tooltips = null!;
+            Drawable provider = null!;
+
+            AddStep("create isolated tooltips", () => Child = tooltips = new InspectableTooltipContainer
+            {
+                RelativeSizeAxes = Axes.Both,
+                Child = provider = customTooltip
+                    ? new CustomTooltipProvider { RelativeSizeAxes = Axes.Both }
+                    : new TestTooltipContainer { RelativeSizeAxes = Axes.Both, TooltipText = "stabilised" },
+            });
+            AddStep("hover provider", () => InputManager.MoveMouseTo(provider.ScreenSpaceDrawQuad.Centre));
+            AddUntilStep("tooltip visible", () => tooltips.DisplayedTooltip.Alpha == 1);
+            AddStep("small cursor movement", () => InputManager.MoveMouseTo(provider.ScreenSpaceDrawQuad.Centre + new Vector2(12, 0)));
+            AddAssert("shared filter trails raw anchor", () => tooltips.RawAnchor.X > tooltips.FilteredAnchor.X);
+            AddAssert("tooltip uses filtered anchor", () => tooltips.DisplayedTooltip.X > tooltips.FilteredAnchor.X);
+            AddUntilStep("settles at new anchor", () => (tooltips.RawAnchor - tooltips.FilteredAnchor).Length < 0.5f);
+        }
+
+        private partial class InspectableTooltipContainer : OsuTooltipContainer
+        {
+            public Drawable DisplayedTooltip => (Drawable)CurrentTooltip;
+            public Vector2 RawAnchor { get; private set; }
+            public Vector2 FilteredAnchor { get; private set; }
+
+            public InspectableTooltipContainer()
+                : base(null!)
+            {
+            }
+
+            protected override Vector2 FilterTooltipCursorPosition(Vector2 position)
+            {
+                RawAnchor = position;
+                return FilteredAnchor = base.FilterTooltipCursorPosition(position);
+            }
+        }
+
+        private partial class CustomTooltipProvider : Container, IHasCustomTooltip
+        {
+            public object TooltipContent => (LocalisableString)"custom stabilised";
+            public ITooltip GetCustomTooltip() => new TooltipContainer.Tooltip();
+        }
+
         internal sealed partial class TestTooltipContainer : Container, IHasTooltip
         {
             public LocalisableString TooltipText { get; set; }

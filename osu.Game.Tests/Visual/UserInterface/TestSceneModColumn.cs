@@ -3,8 +3,10 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using NUnit.Framework;
 using osu.Framework.Allocation;
+using osu.Framework.Development;
 using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -16,6 +18,7 @@ using osu.Game.Overlays.Mods;
 using osu.Game.Overlays.Mods.Input;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu;
+using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Utils;
 using osuTK.Input;
 
@@ -29,6 +32,94 @@ namespace osu.Game.Tests.Visual.UserInterface
 
         [Resolved]
         private OsuConfigManager configManager { get; set; } = null!;
+
+        private BlockingModColumn? blockingColumn;
+        private int updateFrames;
+
+        [TearDown]
+        public void ReleasePanelConstructor() => blockingColumn?.Release.Set();
+
+        protected override void Update()
+        {
+            base.Update();
+            updateFrames++;
+        }
+
+        [Test]
+        public void TestPanelConstructionDoesNotBlockUpdate()
+        {
+            int blockedAt = 0;
+            createBlockingColumn();
+            AddUntilStep("panel constructor entered", () => blockingColumn!.Entered.IsSet);
+            AddStep("record progress", () => blockedAt = updateFrames);
+            AddWaitStep("Update continues during construction", 5);
+            AddAssert("Update advances", () => updateFrames > blockedAt);
+            AddAssert("constructor is off Update", () => blockingColumn!.UpdateConstructions == 0);
+            AddAssert("not published before loading", () => !blockingColumn!.ItemsLoaded);
+            AddStep("release constructor", () => blockingColumn!.Release.Set());
+            AddUntilStep("panels ready", () => blockingColumn!.ItemsLoaded);
+            AddAssert("correct panel published", () => blockingColumn!.ChildrenOfType<ModPanel>().Single().Mod is OsuModHidden);
+        }
+
+        [Test]
+        public void TestReplacementRejectsInFlightPanelBatch()
+        {
+            createBlockingColumn();
+            AddUntilStep("old constructor entered", () => blockingColumn!.Entered.IsSet);
+            AddStep("replace mods", () => blockingColumn!.AvailableMods = new[] { new ModState(new OsuModHardRock()) });
+            AddUntilStep("replacement loaded without old completion", () => blockingColumn!.ItemsLoaded);
+            AddStep("release stale constructor", () => blockingColumn!.Release.Set());
+            AddWaitStep("old load drains", 10);
+            AddAssert("only replacement published", () => blockingColumn!.ChildrenOfType<ModPanel>().Single().Mod is OsuModHardRock);
+            AddAssert("all constructors off Update", () => blockingColumn!.UpdateConstructions == 0);
+            AddStep("replace with empty column", () => blockingColumn!.AvailableMods = Array.Empty<ModState>());
+            AddUntilStep("empty load completes", () => blockingColumn!.ItemsLoaded);
+            AddAssert("no stale panels", () => !blockingColumn!.ChildrenOfType<ModPanel>().Any());
+        }
+
+        [Test]
+        public void TestDisposalRejectsInFlightPanelBatch()
+        {
+            createBlockingColumn();
+            AddUntilStep("constructor entered", () => blockingColumn!.Entered.IsSet);
+            AddStep("remove column", () => Clear());
+            AddStep("release constructor", () => blockingColumn!.Release.Set());
+            AddWaitStep("cancelled worker drains", 10);
+            AddAssert("no late attachment", () => !this.ChildrenOfType<ModPanel>().Any());
+        }
+
+        private void createBlockingColumn() => AddStep("create blocked mod column", () =>
+        {
+            Child = blockingColumn = new BlockingModColumn
+            {
+                AvailableMods = new[] { new ModState(new OsuModHidden()) },
+            };
+        });
+
+        private partial class BlockingModColumn : ModColumn
+        {
+            public readonly ManualResetEventSlim Entered = new ManualResetEventSlim();
+            public readonly ManualResetEventSlim Release = new ManualResetEventSlim();
+            public int UpdateConstructions;
+
+            public BlockingModColumn()
+                : base(ModType.DifficultyIncrease, false)
+            {
+            }
+
+            protected override ModPanel CreateModPanel(ModState mod)
+            {
+                if (ThreadSafety.IsUpdateThread)
+                    Interlocked.Increment(ref UpdateConstructions);
+                if (mod.Mod is OsuModHidden)
+                {
+                    Entered.Set();
+                    if (!Release.Wait(TimeSpan.FromSeconds(10)))
+                        throw new TimeoutException("Mod panel constructor test gate was not released.");
+                }
+                return base.CreateModPanel(mod);
+            }
+        }
 
         [TestCase(ModType.DifficultyReduction)]
         [TestCase(ModType.DifficultyIncrease)]

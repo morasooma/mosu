@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using osu.Framework.Logging;
 
 // ReSharper disable IdentifierTypo
 
@@ -10,73 +11,85 @@ namespace osu.Desktop.Windows
 {
     internal static class WindowsKey
     {
-        private delegate int LowLevelKeyboardProcDelegate(int nCode, int wParam, ref KdDllHookStruct lParam);
-
-        private static bool isBlocked;
+        private delegate IntPtr LowLevelKeyboardProcDelegate(int nCode, IntPtr wParam, ref KbdLlHookStruct lParam);
 
         private const int wh_keyboard_ll = 13;
-        private const int wm_keydown = 256;
-        private const int wm_syskeyup = 261;
+        private const int wm_keydown = 0x100;
+        private const int wm_syskeyup = 0x105;
 
-        //Resharper disable once NotAccessedField.Local
-        private static LowLevelKeyboardProcDelegate? keyboardHookDelegate; // keeping a reference alive for the GC
+        // Keep the callback alive even if removing the hook fails.
+        private static readonly LowLevelKeyboardProcDelegate keyboardHookDelegate = lowLevelKeyboardProc;
         private static IntPtr keyHook;
+        private static bool blockingRequested;
 
-        [StructLayout(LayoutKind.Explicit)]
-        private readonly struct KdDllHookStruct
+        [StructLayout(LayoutKind.Sequential)]
+        private struct KbdLlHookStruct
         {
-            [FieldOffset(0)]
-            public readonly int VkCode;
-
-            [FieldOffset(8)]
-            public readonly int Flags;
+            public uint VkCode;
+            public uint ScanCode;
+            public uint Flags;
+            public uint Time;
+            public UIntPtr ExtraInfo;
         }
 
-        private static int lowLevelKeyboardProc(int nCode, int wParam, ref KdDllHookStruct lParam)
+        private static IntPtr lowLevelKeyboardProc(int nCode, IntPtr wParam, ref KbdLlHookStruct lParam)
         {
-            if (wParam >= wm_keydown && wParam <= wm_syskeyup)
+            if (nCode >= 0 && blockingRequested && wParam.ToInt64() >= wm_keydown && wParam.ToInt64() <= wm_syskeyup
+                && (lParam.VkCode == 0x5B || lParam.VkCode == 0x5C))
             {
-                switch (lParam.VkCode)
-                {
-                    case 0x5B: // left windows key
-                    case 0x5C: // right windows key
-                        return 1;
-                }
+                // Focus notifications arrive asynchronously. Never swallow Win for another app
+                // while waiting for the game/update thread to process a focus change.
+                getWindowThreadProcessId(getForegroundWindow(), out uint processId);
+                if (processId == (uint)Environment.ProcessId)
+                    return new IntPtr(1);
             }
 
-            return callNextHookEx(0, nCode, wParam, ref lParam);
+            return callNextHookEx(IntPtr.Zero, nCode, wParam, ref lParam);
         }
 
         internal static void Disable()
         {
-            if (keyHook != IntPtr.Zero || isBlocked)
+            blockingRequested = true;
+            if (keyHook != IntPtr.Zero)
                 return;
 
-            keyHook = setWindowsHookEx(wh_keyboard_ll, (keyboardHookDelegate = lowLevelKeyboardProc), Marshal.GetHINSTANCE(System.Reflection.Assembly.GetExecutingAssembly().GetModules()[0]), 0);
-
-            isBlocked = true;
+            keyHook = setWindowsHookEx(wh_keyboard_ll, keyboardHookDelegate, getModuleHandle(null), 0);
+            if (keyHook == IntPtr.Zero)
+            {
+                blockingRequested = false;
+                Logger.Log($"Could not block the Windows key (Win32 error {Marshal.GetLastWin32Error()}).", LoggingTarget.Runtime, LogLevel.Important);
+            }
         }
 
         internal static void Enable()
         {
-            if (keyHook == IntPtr.Zero || !isBlocked)
+            blockingRequested = false;
+            if (keyHook == IntPtr.Zero)
                 return;
 
-            keyHook = unhookWindowsHookEx(keyHook);
-            keyboardHookDelegate = null;
-
-            keyHook = IntPtr.Zero;
-
-            isBlocked = false;
+            if (unhookWindowsHookEx(keyHook))
+                keyHook = IntPtr.Zero;
+            else
+                Logger.Log($"Could not remove the Windows key hook (Win32 error {Marshal.GetLastWin32Error()}).", LoggingTarget.Runtime, LogLevel.Important);
         }
 
-        [DllImport(@"user32.dll", EntryPoint = @"SetWindowsHookExA")]
-        private static extern IntPtr setWindowsHookEx(int idHook, LowLevelKeyboardProcDelegate lpfn, IntPtr hMod, int dwThreadId);
+        [DllImport("user32.dll", EntryPoint = "SetWindowsHookExW", SetLastError = true)]
+        private static extern IntPtr setWindowsHookEx(int idHook, LowLevelKeyboardProcDelegate lpfn, IntPtr hMod, uint dwThreadId);
 
-        [DllImport(@"user32.dll", EntryPoint = @"UnhookWindowsHookEx")]
-        private static extern IntPtr unhookWindowsHookEx(IntPtr hHook);
+        [DllImport("user32.dll", EntryPoint = "UnhookWindowsHookEx", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool unhookWindowsHookEx(IntPtr hHook);
 
-        [DllImport(@"user32.dll", EntryPoint = @"CallNextHookEx")]
-        private static extern int callNextHookEx(int hHook, int nCode, int wParam, ref KdDllHookStruct lParam);
+        [DllImport("user32.dll", EntryPoint = "CallNextHookEx")]
+        private static extern IntPtr callNextHookEx(IntPtr hHook, int nCode, IntPtr wParam, ref KbdLlHookStruct lParam);
+
+        [DllImport("kernel32.dll", EntryPoint = "GetModuleHandleW", CharSet = CharSet.Unicode)]
+        private static extern IntPtr getModuleHandle(string? moduleName);
+
+        [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
+        private static extern IntPtr getForegroundWindow();
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")]
+        private static extern uint getWindowThreadProcessId(IntPtr window, out uint processId);
     }
 }

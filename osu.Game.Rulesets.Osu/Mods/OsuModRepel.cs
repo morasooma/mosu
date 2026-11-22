@@ -27,10 +27,10 @@ namespace osu.Game.Rulesets.Osu.Mods
         public override string Acronym => "RP";
         public override IconUsage? Icon => OsuIcon.ModRepel;
         public override ModType Type => ModType.Fun;
-        public override LocalisableString Description => "Hit objects run away!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3728;
         public override Type[] IncompatibleMods => new[] { typeof(OsuModAutopilot), typeof(OsuModWiggle), typeof(OsuModTransform), typeof(ModAutoplay), typeof(OsuModMagnetised), typeof(OsuModBubbles), typeof(OsuModDepth) };
 
-        [SettingSource("Repulsion strength", "How strong the repulsion is.", 0)]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3729), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3730), 0)]
         public BindableFloat RepulsionStrength { get; } = new BindableFloat(0.5f)
         {
             Precision = 0.05f,

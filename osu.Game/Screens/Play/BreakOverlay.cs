@@ -3,6 +3,8 @@
 
 using System;
 using osu.Framework.Bindables;
+using osu.Framework.Allocation;
+using osu.Game.Configuration;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -30,6 +32,15 @@ namespace osu.Game.Screens.Play
         private const int vertical_margin = 15;
 
         private readonly Container fadeContainer;
+        private Container defaultVisuals = null!;
+        private LegacyBreakOverlay legacyVisuals = null!;
+        private Bindable<ForkBreakStyle> style = null!;
+
+        [BackgroundDependencyLoader]
+        private void load(OsuConfigManager config)
+        {
+            style = config.GetBindable<ForkBreakStyle>(OsuSetting.ForkBreakStyle);
+        }
 
         public override bool RemoveCompletedTransforms => false;
 
@@ -120,11 +131,31 @@ namespace osu.Game.Screens.Play
         {
             base.LoadComplete();
 
+            // Keep the original timeline intact under a separate visibility gate.
+            Remove(fadeContainer, false);
+            Children = new Drawable[]
+            {
+                defaultVisuals = new Container { RelativeSizeAxes = Axes.Both, AlwaysPresent = true, Child = fadeContainer },
+                legacyVisuals = new LegacyBreakOverlay(BreakTracker),
+            };
+            style.BindValueChanged(_ => updateStyle(), true);
+
             info.AccuracyDisplay.Current.BindTo(scoreProcessor.Accuracy);
             ((IBindable<ScoreRank>)info.GradeDisplay.Current).BindTo(scoreProcessor.Rank);
 
             currentPeriod.BindTo(BreakTracker.CurrentPeriod);
             currentPeriod.BindValueChanged(updateDisplay, true);
+        }
+
+        /// <summary>Whether the selected presentation currently has visible content.</summary>
+        public bool IsVisualVisible => style.Value == ForkBreakStyle.Default
+            ? fadeContainer.IsPresent
+            : style.Value == ForkBreakStyle.Legacy && legacyVisuals.IsVisualVisible;
+
+        private void updateStyle()
+        {
+            defaultVisuals.Alpha = style.Value == ForkBreakStyle.Default ? 1 : 0;
+            legacyVisuals.Enabled = style.Value == ForkBreakStyle.Legacy;
         }
 
         private float remainingTimeForCurrentPeriod =>

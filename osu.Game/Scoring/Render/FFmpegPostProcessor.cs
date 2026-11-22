@@ -18,9 +18,11 @@ namespace osu.Game.Scoring.Render
         /// </summary>
         private const double amix_input_scale = 0.5;
 
+        private static string mp4VideoCodecArgs(bool compactHevc) => compactHevc ? "-c:v copy -tag:v hvc1" : "-c:v copy";
+
         public static void MixHitsoundsIntoVideo(string inputVideoPath, string hitsoundPath, string outputPath, bool videoAlreadyHasAudio, double hitsoundGain = 1,
                                                  double trimLeadingMs = 0, double placeAtMs = 0, double? playDurationMs = null,
-                                                 double musicVolume = 0.85)
+                                                 double musicVolume = 0.85, bool compactHevc = false)
         {
             if (!File.Exists(inputVideoPath))
                 throw new FileNotFoundException("Rendered video for post-processing was not found.", inputVideoPath);
@@ -41,7 +43,7 @@ namespace osu.Game.Scoring.Render
                 ? $"-filter_complex \"{gainFilter};[0:a:0]{musicFilterArg},volume={formatInvariant(amix_input_scale)}[m];[m][hs]amix=inputs=2:duration=first:normalize=0[a]\" -map 0:v:0 -map \"[a]\""
                 : $"-filter_complex \"{gainFilter};[hs]anull[a]\" -map 0:v:0 -map \"[a]\"";
 
-            string arguments = $"-i \"{inputVideoPath}\" -i \"{hitsoundPath}\" {filterAndMapArgs} -c:v copy -c:a aac -b:a 192k -movflags +faststart -y \"{tempOutputPath}\"";
+            string arguments = $"-i \"{inputVideoPath}\" -i \"{hitsoundPath}\" {filterAndMapArgs} {mp4VideoCodecArgs(compactHevc)} -c:a aac -b:a 192k -movflags +faststart -y \"{tempOutputPath}\"";
 
             var startInfo = new ProcessStartInfo
             {
@@ -86,11 +88,10 @@ namespace osu.Game.Scoring.Render
         /// Re-containers the intermediate render (Matroska with PCM audio) into a real MP4 with AAC audio.
         /// A bare file rename would leave a mislabelled MKV that most players refuse to play audio from.
         /// </summary>
-        /// <param name="inputVideoPath">Path to intermediate input video file.</param>
-        /// <param name="outputPath">Destination path for the remuxed MP4.</param>
         /// <param name="hasAudio">Whether the intermediate is expected to contain an audio stream.</param>
         /// <param name="musicVolume">Constant gain applied to the audio during the remux.</param>
-        public static void RemuxToMp4(string inputVideoPath, string outputPath, bool hasAudio, double musicVolume = 1)
+        /// <param name="compactHevc">Whether to tag the copied HEVC stream as hvc1 for MP4 players.</param>
+        public static void RemuxToMp4(string inputVideoPath, string outputPath, bool hasAudio, double musicVolume = 1, bool compactHevc = false)
         {
             if (!File.Exists(inputVideoPath))
                 throw new FileNotFoundException("Rendered video for remuxing was not found.", inputVideoPath);
@@ -99,7 +100,7 @@ namespace osu.Game.Scoring.Render
             string audioArgs = hasAudio
                 ? $"-map 0:a:0 -c:a aac -b:a 192k{(Math.Abs(musicVolume - 1) > 0.001 ? $" -af \"volume={formatInvariant(musicVolume)}\"" : string.Empty)}"
                 : "-an";
-            string arguments = $"-i \"{inputVideoPath}\" -map 0:v:0 {audioArgs} -c:v copy -movflags +faststart -y \"{tempOutputPath}\"";
+            string arguments = $"-i \"{inputVideoPath}\" -map 0:v:0 {audioArgs} {mp4VideoCodecArgs(compactHevc)} -movflags +faststart -y \"{tempOutputPath}\"";
 
             var startInfo = new ProcessStartInfo
             {
@@ -177,7 +178,7 @@ namespace osu.Game.Scoring.Render
             return filter.ToString();
         }
 
-        public static void ApplyMusicVolume(string inputVideoPath, string outputPath, double musicVolume)
+        public static void ApplyMusicVolume(string inputVideoPath, string outputPath, double musicVolume, bool compactHevc = false)
         {
             if (Math.Abs(musicVolume - 1.0) < 0.001)
             {
@@ -194,7 +195,7 @@ namespace osu.Game.Scoring.Render
                 throw new FileNotFoundException("Rendered video for volume adjustment was not found.", inputVideoPath);
 
             string tempOutputPath = $"{outputPath}.vol.mp4";
-            string arguments = $"-i \"{inputVideoPath}\" -filter:a \"volume={formatInvariant(musicVolume)}\" -c:v copy -c:a aac -b:a 192k -movflags +faststart -y \"{tempOutputPath}\"";
+            string arguments = $"-i \"{inputVideoPath}\" -filter:a \"volume={formatInvariant(musicVolume)}\" {mp4VideoCodecArgs(compactHevc)} -c:a aac -b:a 192k -movflags +faststart -y \"{tempOutputPath}\"";
 
             var startInfo = new ProcessStartInfo
             {

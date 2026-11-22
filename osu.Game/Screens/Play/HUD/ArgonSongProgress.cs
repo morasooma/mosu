@@ -22,6 +22,7 @@ namespace osu.Game.Screens.Play.HUD
         private readonly ArgonSongProgressBar bar;
         private readonly Container graphContainer;
         private readonly Container content;
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
 
         private const float bar_height = 10;
 
@@ -102,7 +103,16 @@ namespace osu.Game.Screens.Play.HUD
             Interactive.BindValueChanged(_ => bar.Interactive = Interactive.Value, true);
             ShowGraph.BindValueChanged(_ => updateGraphVisibility(), true);
             ShowTime.BindValueChanged(_ => info.FadeTo(ShowTime.Value ? 1 : 0, SkinPerformanceMode.ShouldSimplifyHud ? 0 : 200, Easing.In), true);
-            AccentColour.BindValueChanged(_ => Colour = AccentColour.Value, true);
+            void updateColours()
+            {
+                // Preserve an explicitly tinted progress component as a complete skin choice.
+                Colour = AccentColour.Value;
+                info.TextColour = AccentColour.IsDefault
+                    ? themeColours.GetColour(Overlays.OverlayColour.Content1, Colour4.White) : Colour4.White;
+                bar.ApplyThemeColours(AccentColour.IsDefault);
+            }
+            AccentColour.BindValueChanged(_ => updateColours());
+            themeColours.Bind(action => Scheduler.Add(action), updateColours);
 
             // see comment in ArgonHealthDisplay.cs regarding RelativeSizeAxes
             float previousWidth = Width;
@@ -116,6 +126,12 @@ namespace osu.Game.Screens.Play.HUD
 
             info.StartTime = bar.StartTime = FirstHitTime;
             info.EndTime = bar.EndTime = LastHitTime;
+        }
+
+        internal void ApplyCornerRadius(float radius)
+        {
+            CornerRadius = graphContainer.CornerRadius = radius;
+            bar.ApplyCornerRadius(radius);
         }
 
         private void updateGraphVisibility()

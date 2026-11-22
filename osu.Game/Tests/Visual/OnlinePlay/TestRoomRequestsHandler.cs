@@ -162,6 +162,7 @@ namespace osu.Game.Tests.Visual.OnlinePlay
                 case GetRoomRequest getRoomRequest:
                     getRoomRequest.TriggerSuccess(createResponseRoom(ServerSideRooms.Single(r => r.RoomID == getRoomRequest.RoomId), true));
                     return true;
+
                 case GetBeatmapRequest getBeatmapRequest:
                 {
                     getBeatmapRequest.TriggerSuccess(createResponseBeatmaps(getBeatmapRequest.OnlineID).Single());

@@ -11,8 +11,15 @@ namespace osu.Game.Rulesets.Dodge.Edit
     {
         public const float COMPACT_SCALE = 0.72f;
 
+        [Resolved]
+        private DodgeEditorSettings settings { get; set; } = null!;
+
+        protected override float ViewZoom => settings?.EditorZoom.Value ?? 1;
+        protected override Vector2 ViewCentre => settings == null ? DodgePlayfield.BASE_SIZE / 2
+            : new Vector2(settings.EditorCentreX.Value, settings.EditorCentreY.Value);
+
         [BackgroundDependencyLoader]
-        private void load(DodgeEditorSettings settings)
+        private void load()
         {
             settings.CompactPlayfield.BindValueChanged(compact => setCompactPlayfield(compact.NewValue), true);
         }

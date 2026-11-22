@@ -24,67 +24,94 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Caption = ForkSettingsStrings.RelaxPpSystemCaption,
                     HintText = ForkSettingsStrings.RelaxPpSystemHint,
                     Current = config.GetBindable<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkRelaxPpSystem",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.RelaxEnableCaption,
                     HintText = ForkSettingsStrings.RelaxEnableHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkRelaxEnabled)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkRelaxEnabled",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.RelaxBlindTapEnabledCaption,
                     HintText = ForkSettingsStrings.RelaxBlindTapEnabledHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkRelaxBlindTapEnabled)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkRelaxBlindTapEnabled",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.RelaxBaseOffsetCaption,
                     HintText = ForkSettingsStrings.RelaxBaseOffsetHint,
                     Current = config.GetBindable<double>(OsuSetting.ForkRelaxBaseOffset),
                     KeyboardStep = 1f,
-                    LabelFormat = value => $"{value:0} ms"
-                }),
+                    LabelFormat = value => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4039(value)
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkRelaxBaseOffset",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.RelaxVarianceCaption,
                     HintText = ForkSettingsStrings.RelaxVarianceHint,
                     Current = config.GetBindable<double>(OsuSetting.ForkRelaxTimingVariance),
                     KeyboardStep = 1f,
-                    LabelFormat = value => $"{value:0} ms"
-                }),
+                    LabelFormat = value => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4039(value)
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkRelaxTimingVariance",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.RelaxHoldTimeCaption,
                     HintText = ForkSettingsStrings.RelaxHoldTimeHint,
                     Current = config.GetBindable<double>(OsuSetting.ForkRelaxHoldTime),
                     KeyboardStep = 1f,
-                    LabelFormat = value => $"{value:0} ms"
-                }),
+                    LabelFormat = value => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4039(value)
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkRelaxHoldTime",
+                },
                 new SettingsItemV2(new FormSliderBar<float>
                 {
                     Caption = ForkSettingsStrings.RelaxSyncRadiusCaption,
                     HintText = ForkSettingsStrings.RelaxSyncRadiusHint,
                     Current = config.GetBindable<float>(OsuSetting.ForkRelaxSyncRadius),
                     KeyboardStep = 1f,
-                    LabelFormat = value => $"{value:0}px"
-                }),
+                    LabelFormat = value => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4038(value)
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkRelaxSyncRadius",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.RelaxMaxSyncDelayCaption,
                     HintText = ForkSettingsStrings.RelaxMaxSyncDelayHint,
                     Current = config.GetBindable<double>(OsuSetting.ForkRelaxMaxSyncDelay),
                     KeyboardStep = 1f,
-                    LabelFormat = value => $"{value:0} ms"
-                }),
+                    LabelFormat = value => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4039(value)
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkRelaxMaxSyncDelay",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.RelaxStableBpmCaption,
                     HintText = ForkSettingsStrings.RelaxStableBpmHint,
                     Current = config.GetBindable<double>(OsuSetting.ForkRelaxStableBpm),
                     KeyboardStep = 1f,
-                    LabelFormat = value => $"{value:0} BPM"
-                }),
+                    LabelFormat = value => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4053(value)
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkRelaxStableBpm",
+                },
             };
         }
     }

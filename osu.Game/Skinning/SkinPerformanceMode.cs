@@ -84,7 +84,7 @@ namespace osu.Game.Skinning
 
         /// <summary>
         /// Draw the Argon slider follow circle as a ring only, dropping its additive interior fill
-        /// (~96k px/frame saved while tracking, audit R13.G). Composed with the
+        /// (~96k px/frame saved while tracking). Composed with the
         /// <c>MOSU_ARGON_FOLLOW_RING</c> environment kill-switch in
         /// <see cref="ShouldUseArgonFollowRing"/>.
         /// </summary>
@@ -134,12 +134,6 @@ namespace osu.Game.Skinning
             + $";argon_follow_ring={ArgonFollowRing}"
             + $";benchmark_override={HasBenchmarkOverride}";
 
-        // NOTE (R13.G, 2026-07-26): a "downscale background framebuffer at high dim" checkbox
-        // (FrameBufferScale 0.5 at dim >= 0.6) was implemented and A/B'd here, and measured NO effect
-        // (+0.4%, within variance, 1568.1 vs 1562.2 same exe). The fullscreen background's texture-fetch
-        // side is already amortised by the texture cache; the paid side is the backbuffer write, which
-        // only the blackout option above removes. Removed per worklog acceptance rule §8 — do not
-        // re-attempt without different hardware and an A/B.
 
         public static bool ShouldFreezeAnimations => Enabled && FreezeAnimations;
         public static bool ShouldSimplifyEffects => Enabled && SimplifyEffects;

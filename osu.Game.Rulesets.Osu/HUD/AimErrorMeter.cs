@@ -137,7 +137,7 @@ namespace osu.Game.Rulesets.Osu.HUD
                         Alpha = 0f,
                         Children = new Drawable[]
                         {
-                            new Circle
+                            new FastCircle
                             {
                                 RelativeSizeAxes = Axes.Y,
                                 Anchor = Anchor.Centre,
@@ -145,7 +145,7 @@ namespace osu.Game.Rulesets.Osu.HUD
                                 Height = inner_portion + 0.2f,
                                 Width = line_thickness / 2,
                             },
-                            new Circle
+                            new FastCircle
                             {
                                 Height = 5f,
                                 Width = line_thickness / 2,
@@ -156,7 +156,7 @@ namespace osu.Game.Rulesets.Osu.HUD
                                 Y = -(inner_portion + 0.2f) / 2,
                                 Rotation = -45
                             },
-                            new Circle
+                            new FastCircle
                             {
                                 Height = 5f,
                                 Width = line_thickness / 2,
@@ -175,7 +175,7 @@ namespace osu.Game.Rulesets.Osu.HUD
                         RelativeSizeAxes = Axes.Both,
                         Children = new Drawable[]
                         {
-                            new Circle
+                            new FastCircle
                             {
                                 RelativeSizeAxes = Axes.Y,
                                 Anchor = Anchor.Centre,
@@ -184,7 +184,7 @@ namespace osu.Game.Rulesets.Osu.HUD
                                 Width = line_thickness,
                                 Height = inner_portion * 0.9f
                             },
-                            new Circle
+                            new FastCircle
                             {
                                 RelativeSizeAxes = Axes.Y,
                                 Anchor = Anchor.Centre,
@@ -194,7 +194,7 @@ namespace osu.Game.Rulesets.Osu.HUD
                                 Height = inner_portion * 0.9f,
                                 Rotation = 90
                             },
-                            new Circle
+                            new FastCircle
                             {
                                 RelativeSizeAxes = Axes.Y,
                                 Anchor = Anchor.Centre,
@@ -204,7 +204,7 @@ namespace osu.Game.Rulesets.Osu.HUD
                                 Height = inner_portion * 0.9f,
                                 Rotation = 45
                             },
-                            new Circle
+                            new FastCircle
                             {
                                 RelativeSizeAxes = Axes.Y,
                                 Anchor = Anchor.Centre,
@@ -241,14 +241,14 @@ namespace osu.Game.Rulesets.Osu.HUD
                                     Origin = Anchor.Centre,
                                     Children = new Drawable[]
                                     {
-                                        new Circle
+                                        new FastCircle
                                         {
                                             RelativeSizeAxes = Axes.Both,
                                             Anchor = Anchor.Centre,
                                             Origin = Anchor.Centre,
                                             Width = 0.25f,
                                         },
-                                        new Circle
+                                        new FastCircle
                                         {
                                             RelativeSizeAxes = Axes.Both,
                                             Anchor = Anchor.Centre,
@@ -406,7 +406,7 @@ namespace osu.Game.Rulesets.Osu.HUD
                         Origin = Anchor.Centre,
                         Children = new Drawable[]
                         {
-                            new Circle
+                            new FastCircle
                             {
                                 RelativeSizeAxes = Axes.Both,
                                 Anchor = Anchor.Centre,
@@ -414,7 +414,7 @@ namespace osu.Game.Rulesets.Osu.HUD
                                 Width = 0.25f,
                                 Rotation = -45
                             },
-                            new Circle
+                            new FastCircle
                             {
                                 RelativeSizeAxes = Axes.Both,
                                 Anchor = Anchor.Centre,

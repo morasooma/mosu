@@ -4,6 +4,7 @@
 #nullable disable
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -11,6 +12,8 @@ using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input.Events;
 using osu.Game.Graphics.Containers;
+using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 using osuTK.Graphics;
 
@@ -27,6 +30,7 @@ namespace osu.Game.Graphics.UserInterface
         public bool PlaySamples { get; }
 
         private readonly BackdropBlurSurface glassBackground;
+        private IBindable<float> popupRadius;
 
         /// <summary>
         /// The colour applied over the shared blurred backdrop.
@@ -58,9 +62,30 @@ namespace osu.Game.Graphics.UserInterface
             });
 
             MaskingContainer.CornerRadius = 4;
+            glassBackground.CornerRadius = 4;
             ItemsContainer.Padding = new MarginPadding(5);
 
             OnSubmenuOpen += _ => menuSamples?.PlaySubOpenSample();
+        }
+
+        /// <summary>
+        /// Whether this menu should dynamically update its corner radius based on <see cref="GeometryRole.Popup"/>.
+        /// Can be overridden by subclasses (e.g. top-level docked menu bars) that require hardcoded curvature.
+        /// </summary>
+        protected virtual bool ApplyGeometryRadius => true;
+
+        [BackgroundDependencyLoader(true)]
+        private void load(OverlayColourProvider colourProvider)
+        {
+            if (ApplyGeometryRadius)
+            {
+                popupRadius = colourProvider?.GetRadiusBindable(GeometryRole.Popup, 4f) ?? OverlayColourProvider.GetGeometryRadius(GeometryRole.Popup, 4f);
+                popupRadius.BindValueChanged(r =>
+                {
+                    MaskingContainer.CornerRadius = r.NewValue;
+                    glassBackground.CornerRadius = r.NewValue;
+                }, true);
+            }
         }
 
         protected override void Update()
@@ -88,7 +113,7 @@ namespace osu.Game.Graphics.UserInterface
                 menuSamples?.PlayOpenSample();
 
             WasOpened = true;
-            this.FadeIn(FADE_DURATION, Easing.OutQuint);
+            this.FadeIn(InterfaceAnimation.FadeDuration(FADE_DURATION), Easing.OutQuint);
         }
 
         protected override void AnimateClose()
@@ -96,8 +121,8 @@ namespace osu.Game.Graphics.UserInterface
             if (PlaySamples && WasOpened)
                 menuSamples?.PlayCloseSample();
 
-            this.Delay(DELAY_BEFORE_FADE_OUT)
-                .FadeOut(FADE_DURATION, Easing.OutQuint);
+            this.Delay(InterfaceAnimation.FadeDuration(DELAY_BEFORE_FADE_OUT))
+                .FadeOut(InterfaceAnimation.FadeDuration(FADE_DURATION), Easing.OutQuint);
 
             WasOpened = false;
         }
@@ -109,7 +134,7 @@ namespace osu.Game.Graphics.UserInterface
                 Width = newSize.X;
 
                 if (newSize.Y > 0)
-                    this.ResizeHeightTo(newSize.Y, 300, Easing.OutQuint);
+                    this.ResizeHeightTo(newSize.Y, InterfaceAnimation.MovementDuration(300), Easing.OutQuint);
                 else
                     // Delay until the fade out finishes from AnimateClose.
                     this.Delay(DELAY_BEFORE_FADE_OUT + FADE_DURATION).ResizeHeightTo(0);

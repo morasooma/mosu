@@ -176,10 +176,11 @@ namespace osu.Game.Screens.Play
 
         protected override void Dispose(bool isDisposing)
         {
-            failSample.Stop();
-            failSample.Dispose();
-            track.RemoveAdjustment(AdjustableProperty.Frequency, trackFreq);
-            track.RemoveAdjustment(AdjustableProperty.Volume, volumeAdjustment);
+            // PlayerLoader may dispose this component before dependency loading finishes.
+            // Child drawables (including failSample) are disposed by the base container.
+            failSample?.Stop();
+            track?.RemoveAdjustment(AdjustableProperty.Frequency, trackFreq);
+            track?.RemoveAdjustment(AdjustableProperty.Volume, volumeAdjustment);
             base.Dispose(isDisposing);
         }
     }

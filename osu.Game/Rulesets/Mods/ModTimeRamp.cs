@@ -21,13 +21,13 @@ namespace osu.Game.Rulesets.Mods
         /// </summary>
         public const double FINAL_RATE_PROGRESS = 0.75f;
 
-        [SettingSource("Initial rate", "The starting speed of the track", SettingControlType = typeof(MultiplierSettingsSlider))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4187), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4188), SettingControlType = typeof(MultiplierSettingsSlider))]
         public abstract BindableNumber<double> InitialRate { get; }
 
-        [SettingSource("Final rate", "The final speed to ramp to", SettingControlType = typeof(MultiplierSettingsSlider))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4258), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4259), SettingControlType = typeof(MultiplierSettingsSlider))]
         public abstract BindableNumber<double> FinalRate { get; }
 
-        [SettingSource("Adjust pitch", "Should pitch be adjusted with speed")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4189), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4190))]
         public abstract BindableBool AdjustPitch { get; }
 
         public sealed override bool ValidForFreestyleAsRequiredMod => true;
@@ -40,10 +40,10 @@ namespace osu.Game.Rulesets.Mods
             get
             {
                 if (!InitialRate.IsDefault || !FinalRate.IsDefault)
-                    yield return ("Speed change", $"{InitialRate.Value:N2}x to {FinalRate.Value:N2}x");
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4260, global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4261(InitialRate.Value, FinalRate.Value));
 
                 if (!AdjustPitch.IsDefault)
-                    yield return ("Adjust pitch", AdjustPitch.Value ? "On" : "Off");
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4189, AdjustPitch.Value ? global::osu.Game.Localisation.ClientTranslationStrings.J4183 : global::osu.Game.Localisation.ClientTranslationStrings.J4214);
             }
         }
 

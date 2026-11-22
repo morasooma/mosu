@@ -58,6 +58,33 @@ namespace osu.Game.Tests.Visual.SongSelect
             AddStep("display", () => CreateThemedContent(OverlayColourScheme.Aquamarine));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestSpreadDifficultyOrderMatchesPreviousQuery(bool allowConversion)
+        {
+            var osuRuleset = new OsuRuleset().RulesetInfo;
+            var maniaRuleset = new ManiaRuleset().RulesetInfo;
+            var set = new BeatmapSetInfo();
+            var current = new BeatmapInfo(osuRuleset) { BeatmapSet = set, StarRating = 4 };
+            set.Beatmaps.Add(current);
+            // Same-ID detached instances and duplicates must retain Except semantics.
+            set.Beatmaps.Add(new BeatmapInfo(osuRuleset) { ID = current.ID, BeatmapSet = set, StarRating = 99 });
+            foreach (double stars in new[] { double.NaN, -1, 4, 4, double.NegativeInfinity, double.PositiveInfinity, 2 })
+            {
+                var info = new BeatmapInfo(osuRuleset) { BeatmapSet = set, StarRating = stars };
+                set.Beatmaps.Add(info);
+                set.Beatmaps.Add(new BeatmapInfo(osuRuleset) { ID = info.ID, BeatmapSet = set, StarRating = 100 });
+            }
+            set.Beatmaps.Add(new BeatmapInfo(maniaRuleset) { BeatmapSet = set, StarRating = 3 });
+            foreach (var ruleset in new[] { osuRuleset, maniaRuleset })
+            {
+                var expected = set.Beatmaps.Except(new[] { current })
+                                  .Where(b => b.AllowGameplayWithRuleset(ruleset, allowConversion))
+                                  .OrderBy(b => b.StarRating).Select(b => b.StarRating).ToArray();
+                Assert.That(PanelBeatmapStandalone.SpreadDisplay.GetOtherStarDifficulties(current, ruleset, allowConversion), Is.EqualTo(expected));
+            }
+        }
+
         [Test]
         public void TestRandomBeatmap()
         {

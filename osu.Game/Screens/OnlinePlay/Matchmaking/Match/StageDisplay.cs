@@ -103,17 +103,17 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match
                 },
             };
 
-            flow.Add(new StageSegment(null, MatchmakingStage.WaitingForClientsJoin, "Waiting for other users"));
+            flow.Add(new StageSegment(null, MatchmakingStage.WaitingForClientsJoin, global::osu.Game.Localisation.ClientTranslationStrings.J4809));
 
             for (int i = 1; i <= round_count; i++)
             {
-                flow.Add(new StageSegment(i, MatchmakingStage.RoundWarmupTime, "Next Round"));
-                flow.Add(new StageSegment(i, MatchmakingStage.UserBeatmapSelect, "Beatmap Selection"));
-                flow.Add(new StageSegment(i, MatchmakingStage.GameplayWarmupTime, "Get Ready"));
-                flow.Add(new StageSegment(i, MatchmakingStage.ResultsDisplaying, "Results"));
+                flow.Add(new StageSegment(i, MatchmakingStage.RoundWarmupTime, global::osu.Game.Localisation.ClientTranslationStrings.J4810));
+                flow.Add(new StageSegment(i, MatchmakingStage.UserBeatmapSelect, global::osu.Game.Localisation.ClientTranslationStrings.J4811));
+                flow.Add(new StageSegment(i, MatchmakingStage.GameplayWarmupTime, global::osu.Game.Localisation.ClientTranslationStrings.J4812));
+                flow.Add(new StageSegment(i, MatchmakingStage.ResultsDisplaying, global::osu.Game.Localisation.ClientTranslationStrings.J4813));
             }
 
-            flow.Add(new StageSegment(round_count, MatchmakingStage.Ended, "Match End"));
+            flow.Add(new StageSegment(round_count, MatchmakingStage.Ended, global::osu.Game.Localisation.ClientTranslationStrings.J4814));
         }
 
         protected override void Update()
@@ -220,7 +220,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match
                         Anchor = Anchor.TopCentre,
                         Origin = Anchor.TopCentre,
                         Font = OsuFont.Style.Caption2,
-                        Text = "Round",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4815,
                         Colour = colours.Content2
                     },
                     text = new OsuSpriteText

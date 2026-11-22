@@ -47,15 +47,29 @@ namespace osu.Game.Overlays.Mods
         {
         }
 
+        [Resolved]
+        private OsuColour colours { get; set; } = null!;
+
         [BackgroundDependencyLoader]
-        private void load(OsuColour colours)
+        private void load()
         {
-            AccentColour = colours.ForModType(Mod.Type);
+            updateAccentColour();
+        }
+
+        private void updateAccentColour()
+        {
+            AccentColour = ColourProvider.GetModTypeColour(Mod.Type, colours);
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            ColourProvider.PaletteVersion.BindValueChanged(_ =>
+            {
+                updateAccentColour();
+                UpdateState();
+            });
 
             modState.ValidForSelection.BindValueChanged(_ => updateFilterState());
             modState.MatchingTextFilter.BindValueChanged(_ => updateFilterState(), true);

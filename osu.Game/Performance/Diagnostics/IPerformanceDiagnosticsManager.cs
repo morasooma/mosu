@@ -35,6 +35,9 @@ namespace osu.Game.Performance.Diagnostics
 
         void OpenMemoryDumpFolder();
 
+        /// <summary>Disables performance logging and waits for the current trace archive to finish.</summary>
+        Task<string?> FinishPerformanceRecordingAsync();
+
         void DismissResults();
     }
 }

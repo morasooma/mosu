@@ -1,6 +1,8 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Threading.Tasks;
+
 namespace osu.Game.Utils
 {
     /// <summary>
@@ -20,5 +22,15 @@ namespace osu.Game.Utils
         /// This is <c>false</c> when the device is charging or doesn't have a battery.
         /// </remarks>
         public abstract bool OnBattery { get; }
+
+        /// <summary>
+        /// Reads power status without blocking the caller when the platform query is expensive.
+        /// Platforms with thread-affine APIs retain the synchronous default implementation.
+        /// </summary>
+        public virtual Task<(bool OnBattery, double? ChargeLevel)> GetStatusAsync()
+        {
+            bool onBattery = OnBattery;
+            return Task.FromResult((onBattery, onBattery ? ChargeLevel : null));
+        }
     }
 }

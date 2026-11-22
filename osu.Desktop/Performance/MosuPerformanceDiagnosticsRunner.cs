@@ -66,11 +66,11 @@ namespace osu.Desktop.Performance
             var persistedSession = MosuDiagnosticsSessionStore.TryLoad(storage);
             bool hasPendingResults = persistedSession?.Phase is MosuDiagnosticsPhase.PendingResultsRestart or MosuDiagnosticsPhase.ShowResults;
 
-            if (!diagnosticsLaunch
-                && persistedSession?.Phase is MosuDiagnosticsPhase.PendingRestart or MosuDiagnosticsPhase.RunningBenchmark)
+            if (persistedSession?.Phase == MosuDiagnosticsPhase.RunningBenchmark
+                || (!diagnosticsLaunch && persistedSession?.Phase == MosuDiagnosticsPhase.PendingRestart))
             {
                 MosuDiagnosticsStutterCollector.Reset();
-                persistedSession.Phase = MosuDiagnosticsPhase.Paused;
+                MosuDiagnosticsRecovery.PauseInterruptedSession(persistedSession);
                 MosuDiagnosticsSessionStore.Save(storage, persistedSession);
                 diagnosticsManager.HandleSessionUpdated(persistedSession);
                 Logger.Log($"mosu diagnostics paused persisted session {persistedSession.SessionId} on a normal launch.", LoggingTarget.Runtime, LogLevel.Verbose);
@@ -277,7 +277,7 @@ namespace osu.Desktop.Performance
                 Renderer = expected,
                 Profile = session.ExpectedProfile ?? MosuDiagnosticsProfile.Current,
                 ResolvedRenderer = resolved.ToString(),
-                Started = false,
+                Started = session.Phase == MosuDiagnosticsPhase.RunningBenchmark,
                 Completed = false,
                 FailureReason = reason,
                 Quality = MosuDiagnosticsQuality.Failed,
@@ -293,7 +293,8 @@ namespace osu.Desktop.Performance
                || reason.StartsWith("benchmark_replay_import_failed:", StringComparison.Ordinal)
                || reason.StartsWith("benchmark_replay_import_cancelled", StringComparison.Ordinal)
                || reason.StartsWith("benchmark_replay_beatmap_mismatch:", StringComparison.Ordinal)
-               || reason.StartsWith("benchmark_replay_preparation_timeout:", StringComparison.Ordinal);
+               || reason.StartsWith("benchmark_replay_preparation_timeout:", StringComparison.Ordinal)
+               || reason == "diagnostics_window_focus_timeout";
 
         private void advanceStep(MosuDiagnosticsSession session)
         {
@@ -327,7 +328,7 @@ namespace osu.Desktop.Performance
             session.CompletedAt = DateTimeOffset.Now;
             session.ExpectedRenderer = null;
             session.ExpectedProfile = null;
-            frameworkConfig.SetValue(FrameworkSetting.Renderer, session.OriginalRenderer);
+            frameworkConfig.SetValue(FrameworkSetting.Renderer, MosuDiagnosticsRecovery.GetRestoreRenderer(session));
             diagnosticsManager.RestoreOriginalSkin(session);
             MosuDiagnosticsSessionStore.Save(storage, session);
             diagnosticsManager.HandleSessionUpdated(session);
@@ -513,13 +514,5 @@ namespace osu.Desktop.Performance
                 session.CurrentConfiguration);
 
         private static string boolArg(string name, bool value) => $"{name}={value.ToString().ToLowerInvariant()}";
-
-        public static string QuoteArg(string arg)
-        {
-            if (!arg.Contains(' ') && !arg.Contains('"'))
-                return arg;
-
-            return '"' + arg.Replace("\"", "\\\"") + '"';
-        }
     }
 }

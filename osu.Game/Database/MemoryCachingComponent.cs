@@ -24,6 +24,61 @@ namespace osu.Game.Database
         private readonly object cacheOrderLock = new object();
         private readonly LinkedList<TLookup> cacheOrder = new LinkedList<TLookup>();
         private readonly Dictionary<TLookup, LinkedListNode<TLookup>> cacheNodes = new Dictionary<TLookup, LinkedListNode<TLookup>>();
+        // Only in-flight requests are tracked; completed keys do not retain generation tombstones.
+        private readonly HashSet<CacheRequest> activeRequests = new HashSet<CacheRequest>();
+
+        protected sealed class CacheRequest
+        {
+            internal readonly TLookup Lookup;
+            internal volatile bool Invalidated;
+
+            internal CacheRequest(TLookup lookup) => Lookup = lookup;
+        }
+
+        protected CacheRequest BeginCacheRequest(TLookup lookup)
+        {
+            lock (cacheOrderLock)
+            {
+                var request = new CacheRequest(lookup);
+                activeRequests.Add(request);
+                return request;
+            }
+        }
+
+        protected void EndCacheRequest(CacheRequest request)
+        {
+            lock (cacheOrderLock)
+                activeRequests.Remove(request);
+        }
+
+        protected bool IsCacheRequestValid(CacheRequest request, CancellationToken cancellationToken)
+        {
+            lock (cacheOrderLock)
+                return !request.Invalidated && !cancellationToken.IsCancellationRequested;
+        }
+
+        protected void WithCacheLock(Action action)
+        {
+            lock (cacheOrderLock)
+                action();
+        }
+
+        protected bool PublishValue(CacheRequest request, TValue? value, CancellationToken cancellationToken)
+        {
+            lock (cacheOrderLock)
+            {
+                if (request.Invalidated || cancellationToken.IsCancellationRequested)
+                    return false;
+
+                if (value != null || CacheNullValues)
+                {
+                    OnValueComputed(request.Lookup, value);
+                    StoreValue(request.Lookup, value);
+                }
+
+                return true;
+            }
+        }
 
         private readonly GlobalStatistic<MemoryCachingStatistics> statistics;
 
@@ -33,6 +88,11 @@ namespace osu.Game.Database
         /// Optional bound for caches holding large computed values. Defaults to unlimited for existing consumers.
         /// </summary>
         protected virtual int MaximumCacheEntries => int.MaxValue;
+
+        protected int CachedEntryCount
+        {
+            get { lock (cacheOrderLock) return cache.Count; }
+        }
 
         protected MemoryCachingComponent()
         {
@@ -66,17 +126,22 @@ namespace osu.Game.Database
                 return existing;
             }
 
-            if (computationDelay > 0)
-                await Task.Delay(computationDelay, cancellationToken).ConfigureAwait(false);
+            var request = BeginCacheRequest(lookup);
+            try
+            {
+                if (computationDelay > 0)
+                    await Task.Delay(computationDelay, cancellationToken).ConfigureAwait(false);
 
-            var computed = await ComputeValueAsync(lookup, cancellationToken).ConfigureAwait(false);
-
-            statistics.Value.MissCount++;
-
-            if (computed != null || CacheNullValues)
-                StoreValue(lookup, computed);
-
-            return computed;
+                var computed = await ComputeValueAsync(lookup, cancellationToken).ConfigureAwait(false);
+                statistics.Value.MissCount++;
+                // A canceled owner may still deliver its result to an independent waiter; it must not cache it.
+                // Invalidation, unlike cancellation, makes the old result unusable.
+                return PublishValue(request, computed, cancellationToken) || !request.Invalidated ? computed : default;
+            }
+            finally
+            {
+                EndCacheRequest(request);
+            }
         }
 
         /// <summary>
@@ -115,6 +180,12 @@ namespace osu.Game.Database
         {
             lock (cacheOrderLock)
             {
+                foreach (var request in activeRequests)
+                {
+                    if (matchKeyPredicate(request.Lookup))
+                        request.Invalidated = true;
+                }
+
                 foreach (var kvp in cache)
                 {
                     if (!matchKeyPredicate(kvp.Key))
@@ -136,11 +207,20 @@ namespace osu.Game.Database
         {
             lock (cacheOrderLock)
             {
+                foreach (var request in activeRequests)
+                    request.Invalidated = true;
                 cache.Clear();
                 cacheOrder.Clear();
                 cacheNodes.Clear();
                 statistics.Value.Usage = 0;
             }
+        }
+
+        /// <summary>
+        /// Called after a successful lookup to allow lightweight result projections without retaining the computed graph.
+        /// </summary>
+        protected virtual void OnValueComputed(TLookup lookup, TValue? value)
+        {
         }
 
         protected bool CheckExists(TLookup lookup, [MaybeNullWhen(false)] out TValue value) =>

@@ -32,8 +32,18 @@ namespace osu.Game.Rulesets.Dodge.UI
         {
             get
             {
-                Vector2 position = drawableRuleset.Playfield.Player.Position;
-                var normalised = new Vector2(position.X / DodgePlayfield.WIDTH, position.Y / DodgePlayfield.HEIGHT);
+                var playfield = drawableRuleset.Playfield;
+                Vector2 position = playfield.Player.Position;
+                Vector2 normalised;
+
+                if (playfield.HasWorldEvents)
+                {
+                    DodgeArenaState arena = playfield.ArenaAt(Time.Current);
+                    normalised = Vector2.Divide(position - arena.Position, arena.Size);
+                }
+                else
+                    normalised = Vector2.Divide(position, DodgePlayfield.BASE_SIZE);
+
                 return Vector2.ComponentMin(Vector2.One, Vector2.ComponentMax(Vector2.Zero, normalised));
             }
         }
@@ -68,7 +78,14 @@ namespace osu.Game.Rulesets.Dodge.UI
                 configuration.IsBreakTime,
                 showBody: false);
             AddInternal(localPlayerLabel);
-            localPlayerLabel.SetLocalState(LocalPlayerPosition, 0);
+        }
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+
+            // Position normalisation for world events uses the inherited gameplay clock.
+            localPlayerLabel.SetLocalState(LocalPlayerPosition, localPlayerLabel.PingMilliseconds);
         }
 
         public override void SetLocalPing(ushort pingMilliseconds)
@@ -202,7 +219,7 @@ namespace osu.Game.Rulesets.Dodge.UI
                 displayedPosition = targetPosition;
 
             hasPosition = true;
-            label.Text = $"{username}  {ping} ms";
+            label.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5371(username, ping);
         }
 
         protected override void Update()
@@ -215,7 +232,10 @@ namespace osu.Game.Rulesets.Dodge.UI
             float interpolation = (float)(1 - Math.Exp(-Time.Elapsed / 1000 * 22));
             displayedPosition = Vector2.Lerp(displayedPosition, targetPosition, interpolation);
 
-            Vector2 gamefieldPosition = displayedPosition * DodgePlayfield.BASE_SIZE;
+            DodgeArenaState arena = drawableRuleset.Playfield.ArenaAt(Time.Current);
+            Vector2 gamefieldPosition = drawableRuleset.Playfield.HasWorldEvents
+                ? arena.Position + displayedPosition * arena.Size
+                : displayedPosition * DodgePlayfield.BASE_SIZE;
             Vector2 screenPosition = drawableRuleset.Playfield.GamefieldToScreenSpace(gamefieldPosition);
 
             if (Parent != null)

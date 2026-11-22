@@ -149,7 +149,10 @@ namespace osu.Game.Skinning
         /// </summary>
         public virtual void Stop()
         {
-            samplesContainer.ForEach(c => c.Stop());
+            // ForEach(IEnumerable<T>) boxes AudioContainer's struct enumerator.
+            // Stop is also called every frame by legacy break presentation.
+            foreach (var sample in samplesContainer)
+                sample.Stop();
         }
 
         private void updateSamples()

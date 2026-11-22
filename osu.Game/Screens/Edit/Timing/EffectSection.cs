@@ -20,10 +20,10 @@ namespace osu.Game.Screens.Edit.Timing
         {
             Flow.AddRange(new Drawable[]
             {
-                kiai = new FormCheckBox { Caption = "Kiai Time" },
+                kiai = new FormCheckBox { Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4330 },
                 scrollSpeedSlider = new FormSliderBar<double>
                 {
-                    Caption = "Scroll Speed",
+                    Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4331,
                     Current = new EffectControlPoint().ScrollSpeedBindable,
                     KeyboardStep = 0.1f,
                     TransferValueOnCommit = true,

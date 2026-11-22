@@ -2,7 +2,10 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.Versioning;
 using Microsoft.Win32;
@@ -17,22 +20,29 @@ using osu.Framework.Logging;
 using osu.Framework.Screens;
 using osu.Game.Updater;
 using osu.Desktop.MacOS;
+using osu.Desktop.Linux;
 using osu.Desktop.Windows;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
+using DrawablePath = osu.Framework.Graphics.Lines.Path;
+using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.IO;
 using osu.Game.IPC;
 using osu.Game.Performance;
 using osu.Game.Performance.Diagnostics;
+using osu.Game.Performance.Debug;
 using osu.Game.Screens.Menu;
 using osu.Game.Utils;
 
 namespace osu.Desktop
 {
+    [Cached(typeof(OsuGameDesktop))]
     internal partial class OsuGameDesktop : OsuGame
     {
         private OsuSchemeLinkIPCChannel? osuSchemeLinkIPCChannel;
         private ArchiveImportIPCChannel? archiveImportIPCChannel;
+
         private readonly string[] launchArgs;
         private bool performanceRunnersLoaded;
 
@@ -42,6 +52,9 @@ namespace osu.Desktop
         [Cached(typeof(IPerformanceDiagnosticsManager))]
         [Cached(typeof(PerformanceDiagnosticsManager))]
         private readonly PerformanceDiagnosticsManager performanceDiagnosticsManager = new PerformanceDiagnosticsManager();
+
+        [Cached(typeof(ILinuxGamePriority))]
+        private readonly LinuxGamePriority linuxGamePriority = new LinuxGamePriority();
 
         public bool IsFirstRun { get; init; }
 
@@ -137,6 +150,10 @@ namespace osu.Desktop
 
         public static bool IsPackageManaged => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OSU_EXTERNAL_UPDATE_PROVIDER"));
 
+        // Experimental Linux-built .app bundles have no UpdateMac or Velopack feed.
+        public static bool IsManualMacOSBundle => OperatingSystem.IsMacOS()
+                                                 && File.Exists(Path.Combine(AppContext.BaseDirectory, "mosu-manual-updates"));
+
         protected override UpdateManager CreateUpdateManager()
         {
             // If this is the first time we've run the game, ie it is being installed,
@@ -147,27 +164,126 @@ namespace osu.Desktop
             if (IsFirstRun)
                 LocalConfig.SetValue(OsuSetting.ReleaseStream, ReleaseStream.Lazer);
 
+            if (IsManualMacOSBundle)
+                return new UpdateManager();
+
             if (IsPackageManaged)
                 return new NoActionUpdateManager();
 
             return new VelopackUpdateManager();
         }
 
+        internal bool IsDiagnosticsBenchmark => launchArgs.Contains(MosuPerformanceDiagnosticsRunner.LAUNCH_ARG, StringComparer.Ordinal)
+                                                && launchArgs.Contains("--mosu-replay-benchmark", StringComparer.Ordinal);
+
+        protected override bool UseSystemCursor => IsDiagnosticsBenchmark;
+
         public override bool RestartAppWhenExited()
         {
-            RestartOnExitAction = () => Velopack.UpdateExe.Start(waitPid: (uint)Environment.ProcessId);
+            RestartOnExitAction = () =>
+            {
+                var locator = IsManualMacOSBundle ? null : Velopack.Locators.VelopackLocator.Current;
+                if (!IsPackageManaged && !string.IsNullOrWhiteSpace(locator?.UpdateExePath) && File.Exists(locator.UpdateExePath))
+                {
+                    Velopack.UpdateExe.Start(locator, waitPid: (uint)Environment.ProcessId);
+                    return;
+                }
+
+                restartCurrentExecutable(launchArgs);
+            };
             return true;
         }
 
+        internal void RestartForDiagnostics(IEnumerable<string> args)
+        {
+            // Carry across a development profile, but not imports, old benchmark options or old parent PIDs.
+            string[] nextArgs = launchArgs.Where(arg => arg.StartsWith("--debug-client-id=", StringComparison.Ordinal)).Concat(args).ToArray();
+            RestartOnExitAction = () => restartCurrentExecutable(nextArgs);
+        }
+
+        private static void restartCurrentExecutable(IEnumerable<string> args)
+        {
+            // Start the original AppImage, not the apphost on the mount that goes away as we exit.
+            string? appImage = OperatingSystem.IsLinux() ? Environment.GetEnvironmentVariable("APPIMAGE") : null;
+            string? executable = !string.IsNullOrWhiteSpace(appImage) && File.Exists(appImage)
+                ? appImage
+                : Environment.ProcessPath;
+
+            if (string.IsNullOrWhiteSpace(executable))
+                throw new InvalidOperationException("Cannot restart Mosu: the current executable path is unavailable.");
+
+            var startInfo = new ProcessStartInfo(executable)
+            {
+                UseShellExecute = false,
+                WorkingDirectory = Environment.CurrentDirectory,
+            };
+
+            if (string.Equals(Path.GetFileNameWithoutExtension(executable), "dotnet", StringComparison.OrdinalIgnoreCase))
+            {
+                string? assemblyPath = Assembly.GetEntryAssembly()?.Location;
+                if (string.IsNullOrWhiteSpace(assemblyPath))
+                    throw new InvalidOperationException("Cannot restart Mosu: the entry assembly path is unavailable.");
+
+                startInfo.ArgumentList.Add(assemblyPath);
+            }
+
+            foreach (string arg in args)
+            {
+                if (!arg.StartsWith("--mosu-diagnostics-wait-pid=", StringComparison.Ordinal))
+                    startInfo.ArgumentList.Add(arg);
+            }
+
+            startInfo.ArgumentList.Add($"--mosu-diagnostics-wait-pid={Environment.ProcessId}");
+            using var process = Process.Start(startInfo);
+        }
+
+        // The entry point executes this after the host and legacy IPC have been disposed.
+        // Launching the updater from game disposal leaves it waiting on the remaining shutdown work.
+        protected override void ExecuteRestartOnExit()
+        {
+        }
+
+        public void CompleteRestartOnExit() => base.ExecuteRestartOnExit();
+
         protected override void LoadComplete()
         {
-            base.LoadComplete();
+            using var total = PerformancePhaseLogger.Begin("OsuGameDesktop.LoadComplete");
+            using (PerformancePhaseLogger.Begin("OsuGameDesktop.BaseLoadComplete"))
+                base.LoadComplete();
 
+
+            // Portable/AppImage installs do not necessarily run an installer callback.
+            // Register automatically for the primary client; development builds must not
+            // replace the installed application's launcher with a bin/Debug path.
+            if (Host.IsPrimaryInstance && !osu.Framework.Development.DebugUtils.IsDebugBuild)
+                _ = System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        var association = new FontFileAssociation();
+                        if (association.IsSupported)
+                            association.Register();
+                    }
+                    catch (Exception e)
+                    {
+                        Logger.Error(e, "Could not register the .morafn file association.");
+                    }
+                });
+
+            using var desktopSetup = PerformancePhaseLogger.Begin("OsuGameDesktop.DesktopSetup");
+            Logger.Log($"GC runtime: {(GC.GetConfigurationVariables().ContainsKey("SatoriGC") ? "Satori" : "CoreCLR")}; "
+                       + $"mode={System.Runtime.GCSettings.LatencyMode}; "
+                       + $"runtime={System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}", LoggingTarget.Runtime);
             LoadComponentAsync(new DiscordRichPresence(), Add);
 
             if (OperatingSystem.IsWindows())
             {
                 LoadComponentAsync(new WindowsPerformanceMode(), Add);
+                LoadComponentAsync(new GameplayWinKeyBlocker(), Add);
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                LoadComponentAsync(linuxGamePriority, Add);
             }
             else if (RuntimeInfo.OS == RuntimeInfo.Platform.macOS && !IsPackageManaged && IsDeployedBuild)
             {
@@ -175,6 +291,8 @@ namespace osu.Desktop
             }
 
             LoadComponentAsync(new MosuPerformanceLogger(), Add);
+            if (Environment.GetEnvironmentVariable("MORA_VULKAN_MENU_BENCHMARK") == "1")
+                LoadComponentAsync(new MoraVulkanMenuBenchmark(), Add);
             LoadComponentAsync(performanceDiagnosticsManager, manager =>
             {
                 Add(manager);
@@ -238,6 +356,17 @@ namespace osu.Desktop
         {
             base.SetHost(host);
 
+            // MosuPerformanceLogger is loaded later. Enable tree attribution before the first
+            // update frame when recording was already enabled in this profile's configuration.
+            if (LocalConfig.Get<bool>(OsuSetting.ForkPerformanceLogging))
+            {
+                host.SetUpdateTreeDiagnostics(true);
+                PerformancePhaseLogger.Enabled = true;
+                Bindable<WorkingBeatmap>.TraceSlowValueChanges = true;
+                DrawablePath.TraceSlowRendering = true;
+                Logger.Log("MOSU_UPDATE_TREE_CAPTURE enabled=1 source=startup_performance_setting", LoggingTarget.Performance);
+            }
+
             // Apple operating systems use a better icon provided via external assets.
             if (!RuntimeInfo.IsApple)
             {
@@ -255,6 +384,9 @@ namespace osu.Desktop
 
             host.Window.Title = Name;
         }
+
+        public System.Threading.Tasks.Task<string?> StopPerformanceRecordingOnExitAsync()
+            => performanceDiagnosticsManager.StopPerformanceRecordingOnExitAsync();
 
         protected override BatteryInfo CreateBatteryInfo() => FrameworkEnvironment.UseSDL3 ? new SDL3BatteryInfo() : new SDL2BatteryInfo();
 

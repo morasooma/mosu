@@ -113,6 +113,14 @@ namespace osu.Game.Overlays
             };
         }
 
+        protected override void Update()
+        {
+            base.Update();
+
+            if (game?.Toolbar != null)
+                Y = (game.Toolbar.Position.Y) + (game.Toolbar.DrawHeight);
+        }
+
         protected override void LoadComplete()
         {
             base.LoadComplete();

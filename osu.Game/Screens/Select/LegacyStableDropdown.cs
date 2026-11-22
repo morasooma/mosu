@@ -124,7 +124,7 @@ namespace osu.Game.Screens.Select
 
                 protected override TextBox CreateTextBox() => new BasicTextBox
                 {
-                    PlaceholderText = @"type to search",
+                    PlaceholderText = global::osu.Game.Localisation.ClientTranslationStrings.J5172,
                     FontSize = 14,
                 };
             }

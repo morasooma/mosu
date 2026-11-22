@@ -122,6 +122,14 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
         public BindableFloat ArenaBorderOpacity { get; } = createOpacity();
 
+        public BindableBool ArenaWorldSpace { get; } = new BindableBool();
+        public BindableFloat ArenaWidth { get; } = new BindableFloat(512) { MinValue = DodgeArenaChange.MIN_SIZE, MaxValue = DodgeArenaChange.MAX_WORLD_SIZE, Precision = 1 };
+        public BindableFloat ArenaHeight { get; } = new BindableFloat(384) { MinValue = DodgeArenaChange.MIN_SIZE, MaxValue = DodgeArenaChange.MAX_WORLD_SIZE, Precision = 1 };
+        public BindableFloat ArenaCentreX { get; } = new BindableFloat(256) { MinValue = -4096, MaxValue = 8192, Precision = 1 };
+        public BindableFloat ArenaCentreY { get; } = new BindableFloat(192) { MinValue = -4096, MaxValue = 8192, Precision = 1 };
+
+        public Bindable<DodgeCameraMode> CameraMode { get; } = new Bindable<DodgeCameraMode>();
+
         public BindableFloat ArenaRotation { get; } = new BindableFloat(0)
         {
             MinValue = -360,
@@ -178,11 +186,43 @@ namespace osu.Game.Rulesets.Dodge.Edit
             Precision = 0.01f,
         };
 
-        public BindableFloat TriggerDuration { get; } = new BindableFloat(300)
+        public BindableInt TriggerDurationSnapUnits { get; } = new BindableInt(4)
         {
-            MinValue = 0,
-            MaxValue = (float)DodgeTrigger.MAX_DURATION,
-            Precision = 10,
+            MinValue = 1,
+            MaxValue = 64,
+        };
+
+        public BindableBool TriggerMoveFromCurrent { get; } = new BindableBool(true);
+
+        public BindableFloat TriggerSourceX { get; } = createWorldCoordinate(256);
+        public BindableFloat TriggerSourceY { get; } = createWorldCoordinate(192);
+        public BindableFloat TriggerTargetX { get; } = createWorldCoordinate(256);
+        public BindableFloat TriggerTargetY { get; } = createWorldCoordinate(192);
+        public BindableFloat TriggerWidth { get; } = new BindableFloat(512) { MinValue = 32, MaxValue = DodgeArenaChange.MAX_WORLD_SIZE, Precision = 1 };
+        public BindableFloat TriggerHeight { get; } = new BindableFloat(384) { MinValue = 32, MaxValue = DodgeArenaChange.MAX_WORLD_SIZE, Precision = 1 };
+        public Bindable<DodgeCameraEasing> TriggerEasing { get; } = new Bindable<DodgeCameraEasing>();
+        public BindableBool NavigateEditorView { get; } = new BindableBool();
+        public BindableFloat EditorZoom { get; } = new BindableFloat(1) { MinValue = 0.02f, MaxValue = 2, Precision = 0.001f };
+        public BindableFloat EditorCentreX { get; } = new BindableFloat(256) { MinValue = -8192, MaxValue = 8192, Precision = 1 };
+        public BindableFloat EditorCentreY { get; } = new BindableFloat(192) { MinValue = -8192, MaxValue = 8192, Precision = 1 };
+
+        public void FitEditorView(osuTK.Vector2 centre, osuTK.Vector2 size, float rotation = 0)
+        {
+            float radians = osuTK.MathHelper.DegreesToRadians(rotation);
+            float cos = System.Math.Abs(System.MathF.Cos(radians));
+            float sin = System.Math.Abs(System.MathF.Sin(radians));
+            float width = cos * size.X + sin * size.Y;
+            float height = sin * size.X + cos * size.Y;
+            EditorCentreX.Value = centre.X;
+            EditorCentreY.Value = centre.Y;
+            EditorZoom.Value = System.Math.Min(512 / (width + 64), 384 / (height + 64));
+        }
+
+        private static BindableFloat createWorldCoordinate(float value) => new BindableFloat(value)
+        {
+            MinValue = -DodgeArenaChange.MAX_WORLD_SIZE,
+            MaxValue = DodgeArenaChange.MAX_WORLD_SIZE,
+            Precision = 1,
         };
 
         public Bindable<Colour4> TriggerColour { get; } = new Bindable<Colour4>(Colour4.White);

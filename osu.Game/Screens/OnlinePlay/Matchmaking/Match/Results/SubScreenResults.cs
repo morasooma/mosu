@@ -92,7 +92,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match.Results
                                         {
                                             Anchor = Anchor.TopCentre,
                                             Origin = Anchor.TopCentre,
-                                            Text = "How you played",
+                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4819,
                                             Font = OsuFont.Style.Heading2,
                                             Margin = new MarginPadding { Vertical = 15 },
                                         },
@@ -108,7 +108,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match.Results
                                         {
                                             Anchor = Anchor.TopCentre,
                                             Origin = Anchor.TopCentre,
-                                            Text = "Room Awards",
+                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4820,
                                             Font = OsuFont.Style.Heading2,
                                             Margin = new MarginPadding { Vertical = 15 },
                                         },
@@ -148,7 +148,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match.Results
                                             {
                                                 Anchor = Anchor.TopCentre,
                                                 Origin = Anchor.TopCentre,
-                                                Text = "Your final placement",
+                                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4821,
                                                 Font = OsuFont.Style.Heading2.With(size: 36),
                                             },
                                             placementText = new OsuSpriteText

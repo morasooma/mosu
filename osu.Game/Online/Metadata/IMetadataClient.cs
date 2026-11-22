@@ -21,6 +21,9 @@ namespace osu.Game.Online.Metadata
         /// </summary>
         Task UserPresenceUpdated(int userId, UserPresence? status);
 
+        /// <summary>Aggregate connected users, including users who appear offline. No identities are disclosed.</summary>
+        Task OnlineUserCountUpdated(int count);
+
         /// <summary>
         /// Delivers and update of the <see cref="UserPresence"/> of a friend with the supplied <paramref name="userId"/>.
         /// </summary>

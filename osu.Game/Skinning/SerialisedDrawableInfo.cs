@@ -90,6 +90,12 @@ namespace osu.Game.Skinning
                 Settings.Add(property.Name.ToSnakeCase(), bindable.GetUnderlyingSettingValue());
             }
 
+            if (SkinComponentFont.GetOverride(component) is string family)
+                Settings[SkinComponentFont.SERIALISATION_KEY] = family;
+
+            if (SkinComponentGeometry.GetOverride(component) is float radius)
+                Settings[SkinComponentGeometry.SERIALISATION_KEY] = radius;
+
             if (component is Container<Drawable> container)
             {
                 foreach (var child in container.OfType<ISerialisableDrawable>().OfType<Drawable>())

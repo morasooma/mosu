@@ -62,7 +62,7 @@ namespace osu.Game.Screens.Utility
                 },
                 new ButtonWithKeyBind(key)
                 {
-                    Text = "Feels better",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5311,
                     Y = 20,
                     Width = 0.8f,
                     Anchor = Anchor.TopCentre,

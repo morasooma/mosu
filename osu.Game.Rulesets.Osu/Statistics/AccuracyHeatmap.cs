@@ -122,7 +122,7 @@ namespace osu.Game.Rulesets.Osu.Statistics
                                         },
                                         new OsuSpriteText
                                         {
-                                            Text = "Overshoot",
+                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5369,
                                             Font = OsuFont.GetFont(size: 12),
                                             Anchor = Anchor.Centre,
                                             Origin = Anchor.BottomLeft,
@@ -133,7 +133,7 @@ namespace osu.Game.Rulesets.Osu.Statistics
                                         },
                                         new OsuSpriteText
                                         {
-                                            Text = "Undershoot",
+                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5370,
                                             Font = OsuFont.GetFont(size: 12),
                                             Anchor = Anchor.Centre,
                                             Origin = Anchor.TopRight,

@@ -24,9 +24,23 @@ namespace osu.Game.Beatmaps.Drawables.Cards.Buttons
             set => current.Current = value;
         }
 
-        private readonly APIBeatmapSet beatmapSet;
+        private APIBeatmapSet beatmapSet;
+
+        internal void ChangeBeatmapSet(APIBeatmapSet set)
+        {
+            if (IsRequestPending)
+                throw new System.InvalidOperationException("Cannot recycle a pending favourite request.");
+            beatmapSet = set;
+            favouriteRequest = null;
+            if (IsLoaded)
+                updateState();
+        }
 
         private PostBeatmapFavouriteRequest? favouriteRequest;
+
+        // CompletionState can already be Completed while Success is still queued
+        // on Update. Keep the UI/state owner until that callback has run.
+        internal bool IsRequestPending => favouriteRequest != null && !Enabled.Value;
 
         [Resolved]
         private IAPIProvider api { get; set; } = null!;

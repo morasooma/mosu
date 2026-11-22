@@ -269,7 +269,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
             userContent.FadeTo(current.Value.IsEmpty ? 0 : 1, fade_time);
             emptySlotMarker.Enabled.Value = current.Value.IsEmpty;
             emptySlotMarker.FadeTo(current.Value.IsEmpty ? 1 : 0, fade_time);
-            emptySlotText.Text = current.Value.IsLocked ? "Closed slot" : MultiplayerMatchStrings.EmptySlot;
+            emptySlotText.Text = current.Value.IsLocked ? global::osu.Game.Localisation.ClientTranslationStrings.J4988 : MultiplayerMatchStrings.EmptySlot;
 
             if (!current.Value.IsEmpty)
             {
@@ -345,7 +345,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
                     if (current.Value.IsLocked)
                     {
                         return client.IsHost || client.IsReferee
-                            ? new MenuItem[] { new OsuMenuItem("Open slot", MenuItemType.Highlighted, toggleSlotLock) }
+                            ? new MenuItem[] { new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J4989, MenuItemType.Highlighted, toggleSlotLock) }
                             : null;
                     }
 
@@ -355,7 +355,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
                     };
 
                     if (stableBanchoSession != null && (client.IsHost || client.IsReferee))
-                        items.Add(new OsuMenuItem("Close slot", MenuItemType.Destructive, toggleSlotLock));
+                        items.Add(new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J4990, MenuItemType.Destructive, toggleSlotLock));
 
                     return items.ToArray();
                 }

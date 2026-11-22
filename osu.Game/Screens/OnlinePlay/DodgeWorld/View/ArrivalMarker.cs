@@ -5,6 +5,7 @@ using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
+using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osuTK;
@@ -29,7 +30,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
         /// the difference between «this is where I said» and «this is what the rule worked out» is the
         /// difference between a decision and a guess.
         /// </param>
-        public ArrivalMarker(OsuColour colours, string caption, bool authored = true)
+        public ArrivalMarker(OsuColour colours, LocalisableString caption, bool authored = true)
         {
             Anchor = Anchor.Centre;
             Origin = Anchor.Centre;
@@ -70,7 +71,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                     Anchor = Anchor.BottomCentre,
                     Origin = Anchor.TopCentre,
                     Y = 6,
-                    Text = caption.ToUpperInvariant(),
+                    Text = new CaseTransformableString(caption, Casing.UpperCase),
                     Font = OsuFont.Default.With(size: 13, weight: FontWeight.Bold),
                     Colour = colours.Yellow,
                 },

@@ -11,6 +11,7 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Input.Bindings;
 using osu.Game.Online.Metadata;
+using osu.Game.Online;
 using osu.Game.Users;
 using osuTK;
 using osuTK.Graphics;
@@ -28,11 +29,13 @@ namespace osu.Game.Overlays.Toolbar
 
         private IDisposable? userPresenceWatchToken;
         private readonly IBindable<bool> isConnected = new Bindable<bool>();
+        private readonly IBindable<int> onlineUserCount = new Bindable<int>(-1);
         private readonly IBindableDictionary<int, UserPresence> userPresences = new BindableDictionary<int, UserPresence>();
 
         public ToolbarSocialButton()
         {
             Hotkey = GlobalAction.ToggleSocial;
+            SetIcon(OsuIcon.Global);
 
             Add(countDisplay = new OnlineCountCircle
             {
@@ -55,24 +58,32 @@ namespace osu.Game.Overlays.Toolbar
             base.LoadComplete();
 
             isConnected.BindTo(metadataClient.IsConnected);
-            isConnected.BindValueChanged(connected =>
+            isConnected.BindValueChanged(_ => Schedule(() =>
             {
-                if (connected.NewValue)
+                // Connector bindables can change on a network thread. Read the latest state
+                // on the update thread so queued disconnect/reconnect events cannot race UI mutations.
+                if (isConnected.Value)
                     userPresenceWatchToken ??= metadataClient.BeginWatchingUserPresence();
                 else
                 {
                     userPresenceWatchToken?.Dispose();
                     userPresenceWatchToken = null;
                 }
-            }, true);
+                updateCount();
+            }), true);
 
             userPresences.BindTo(metadataClient.UserPresences);
-            userPresences.BindCollectionChanged((_, _) => updateCount(), true);
+            userPresences.BindCollectionChanged((_, _) => Schedule(updateCount), true);
+            onlineUserCount.BindTo(metadataClient.OnlineUserCount);
+            onlineUserCount.BindValueChanged(_ => Schedule(updateCount), true);
         }
 
         private void updateCount()
         {
-            int count = userPresences.Count;
+            int count = MosuServerEnvironment.UsesMosuPresence && onlineUserCount.Value >= 0
+                ? onlineUserCount.Value : userPresences.Count;
+            if (!isConnected.Value)
+                count = 0;
 
             if (count == 0)
                 countDisplay.FadeOut(200, Easing.OutQuint);
@@ -85,8 +96,12 @@ namespace osu.Game.Overlays.Toolbar
 
         protected override void Dispose(bool isDisposing)
         {
-            base.Dispose(isDisposing);
+            isConnected.UnbindAll();
+            userPresences.UnbindAll();
+            onlineUserCount.UnbindAll();
             userPresenceWatchToken?.Dispose();
+            userPresenceWatchToken = null;
+            base.Dispose(isDisposing);
         }
 
         private partial class OnlineCountCircle : CompositeDrawable

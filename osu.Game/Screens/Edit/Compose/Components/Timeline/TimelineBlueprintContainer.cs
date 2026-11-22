@@ -60,7 +60,8 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             Anchor = Anchor.Centre;
             Origin = Anchor.Centre;
 
-            Height = laneLayout == null ? 0.6f : 0.9f;
+            Height = laneLayout == null ? 0.6f : 1;
+            Masking = laneLayout != null;
         }
 
         [BackgroundDependencyLoader]
@@ -108,7 +109,31 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             }
         }
 
+        protected override bool TrackComposerObjectUsage => laneLayout == null;
+
         protected override SelectionBlueprintContainer CreateSelectionBlueprintContainer() => new TimelineSelectionBlueprintContainer { RelativeSizeAxes = Axes.Both };
+
+        private bool isTimelineObjectVisible(HitObject item)
+            => laneLayout == null || laneLayout.IsTimelineLaneVisible(laneLayout.GetTimelineLane(item).Index);
+
+        protected override void AddBlueprintFor(HitObject item)
+        {
+            if (isTimelineObjectVisible(item))
+                base.AddBlueprintFor(item);
+        }
+
+        protected override void SelectAll()
+        {
+            if (laneLayout == null)
+            {
+                base.SelectAll();
+                return;
+            }
+
+            Composer.Playfield.KeepAllAlive();
+            SelectedItems.RemoveAll(item => !isTimelineObjectVisible(item));
+            SelectedItems.AddRange(Beatmap.HitObjects.Where(isTimelineObjectVisible).Except(SelectedItems).ToArray());
+        }
 
         protected override bool OnDragStart(DragStartEvent e)
         {
@@ -162,24 +187,22 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             if (laneLayout == null || timeline == null || editorClock == null)
                 return;
 
-            double halfRange = timeline.VisibleRange / 2;
-            double visibleStart = editorClock.CurrentTime - halfRange;
-            double visibleEnd = editorClock.CurrentTime + halfRange;
+            double visibleStart = timeline.TimeAtScreenSpacePosition(timeline.ScreenSpaceDrawQuad.TopLeft);
+            double visibleEnd = timeline.TimeAtScreenSpacePosition(timeline.ScreenSpaceDrawQuad.TopRight);
+            if (!double.IsFinite(visibleStart) || !double.IsFinite(visibleEnd))
+                return;
 
             foreach (HitObject hitObject in Beatmap.HitObjects)
             {
-                if (hitObject.StartTime > visibleEnd || laneLayout.GetTimelineDisplayEndTime(hitObject) < visibleStart)
+                if (!Beatmap.SelectedHitObjects.Contains(hitObject)
+                    && (hitObject.StartTime > visibleEnd || laneLayout.GetTimelineDisplayEndTime(hitObject) < visibleStart))
                     continue;
 
                 AddBlueprintFor(hitObject);
             }
 
-            // EditorBlueprintContainer initially creates blueprints for every
-            // drawable exposed by the composer, and HitObjectAdded does the same
-            // for newly-added objects. Iterate the actual blueprint collection
-            // here rather than a separately-maintained subset, otherwise objects
-            // which started outside the visible range never get removed and still
-            // consume vertical rows when their layer is expanded.
+            // HitObjectAdded may create a marker outside the current range.
+            // Timeline lifetime and filtering are independent of playfield drawables.
             foreach (HitObject hitObject in SelectionBlueprints.OfType<LaneTimelineHitObjectBlueprint>()
                                                                .Select(blueprint => blueprint.Item)
                                                                .Where(hitObject => Beatmap.HitObjects.Contains(hitObject))
@@ -194,7 +217,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                 // on that collection made every object remain on the timeline after
                 // a backwards seek. Keep only an explicitly selected object outside
                 // the current timeline range.
-                if (stillVisible || Beatmap.SelectedHitObjects.Contains(hitObject))
+                if (isTimelineObjectVisible(hitObject) && (stillVisible || Beatmap.SelectedHitObjects.Contains(hitObject)))
                     continue;
 
                 RemoveBlueprintFor(hitObject);
@@ -316,113 +339,49 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 
         private void updateLaneLayout()
         {
-            LaneLayoutGroup[] groups = SelectionBlueprints
-                                       .OfType<LaneTimelineHitObjectBlueprint>()
-                                       .GroupBy(blueprint => new TimelineGroup(
-                                           blueprint.LaneIndex,
-                                           laneLayout.GetTimelineGroupKey(blueprint.Item) ?? blueprint.Item))
-                                       .Select(group => new LaneLayoutGroup(group.Key.Lane, group.ToArray()))
-                                       .ToArray();
+            laneOverlay.X = ToLocalSpace(timeline.ScreenSpaceDrawQuad.TopLeft).X;
 
-            int[] selectedLanes = groups.Where(group => group.Blueprints.Any(blueprint => blueprint.IsSelected))
-                                        .Select(group => group.LaneIndex)
-                                        .Distinct()
-                                        .ToArray();
-            int activeLane = selectedLanes.Length == 1 ? selectedLanes[0] : -1;
+            // Start times change during a drag. Re-sorting rows under the cursor
+            // makes the grabbed object jump to another layer mid-operation.
+            if (IsDragged || hitObjectDragged)
+                return;
 
-            int[] laneRowCounts = new int[laneLayout.TimelineLaneCount];
+            var blueprints = SelectionBlueprints.OfType<LaneTimelineHitObjectBlueprint>().ToArray();
+            int visibleCount = Enumerable.Range(0, laneLayout.TimelineLaneCount).Count(laneLayout.IsTimelineLaneVisible);
+            float bandHeight = visibleCount > 0 ? DrawHeight / visibleCount : 0;
+            var laneCentres = new float[laneLayout.TimelineLaneCount];
+            var laneHeights = new float[laneLayout.TimelineLaneCount];
+            int visibleIndex = 0;
 
-            for (int lane = 0; lane < laneRowCounts.Length; lane++)
+            for (int lane = 0; lane < laneLayout.TimelineLaneCount; lane++)
             {
-                bool expanded = lane == activeLane;
-                bool visible = activeLane < 0 || lane == activeLane;
+                bool visible = laneLayout.IsTimelineLaneVisible(lane);
+                laneCentres[lane] = visible ? -DrawHeight / 2 + (++visibleIndex - 0.5f) * bandHeight : float.NaN;
+                laneHeights[lane] = visible ? bandHeight : 0;
 
-                foreach (LaneLayoutGroup group in groups.Where(group => group.LaneIndex == lane))
-                    group.Expanded = expanded;
-
-                if (!visible)
+                var laneBlueprints = blueprints.Where(b => b.LaneIndex == lane)
+                                               .OrderBy(b => b.Item.StartTime).ThenBy(b => b.TimelineEndTime).ToArray();
+                // Every type keeps its fixed band AND its individual object layers.
+                // Never replace same-time objects by one arbitrary representative.
+                // Reserve a usable grab row for field-selected objects in dense bands.
+                int selectedCount = laneBlueprints.Count(b => b.IsSelected);
+                int otherCount = laneBlueprints.Length - selectedCount;
+                float normalHeight = bandHeight / Math.Max(1, laneBlueprints.Length);
+                float selectedHeight = selectedCount > 0
+                    ? Math.Min(Math.Max(6, normalHeight), bandHeight / (selectedCount + (otherCount > 0 ? 1 : 0)))
+                    : normalHeight;
+                float otherHeight = otherCount > 0 ? (bandHeight - selectedCount * selectedHeight) / otherCount : 0;
+                float rowTop = visible ? laneCentres[lane] - bandHeight / 2 : 0;
+                foreach (var blueprint in laneBlueprints)
                 {
-                    laneRowCounts[lane] = 0;
-                    continue;
-                }
-
-                if (!expanded)
-                {
-                    laneRowCounts[lane] = 1;
-                    continue;
-                }
-
-                // When a layer is selected every object receives its own row,
-                // even when its time span does not overlap another object. The
-                // complete layer is then distributed over the full timeline
-                // height, making every item an independent click target.
-                LaneTimelineHitObjectBlueprint[] laneBlueprints = groups.Where(group => group.LaneIndex == lane)
-                                                                         .SelectMany(group => group.Blueprints)
-                                                                         .OrderBy(blueprint => blueprint.Item.StartTime)
-                                                                         .ThenBy(blueprint => blueprint.TimelineEndTime)
-                                                                         .ToArray();
-
-                for (int row = 0; row < laneBlueprints.Length; row++)
-                    laneBlueprints[row].Row = row;
-
-                laneRowCounts[lane] = Math.Max(1, laneBlueprints.Length);
-            }
-
-            float[] laneCentres = new float[laneRowCounts.Length];
-            float[] laneRowSteps = new float[laneRowCounts.Length];
-            int visibleLaneCount = laneRowCounts.Count(rows => rows > 0);
-            bool hasActiveLane = activeLane >= 0;
-            float laneBandHeight = visibleLaneCount == 0 ? 0 : DrawHeight / visibleLaneCount;
-            int visibleLaneIndex = 0;
-
-            for (int lane = 0; lane < laneRowCounts.Length; lane++)
-            {
-                if (laneRowCounts[lane] == 0)
-                {
-                    laneCentres[lane] = float.NaN;
-                    continue;
-                }
-
-                if (hasActiveLane)
-                {
-                    // A selected object turns its type into the only visible
-                    // layer. Place that layer at the visual centre instead of
-                    // keeping its original (for example, bullet = top) slot.
-                    laneCentres[lane] = 0;
-                }
-                else
-                {
-                    laneCentres[lane] = -DrawHeight / 2 + laneBandHeight * (visibleLaneIndex + 0.5f);
-                    visibleLaneIndex++;
-                }
-
-                // The selected type owns the entire timeline height. Use one
-                // evenly-sized vertical row for each overlapping interval, so
-                // a dense layer remains directly clickable instead of becoming
-                // a compact stack at its old lane position.
-                laneRowSteps[lane] = hasActiveLane ? DrawHeight / laneRowCounts[lane] : 0;
-            }
-
-            laneOverlay.SetLaneLayout(laneCentres);
-
-            foreach (LaneLayoutGroup group in groups)
-            {
-                bool laneVisible = laneRowCounts[group.LaneIndex] > 0;
-                float rowStep = laneRowSteps[group.LaneIndex];
-
-                for (int i = 0; i < group.Blueprints.Length; i++)
-                {
-                    LaneTimelineHitObjectBlueprint blueprint = group.Blueprints[i];
-                    float rowY = !laneVisible
-                        ? 0
-                        : hasActiveLane
-                            ? -DrawHeight / 2 + (blueprint.Row + 0.5f) * rowStep
-                            : laneCentres[group.LaneIndex];
-                    blueprint.SetGroupState(group.Blueprints.Length, i, group.Expanded, laneVisible, rowStep);
-                    blueprint.Y += rowY;
+                    float rowHeight = blueprint.IsSelected ? selectedHeight : otherHeight;
+                    blueprint.SetGroupState(1, 0, true, visible, rowHeight);
+                    blueprint.Y = visible ? rowTop + rowHeight / 2 : 0;
+                    rowTop += rowHeight;
                 }
             }
 
+            laneOverlay.SetLaneLayout(laneCentres, laneHeights);
         }
 
         protected override SelectionHandler<HitObject> CreateSelectionHandler() => new TimelineSelectionHandler(laneLayout);
@@ -431,7 +390,8 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
         {
             if (laneLayout != null)
             {
-                return new LaneTimelineHitObjectBlueprint(item, laneLayout.GetTimelineLane(item), laneLayout.GetTimelineDisplayEndTime)
+                return new LaneTimelineHitObjectBlueprint(item, laneLayout.GetTimelineLane(item), laneLayout.GetTimelineDisplayEndTime,
+                    laneLayout.GetTimelineMinimumMarkerWidth(item))
                 {
                     OnDragHandled = e => hitObjectDragged = e != null,
                 };
@@ -443,7 +403,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             };
         }
 
-        protected sealed override DragBox CreateDragBox() => new TimelineDragBox();
+        protected sealed override DragBox CreateDragBox() => new TimelineDragBox(laneLayout != null);
 
         protected override void UpdateSelectionFromDragBox(HashSet<HitObject> selectionBeforeDrag)
         {
@@ -452,6 +412,10 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             var dragBox = (TimelineDragBox)DragBox;
             double minTime = dragBox.MinTime;
             double maxTime = dragBox.MaxTime;
+            var rowSelection = laneLayout == null ? null : SelectionBlueprints
+                .Where(blueprint => blueprint.IsSelectable
+                                    && blueprint.SelectionQuad.AABBFloat.IntersectsWith(dragBox.Box.ScreenSpaceDrawQuad.AABBFloat))
+                .Select(blueprint => blueprint.Item).ToHashSet();
 
             SelectedItems.RemoveAll(hitObject => !shouldBeSelected(hitObject));
 
@@ -463,8 +427,16 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 
             bool shouldBeSelected(HitObject hitObject)
             {
+                if (!isTimelineObjectVisible(hitObject))
+                    return false;
+
                 if (selectionBeforeDrag.Contains(hitObject))
                     return true;
+
+                if (laneLayout != null)
+                {
+                    return rowSelection.Contains(hitObject);
+                }
 
                 double midTime = (hitObject.StartTime + hitObject.GetEndTime()) / 2;
                 return minTime <= midTime && midTime <= maxTime;
@@ -589,28 +561,6 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             }
         }
 
-        private readonly record struct TimelineGroup(int Lane, object Key);
-
-        private sealed class LaneLayoutGroup
-        {
-            public readonly int LaneIndex;
-            public readonly LaneTimelineHitObjectBlueprint[] Blueprints;
-            public bool Expanded;
-            public readonly double StartTime;
-            public readonly double EndTime;
-
-            public LaneLayoutGroup(int laneIndex, LaneTimelineHitObjectBlueprint[] blueprints)
-            {
-                LaneIndex = laneIndex;
-                Blueprints = blueprints;
-                StartTime = blueprints.Min(blueprint => blueprint.Item.StartTime);
-                // Only the selected lane is row-packed, so use the same span that is actually
-                // drawn on the timeline. Persistent arena states and ContinueUntilExit bullets
-                // must count as overlaps while their bars are still visible.
-                EndTime = blueprints.Max(blueprint => blueprint.TimelineEndTime);
-            }
-        }
-
         private partial class TimelineLaneOverlay : CompositeDrawable
         {
             private readonly List<OsuSpriteText> labels = new List<OsuSpriteText>();
@@ -654,7 +604,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                 }
             }
 
-            public void SetLaneLayout(float[] laneCentres)
+            public void SetLaneLayout(float[] laneCentres, float[] laneHeights)
             {
                 for (int lane = 0; lane < labels.Count; lane++)
                 {
@@ -665,9 +615,12 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                     if (lane == 0)
                         continue;
 
-                    bool previousVisible = !float.IsNaN(laneCentres[lane - 1]);
+                    int previousLane = lane - 1;
+                    while (previousLane >= 0 && float.IsNaN(laneCentres[previousLane]))
+                        previousLane--;
+                    bool previousVisible = previousLane >= 0;
                     separators[lane - 1].Y = visible && previousVisible
-                        ? (laneCentres[lane - 1] + laneCentres[lane]) / 2
+                        ? laneCentres[lane] - laneHeights[lane] / 2
                         : 0;
                     separators[lane - 1].Alpha = visible && previousVisible ? 0.08f : 0;
                 }

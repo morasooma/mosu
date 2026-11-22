@@ -39,9 +39,9 @@ namespace osu.Game.Database
                 score.Accuracy = ComputeAccuracy(score, scoreProcessor);
                 score.Rank = ComputeRank(score, scoreProcessor);
 
-                // update score to latest multipliers too, if possible.
-                if (score.TotalScoreWithoutMods > 0)
-                    UpdateToLatestScoreMultipliers(score, beatmap.BeatmapInfo.Difficulty);
+                // Keep the locally stored score from the server/client that created it.
+                // In particular, do not apply Mosu-only RX/DA scoring to imported
+                // third-party scores during legacy decode or database migration.
             }
 
             score.TotalScoreVersion = LegacyScoreEncoder.LATEST_VERSION;
@@ -477,7 +477,7 @@ namespace osu.Game.Database
         public static void UpdateToLatestScoreMultipliers(ScoreInfo scoreInfo, IBeatmapDifficultyInfo beatmapDifficultyWithoutMods)
         {
             // do nothing if the score multiplier is already up to date.
-            if (scoreInfo.TotalScoreVersion >= 30000017)
+            if (scoreInfo.TotalScoreVersion >= 30000020)
                 return;
 
             if (scoreInfo.TotalScoreWithoutMods == 0 && scoreInfo.TotalScore > 0)

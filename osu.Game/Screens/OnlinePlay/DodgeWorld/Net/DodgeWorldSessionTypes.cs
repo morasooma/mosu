@@ -82,8 +82,6 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Net
     /// Whether this is the visit that moved the story on. False for a point already passed, and then
     /// nothing was paid — which is exactly why a story point is allowed to pay at all.
     /// </param>
-    /// <param name="Experience">Experience awarded.</param>
-    /// <param name="Coins">Coins awarded.</param>
     internal readonly record struct StoryOutcome(bool Applied, int Experience, int Coins)
     {
         public bool Paid => Applied && (Experience > 0 || Coins > 0);

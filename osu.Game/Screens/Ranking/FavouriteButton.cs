@@ -13,6 +13,7 @@ using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Resources.Localisation.Web;
 using osuTK;
@@ -32,6 +33,9 @@ namespace osu.Game.Screens.Ranking
 
         [Resolved]
         private IAPIProvider api { get; set; } = null!;
+
+        [Resolved]
+        private OverlayColourProvider colourProvider { get; set; } = null!;
 
         [Resolved]
         private OsuColour colours { get; set; } = null!;
@@ -60,6 +64,7 @@ namespace osu.Game.Screens.Ranking
         {
             base.LoadComplete();
 
+            colourProvider.PaletteVersion.BindValueChanged(_ => updateState());
             current.BindValueChanged(_ => updateState(), true);
 
             localUser.BindTo(api.LocalUser);
@@ -87,7 +92,7 @@ namespace osu.Game.Screens.Ranking
                 {
                     loading.Hide();
                     Enabled.Value = false;
-                    TooltipText = "this beatmap cannot be favourited";
+                    TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5098;
                 });
             };
             api.Queue(beatmapSetRequest);
@@ -151,7 +156,10 @@ namespace osu.Game.Screens.Ranking
         {
             if (current.Value.Favourited)
             {
-                Background.Colour = colours.Green;
+                Background.Colour = OverlayColourProvider.GetEffectiveContextColour(
+                    ThemeSurfaceContext.Results,
+                    SurfaceColourRole.Accent,
+                    colours.Green);
                 Icon.Icon = FontAwesome.Solid.Heart;
                 TooltipText = BeatmapsetsStrings.ShowDetailsUnfavourite;
             }

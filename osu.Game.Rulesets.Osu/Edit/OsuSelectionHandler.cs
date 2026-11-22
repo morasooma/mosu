@@ -377,7 +377,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                 yield return item;
 
             if (canMerge(selectedMergeableObjects))
-                yield return new OsuMenuItem("Merge selection", MenuItemType.Destructive, mergeSelection);
+                yield return new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J3304, MenuItemType.Destructive, mergeSelection);
         }
 
         private bool canMerge(IReadOnlyList<OsuHitObject> objects) =>

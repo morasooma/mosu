@@ -79,8 +79,10 @@ namespace osu.Game.Tests.Visual.Online
         {
             AddStep("открыть", () => overlay.Show());
             AddUntilStep("задания загружены", () => completedCount == 1);
-            AddAssert("показаны выполненное, текущее и два следующих", () => cards.Count() == 4);
-            AddAssert("оставшиеся задания свёрнуты", () => overlay.ChildrenOfType<SupporterQuestPlaceholderCard>().Count() == 1);
+            AddAssert("показано только текущее задание", () => cards.Count() == 1);
+            AddAssert("есть кнопка полного списка", () => expandButton != null);
+            AddAssert("есть кнопка других заданий", () => otherQuestsButton?.Action != null);
+            AddAssert("неинтерактивных заглушек нет", () => !overlay.ChildrenOfType<SupporterQuestPlaceholderCard>().Any());
 
             foreach (float width in new[] { 1100f, 700f, 420f, 1100f })
             {
@@ -89,6 +91,10 @@ namespace osu.Game.Tests.Visual.Online
                 AddAssert("карточки помещаются по ширине", () => cards.All(card =>
                     card.DrawWidth > 0 && card.ScreenSpaceDrawQuad.TopLeft.X >= overlay.ScreenSpaceDrawQuad.TopLeft.X
                                        && card.ScreenSpaceDrawQuad.TopRight.X <= overlay.ScreenSpaceDrawQuad.TopRight.X + 1));
+                AddAssert("кнопка других заданий помещается по ширине", () => otherQuestsButton != null
+                    && otherQuestsButton.DrawWidth > 0
+                    && otherQuestsButton.ScreenSpaceDrawQuad.TopLeft.X >= overlay.ScreenSpaceDrawQuad.TopLeft.X
+                    && otherQuestsButton.ScreenSpaceDrawQuad.TopRight.X <= overlay.ScreenSpaceDrawQuad.TopRight.X + 1);
                 AddAssert("текст помещается в карточки", () => cards.All(card => card.ChildrenOfType<OsuTextFlowContainer>()
                     .All(text => text.ScreenSpaceDrawQuad.TopRight.X <= card.ScreenSpaceDrawQuad.TopRight.X + 1)));
             }
@@ -117,6 +123,7 @@ namespace osu.Game.Tests.Visual.Online
             AddAssert("старых карточек нет", () => !cards.Any());
             AddAssert("старый процент не показан", () => !overlay.ChildrenOfType<OsuSpriteText>().Any(text => text.Text.ToString() == "13%"));
             AddAssert("есть повторная загрузка", () => retryButton != null);
+            AddAssert("другие задания доступны при пустом ответе", () => otherQuestsButton != null);
         }
 
         [Test]
@@ -128,6 +135,7 @@ namespace osu.Game.Tests.Visual.Online
                 overlay.Show();
             });
             AddUntilStep("показана повторная загрузка", () => retryButton != null);
+            AddAssert("другие задания доступны при ошибке", () => otherQuestsButton != null);
             AddStep("включить светлую тему", () => OverlayColourProvider.CurrentTheme.Value = ThemeMode.Light);
             AddAssert("кнопка обновилась вместе с темой", () => retryButton!.BackgroundColour == new OverlayColourProvider(OverlayColourScheme.Purple).Colour3);
             AddStep("повторить успешно", () =>
@@ -135,7 +143,7 @@ namespace osu.Game.Tests.Visual.Online
                 failRequest = false;
                 retryButton!.TriggerClick();
             });
-            AddUntilStep("задания загружены", () => completedCount == 1 && cards.Count() == 4);
+            AddUntilStep("задания загружены", () => completedCount == 1 && cards.Count() == 1);
         }
 
         [Test]
@@ -146,10 +154,38 @@ namespace osu.Game.Tests.Visual.Online
                 quests.ForEach(quest => quest.Completed = true);
                 overlay.Show();
             });
-            AddUntilStep("все задания показаны", () => cards.Count() == quests.Count);
+            AddUntilStep("прогресс получен", () => completedCount == quests.Count);
+            AddAssert("выполненные задания свёрнуты", () => !cards.Any());
             AddAssert("прогресс 100%", () => overlay.ChildrenOfType<OsuSpriteText>().Any(text => text.Text.ToString() == "100%"));
-            AddAssert("скрытых заданий нет", () => !overlay.ChildrenOfType<SupporterQuestPlaceholderCard>().Any());
+            AddStep("раскрыть выполненные", () => expandButton!.TriggerClick());
+            AddUntilStep("все задания показаны", () => cards.Count() == quests.Count);
         }
+
+        [Test]
+        public void TestExpandCollapseAndReopen()
+        {
+            AddStep("открыть", () => overlay.Show());
+            AddUntilStep("показано текущее задание", () => cards.Count() == 1 && expandButton != null);
+            AddStep("раскрыть список", () => expandButton!.TriggerClick());
+            AddUntilStep("показаны все задания", () => cards.Count() == quests.Count && collapseButton != null);
+            AddAssert("полный список сохранил прогресс", () => completedCount == 1);
+            AddStep("свернуть", () => collapseButton!.TriggerClick());
+            AddUntilStep("снова только текущее", () => cards.Count() == 1 && expandButton != null);
+            AddStep("снова раскрыть", () => expandButton!.TriggerClick());
+            AddUntilStep("раскрыто", () => cards.Count() == quests.Count);
+            AddStep("закрыть", () => overlay.Hide());
+            AddStep("открыть снова", () => overlay.Show());
+            AddUntilStep("при открытии список свёрнут", () => cards.Count() == 1 && expandButton != null);
+        }
+
+        private RoundedButton? otherQuestsButton => overlay.ChildrenOfType<RoundedButton>()
+                                                           .SingleOrDefault(button => button.Text == SupporterQuestsStrings.OtherQuests);
+
+        private RoundedButton? expandButton => overlay.ChildrenOfType<RoundedButton>()
+                                                      .FirstOrDefault(button => button.Text == SupporterQuestsStrings.ShowAll(quests.Count));
+
+        private RoundedButton? collapseButton => overlay.ChildrenOfType<RoundedButton>()
+                                                        .FirstOrDefault(button => button.Text == SupporterQuestsStrings.CollapseAll);
 
         private IEnumerable<SupporterQuestCard> cards => overlay.ChildrenOfType<SupporterQuestCard>();
 

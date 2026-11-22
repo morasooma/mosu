@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
@@ -32,20 +32,27 @@ namespace osu.Game.Rulesets.Mania
                 {
                     Caption = RulesetSettingsStrings.ScrollingDirection,
                     Current = config.GetBindable<ManiaScrollingDirection>(ManiaRulesetSetting.ScrollDirection)
-                }),
+                })
+                {
+                    FavouriteId = "ManiaRulesetSetting.ScrollDirection",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = RulesetSettingsStrings.ScrollSpeed,
                     Current = config.GetBindable<double>(ManiaRulesetSetting.ScrollSpeed),
                     KeyboardStep = 1,
                     LabelFormat = v => RulesetSettingsStrings.ScrollSpeedTooltip((int)DrawableManiaRuleset.ComputeScrollTime(v), v),
-                }),
+                })
+                {
+                    FavouriteId = "ManiaRulesetSetting.ScrollSpeed",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = RulesetSettingsStrings.TimingBasedColouring,
                     Current = config.GetBindable<bool>(ManiaRulesetSetting.TimingBasedNoteColouring),
                 })
                 {
+                    FavouriteId = "ManiaRulesetSetting.TimingBasedNoteColouring",
                     Keywords = new[] { "color" },
                 },
             };
@@ -54,7 +61,10 @@ namespace osu.Game.Rulesets.Mania
             {
                 Caption = RulesetSettingsStrings.TouchOverlay,
                 Current = config.GetBindable<bool>(ManiaRulesetSetting.TouchOverlay)
-            }));
+            })
+            {
+                FavouriteId = "ManiaRulesetSetting.TouchOverlay",
+            });
 
             if (RuntimeInfo.IsMobile)
             {
@@ -65,7 +75,10 @@ namespace osu.Game.Rulesets.Mania
 #pragma warning disable CS0618 // Type or member is obsolete
                     Items = Enum.GetValues<ManiaMobileLayout>().Where(l => l != ManiaMobileLayout.LandscapeWithOverlay),
 #pragma warning restore CS0618 // Type or member is obsolete
-                }));
+                })
+                {
+                    FavouriteId = "ManiaRulesetSetting.MobileLayout",
+                });
             }
         }
     }

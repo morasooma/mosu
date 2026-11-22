@@ -16,10 +16,17 @@ namespace osu.Game.Configuration
 
         /// <summary>
         /// MosuPp: the Mosu/Realistik RX calculator plus the MosuPp rules (see MOSUPP_CHANGELOG.md):
-        /// Aim-Focused Flow Guard, Length Bonus + Spike Nerf, Point Variety Nerf, Extreme Jump Nerf, Stream Map Nerf,
-        /// Stream-Only Guard, One-Point Map Guard, Short High CS Nerf, CS PP Buff, Heavy Miss Penalty, AR/OD Lock, Visible Notes Reading, Aim Control, Spike Filler Guard, Arles, RP Balance, CS Reduction, CS Gain, Accuracy Gate, Section Types and Traceable = Hidden.
+        /// CS PP Buff, Length Bonus, Spike Nerf, Low Accuracy Nerf, Point Variety Nerf, Aim-Focused Flow Guard,
+        /// Stream-Only Guard, Simple Stream Nerf, One-Point Map Guard, Short Aim Nerf and Traceable = Hidden.
         /// </summary>
         [LocalisableDescription(typeof(ForkSettingsStrings), nameof(ForkSettingsStrings.RelaxPpSystemMosuPp))]
-        MosuPp
+        MosuPp,
+
+        /// <summary>tazikpp: the isolated MosuPP 2.0.0 balance from PR #7, with attribute-owned prepared maps.</summary>
+        [LocalisableDescription(typeof(ForkSettingsStrings), nameof(ForkSettingsStrings.RelaxPpSystemTazikPp))]
+        TazikPp,
+
+        [LocalisableDescription(typeof(ForkSettingsStrings), nameof(ForkSettingsStrings.RelaxPpSystemMosuPpPrerelease))]
+        MosuPpPrerelease
     }
 }

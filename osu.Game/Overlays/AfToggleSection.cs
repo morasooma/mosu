@@ -30,7 +30,7 @@ namespace osu.Game.Overlays
 {
     public partial class AfToggleSection : SettingsSection
     {
-        public override LocalisableString Header => "Toggles";
+        public override LocalisableString Header => global::osu.Game.Localisation.ClientTranslationStrings.J3861;
 
         public override Drawable CreateIcon() => new SpriteIcon
         {
@@ -57,7 +57,7 @@ namespace osu.Game.Overlays
             [Resolved]
             private MusicController musicController { get; set; } = null!;
 
-            protected override LocalisableString Header => "You wanted toggles, we give you toggles";
+            protected override LocalisableString Header => global::osu.Game.Localisation.ClientTranslationStrings.J3862;
 
             private List<string> words = new List<string>();
 
@@ -163,11 +163,11 @@ namespace osu.Game.Overlays
                             RelativeSizeAxes = Axes.X,
                             AutoSizeAxes = Axes.Y,
                             TextAnchor = Anchor.TopCentre,
-                            Text = "..on second thought, no more toggles for you."
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J3863
                         },
                         new SettingsButtonV2
                         {
-                            Text = "But please peppy",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J3864,
                             Action = () =>
                             {
                                 if (Children.Count < 5 || RNG.NextSingle() > 0.08f)
@@ -178,7 +178,7 @@ namespace osu.Game.Overlays
                                         RelativeSizeAxes = Axes.X,
                                         AutoSizeAxes = Axes.Y,
                                         TextAnchor = Anchor.TopCentre,
-                                        Text = "no"
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J3865
                                     });
                                 }
                                 else
@@ -453,7 +453,7 @@ namespace osu.Game.Overlays
 
                 Add(new SettingsItemV2(checkbox = new FormCheckBox
                 {
-                    Caption = $"Toggle {word}"
+                    Caption = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3866(word)
                 })
                 {
                     Depth = RNG.NextSingle(),

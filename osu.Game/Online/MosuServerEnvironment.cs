@@ -15,8 +15,7 @@ namespace osu.Game.Online
         public const string PrimaryProxyServerUrl = @"https://proxy.morasooma.net";
         public const string SecondaryProxyServerUrl = @"https://proxy2.morasooma.net";
 
-        // The original proxy is currently unavailable. Keep both endpoints named so
-        // the preferred route can be changed without losing the infrastructure map.
+        // Prefer the secondary route when no explicit proxy is selected.
         public const string ProxyServerUrl = SecondaryProxyServerUrl;
         public const string UpdateFeedPath = @"/client/updates";
         public const string DevUpdateFeedPath = @"/api/v2/client-updates/dev";
@@ -34,6 +33,22 @@ namespace osu.Game.Online
 
         public static string GetServerUrl(bool useConnectionProxy) =>
             GetServerUrl(useConnectionProxy ? MosuConnectionRoute.Proxy2 : MosuConnectionRoute.Direct);
+
+        public static string ActiveApiUrl { get; set; } = ServerUrl;
+        public static bool UsesMosuPresence => IsMosuServerUrl(ActiveApiUrl);
+
+        public static string ResolveProfileApiUrl(string profileId, string apiUrl)
+            => profileId == "default" ? ServerUrl : apiUrl;
+
+        public static bool IsMosuServerUrl(string? url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                return false;
+            return uri.IdnHost.Equals("morasooma.net", StringComparison.OrdinalIgnoreCase)
+                || uri.IdnHost.Equals("proxy.morasooma.net", StringComparison.OrdinalIgnoreCase)
+                || uri.IdnHost.Equals("proxy2.morasooma.net", StringComparison.OrdinalIgnoreCase)
+                || (uri.IsLoopback && uri.Port == 18082);
+        }
 
         public static bool IsThirdPartyServer { get; set; }
         public static bool IsToriiServer { get; set; }

@@ -27,6 +27,9 @@ namespace osu.Game.Screens.Play.HUD
         private readonly ArgonCounterSpriteText textPart;
         private readonly OsuSpriteText labelText;
         private IBindable<bool> skinPerformanceMode = new BindableBool();
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+
+        public bool UseThemeColours { get; init; } = true;
 
         public IBindable<float> WireframeOpacity { get; } = new BindableFloat();
         public Bindable<bool> ShowLabel { get; } = new BindableBool();
@@ -125,7 +128,14 @@ namespace osu.Game.Screens.Play.HUD
         [BackgroundDependencyLoader]
         private void load(OsuColour colours, OsuConfigManager config)
         {
-            LabelColour.Value = colours.Blue0;
+            if (UseThemeColours)
+                themeColours.Bind(action => Scheduler.Add(action), () =>
+                {
+                    LabelColour.Value = themeColours.GetColour(Overlays.OverlayColour.Content2, colours.Blue0);
+                    TextColour.Value = themeColours.GetColour(Overlays.OverlayColour.Content1, Colour4.White);
+                });
+            else
+                LabelColour.Value = colours.Blue0;
             skinPerformanceMode = config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceMode);
         }
 
@@ -151,7 +161,7 @@ namespace osu.Game.Screens.Play.HUD
             }, true);
         }
 
-        private void updateWireframeOpacity() => wireframesPart.Alpha = SkinPerformanceMode.ShouldSimplifyHud ? 0 : WireframeOpacity.Value;
+        private void updateWireframeOpacity() => wireframesPart.Alpha = SkinPerformanceMode.ShouldSimplifyHud || wireframesPart.HasSkinComponentFont ? 0 : WireframeOpacity.Value;
 
         private void updateWireframeText() => wireframesPart.Text = SkinPerformanceMode.ShouldSimplifyHud ? string.Empty : wireframeTemplate;
 
@@ -171,6 +181,21 @@ namespace osu.Game.Screens.Play.HUD
                 UseFullGlyphHeight = false;
             }
 
+            protected override float ComponentFontSize => 30;
+            protected override bool UsesSkinGlyphStore => true;
+
+            private float? originalAlpha;
+
+            protected override void ComponentFontChanged(bool enabled)
+            {
+                // The segmented wireframe has no equivalent in an arbitrary typeface.
+                if (enabled) originalAlpha ??= Alpha;
+                Alpha = enabled && getLookup('#') == "wireframes" ? 0 : originalAlpha ?? Alpha;
+                if (!enabled) originalAlpha = null;
+                Spacing = enabled ? Vector2.Zero : new Vector2(-2f, 0f);
+                InvalidateTextBuilder();
+            }
+
             [BackgroundDependencyLoader]
             private void load(TextureStore textures)
             {
@@ -187,7 +212,7 @@ namespace osu.Game.Screens.Play.HUD
                     glyphStore.Get(font_name, (char)('0' + i));
             }
 
-            protected override TextBuilder CreateTextBuilder(ITexturedGlyphLookupStore store) => base.CreateTextBuilder(glyphStore);
+            protected override TextBuilder CreateTextBuilder(ITexturedGlyphLookupStore store) => base.CreateTextBuilder(HasSkinComponentFont ? store : glyphStore);
 
             private class GlyphStore : ITexturedGlyphLookupStore
             {

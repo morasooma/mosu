@@ -63,6 +63,19 @@ namespace osu.Game.Input.Bindings
         {
         }
 
+        /// <summary>
+        /// Snapshot the fields used by key binding input without initialising the generic Realm object mapper.
+        /// Bindings must not retain managed Realm objects across context recycling.
+        /// </summary>
+        internal static RealmKeyBinding CreateDetached(RealmKeyBinding source) => new RealmKeyBinding
+        {
+            ID = source.ID,
+            RulesetName = source.RulesetName,
+            Variant = source.Variant,
+            ActionInt = source.ActionInt,
+            KeyCombinationString = source.KeyCombinationString,
+        };
+
         public object GetAction(RulesetStore rulesets)
         {
             if (string.IsNullOrEmpty(RulesetName))

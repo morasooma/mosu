@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using osu.Framework;
 using osu.Framework.Allocation;
@@ -29,6 +30,9 @@ namespace osu.Desktop.Performance
         private double carouselRunElapsed;
         private double nextCarouselKeyPress;
         private int carouselKeyPressCount;
+        private readonly HashSet<Guid> carouselCommittedBeatmaps = new HashSet<Guid>();
+        private Guid? lastCarouselCommittedBeatmap;
+        private int carouselSelectionCommitCount;
 
         [Resolved]
         private ScreenshotManager screenshotManager { get; set; } = null!;
@@ -186,6 +190,9 @@ namespace osu.Desktop.Performance
             carouselRunElapsed = 0;
             nextCarouselKeyPress = 0;
             carouselKeyPressCount = 0;
+            carouselCommittedBeatmaps.Clear();
+            carouselSelectionCommitCount = 0;
+            lastCarouselCommittedBeatmap = carouselScreen?.Beatmap.Value.BeatmapInfo.ID;
             carouselRunActive = true;
 
             bool warmup = currentRun <= options.WarmupRuns;
@@ -200,6 +207,19 @@ namespace osu.Desktop.Performance
                 return;
 
             carouselRunElapsed += Time.Elapsed;
+
+            // Sample published global selections, not traversal requests or online IDs:
+            // offline fixtures can have the same OnlineID for every distinct map.
+            // This excludes the initial map and can miss changes between Update() calls.
+            Guid? committed = carouselScreen?.Beatmap.Value.BeatmapInfo.ID;
+            if (committed.HasValue && committed != lastCarouselCommittedBeatmap)
+            {
+                lastCarouselCommittedBeatmap = committed;
+                carouselCommittedBeatmaps.Add(committed.Value);
+                carouselSelectionCommitCount++;
+                writeManifest("carousel_selection_commit_observed", currentRun, currentRun <= options.WarmupRuns,
+                    $"beatmap_guid={committed.Value};elapsed_ms={carouselRunElapsed:0.###}");
+            }
 
             double progress = Math.Clamp(carouselRunElapsed / options.CarouselDurationMs, 0, 1);
 
@@ -234,7 +254,7 @@ namespace osu.Desktop.Performance
             watchdogDelegate = null;
 
             bool warmup = currentRun <= options.WarmupRuns;
-            writeManifest("run_complete", currentRun, warmup, $"carousel_key_traversal_complete;action=ActivateNextSet;presses={carouselKeyPressCount}");
+            writeManifest("run_complete", currentRun, warmup, $"carousel_key_traversal_complete;action=ActivateNextSet;presses={carouselKeyPressCount};observed_selection_commits={carouselSelectionCommitCount};distinct_observed_committed_maps={carouselCommittedBeatmaps.Count};selection_coverage={(carouselCommittedBeatmaps.Count >= 2 ? "multi_map" : "insufficient")}");
             Logger.Log($"mosu carousel benchmark run {currentRun}/{options.TotalRuns} completed (warmup={warmup}).", LoggingTarget.Runtime, LogLevel.Important);
 
             Scheduler.AddDelayed(startNextCarouselRun, options.BetweenRunsDelayMs);

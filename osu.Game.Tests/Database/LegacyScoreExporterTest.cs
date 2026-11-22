@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.IO;
+using osu.Game.Beatmaps;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -33,6 +34,65 @@ namespace osu.Game.Tests.Database
     [TestFixture]
     public class LegacyScoreExporterTest
     {
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public async Task TestSegmentModsAreRemovedFromExportWithoutChangingSource(bool flatline, bool baked)
+        {
+            using var storage = new TemporaryNativeStorage("segment-score-export");
+            var ruleset = new OsuRuleset();
+            var raw = new Beatmap<OsuHitObject>();
+            raw.BeatmapInfo.Ruleset = ruleset.RulesetInfo;
+            raw.BeatmapInfo.MD5Hash = "segment-export-test";
+            raw.ControlPointInfo.Add(0, new TimingControlPoint { BeatLength = 500 });
+            for (int i = 0; i < 96; i++)
+                raw.HitObjects.Add(new HitCircle
+                {
+                    StartTime = 1000 + i * 125,
+                    Position = new Vector2(100 + i % 2 * (i < 40 ? 30 : 300), 100),
+                });
+            var working = new FlatWorkingBeatmap(raw);
+            ModSegmentRate mod = flatline
+                ? new OsuModFlatline { Direction = { Value = FlatlineDirection.Both }, MaxRate = { Value = 2.4 }, MinRate = { Value = 0.7 } }
+                : new OsuModGlitch { Amount = { Value = 73 }, Strength = { Value = 0.65 }, Thirds = { Value = false } };
+            mod.BakedTiming.Value = baked;
+            var playable = working.GetPlayableBeatmap(ruleset.RulesetInfo, new Mod[] { mod });
+            var expectedPlan = mod.RatePlan.Segments.ToArray();
+            Assert.That(expectedPlan, Is.Not.Empty);
+            var info = TestResources.CreateTestScoreInfo(ruleset.RulesetInfo);
+            info.BeatmapInfo = raw.BeatmapInfo;
+            info.Mods = new Mod[] { new OsuModHidden(), mod };
+            var score = new Score
+            {
+                ScoreInfo = info,
+                Replay = new Replay
+                {
+                    Frames =
+                    {
+                        new OsuReplayFrame(2000, new Vector2(100, 100), OsuAction.LeftButton),
+                        new OsuReplayFrame(2125, new Vector2(200, 100), OsuAction.RightButton),
+                    }
+                }
+            };
+            await new LegacyScoreExporter(storage).ExportAsync(score, raw);
+            var exports = storage.GetStorageForDirectory("exports");
+            using var stream = exports.GetStream(exports.GetFiles(string.Empty, "*.osr").Single())!;
+            var decoded = new SegmentScoreDecoder(working).Parse(stream);
+            Assert.That(decoded.ScoreInfo.Mods.Select(m => m.Acronym), Is.EqualTo(new[] { "HD" }));
+            Assert.That(decoded.Replay.Frames.Select(f => f.Time), Is.EqualTo(score.Replay.Frames.Select(f => f.Time)));
+            Assert.That(score.ScoreInfo.Mods, Does.Contain(mod));
+            Assert.That(mod.RatePlan.Segments, Is.EqualTo(expectedPlan));
+        }
+
+        private sealed class SegmentScoreDecoder : LegacyScoreDecoder
+        {
+            private readonly WorkingBeatmap working;
+            public SegmentScoreDecoder(WorkingBeatmap working) => this.working = working;
+            protected override osu.Game.Rulesets.Ruleset GetRuleset(int rulesetId) => new OsuRuleset();
+            protected override WorkingBeatmap GetBeatmap(string md5Hash) => working;
+        }
+
         [Test]
         public async Task TestClientModsAreConvertedDuringExport()
         {

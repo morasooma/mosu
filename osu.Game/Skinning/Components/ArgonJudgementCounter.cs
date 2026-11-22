@@ -45,7 +45,11 @@ namespace osu.Game.Skinning.Components
             Result = result;
 
             AutoSizeAxes = Axes.Both;
-            AddInternal(textComponent = new ArgonCounterTextComponent(Anchor.TopLeft, result.DisplayName.ToUpper()));
+            AddInternal(textComponent = new ArgonCounterTextComponent(Anchor.TopLeft, result.DisplayName.ToUpper())
+            {
+                // Judgement colours communicate hit results, not interface decoration.
+                UseThemeColours = false,
+            });
         }
 
         private void updateWireframe()

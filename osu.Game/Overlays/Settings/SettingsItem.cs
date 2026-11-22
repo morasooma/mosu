@@ -24,7 +24,7 @@ using osuTK.Graphics;
 
 namespace osu.Game.Overlays.Settings
 {
-    public abstract partial class SettingsItem<T> : Container, IConditionalFilterable, ISettingsItem, IHasCurrentValue<T>, IHasTooltip
+    public abstract partial class SettingsItem<T> : Container, IConditionalFilterable, ISettingsItem, IHasCurrentValue<T>, IHasTooltip, IFavouriteSettingsItem
     {
         protected abstract Drawable CreateControl();
 
@@ -34,6 +34,11 @@ namespace osu.Game.Overlays.Settings
         /// The source component if this <see cref="SettingsItem{T}"/> was created via <see cref="SettingSourceAttribute"/>.
         /// </summary>
         public object SettingSourceObject { get; internal set; }
+
+        public string FavouriteId { get; init; }
+        LocalisableString IFavouriteSettingsItem.FavouriteCaption => LabelText;
+        Container IFavouriteSettingsItem.FavouriteSelectionOverlay => SelectionOverlay;
+        internal readonly Container SelectionOverlay = new Container { RelativeSizeAxes = Axes.Both, Depth = -100 };
 
         public const string CLASSIC_DEFAULT_SEARCH_TERM = @"has-classic-default";
 
@@ -64,6 +69,7 @@ namespace osu.Game.Overlays.Settings
         }
 
         private readonly Container defaultValueIndicatorContainer;
+        private readonly SettingsRowAnimation rowAnimation;
 
         public LocalisableString TooltipText { get; set; }
 
@@ -153,6 +159,9 @@ namespace osu.Game.Overlays.Settings
             {
                 bool wasPresent = IsPresent;
 
+                if (matchingFilter != value)
+                    rowAnimation.Reset();
+
                 matchingFilter = value;
 
                 if (IsPresent != wasPresent)
@@ -201,25 +210,39 @@ namespace osu.Game.Overlays.Settings
             AutoSizeAxes = Axes.Y;
             Padding = new MarginPadding { Right = SettingsPanel.CONTENT_MARGINS };
 
-            InternalChildren = new Drawable[]
+            var visualContent = new Container
             {
-                defaultValueIndicatorContainer = new Container
+                Anchor = Anchor.TopCentre,
+                Origin = Anchor.TopCentre,
+                RelativeSizeAxes = Axes.X,
+                AutoSizeAxes = Axes.Y,
+                Children = new Drawable[]
                 {
-                    Width = SettingsPanel.CONTENT_MARGINS,
-                },
-                new Container
-                {
-                    RelativeSizeAxes = Axes.X,
-                    AutoSizeAxes = Axes.Y,
-                    Padding = new MarginPadding { Left = SettingsPanel.CONTENT_MARGINS },
-                    Child = FlowContent = new FillFlowContainer
+                    defaultValueIndicatorContainer = new Container
+                    {
+                        Width = SettingsPanel.CONTENT_MARGINS,
+                    },
+                    new Container
                     {
                         RelativeSizeAxes = Axes.X,
                         AutoSizeAxes = Axes.Y,
-                        Spacing = new Vector2(0, 5),
-                        Child = Control = CreateControl(),
+                        Padding = new MarginPadding { Left = SettingsPanel.CONTENT_MARGINS },
+                        Child = FlowContent = new FillFlowContainer
+                        {
+                            RelativeSizeAxes = Axes.X,
+                            AutoSizeAxes = Axes.Y,
+                            Spacing = new Vector2(0, 5),
+                            Child = Control = CreateControl(),
+                        }
                     }
-                }
+                },
+            };
+
+            InternalChildren = new Drawable[]
+            {
+                visualContent,
+                SelectionOverlay,
+                rowAnimation = new SettingsRowAnimation(this, visualContent),
             };
 
             // IMPORTANT: all bindable logic is in constructor intentionally to support "CreateSettingsControls" being used in a context it is

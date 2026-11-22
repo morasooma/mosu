@@ -31,13 +31,11 @@ namespace osu.Desktop.Performance
 {
     public partial class PerformanceDiagnosticsManager : Component, IPerformanceDiagnosticsManager
     {
-        private const uint asfw_any = uint.MaxValue;
-
         [Resolved]
         private Storage storage { get; set; } = null!;
 
         [Resolved]
-        private OsuGame game { get; set; } = null!;
+        private OsuGameDesktop game { get; set; } = null!;
 
         [Resolved]
         private FrameworkConfigManager frameworkConfig { get; set; } = null!;
@@ -66,6 +64,8 @@ namespace osu.Desktop.Performance
 
             if (game.ScreenStack != null)
                 game.ScreenStack.ScreenPushed += screenPushed;
+
+            initialiseStutterRecording();
         }
 
         public void ShowSetup()
@@ -139,12 +139,23 @@ namespace osu.Desktop.Performance
         {
             refreshSession();
 
-            if (CurrentSession?.Phase != MosuDiagnosticsPhase.Paused
-                || CurrentSession.ExpectedRenderer == null
-                || CurrentSession.ExpectedProfile == null)
+            if (CurrentSession?.Phase != MosuDiagnosticsPhase.Paused)
                 return;
 
             MosuDiagnosticsSession session = CurrentSession;
+
+            if (session.ExpectedRenderer == null || session.ExpectedProfile == null)
+            {
+                session.Phase = MosuDiagnosticsPhase.PendingResultsRestart;
+                session.CompletedAt = DateTimeOffset.Now;
+                frameworkConfig.SetValue(FrameworkSetting.Renderer, MosuDiagnosticsRecovery.GetRestoreRenderer(session));
+                restoreOriginalSkin(session);
+                MosuDiagnosticsSessionStore.Save(storage, session);
+                diagnosticsOverlay.ShowProgress(session);
+                restartWithArgs(MosuPerformanceDiagnosticsRunner.BuildRestoreLaunchArgs(session, continueDiagnostics: true));
+                return;
+            }
+
             session.Phase = MosuDiagnosticsPhase.PendingRestart;
             MosuDiagnosticsSessionStore.Save(storage, session);
             CurrentSession = session;
@@ -173,7 +184,7 @@ namespace osu.Desktop.Performance
                 return;
 
             MosuDiagnosticsSession session = CurrentSession;
-            frameworkConfig.SetValue(FrameworkSetting.Renderer, session.OriginalRenderer);
+            frameworkConfig.SetValue(FrameworkSetting.Renderer, MosuDiagnosticsRecovery.GetRestoreRenderer(session));
             restoreOriginalSkin(session);
 
             MosuDiagnosticsSessionStore.Delete(storage);
@@ -379,6 +390,8 @@ namespace osu.Desktop.Performance
 
         protected override void Dispose(bool isDisposing)
         {
+            performanceLogging?.UnbindAll();
+            recording?.Dispose();
             if (game.ScreenStack != null)
                 game.ScreenStack.ScreenPushed -= screenPushed;
 
@@ -398,22 +411,8 @@ namespace osu.Desktop.Performance
             if (mode != MosuDiagnosticsMode.RendererComparison)
                 return new[] { host.ResolvedRenderer };
 
-            IEnumerable<RendererType> availableRenderers = host.GetPreferredRenderersForCurrentPlatform().Order();
-
-            availableRenderers = availableRenderers.Where(r => r != RendererType.Automatic);
-
-            var currentRenderer = frameworkConfig.Get<RendererType>(FrameworkSetting.Renderer);
-
-            if (currentRenderer != RendererType.Deferred_Vulkan)
-                availableRenderers = availableRenderers.Where(t => t != RendererType.Deferred_Vulkan);
-
-            if (currentRenderer != RendererType.Vulkan)
-                availableRenderers = availableRenderers.Where(t => t != RendererType.Vulkan);
-
-            RendererType originalResolvedRenderer = host.ResolvedRenderer;
-            return availableRenderers
-                   .OrderBy(r => r == originalResolvedRenderer ? 1 : 0)
-                   .ThenBy(r => r);
+            return MosuDiagnosticsRendererSelection.GetComparisonRenderers(
+                host.GetPreferredRenderersForCurrentPlatform(), host.ResolvedRenderer);
         }
 
         private MosuDiagnosticsConfigurationSnapshot captureCurrentConfiguration() => new MosuDiagnosticsConfigurationSnapshot
@@ -466,54 +465,8 @@ namespace osu.Desktop.Performance
 
         private void restartWithArgs(IEnumerable<string> args)
         {
-            string waitForCurrentProcessArg = $"--mosu-diagnostics-wait-pid={Environment.ProcessId}";
-            string arguments = string.Join(' ', args
-                                                 .Append(waitForCurrentProcessArg)
-                                                 .Select(MosuPerformanceDiagnosticsRunner.QuoteArg));
-
-            allowNextProcessToSetForegroundWindow();
-
-            game.RestartOnExitAction = () =>
-            {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = Environment.ProcessPath,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                };
-
-                if (OperatingSystem.IsWindows())
-                    startInfo.Environment["SDL_FORCE_RAISEWINDOW"] = "1";
-
-                Process.Start(startInfo);
-            };
-
+            game.RestartForDiagnostics(args);
             Schedule(game.Exit);
         }
-
-        private static void allowNextProcessToSetForegroundWindow()
-        {
-            if (!OperatingSystem.IsWindows())
-                return;
-
-            try
-            {
-                if (!allowSetForegroundWindow(asfw_any))
-                {
-                    Logger.Log(
-                        $"mosu diagnostics could not hand off foreground activation: win32_error={Marshal.GetLastWin32Error()}",
-                        LoggingTarget.Runtime,
-                        LogLevel.Verbose);
-                }
-            }
-            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
-            {
-                Logger.Error(ex, "mosu diagnostics could not initialise foreground activation handoff.");
-            }
-        }
-
-        [DllImport("user32.dll", EntryPoint = "AllowSetForegroundWindow", ExactSpelling = true, SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool allowSetForegroundWindow(uint processId);
     }
 }

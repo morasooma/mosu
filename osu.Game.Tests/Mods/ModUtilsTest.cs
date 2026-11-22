@@ -143,6 +143,82 @@ namespace osu.Game.Tests.Mods
         }
 
         [Test]
+        public void TestBooleanCompatibilityMatchesDiagnosticPathForEveryModPair()
+        {
+            foreach (var ruleset in new Ruleset[] { new OsuRuleset(), new TaikoRuleset(), new CatchRuleset(), new ManiaRuleset() })
+            {
+                var mods = ruleset.CreateAllMods().ToArray();
+                foreach (var selected in mods)
+                {
+                    foreach (var candidate in mods)
+                    {
+                        var selection = new[] { selected };
+                        bool expected = ModUtils.CheckCompatibleSet(new[] { selected, candidate }, out _);
+                        Assert.That(ModUtils.CheckCompatibleSet(selection, candidate), Is.EqualTo(expected),
+                            $"{ruleset.GetType().Name}: {selected.GetType().Name} + {candidate.GetType().Name}");
+                        Assert.That(ModUtils.CheckCompatibleSet(new[] { selected, candidate }), Is.EqualTo(expected));
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void TestCandidateCompatibilityMatchesInvalidAndNestedSelections()
+        {
+            Mod[][] selections =
+            {
+                Array.Empty<Mod>(),
+                new Mod[] { new OsuModHidden(), new OsuModHardRock() },
+                new Mod[] { new OsuModDoubleTime(), new OsuModNightcore() },
+                new Mod[] { new OsuModHidden(), new OsuModHidden() },
+                new Mod[] { new MultiMod(new OsuModHidden(), new MultiMod(new OsuModHardRock())) },
+            };
+            Mod[] candidates = { new OsuModHidden(), new OsuModEasy(), new OsuModDoubleTime(), new MultiMod(new OsuModNoFail(), new OsuModAutoplay()) };
+            foreach (var selection in selections)
+            {
+                foreach (var candidate in candidates)
+                {
+                    bool expected = ModUtils.CheckCompatibleSet(selection.Append(candidate), out _);
+                    Assert.That(ModUtils.CheckCompatibleSet(selection, candidate), Is.EqualTo(expected));
+                }
+            }
+        }
+
+        [Test]
+        public void TestCandidateCompatibilityReadsCurrentDynamicIncompatibilities()
+        {
+            var selected = new Mock<CustomMod1>();
+            var candidate = new Mock<CustomMod2>();
+            Type[] incompatible = Array.Empty<Type>();
+            selected.Setup(mod => mod.IncompatibleMods).Returns(() => incompatible);
+            var selection = new[] { selected.Object };
+            Assert.That(ModUtils.CheckCompatibleSet(selection, candidate.Object), Is.True);
+            incompatible = new[] { typeof(CustomMod2) };
+            Assert.That(ModUtils.CheckCompatibleSet(selection, candidate.Object), Is.False);
+            incompatible = Array.Empty<Type>();
+            Assert.That(ModUtils.CheckCompatibleSet(selection, candidate.Object), Is.True);
+            var nested = new MultiMod(new MultiMod(candidate.Object));
+            Assert.That(ModUtils.CheckCompatibleSet(selection, nested), Is.True);
+            incompatible = new[] { typeof(CustomMod2) };
+            Assert.That(ModUtils.CheckCompatibleSet(selection, nested), Is.False);
+        }
+
+        [Test]
+        public void TestCandidateCompatibilityDoesNotAllocateFlattenedSets()
+        {
+            var selection = new Mod[] { new AllocationProbeMod1() };
+            Mod other = new AllocationProbeMod2();
+            for (int i = 0; i < 100; i++)
+                _ = ModUtils.CheckCompatibleSet(selection, other);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1000; i++)
+                _ = ModUtils.CheckCompatibleSet(selection, other);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.That(allocated, Is.Zero, "candidate checks must not allocate append iterators, flattened arrays or invalid-mod lists");
+            TestContext.Progress.WriteLine($"Candidate compatibility bytes/1000={allocated}");
+        }
+
+        [Test]
         public void TestAllowedThroughMostDerivedType()
         {
             var mod = new Mock<CustomMod1>();
@@ -408,6 +484,22 @@ namespace osu.Game.Tests.Mods
                     }
                 }
             });
+        }
+
+        private class AllocationProbeMod1 : Mod
+        {
+            private static readonly Type[] incompatible = { typeof(ModAutoplay) };
+            public override string Name => "probe one";
+            public override string Acronym => "P1";
+            public override LocalisableString Description => string.Empty;
+            public override Type[] IncompatibleMods => incompatible;
+        }
+
+        private class AllocationProbeMod2 : Mod
+        {
+            public override string Name => "probe two";
+            public override string Acronym => "P2";
+            public override LocalisableString Description => string.Empty;
         }
 
         public abstract class CustomMod1 : Mod, IModCompatibilitySpecification

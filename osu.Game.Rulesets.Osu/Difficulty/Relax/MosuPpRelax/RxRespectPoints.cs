@@ -20,9 +20,6 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
     /// total × clamp(RP / SS PP, 0.8, 1.2), where SS PP is the MosuPp PP of an SS on the same map + mods (all other rules applied).
     /// </summary>
     /// <remarks>
-    /// Port of the prototype in tools/MosuPpLab (MapAnalyzer.cs + Rp.cs), fitted on 25 labelled maps on 2026-10-02 to the PP agreed
-    /// for them (ganbare 2800, Six Seven 2400, Attack ≈ Hills Have Eyes ≈ 2100, Flamewall [ETERNAL] 1400, Vanish 2700, Mor 3 2000,
-    /// glass beach as it is). The polygon prototype and this rule must stay identical; tune in the polygon first.
     /// <list type="bullet">
     /// <item>Map type by content: streams (≥ ~190 BPM), aim slop (jumps), tech (≥ 55% sliders), aim control (stream-like density
     /// below ~190 BPM), reading (effective AR ≤ ~8). The type picks the RP scale and, for aim control, the intensity measure.</item>
@@ -110,7 +107,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
         private const double turn_angle = 120;
         private const double unknown_control_max_spacing = 1.1;
 
-        // ---------------------------------------------------------------- analysis (see tools/MosuPpLab/MapAnalyzer.cs)
+        // ---------------------------------------------------------------- analysis
 
         private const double stream_max_gap_ms = 95;
         private const double stream_max_spacing = 2.5;

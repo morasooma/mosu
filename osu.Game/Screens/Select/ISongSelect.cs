@@ -21,6 +21,9 @@ namespace osu.Game.Screens.Select
         /// </summary>
         void Delete(BeatmapSetInfo beatmapBeatmapSetInfo);
 
+        /// <summary>Opens a fixed whole-set selection for deleting maps in a group.</summary>
+        void DeleteGroup(GroupDefinition group);
+
         /// <summary>
         /// Immediately restores any hidden beatmaps in the provided beatmap set.
         /// </summary>

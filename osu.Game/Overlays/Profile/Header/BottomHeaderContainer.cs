@@ -2,7 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using Humanizer;
+using System.Globalization;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions;
@@ -13,6 +13,7 @@ using osu.Framework.Graphics.Sprites;
 using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
+using DailyChallengeProposalStrings = osu.Game.Localisation.DailyChallengeProposalStrings;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Resources.Localisation.Web;
@@ -107,7 +108,7 @@ namespace osu.Game.Overlays.Profile.Header
                 topLinkContainer.AddText(UsersStrings.ShowFirstMembers);
             else
             {
-                topLinkContainer.AddText("Joined ");
+                topLinkContainer.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3969);
                 topLinkContainer.AddText(new DrawableDate(user.JoinDate, italic: false), embolden);
             }
 
@@ -120,7 +121,7 @@ namespace osu.Game.Overlays.Profile.Header
             }
             else if (user.LastVisit.HasValue)
             {
-                topLinkContainer.AddText("Last seen ");
+                topLinkContainer.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3970);
                 topLinkContainer.AddText(new DrawableDate(user.LastVisit.Value, italic: false), embolden);
 
                 addSpacer(topLinkContainer);
@@ -128,7 +129,7 @@ namespace osu.Game.Overlays.Profile.Header
 
             if (user.PlayStyles?.Length > 0)
             {
-                topLinkContainer.AddText("Plays with ");
+                topLinkContainer.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3971);
 
                 LocalisableString playStylesString = user.PlayStyles[0].GetLocalisableDescription();
 
@@ -143,13 +144,21 @@ namespace osu.Game.Overlays.Profile.Header
                 addSpacer(topLinkContainer);
             }
 
-            topLinkContainer.AddText("Contributed ");
-            topLinkContainer.AddLink("forum post".ToQuantity(user.PostCount, "#,##0"), $"{api.Endpoints.WebsiteUrl}/users/{user.Id}/posts", creationParameters: embolden);
+            topLinkContainer.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3972);
+            topLinkContainer.AddLink(FormatContributionCount(user.PostCount, "forum post", "forum posts"), $"{api.Endpoints.WebsiteUrl}/users/{user.Id}/posts", creationParameters: embolden);
 
             addSpacer(topLinkContainer);
 
-            topLinkContainer.AddText("Posted ");
-            topLinkContainer.AddLink("comment".ToQuantity(user.CommentsCount, "#,##0"), $"{api.Endpoints.WebsiteUrl}/comments?user_id={user.Id}", creationParameters: embolden);
+            topLinkContainer.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3973);
+            topLinkContainer.AddLink(FormatContributionCount(user.CommentsCount, "comment", "comments"), $"{api.Endpoints.WebsiteUrl}/comments?user_id={user.Id}", creationParameters: embolden);
+
+            if (user.DailyChallengeProposalsCount > 0)
+            {
+                addSpacer(topLinkContainer);
+                topLinkContainer.AddText(DailyChallengeProposalStrings.ProfileProposals(user.DailyChallengeProposalsCount), embolden);
+                addSpacer(topLinkContainer);
+                topLinkContainer.AddText(DailyChallengeProposalStrings.ProfileMaps(user.DailyChallengeMapsCount), embolden);
+            }
 
             string websiteWithoutProtocol = user.Website;
 
@@ -180,6 +189,11 @@ namespace osu.Game.Overlays.Profile.Header
             // If no information was added to the bottomLinkContainer, hide it to avoid unwanted padding
             bottomLinkContainer.Alpha = anyInfoAdded ? 1 : 0;
         }
+
+        // Both labels are fixed English regular nouns. Humanizer's general
+        // inflector scans/compiles a large regex vocabulary on the first profile.
+        internal static string FormatContributionCount(int count, string singular, string plural)
+            => $"{count.ToString("#,##0", CultureInfo.CurrentCulture)} {(count is 1 or -1 ? singular : plural)}";
 
         private void addSpacer(OsuTextFlowContainer textFlow) => textFlow.AddArbitraryDrawable(new Container { Width = 15 });
 

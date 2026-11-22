@@ -14,6 +14,7 @@ using osu.Framework.Graphics.Transforms;
 using osu.Framework.Input.Events;
 using osu.Framework.Threading;
 using osu.Game.Input.Bindings;
+using osu.Game.Graphics;
 using osuTK.Graphics;
 using osuTK.Input;
 
@@ -28,6 +29,7 @@ namespace osu.Game.Overlays.Toolbar
         public ToolbarMusicButton()
         {
             Hotkey = GlobalAction.ToggleNowPlaying;
+            SetIcon(OsuIcon.Music);
             ButtonContent.AutoSizeAxes = Axes.X;
         }
 

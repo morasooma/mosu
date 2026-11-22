@@ -17,7 +17,7 @@ namespace osu.Game.Rulesets.Taiko.Mods
     {
         public override string Name => "Swap";
         public override string Acronym => "SW";
-        public override LocalisableString Description => @"Dons become kats, kats become dons";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3761;
         public override IconUsage? Icon => OsuIcon.ModSwap;
         public override ModType Type => ModType.Conversion;
         public override Type[] IncompatibleMods => base.IncompatibleMods.Append(typeof(ModRandom)).ToArray();

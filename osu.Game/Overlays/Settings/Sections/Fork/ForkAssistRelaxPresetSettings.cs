@@ -52,6 +52,7 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
             {
                 new SettingsItemV2(presetDropdown)
                 {
+                    FavouriteId = "ui:ForkAssistRelaxPresetSettings:presetDropdown",
                     ShowRevertToDefaultButton = false,
                     Note = { BindTarget = presetNote },
                 },

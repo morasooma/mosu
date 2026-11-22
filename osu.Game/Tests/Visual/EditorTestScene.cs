@@ -26,6 +26,10 @@ namespace osu.Game.Tests.Visual
 {
     public abstract partial class EditorTestScene : ScreenTestScene
     {
+        // The headless host opens its own Realm; the isolated editor manager must not
+        // run a read-only compatibility check against that already-open database.
+        protected override bool UseFreshStoragePerRun => true;
+
         private TestEditorLoader editorLoader;
 
         protected TestEditor Editor => editorLoader.Editor;

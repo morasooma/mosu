@@ -7,5 +7,6 @@ namespace osu.Game.Online.Multiplayer
     {
         Player,
         Referee,
+        Spectator,
     }
 }

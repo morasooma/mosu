@@ -607,7 +607,7 @@ namespace osu.Game.Rulesets.Osu.Edit.Blueprints.Sliders
 
         public override MenuItem[] ContextMenuItems => new MenuItem[]
         {
-            new OsuMenuItem("Add control point", MenuItemType.Standard, () =>
+            new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J3342, MenuItemType.Standard, () =>
             {
                 changeHandler?.BeginChange();
                 addControlPoint(lastRightClickPosition);
@@ -616,7 +616,7 @@ namespace osu.Game.Rulesets.Osu.Edit.Blueprints.Sliders
             {
                 Hotkey = new Hotkey(new KeyCombination(InputKey.Control, InputKey.MouseLeft))
             },
-            new OsuMenuItem("Convert to stream", MenuItemType.Destructive, convertToStream)
+            new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J3343, MenuItemType.Destructive, convertToStream)
             {
                 Hotkey = new Hotkey(new KeyCombination(InputKey.Control, InputKey.Shift, InputKey.F))
             },

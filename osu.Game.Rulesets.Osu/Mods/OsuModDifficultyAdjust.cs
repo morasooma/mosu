@@ -18,7 +18,7 @@ namespace osu.Game.Rulesets.Osu.Mods
 {
     public partial class OsuModDifficultyAdjust : ModDifficultyAdjust
     {
-        [SettingSource("Circle Size", "Override a beatmap's set CS.", FIRST_SETTING_ORDER - 1, SettingControlType = typeof(DifficultyAdjustSettingsControl))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3608), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3609), FIRST_SETTING_ORDER - 1, SettingControlType = typeof(DifficultyAdjustSettingsControl))]
         public DifficultyBindable CircleSize { get; } = new DifficultyBindable
         {
             Precision = 0.1f,
@@ -28,7 +28,7 @@ namespace osu.Game.Rulesets.Osu.Mods
             ReadCurrentFromDifficulty = diff => diff.CircleSize,
         };
 
-        [SettingSource("Approach Rate", "Override a beatmap's set AR.", LAST_SETTING_ORDER + 1, SettingControlType = typeof(ApproachRateSettingsControl))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3610), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3611), LAST_SETTING_ORDER + 1, SettingControlType = typeof(ApproachRateSettingsControl))]
         public DifficultyBindable ApproachRate { get; } = new DifficultyBindable
         {
             Precision = 0.1f,
@@ -63,13 +63,13 @@ namespace osu.Game.Rulesets.Osu.Mods
             get
             {
                 if (!CircleSize.IsDefault)
-                    yield return ("Circle size", $"{CircleSize.Value:N1}");
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J3614, $"{CircleSize.Value:N1}");
 
                 foreach (var setting in base.SettingDescription)
                     yield return setting;
 
                 if (!ApproachRate.IsDefault)
-                    yield return ("Approach rate", $"{ApproachRate.Value:N1}");
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J3615, $"{ApproachRate.Value:N1}");
             }
         }
 
@@ -94,7 +94,7 @@ namespace osu.Game.Rulesets.Osu.Mods
             {
                 public override LocalisableString TooltipText =>
                     (Current as BindableNumber<float>)?.MinValue < 0
-                        ? $"{base.TooltipText} ({getPreemptTime(Current.Value):0} ms)"
+                        ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3688(base.TooltipText, getPreemptTime(Current.Value))
                         : base.TooltipText;
 
                 private double getPreemptTime(float approachRate)

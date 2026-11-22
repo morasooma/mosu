@@ -16,6 +16,17 @@ namespace osu.Game.Beatmaps
         [LocalisableDescription(typeof(SongSelectStrings), nameof(SongSelectStrings.LocallyModified))]
         LocallyModified = -4,
 
+        /// <summary>
+        /// The exact local revision was found in a public archive, not on the official server.
+        /// This is not an online ranking status.
+        /// </summary>
+        ArchivedMirror = -5,
+
+        /// <summary>
+        /// Exact checksum resolved by the Mosu server, without an official catalogue status.
+        /// </summary>
+        MosuAvailable = -6,
+
         [LocalisableDescription(typeof(SongSelectStrings), nameof(SongSelectStrings.StatusUnknown))]
         None = -3,
 
@@ -44,6 +55,27 @@ namespace osu.Game.Beatmaps
     public static class BeatmapSetOnlineStatusExtensions
     {
         /// <summary>
+        /// Returns the same localisable descriptor as the enum attributes without reflecting
+        /// over fields and attributes on each carousel/status update. Do not resolve this to
+        /// translated text here: the descriptor must still follow later language changes.
+        /// </summary>
+        public static LocalisableString GetLocalisableDescription(this BeatmapOnlineStatus status) => status switch
+        {
+            BeatmapOnlineStatus.LocallyModified => SongSelectStrings.LocallyModified,
+            BeatmapOnlineStatus.None => SongSelectStrings.StatusUnknown,
+            BeatmapOnlineStatus.Graveyard => BeatmapsetsStrings.ShowStatusGraveyard,
+            BeatmapOnlineStatus.WIP => BeatmapsetsStrings.ShowStatusWip,
+            BeatmapOnlineStatus.Pending => BeatmapsetsStrings.ShowStatusPending,
+            BeatmapOnlineStatus.Ranked => BeatmapsetsStrings.ShowStatusRanked,
+            BeatmapOnlineStatus.Approved => BeatmapsetsStrings.ShowStatusApproved,
+            BeatmapOnlineStatus.Qualified => BeatmapsetsStrings.ShowStatusQualified,
+            BeatmapOnlineStatus.Loved => BeatmapsetsStrings.ShowStatusLoved,
+            BeatmapOnlineStatus.ArchivedMirror => nameof(BeatmapOnlineStatus.ArchivedMirror),
+            BeatmapOnlineStatus.MosuAvailable => nameof(BeatmapOnlineStatus.MosuAvailable),
+            _ => osu.Framework.Extensions.ExtensionMethods.GetLocalisableDescription(status),
+        };
+
+        /// <summary>
         /// Whether the beatmap has passed ranking and should be trusted not to require
         /// fork-specific mapping anti-abuse adjustments.
         /// </summary>
@@ -51,6 +83,6 @@ namespace osu.Game.Beatmaps
             => status is BeatmapOnlineStatus.Ranked or BeatmapOnlineStatus.Approved;
 
         public static bool GrantsPerformancePoints(this BeatmapOnlineStatus status)
-            => status is not BeatmapOnlineStatus.None and not BeatmapOnlineStatus.LocallyModified;
+            => status is not BeatmapOnlineStatus.None and not BeatmapOnlineStatus.LocallyModified and not BeatmapOnlineStatus.ArchivedMirror and not BeatmapOnlineStatus.MosuAvailable;
     }
 }

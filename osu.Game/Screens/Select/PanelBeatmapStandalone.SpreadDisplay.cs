@@ -2,7 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
@@ -158,12 +158,7 @@ namespace osu.Game.Screens.Select
                 preceding.Clear();
                 succeeding.Clear();
 
-                var otherStarDifficulties = Beatmap.Value.BeatmapSet!.Beatmaps
-                                                   .Except([Beatmap.Value])
-                                                   .Where(b => b.AllowGameplayWithRuleset(ruleset.Value, showConvertedBeatmaps.Value))
-                                                   .OrderBy(b => b.StarRating)
-                                                   .Select(b => b.StarRating)
-                                                   .ToList();
+                var otherStarDifficulties = GetOtherStarDifficulties(Beatmap.Value, ruleset.Value, showConvertedBeatmaps.Value);
                 this.FadeTo(otherStarDifficulties.Count > 0 ? 1 : 0, transition_duration, Easing.OutQuint);
 
                 if (otherStarDifficulties.Count == 0)
@@ -226,6 +221,21 @@ namespace osu.Game.Screens.Select
                         dot.Alpha = (1 + 4 * (float)(succeeding.Count - i) / succeeding.Count) / 5;
                     }
                 }
+            }
+
+            internal static List<double> GetOtherStarDifficulties(BeatmapInfo current, RulesetInfo ruleset, bool allowConversion)
+            {
+                // Preserve Except's equality/deduplication, but avoid its iterator,
+                // OrderBy and projected ToList cold-JIT chain on first display.
+                var seen = new HashSet<BeatmapInfo> { current };
+                var difficulties = new List<double>(Math.Max(0, current.BeatmapSet!.Beatmaps.Count - 1));
+                foreach (var candidate in current.BeatmapSet.Beatmaps)
+                {
+                    if (seen.Add(candidate) && candidate.AllowGameplayWithRuleset(ruleset, allowConversion))
+                        difficulties.Add(candidate.StarRating);
+                }
+                difficulties.Sort();
+                return difficulties;
             }
 
             protected override bool OnMouseDown(MouseDownEvent e)

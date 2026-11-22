@@ -50,5 +50,11 @@ namespace osu.Game.Rulesets.Difficulty.Skills
         public abstract double DifficultyValue();
 
         public IReadOnlyList<double> GetObjectDifficulties() => ObjectDifficulties;
+
+        /// <summary>
+        /// Local demand of the last processed object. Skills with an accumulating warm-up
+        /// override this to expose their native per-object demand instead of cold-start strain.
+        /// </summary>
+        public virtual double LocalDifficulty => ObjectDifficulties.Count > 0 ? ObjectDifficulties[^1] : 0;
     }
 }

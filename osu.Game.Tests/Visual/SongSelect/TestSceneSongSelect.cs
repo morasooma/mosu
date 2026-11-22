@@ -3,19 +3,28 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
+using osu.Framework.Allocation;
 using osu.Framework.Audio.Track;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Platform;
 using osu.Framework.Screens;
 using osu.Framework.Testing;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
+using osu.Game.Database;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Online.API;
+using osu.Game.Performance.Debug;
 using osu.Game.Overlays.Dialog;
 using osu.Game.Overlays.Mods;
 using osu.Game.Rulesets.Mods;
@@ -41,6 +50,375 @@ namespace osu.Game.Tests.Visual.SongSelect
 {
     public partial class TestSceneSongSelect : SongSelectTestScene
     {
+        protected override bool UseFreshStoragePerRun => true;
+
+        private bool measureNavigationFrames;
+        private long lastNavigationFrame;
+        private readonly double[] navigationFrameTimes = new double[100000];
+        private int navigationFrameCount;
+        private int navigationSlowFrames;
+        private double navigationMaxFrameMs;
+        private double navigationMaxWorkMs;
+
+        protected override void Update()
+        {
+            base.Update();
+            if (!measureNavigationFrames || navigationFrameCount >= navigationFrameTimes.Length)
+                return;
+            long now = Stopwatch.GetTimestamp();
+            if (lastNavigationFrame != 0)
+            {
+                double elapsed = Stopwatch.GetElapsedTime(lastNavigationFrame, now).TotalMilliseconds;
+                navigationFrameTimes[navigationFrameCount++] = elapsed;
+                navigationMaxFrameMs = Math.Max(navigationMaxFrameMs, elapsed);
+                if (elapsed > 50) navigationSlowFrames++;
+                navigationMaxWorkMs = Math.Max(navigationMaxWorkMs, Dependencies.Get<GameHost>().UpdateThread.PerformanceSnapshot.WorkMs);
+            }
+            lastNavigationFrame = now;
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void TestRealMapScoreNavigationThroughSongSelectPanels(bool virtualAudio)
+        {
+            BeatmapSetInfo imported = null!;
+            int selected = 0;
+            int scores = 0;
+            long allocated = 0;
+            long start = 0;
+            AddStep("import real multi-difficulty .osz", () =>
+            {
+                Beatmaps.Import(TestResources.GetTestBeatmapForImport(virtualTrack: virtualAudio)).WaitSafely();
+                imported = Beatmaps.GetAllUsableBeatmapSets().Single();
+                Assert.That(imported.Beatmaps.Count, Is.GreaterThan(1));
+                foreach (var beatmap in imported.Beatmaps)
+                {
+                    for (int i = 0; i < 8; i++)
+                    {
+                        var score = TestResources.CreateTestScoreInfo(beatmap);
+                        score.Hash = Guid.NewGuid().ToString();
+                        score.User = API.LocalUser.Value;
+                        score.TotalScore += i;
+                        ScoreManager.Import(score);
+                        scores++;
+                    }
+                }
+            });
+            LoadSongSelect();
+            AddUntilStep("imported set visible in real carousel", () => Carousel.Filters.OfType<BeatmapCarouselFilterGrouping>().Single().SetItems.Count >= 1);
+            AddStep("select imported ruleset", () => Ruleset.Value = imported.Beatmaps[0].Ruleset);
+            AddStep("start measured navigation", () =>
+            {
+                PerformancePhaseLogger.Enabled = true;
+                Bindable<WorkingBeatmap>.TraceSlowValueChanges = true;
+                Dependencies.Get<GameHost>().SetUpdateTreeDiagnostics(true);
+                navigationFrameCount = navigationSlowFrames = 0;
+                navigationMaxFrameMs = navigationMaxWorkMs = 0;
+                allocated = GC.GetTotalAllocatedBytes(false);
+                start = Stopwatch.GetTimestamp();
+                lastNavigationFrame = start;
+                measureNavigationFrames = true;
+            });
+            for (int pass = 0; pass < 3; pass++)
+            {
+                foreach (int index in Enumerable.Range(0, 12))
+                {
+                    int captured = index;
+                    AddStep($"select real map {index}, pass {pass}", () =>
+                    {
+                        var target = imported.Beatmaps[(captured + 1) % imported.Beatmaps.Count];
+                        Ruleset.Value = target.Ruleset;
+                        Assert.That(SongSelect.IsCurrentScreen(), Is.True, "selection screen must be current");
+                        Assert.That(target.ID, Is.Not.EqualTo(Beatmap.Value.BeatmapInfo.ID), "navigation must change selection");
+                        var requestSelection = (Action<GroupedBeatmap>)typeof(BeatmapCarousel)
+                            .GetProperty(nameof(BeatmapCarousel.RequestSelection))!.GetGetMethod(true)!.Invoke(Carousel, null)!;
+                        requestSelection(new GroupedBeatmap(null, target));
+                        selected++;
+                    });
+                    AddUntilStep("selection follows real map", () => Carousel.CurrentBeatmap == imported.Beatmaps[(captured + 1) % imported.Beatmaps.Count]);
+                    AddUntilStep("global beatmap selection committed", () => Beatmap.Value.BeatmapInfo.ID == imported.Beatmaps[(captured + 1) % imported.Beatmaps.Count].ID);
+                    AddWaitStep("allow preview/full calculation and rank snapshot", 90);
+                }
+            }
+            AddStep("record measured navigation", () =>
+            {
+                measureNavigationFrames = false;
+                PerformancePhaseLogger.Enabled = false;
+                Bindable<WorkingBeatmap>.TraceSlowValueChanges = false;
+                Dependencies.Get<GameHost>().SetUpdateTreeDiagnostics(false);
+                Array.Sort(navigationFrameTimes, 0, navigationFrameCount);
+                TestContext.Progress.WriteLine($"SONG_SELECT_NAV virtual_audio={virtualAudio} real_maps={imported.Beatmaps.Count} scores={scores} selected={selected} "
+                                               + $"frames={navigationFrameCount} frame_p95_ms={navigationFrameTimes[(int)(navigationFrameCount * .95)]:F1} "
+                                               + $"frame_max_ms={navigationMaxFrameMs:F1} frame_stalls_gt50={navigationSlowFrames} update_work_max_ms={navigationMaxWorkMs:F1} "
+                                               + $"wall_ms={Stopwatch.GetElapsedTime(start).TotalMilliseconds:F1} "
+                                               + $"process_alloc_mib={(GC.GetTotalAllocatedBytes(false) - allocated) / 1048576.0:F2} "
+                                               + $"managed_retained_mib={GC.GetTotalMemory(false) / 1048576.0:F2} "
+                                               + $"rss_mib={Process.GetCurrentProcess().WorkingSet64 / 1048576.0:F2}");
+                Assert.That(selected, Is.EqualTo(36));
+            });
+            AddStep("return from song select", () => SongSelect.Exit());
+            AddUntilStep("song select exited", () => !SongSelect.IsCurrentScreen());
+        }
+
+        [TestCase("none")]
+        [TestCase("DT")]
+        [TestCase("HR")]
+        [TestCase("RX")]
+        public void TestLongMapModdedNavigation(string mod)
+        {
+            string? fixtureDirectory = Environment.GetEnvironmentVariable("MOSU_LONG_MAP_FIXTURES");
+            if (string.IsNullOrEmpty(fixtureDirectory))
+                Assert.Ignore("Set MOSU_LONG_MAP_FIXTURES to disposable virtual-audio long-map archives.");
+
+            BeatmapInfo[] maps = null!;
+            long allocated = 0;
+            long pauseTicks = 0;
+            long start = 0;
+            double longestPlayableTime = 0;
+            AddStep("import isolated long maps", () =>
+            {
+                foreach (string source in Directory.GetFiles(fixtureDirectory!, "*.osz"))
+                {
+                    // Path imports delete their input. Import a disposable copy, never the fixture itself.
+                    string copy = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.osz");
+                    File.Copy(source, copy);
+                    Beatmaps.Import(copy).WaitSafely();
+                }
+                maps = Beatmaps.GetAllUsableBeatmapSets().SelectMany(s => s.Beatmaps).OrderBy(b => b.Metadata.Title).ToArray();
+                Assert.That(maps.Length, Is.GreaterThanOrEqualTo(3));
+                foreach (var map in maps)
+                {
+                    // Import metadata is not guaranteed to contain Length yet.
+                    var decoded = Beatmaps.GetWorkingBeatmap(map).Beatmap;
+                    longestPlayableTime = Math.Max(longestPlayableTime, decoded.HitObjects.Max(h => h.StartTime));
+                }
+                Assert.That(longestPlayableTime, Is.GreaterThan(600_000), "fixture must contain actual ten-minute hitobject data");
+                Ruleset.Value = maps[0].Ruleset;
+            });
+            LoadSongSelect();
+            AddUntilStep("all sets available", () => Carousel.Filters.OfType<BeatmapCarouselFilterGrouping>().Single().SetItems.Count >= maps.Length);
+            AddStep("apply measured mods", () => SelectedMods.Value = mod switch
+            {
+                "DT" => new Mod[] { new OsuModDoubleTime() },
+                "HR" => new Mod[] { new OsuModHardRock() },
+                "RX" => new Mod[] { new OsuModRelax() },
+                _ => Array.Empty<Mod>()
+            });
+            AddStep("start frame measurement", () =>
+            {
+                navigationFrameCount = navigationSlowFrames = 0;
+                navigationMaxFrameMs = navigationMaxWorkMs = 0;
+                allocated = GC.GetTotalAllocatedBytes(false);
+                pauseTicks = GC.GetTotalPauseDuration().Ticks;
+                start = lastNavigationFrame = Stopwatch.GetTimestamp();
+                measureNavigationFrames = true;
+            });
+            for (int pass = 0; pass < 2; pass++)
+            {
+                for (int i = 0; i < 6; i++)
+                {
+                    int index = i;
+                    AddStep($"select long fixture {i}, pass {pass}", () =>
+                    {
+                        var request = (Action<GroupedBeatmap>)typeof(BeatmapCarousel)
+                            .GetProperty(nameof(BeatmapCarousel.RequestSelection))!.GetGetMethod(true)!.Invoke(Carousel, null)!;
+                        request(new GroupedBeatmap(null, maps[index % maps.Length]));
+                    });
+                    AddUntilStep("global selection committed", () => Beatmap.Value.BeatmapInfo.ID == maps[index % maps.Length].ID);
+                    AddWaitStep("exercise selected and preview calculations", 60);
+                }
+            }
+            AddStep("report long map frames", () =>
+            {
+                measureNavigationFrames = false;
+                Array.Sort(navigationFrameTimes, 0, navigationFrameCount);
+                TestContext.Progress.WriteLine($"LONG_MAP_NAV mod={mod} maps={maps.Length} max_object_time_ms={longestPlayableTime} "
+                                               + $"frames={navigationFrameCount} p95_ms={navigationFrameTimes[(int)(navigationFrameCount * .95)]:F3} "
+                                               + $"max_frame_ms={navigationMaxFrameMs:F3} max_update_work_ms={navigationMaxWorkMs:F3} stalls_gt50={navigationSlowFrames} "
+                                               + $"alloc_mib={(GC.GetTotalAllocatedBytes(false) - allocated) / 1048576.0:F2} "
+                                               + $"gc_pause_ms={TimeSpan.FromTicks(GC.GetTotalPauseDuration().Ticks - pauseTicks).TotalMilliseconds:F3} "
+                                               + $"wall_ms={Stopwatch.GetElapsedTime(start).TotalMilliseconds:F3}");
+            });
+            AddStep("return from selection", () => SongSelect.Exit());
+            AddUntilStep("selection exited", () => !SongSelect.IsCurrentScreen());
+        }
+
+        [Test]
+        public void TestExitedSongSelectReleasedAfterDisposal()
+        {
+            var exitedScreens = new List<WeakReference<Screens.Select.SongSelect>>();
+            for (int pass = 0; pass < 3; pass++)
+            {
+                LoadSongSelect();
+                AddStep("exit small song select", () =>
+                {
+                    exitedScreens.Add(new WeakReference<Screens.Select.SongSelect>(SongSelect));
+                    SongSelect.Exit();
+                });
+                AddUntilStep("exited screen removed from stack", () =>
+                    exitedScreens[^1].TryGetTarget(out var screen) && !Stack.ChildrenOfType<Screens.Select.SongSelect>().Contains(screen));
+                AddUntilStep("exited screen disposed", () =>
+                    exitedScreens[^1].TryGetTarget(out var screen) && (bool)typeof(Drawable).GetProperty("IsDisposed", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(screen)!);
+                AddStep("release scene screen reference", ReleaseExitedSongSelect);
+            }
+            AddStep("collect exited screens", () =>
+            {
+                GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+                TestContext.Progress.WriteLine($"SMALL_EXIT pid={Environment.ProcessId} alive={string.Join(',', exitedScreens.Select(screen => screen.TryGetTarget(out _)))} managed_mib={GC.GetTotalMemory(false) / 1048576.0:F1}");
+                Assert.That(exitedScreens.Count(screen => screen.TryGetTarget(out _)), Is.Zero);
+            });
+        }
+
+        [Test]
+        [Explicit("Local diagnostic requires replay-steps.tsv and actual-maps.osz from the private /tmp/mosu-actual-replay-h7TlOPKs fixture.")]
+        public void TestHistoricalSecondLaunchActualMapNavigation()
+        {
+            const string fixture = "/tmp/mosu-actual-replay-h7TlOPKs";
+            var sequence = File.ReadAllLines(Path.Combine(fixture, "replay-steps.tsv"))
+                               .Select(line => line.Split('\t'))
+                               .Select(fields => (id: int.Parse(fields[0], CultureInfo.InvariantCulture), delay: int.Parse(fields[1], CultureInfo.InvariantCulture)))
+                               .ToArray();
+            int slotCount = Environment.GetEnvironmentVariable("MOSU_ACTUAL_REPLAY_SLOTS") is { } limit ? int.Parse(limit, CultureInfo.InvariantCulture) : sequence.Length;
+            Assert.That(slotCount, Is.InRange(1, sequence.Length));
+            Dictionary<int, BeatmapInfo> maps = null!;
+            BeatmapDifficultyCache resultCache = null!;
+            AddStep("import original-content virtual-audio maps", () =>
+            {
+                resultCache = difficultyCache;
+                // Path-based imports delete source archives on success; preserve this disposable fixture across runs.
+                Beatmaps.Import(new[] { new ImportTask(File.OpenRead(Path.Combine(fixture, "actual-maps.osz")), "actual-maps.osz") }).WaitSafely();
+                maps = Beatmaps.GetAllUsableBeatmapSets().SelectMany(set => set.Beatmaps).ToDictionary(map => map.OnlineID);
+                Assert.That(maps.Count, Is.EqualTo(166));
+                Assert.That(maps.Values.Select(map => map.Hash).Distinct().Count(), Is.EqualTo(166));
+                Assert.That(sequence.Length, Is.EqualTo(180));
+                Assert.That(sequence.Count(entry => entry.id == -1), Is.EqualTo(2));
+            });
+            string archiveHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(fixture, "actual-maps.osz"))));
+            string stepsHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(fixture, "replay-steps.tsv"))));
+            TestContext.Progress.WriteLine($"ACTUAL_INPUT archive_sha256={archiveHash} steps_sha256={stepsHash} source_sha256={Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../osu.Game/Beatmaps/BeatmapDifficultyCache.cs"))))} binary_sha256={Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(BeatmapDifficultyCache).Assembly.Location)))}");
+            int passes = Environment.GetEnvironmentVariable("MOSU_ACTUAL_REPLAY_REPEAT") is { } repeat ? int.Parse(repeat, CultureInfo.InvariantCulture) : 1;
+            Assert.That(passes, Is.InRange(1, 4));
+            WeakReference<Screens.Select.SongSelect>? previousScreen = null;
+            int disposedScreens = 0;
+            var exitedScreens = new List<WeakReference<Screens.Select.SongSelect>>();
+            for (int pass = 1; pass <= passes; pass++)
+            {
+            int replayPass = pass;
+            int committed = 0;
+            long allocated = 0;
+            long started = 0;
+            long cumulativeDelay = 0;
+            int lateSlots = 0;
+            double maximumLatenessMs = 0;
+            LoadSongSelect();
+            AddUntilStep("actual maps visible", () => Carousel.MatchedBeatmapsCount >= 166);
+            AddStep("begin historical replay", () =>
+            {
+                navigationFrameCount = navigationSlowFrames = 0;
+                navigationMaxFrameMs = navigationMaxWorkMs = 0;
+                lastNavigationFrame = started = Stopwatch.GetTimestamp();
+                allocated = GC.GetTotalAllocatedBytes(false);
+                measureNavigationFrames = true;
+            });
+            long plannedDelay = 0;
+            for (int index = 0; index < slotCount; index++)
+            {
+                int slot = index;
+                var (id, delay) = sequence[index];
+                double expectedCommitMs = plannedDelay;
+                if (id > 0)
+                {
+                    AddStep($"request historical selection {index}", () =>
+                    {
+                        var target = maps[id];
+                        Ruleset.Value = target.Ruleset;
+                        var requestSelection = (Action<GroupedBeatmap>)typeof(BeatmapCarousel)
+                            .GetProperty(nameof(BeatmapCarousel.RequestSelection))!.GetGetMethod(true)!.Invoke(Carousel, null)!;
+                        requestSelection(new GroupedBeatmap(null, target));
+                    });
+                    AddUntilStep("carousel selected original map", () => Carousel.CurrentBeatmap?.OnlineID == id);
+                    AddUntilStep("global selection committed original map", () => Beatmap.Value.BeatmapInfo.OnlineID == id);
+                    AddStep($"record global commit {slot}", () =>
+                    {
+                        committed++;
+                        double actualMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                        TestContext.Progress.WriteLine($"ACTUAL_COMMIT slot={slot} id={id} elapsed_ms={actualMs:F1} expected_ms={expectedCommitMs:F1} delta_ms={actualMs - expectedCommitMs:F1}");
+                    });
+                }
+                // Compare each commit against the original cumulative timestamp; do not add an entire frame wait per historical 10 ms.
+                AddStep($"record pacing lateness {slot}", () =>
+                {
+                    double lateness = Stopwatch.GetElapsedTime(started).TotalMilliseconds - expectedCommitMs;
+                    if (lateness <= 0) return;
+                    lateSlots++;
+                    maximumLatenessMs = Math.Max(maximumLatenessMs, lateness);
+                    TestContext.Progress.WriteLine($"ACTUAL_LATE slot={slot} id={id} late_ms={lateness:F1}");
+                });
+                // The two -1 commits cannot be mapped to an original file. Keep their time slots, not substitute maps.
+                plannedDelay += delay;
+                long deadlineMs = plannedDelay;
+                AddUntilStep($"historical timestamp after {slot}", () => Stopwatch.GetElapsedTime(started).TotalMilliseconds >= deadlineMs);
+            }
+            long passDelay = plannedDelay;
+            AddStep("record historical duration", () => cumulativeDelay = passDelay);
+            AddWaitStep("drain pending calculations", 120);
+            AddStep("record historical replay", () =>
+            {
+                measureNavigationFrames = false;
+                GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+                TestContext.Progress.WriteLine($"ACTUAL_REPLAY pass={replayPass} slots={slotCount} commits={committed} historical_ms={cumulativeDelay} late_slots={lateSlots} max_late_ms={maximumLatenessMs:F1} elapsed_ms={Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} "
+                                               + $"process_alloc_mib={(GC.GetTotalAllocatedBytes(false) - allocated) / 1048576.0:F1} "
+                                               + $"live_managed_mib={GC.GetTotalMemory(false) / 1048576.0:F1} "
+                                               + $"rss_mib={Process.GetCurrentProcess().WorkingSet64 / 1048576.0:F1} "
+                                               + $"frame_max_ms={navigationMaxFrameMs:F1} frame_stalls_gt50={navigationSlowFrames} update_work_max_ms={navigationMaxWorkMs:F1}");
+                Assert.That(committed, Is.EqualTo(sequence.Take(slotCount).Count(entry => entry.id > 0)));
+            });
+            AddWaitStep("idle after replay", 200);
+            AddStep("record idle heap", () =>
+            {
+                GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+                TestContext.Progress.WriteLine($"ACTUAL_REPLAY_IDLE pass={replayPass} heavy={resultCache.HeavyCount} light={resultCache.PreviewCount} alloc_mib={(GC.GetTotalAllocatedBytes(false) - allocated) / 1048576.0:F1} "
+                                               + $"live_managed_mib={GC.GetTotalMemory(false) / 1048576.0:F1} "
+                                               + $"rss_mib={Process.GetCurrentProcess().WorkingSet64 / 1048576.0:F1}");
+            });
+            WeakReference<Screens.Select.SongSelect>? exitedScreen = null;
+            AddStep("exit historical song select", () =>
+            {
+                exitedScreen = new WeakReference<Screens.Select.SongSelect>(SongSelect);
+                SongSelect.Exit();
+            });
+            AddUntilStep("historical screen removed", () =>
+                exitedScreen!.TryGetTarget(out var screen) && !Stack.ChildrenOfType<Screens.Select.SongSelect>().Contains(screen));
+            AddUntilStep("historical screen disposed", () =>
+                exitedScreen!.TryGetTarget(out var screen) && (bool)typeof(Drawable).GetProperty("IsDisposed", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(screen)!);
+            AddStep("release exited historical screen", () =>
+            {
+                disposedScreens++;
+                exitedScreens.Add(exitedScreen!);
+                ReleaseExitedSongSelect();
+            });
+            AddStep("record exit heap", () =>
+            {
+                GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+                bool currentAlive = exitedScreen!.TryGetTarget(out _);
+                bool previousAlive = previousScreen?.TryGetTarget(out _) ?? false;
+                var cacheType = typeof(BeatmapDifficultyCache);
+                int pendingFull = ((System.Collections.IDictionary)cacheType.GetField("pendingFull", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(resultCache)!).Count;
+                object requests = cacheType.BaseType!.GetField("activeRequests", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(resultCache)!;
+                int activeRequests = (int)requests.GetType().GetProperty("Count")!.GetValue(requests)!;
+                object coordinator = RankSnapshotCoordinator.For(Realm);
+                object rankPanels = typeof(RankSnapshotCoordinator).GetField("panels", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(coordinator)!;
+                int rankSubscribers = (int)rankPanels.GetType().GetProperty("Count")!.GetValue(rankPanels)!;
+                TestContext.Progress.WriteLine($"ACTUAL_REPLAY_EXIT pass={replayPass} heavy={resultCache.HeavyCount} light={resultCache.PreviewCount} "
+                    + $"removed=true disposed={disposedScreens} active_requests={activeRequests} pending_full={pendingFull} rank_subscribers={rankSubscribers} "
+                    + $"screen_alive={currentAlive} previous_screen_alive={previousAlive} all_screen_alive={exitedScreens.Count(screen => screen.TryGetTarget(out _))} "
+                    + $"live_managed_mib={GC.GetTotalMemory(false) / 1048576.0:F1} rss_mib={Process.GetCurrentProcess().WorkingSet64 / 1048576.0:F1}");
+                Assert.That(exitedScreens.Count(screen => screen.TryGetTarget(out _)), Is.Zero);
+                previousScreen = exitedScreen;
+            });
+            }
+        }
+
         [Test]
         public void TestResultsScreenWhenClickingLeaderboardScore()
         {
@@ -87,6 +465,25 @@ namespace osu.Game.Tests.Visual.SongSelect
                 InputManager.Click(MouseButton.Left);
             });
             AddUntilStep("wait for results screen", () => Stack.CurrentScreen is ResultsScreen);
+        }
+
+        [Test]
+        public void TestInitiallyPreloadedDetailsWedge()
+        {
+            BeatmapDetailTab originalTab = default;
+            AddStep("start on details tab", () =>
+            {
+                originalTab = Config.Get<BeatmapDetailTab>(OsuSetting.BeatmapDetailTab);
+                Config.SetValue(OsuSetting.BeatmapDetailTab, BeatmapDetailTab.Details);
+            });
+            ImportBeatmapForRuleset(0);
+            LoadSongSelect();
+
+            AddUntilStep("details wedge visible", () => SongSelect.ChildrenOfType<BeatmapMetadataWedge>().Any(w => w.IsPresent));
+            AddStep("switch to ranking tab", () =>
+                SongSelect.ChildrenOfType<BeatmapDetailsArea.WedgeSelector<BeatmapDetailsArea.Header.Selection>>().Single().SelectItem(BeatmapDetailsArea.Header.Selection.Ranking));
+            AddUntilStep("ranking wedge visible", () => SongSelect.ChildrenOfType<BeatmapLeaderboardWedge>().Any(w => w.IsPresent));
+            AddStep("restore selected tab", () => Config.SetValue(OsuSetting.BeatmapDetailTab, originalTab));
         }
 
         [Test]
@@ -172,6 +569,15 @@ namespace osu.Game.Tests.Visual.SongSelect
                     () => Is.EqualTo(new Vector2(viewportWidth, 768)).Using<Vector2>((actual, expected) => (actual - expected).Length < 0.01f));
                 AddUntilStep("footer matches top coordinates", () => this.ChildrenOfType<LegacyFooter>().SingleOrDefault()?.DrawSize,
                     () => Is.EqualTo(new Vector2(viewportWidth, 768)).Using<Vector2>((actual, expected) => (actual - expected).Length < 0.01f));
+                AddAssert("footer bottom is not shifted", () =>
+                    Math.Abs(this.ChildrenOfType<LegacyFooter>().Single().ScreenSpaceDrawQuad.BottomLeft.Y
+                             - SongSelect.ScreenSpaceDrawQuad.BottomLeft.Y) < 0.01f);
+                AddAssert("carousel uses stable baseline", () =>
+                {
+                    var carouselTopLeft = SongSelect.ToLocalSpace(Carousel.ScreenSpaceDrawQuad.TopLeft);
+                    return Math.Abs(carouselTopLeft.X - (viewportWidth - 544) / scale) < 0.01f
+                           && Math.Abs(Carousel.DrawWidth - 544 / scale) < 0.01f;
+                });
             }
 
             AddStep("restore viewport and settings", () =>
@@ -201,12 +607,27 @@ namespace osu.Game.Tests.Visual.SongSelect
             AddStep("select next difficulty", () => InputManager.Key(Key.Down));
             AddUntilStep("difficulty selection changes", () => Carousel.CurrentBeatmap, () => Is.Not.EqualTo(previousDifficulty));
             AddAssert("new selected difficulty stays visible", () => Carousel.ChildrenOfType<PanelBeatmapStandalone>().Any(panel => panel.Item?.IsVisible == true && panel.Selected.Value && panel.Item.Model is GroupedBeatmap grouped && grouped.Beatmap.Equals(Carousel.CurrentBeatmap)), () => Is.True);
-            AddUntilStep("selected difficulty protrudes", () =>
+            PanelBeatmapStandalone hoveredRow = null!;
+            AddStep("hover selected stable row", () =>
+            {
+                hoveredRow = Carousel.ChildrenOfType<PanelBeatmapStandalone>().Single(panel => panel.Item?.IsVisible == true && panel.Selected.Value);
+                InputManager.MoveMouseTo(hoveredRow.TopLevelContent);
+            });
+            AddUntilStep("hovered difficulty protrudes", () =>
             {
                 var rows = Carousel.ChildrenOfType<PanelBeatmapStandalone>().Where(panel => panel.Item?.IsVisible == true).ToArray();
-                var selected = rows.Single(panel => panel.Selected.Value);
-                return rows.Where(panel => panel != selected).All(panel => selected.TopLevelContent.DrawPosition.X < panel.TopLevelContent.DrawPosition.X);
+                return hoveredRow.IsHovered && rows.Where(panel => panel != hoveredRow).All(panel => hoveredRow.DrawPosition.X < panel.DrawPosition.X);
             });
+            AddUntilStep("hover extension matches stable 45px in 480-space", () =>
+            {
+                float centreY = (float)(hoveredRow.DrawYPosition - Carousel.ChildrenOfType<UserTrackingScrollContainer>().Single().Current + hoveredRow.DrawHeight / 2);
+                float expectedX = (StableCarouselLayout.CurveOffset(centreY, Carousel.DrawHeight)
+                                   - StableCarouselLayout.ExpandedOffset - StableCarouselLayout.HoverOffset) * Carousel.StableLayoutScale;
+                return Math.Abs(hoveredRow.X - expectedX) < 0.1f;
+            });
+            AddUntilStep("neighbours spread around hovered row", () =>
+                Carousel.ChildrenOfType<PanelBeatmapStandalone>().Where(panel => panel.Item?.IsVisible == true && panel != hoveredRow)
+                    .All(panel => Math.Abs(panel.DrawYPosition - panel.Item!.CarouselYPosition) > StableCarouselLayout.BoundaryGap - 1));
         }
 
         [Test]

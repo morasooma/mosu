@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -9,7 +10,9 @@ using osu.Framework.Allocation;
 using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Testing;
 using osu.Game.Beatmaps;
+using osu.Game.Beatmaps.Drawables;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Mods;
 using osu.Game.Rulesets;
@@ -112,6 +115,38 @@ namespace osu.Game.Tests.Visual.UserInterface
             });
 
             AddToggleStep("toggle collapsed", collapsed => panel.Collapsed.Value = collapsed);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestInitialStarRatingWithoutModChanges(bool calculationAvailable)
+        {
+            const double stars = 5.25;
+
+            AddStep("prepare beatmap and difficulty", () =>
+            {
+                SelectedMods.Value = System.Array.Empty<Mod>();
+                Ruleset.Value = new OsuRuleset().RulesetInfo;
+                difficultyCache.Difficulty = calculationAvailable ? new StarDifficulty(stars, 0) : null;
+            });
+
+            AddStep("open display with beatmap", () => Child = panel = new BeatmapAttributesDisplay
+            {
+                Anchor = Anchor.Centre,
+                Origin = Anchor.Centre,
+                Mods = { BindTarget = SelectedMods },
+                BeatmapInfo =
+                {
+                    Value = new TestBeatmap(Ruleset.Value)
+                    {
+                        BeatmapInfo = { StarRating = stars }
+                    }.BeatmapInfo
+                },
+            });
+
+            AddUntilStep("initial star rating displayed", () =>
+                panel.ChildrenOfType<StarRatingDisplay>().Single().DisplayedStars.Value == stars);
+            AddAssert("mods remain unchanged", () => SelectedMods.Value.Count == 0);
         }
 
         private void previewStarRating(double stars)

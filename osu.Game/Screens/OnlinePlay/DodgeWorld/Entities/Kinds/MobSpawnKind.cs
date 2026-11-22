@@ -129,54 +129,54 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities.Kinds
 
         protected override IEnumerable<EntityField> DescribeFields()
         {
-            yield return Field("Здоровье моба", "сколько ударов мечом держит",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4674, global::osu.Game.Localisation.ClientTranslationStrings.J4675,
                 zone => EditorValue.Format(zone.MobMaxHealth),
                 (zone, text) => zone.MobMaxHealth = EditorValue.Int(text, zone.MobMaxHealth, MIN_HEALTH, MAX_HEALTH));
 
-            yield return Field("Контактный урон", "снимается при касании, раз в 0,7 с",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4676, global::osu.Game.Localisation.ClientTranslationStrings.J4677,
                 zone => EditorValue.Format(zone.ContactDamage),
                 (zone, text) => zone.ContactDamage = EditorValue.Int(text, zone.ContactDamage, MIN_CONTACT_DAMAGE, MAX_CONTACT_DAMAGE));
 
-            yield return Field("Опыт за убийство", null,
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4678, null,
                 zone => EditorValue.Format(zone.ExperienceReward),
                 (zone, text) => zone.ExperienceReward = EditorValue.Int(text, zone.ExperienceReward, 0, MAX_REWARD));
 
-            yield return Field("Монеты за убийство", null,
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4679, null,
                 zone => EditorValue.Format(zone.CoinsReward),
                 (zone, text) => zone.CoinsReward = EditorValue.Int(text, zone.CoinsReward, 0, MAX_REWARD));
 
-            yield return Field("Макс. уровень для награды", "выше этого уровня зона не даёт награду; пусто — без ограничения",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4680, global::osu.Game.Localisation.ClientTranslationStrings.J4681,
                 zone => EditorValue.Format(zone.MaximumFarmLevel),
                 (zone, text) => zone.MaximumFarmLevel = EditorValue.OptionalInt(text, zone.MaximumFarmLevel, 1, MAX_FARM_LEVEL));
 
-            yield return Field("Скорость моба", "единиц в секунду; 0 — стоит на месте",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4682, global::osu.Game.Localisation.ClientTranslationStrings.J4683,
                 zone => EditorValue.Format(zone.MobSpeed),
                 (zone, text) => zone.MobSpeed = EditorValue.Float(text, zone.MobSpeed, MobSpawnRules.MIN_SPEED, MobSpawnRules.MAX_SPEED));
 
-            yield return Switch("Преследует игрока", "выключено — ходит по своей кривой внутри зоны и не реагирует на игрока",
+            yield return Switch(global::osu.Game.Localisation.ClientTranslationStrings.J4684, global::osu.Game.Localisation.ClientTranslationStrings.J4685,
                 zone => zone.Chases, (zone, chases) => zone.Chases = chases);
 
-            yield return Field("Радиус обнаружения", "с какого расстояния моб замечает игрока: начинает стрелять и, если преследует, идёт к нему",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4686, global::osu.Game.Localisation.ClientTranslationStrings.J4687,
                 zone => EditorValue.Format(zone.DetectionRadius),
                 (zone, text) => zone.DetectionRadius = EditorValue.Float(text, zone.DetectionRadius, MIN_DETECTION_RADIUS, MAX_DETECTION_RADIUS));
 
-            yield return Field("Пуль в залпе", "0 — не стреляет. Первая летит в игрока, остальные добивают круг",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4656, global::osu.Game.Localisation.ClientTranslationStrings.J4688,
                 zone => EditorValue.Format(zone.ProjectileCount),
                 (zone, text) => zone.ProjectileCount = EditorValue.Int(text, zone.ProjectileCount, 0, MAX_PROJECTILE_COUNT));
 
-            yield return Field("Урон одной пули", null,
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4660, null,
                 zone => EditorValue.Format(zone.ProjectileDamage),
                 (zone, text) => zone.ProjectileDamage = EditorValue.Int(text, zone.ProjectileDamage, MIN_PROJECTILE_DAMAGE, MAX_PROJECTILE_DAMAGE));
 
-            yield return Field("Скорость пули", "единиц в секунду",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4661, global::osu.Game.Localisation.ClientTranslationStrings.J4662,
                 zone => EditorValue.Format(zone.ProjectileSpeed),
                 (zone, text) => zone.ProjectileSpeed = EditorValue.Float(text, zone.ProjectileSpeed, MIN_PROJECTILE_SPEED, MAX_PROJECTILE_SPEED));
 
-            yield return Field("Дальность пули", "единиц; дальше пуля исчезает",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4663, global::osu.Game.Localisation.ClientTranslationStrings.J4664,
                 zone => EditorValue.Format(zone.ProjectileRange),
                 (zone, text) => zone.ProjectileRange = EditorValue.Float(text, zone.ProjectileRange, MIN_PROJECTILE_RANGE, MAX_PROJECTILE_RANGE));
 
-            yield return Field("Пауза между залпами", "миллисекунд; из них 650 мс — предупреждение",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4689, global::osu.Game.Localisation.ClientTranslationStrings.J4690,
                 zone => EditorValue.Format(zone.AttackCooldown),
                 (zone, text) => zone.AttackCooldown = EditorValue.Int(text, zone.AttackCooldown, MIN_ATTACK_COOLDOWN, MAX_ATTACK_COOLDOWN));
         }

@@ -39,6 +39,14 @@ namespace osu.Game.Overlays
         public BeatmapSetOverlay()
             : base(OverlayColourScheme.Blue)
         {
+            Header.BeatmapSet.BindTo(beatmapSet);
+            Header.HeaderContent.Picker.Beatmap.ValueChanged += b => ScrollFlow.ScrollToStart();
+        }
+
+        [BackgroundDependencyLoader]
+        private void load()
+        {
+            // Keep the overlay cached at startup; create its content during asynchronous loading.
             Info info;
             CommentsSection comments;
 
@@ -63,16 +71,9 @@ namespace osu.Game.Overlays
                 }
             };
 
-            Header.BeatmapSet.BindTo(beatmapSet);
             info.BeatmapSet.BindTo(beatmapSet);
             comments.BeatmapSet.BindTo(beatmapSet);
 
-            Header.HeaderContent.Picker.Beatmap.ValueChanged += b => ScrollFlow.ScrollToStart();
-        }
-
-        [BackgroundDependencyLoader]
-        private void load()
-        {
             apiUser = api.LocalUser.GetBoundCopy();
             apiUser.BindValueChanged(_ => Schedule(() =>
             {
@@ -116,6 +117,7 @@ namespace osu.Game.Overlays
         /// <param name="set">The set to show.</param>
         public void ShowBeatmapSet(APIBeatmapSet set)
         {
+            lastLookup = null;
             beatmapSet.Value = set;
             Show();
         }
@@ -125,15 +127,20 @@ namespace osu.Game.Overlays
             if (!api.IsLoggedIn)
                 return;
 
-            if (lastLookup == null)
+            if (lastLookup is not { } lookup)
                 return;
 
-            var req = new GetBeatmapSetRequest(lastLookup.Value.id, lastLookup.Value.type);
+            var req = new GetBeatmapSetRequest(lookup.id, lookup.type);
             req.Success += res =>
             {
+                if (lastLookup != lookup)
+                    return;
+
                 beatmapSet.Value = res;
-                if (lastLookup.Value.type == BeatmapSetLookupType.BeatmapId)
-                    Header.HeaderContent.Picker.Beatmap.Value = Header.BeatmapSet.Value.Beatmaps.First(b => b.OnlineID == lastLookup.Value.id);
+
+                // A removed difficulty can still resolve to the set. Leave the picker's default selection in that case.
+                if (lookup.type == BeatmapSetLookupType.BeatmapId && res.Beatmaps.FirstOrDefault(b => b.OnlineID == lookup.id) is { } difficulty)
+                    Header.HeaderContent.Picker.Beatmap.Value = difficulty;
             };
             beatmapApi.Queue(req);
         }

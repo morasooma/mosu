@@ -6,6 +6,7 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
+using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osuTK;
@@ -17,7 +18,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
     {
         private readonly OsuSpriteText label;
 
-        public HudChip(OsuColour colours, IconUsage icon, string text, Color4 accent)
+        public HudChip(OsuColour colours, IconUsage icon, LocalisableString text, Color4 accent)
         {
             Height = 38;
             Masking = true;
@@ -56,7 +57,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
             };
         }
 
-        public void SetText(string text) => label.Text = text;
+        public void SetText(LocalisableString text) => label.Text = text;
 
         public string Text => label.Text.ToString();
     }

@@ -8,6 +8,8 @@ using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Sprites;
+using osu.Framework.Threading;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Database;
@@ -19,8 +21,10 @@ using osuTK;
 
 namespace osu.Game.Screens.Backgrounds
 {
-    public partial class BackgroundScreenBeatmap : BackgroundScreen
+    public partial class BackgroundScreenBeatmap : BackgroundScreen, IBackgroundSceneSource
     {
+        public Sprite BackgroundSprite => Background?.Sprite;
+
         /// <summary>
         /// The amount of blur to apply when full user blur is requested.
         /// </summary>
@@ -81,6 +85,8 @@ namespace osu.Game.Screens.Backgrounds
         }
 
         private CancellationTokenSource cancellationSource;
+        private BeatmapBackground pendingBackground;
+        private ScheduledDelegate pendingBackgroundSwitch;
 
         public WorkingBeatmap Beatmap
         {
@@ -123,6 +129,11 @@ namespace osu.Game.Screens.Backgrounds
 
         private void queueBackgroundLoad(bool force = false)
         {
+            if (!force && pendingBackground?.Beatmap == beatmap && pendingBackground != null)
+                return;
+
+            cancelPendingBackground();
+
             if (!force && CanReuseCurrentBackground(beatmap))
                 return;
 
@@ -132,11 +143,37 @@ namespace osu.Game.Screens.Backgrounds
 
         private void switchBackground(BeatmapBackground b)
         {
-            if (b.Beatmap != beatmap)
+            if (IsDisposed || b.Beatmap != beatmap)
             {
-                b.Expire();
+                if (pendingBackground == b)
+                {
+                    pendingBackground = null;
+                    pendingBackgroundSwitch = null;
+                }
+                b.Dispose();
                 return;
             }
+            if (!b.TextureUploadComplete)
+            {
+                if (pendingBackground != b)
+                {
+                    cancelPendingBackground();
+                    pendingBackground = b;
+                }
+
+                // Keep the old background until the original image is uploaded in full. Attaching
+                // the new sprite earlier would synchronously drain its upload queue on first bind.
+                pendingBackgroundSwitch = Scheduler.Add(() => switchBackground(b));
+                return;
+            }
+
+            pendingBackground = null;
+            pendingBackgroundSwitch = null;
+
+            // Never postpone the transition for a download/inference. Cached results apply immediately;
+            // an unchecked background stays covered while the normal fade and selection continue.
+            _ = b.PrepareSafety();
+            b.ApplySafety();
 
             float newDepth = 0;
 
@@ -150,6 +187,23 @@ namespace osu.Game.Screens.Backgrounds
             b.Depth = newDepth;
             b.FadeInFromZero(500, Easing.OutQuint);
             dimmable.Background = Background = b;
+        }
+
+        private void cancelPendingBackground()
+        {
+            pendingBackgroundSwitch?.Cancel();
+            pendingBackgroundSwitch = null;
+            pendingBackground?.Dispose();
+            pendingBackground = null;
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            cancellationSource?.Cancel();
+            cancellationSource?.Dispose();
+            cancellationSource = null;
+            cancelPendingBackground();
+            base.Dispose(isDisposing);
         }
 
         public override bool Equals(BackgroundScreen other)

@@ -20,7 +20,7 @@ namespace osu.Game.Rulesets.Osu.Mods
         public override string Acronym => "SI";
         public override IconUsage? Icon => OsuIcon.ModSpinIn;
         public override ModType Type => ModType.Fun;
-        public override LocalisableString Description => "Circles spin in. No approach circles.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3732;
 
         // todo: this mod needs to be incompatible with "hidden" due to forcing the circle to remain opaque,
         // further implementation will be required for supporting that.

@@ -14,6 +14,7 @@ using osu.Game.Extensions;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Metadata;
+using osu.Game.Online;
 using osu.Game.Overlays.Dashboard.Friends;
 using osu.Game.Rulesets;
 using osu.Game.Users;
@@ -35,8 +36,8 @@ namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
         [Resolved]
         private MetadataClient metadataClient { get; set; } = null!;
 
-        [Cached(typeof(UserLookupCache))] // not used at the moment.
-        private UserWithRankLookupCache userCache { get; set; } = new UserWithRankLookupCache();
+        [Resolved]
+        private UserWithRankLookupCache userCache { get; set; } = null!;
 
         public RealtimeUserList(OverlayPanelDisplayStyle style)
         {
@@ -49,8 +50,6 @@ namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
         [BackgroundDependencyLoader]
         private void load()
         {
-            AddInternal(userCache);
-
             InternalChild = searchContainer = new OnlineUserSearchContainer
             {
                 RelativeSizeAxes = Axes.X,
@@ -69,7 +68,7 @@ namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
 
             SearchText.BindValueChanged(onSearchTextChanged, true);
 
-            Scheduler.AddDelayed(updateUsers, 2000, true);
+            Scheduler.AddDelayed(updateUsers, MosuServerEnvironment.UsesMosuPresence ? 100 : 2000, true);
         }
 
         private void onSearchTextChanged(ValueChangedEvent<string> search)
@@ -128,7 +127,7 @@ namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
             // without this, the intitial request will take seconds to minutes.
             const int partition_size = 50;
 
-            for (int i = 0; i <= pendingUsers.Count / partition_size; i++)
+            for (int i = 0; i * partition_size < pendingUsers.Count; i++)
             {
                 int[] partitionedUsers = pendingUsers.Skip(i * partition_size).Take(partition_size).ToArray();
 
@@ -177,6 +176,7 @@ namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
                     userPanel.CanSpectate.Value = false;
                     break;
 
+                case UserActivity.InLobby { IsRankedPlay: true, RoomID: > 0 }:
                 case UserActivity.InSoloGame:
                 case UserActivity.PlayingDailyChallenge:
                 case UserActivity.InMultiplayerGame:
@@ -243,7 +243,7 @@ namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
         /// This is implemented local to avoid invalidating the full cache on ruleset change at a global `UserLookupCache` level.
         /// We should probably do better than this (server-spectator sending the rank data instead? something else?).
         /// </summary>
-        private partial class UserWithRankLookupCache : UserLookupCache
+        internal partial class UserWithRankLookupCache : UserLookupCache
         {
             [Resolved]
             private IBindable<RulesetInfo> ruleset { get; set; } = null!;

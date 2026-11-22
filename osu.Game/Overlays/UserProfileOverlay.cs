@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.ObjectExtensions;
@@ -44,6 +45,9 @@ namespace osu.Game.Overlays
         private ProfileSection? lastSection;
         private ProfileSection[]? sections;
         private GetUserRequest? userReq;
+        private CancellationTokenSource? sectionLoadCancellation;
+        private bool headerLoading;
+        private bool headerReady;
         private ProfileSectionsContainer? sectionsContainer;
         private ProfileSectionTabControl? tabs;
         private Box? headerBackground;
@@ -58,6 +62,9 @@ namespace osu.Game.Overlays
         [Resolved]
         private RulesetStore rulesets { get; set; } = null!;
 
+        [Resolved(CanBeNull = true)]
+        private LocalUserStatisticsProvider? statisticsProvider { get; set; }
+
         [Resolved]
         private IBindable<RulesetInfo> gameRuleset { get; set; } = null!;
 
@@ -67,6 +74,8 @@ namespace osu.Game.Overlays
         public UserProfileOverlay()
             : base(OverlayColourScheme.Pink)
         {
+            ColourProvider.ExemptAccentFromCustomTheme = true;
+
             base.Content.Add(new PopoverContainer
             {
                 RelativeSizeAxes = Axes.Both,
@@ -97,6 +106,20 @@ namespace osu.Game.Overlays
                 if (headerBackground != null)
                     headerBackground.Colour = ColourProvider.Background5;
             }, true);
+        }
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+
+            if (statisticsProvider != null)
+                statisticsProvider.StatisticsUpdated += onStatisticsUpdated;
+        }
+
+        private void onStatisticsUpdated(UserStatisticsUpdate update)
+        {
+            if (State.Value == Visibility.Visible && user?.OnlineID == API.LocalUser.Value.Id && ruleset?.Equals(update.Ruleset) == true)
+                Scheduler.AddOnce(fetchAndSetContent);
         }
 
         protected override ProfileHeader CreateHeader() => new ProfileHeader();
@@ -155,45 +178,52 @@ namespace osu.Game.Overlays
 
         private void fetchAndSetContent()
         {
+            using var operation = osu.Framework.Statistics.StutterTraceEventSource.Log.Measure("Profile.FetchAndSetContent");
             Debug.Assert(user != null);
 
             bool sameUser = user.OnlineID == Header.User.Value?.User.Id;
-            // Keep Morasooma's existing profile reuse behaviour intact. On third-party
-            // servers always refetch when a profile is opened: their user/statistics
-            // caches are commonly refreshed after score submission, and reusing the
-            // already rendered profile otherwise leaves the previous values on screen.
-            if (ShouldReuseDisplayedProfile(Online.MosuServerEnvironment.IsThirdPartyServer,
-                    sameUser,
-                    ruleset?.MatchesOnlineID(Header.User.Value?.Ruleset) == true,
-                    string.Equals(variant, Header.User.Value?.Variant, StringComparison.OrdinalIgnoreCase)))
-                return;
+            // Reopening the same profile must refresh its statistics as well.
+            // Header/content reuse must not suppress the API request.
 
-            sectionsContainer?.ExpandableHeader = null;
+            // The header is constructed with the overlay, but was first loaded
+            // synchronously when recreateBaseContent attached it on Update. Keep
+            // it unattached until dependency loading finishes in the loader.
+            if (!Header.IsLoaded && !headerReady)
+            {
+                if (!headerLoading)
+                {
+                    headerLoading = true;
+                    loadingLayer.Show();
+                    LoadComponentAsync(Header, _ =>
+                    {
+                        headerLoading = false;
+                        headerReady = true;
+                        Scheduler.AddOnce(fetchAndSetContent);
+                    });
+                }
+                return;
+            }
 
             userReq?.Cancel();
+            sectionLoadCancellation?.Cancel();
             lastSection = null;
 
-            var sectionList = new List<ProfileSection>
+            // The API's ProfileOrder decides which sections are actually displayed.
+            // Do not construct every section (and its subtrees) before that response.
+            sections = Array.Empty<ProfileSection>();
+
+            if (!sameUser && changeOverlayColours(OverlayColourScheme.Pink.GetHue()))
             {
-                //new AboutSection(),
-                new RecentSection(),
-                new RanksSection(),
-            };
+                // A palette change creates a fresh header; pass it through the
+                // same background-load gate rather than attach it synchronously.
+                Scheduler.AddOnce(fetchAndSetContent);
+                return;
+            }
 
-            if (!Online.MosuServerEnvironment.IsThirdPartyServer)
-                sectionList.Add(new MedalsSection());
-
-            sectionList.Add(new HistoricalSection());
-            sectionList.Add(new BeatmapsSection());
-            sectionList.Add(new KudosuSection());
-
-            sections = !user.IsBot
-                ? sectionList.ToArray()
-                : Array.Empty<ProfileSection>();
-
-            if (!sameUser)
-                changeOverlayColours(OverlayColourScheme.Pink.GetHue());
-
+            // Detach only a header that will actually be reused. A replaced
+            // palette header must stay owned by the old content for disposal.
+            if (ReferenceEquals(sectionsContainer?.ExpandableHeader, Header) && sectionsContainer != null)
+                sectionsContainer.ExpandableHeader = null;
             recreateBaseContent();
 
             if (API.State.Value != APIState.Offline)
@@ -210,18 +240,30 @@ namespace osu.Game.Overlays
             }
         }
 
-        internal static bool ShouldReuseDisplayedProfile(bool isThirdPartyServer, bool sameUser, bool sameRuleset, bool sameVariant)
-            => !isThirdPartyServer && sameUser && sameRuleset && sameVariant;
-
         private void userLoadComplete(APIUser loadedUser, IRulesetInfo? userRuleset, string? userVariant)
         {
+            using var operation = osu.Framework.Statistics.StutterTraceEventSource.Log.Measure("Profile.UserLoadComplete");
             Debug.Assert(sections != null && sectionsContainer != null && tabs != null);
 
             // reuse header and content if same colour scheme, otherwise recreate both.
             int profileHue = loadedUser.ProfileHue ?? OverlayColourScheme.Pink.GetHue();
 
             if (changeOverlayColours(profileHue))
-                recreateBaseContent();
+            {
+                var request = userReq;
+                var header = Header;
+                LoadComponentAsync(header, _ =>
+                {
+                    // A new selection may have superseded this response while
+                    // its replacement header was loading.
+                    if (!ReferenceEquals(request, userReq) || !ReferenceEquals(header, Header))
+                        return;
+                    headerReady = true;
+                    recreateBaseContent();
+                    userLoadComplete(loadedUser, userRuleset, userVariant);
+                });
+                return;
+            }
 
             RulesetInfo? actualRuleset = rulesets.GetRuleset(userRuleset?.ShortName ?? loadedUser.PlayMode);
 
@@ -239,25 +281,88 @@ namespace osu.Game.Overlays
             }
 
             var userProfile = new UserProfileData(loadedUser, actualRuleset, userVariant);
-            Header.User.Value = userProfile;
+            using (osu.Framework.Statistics.StutterTraceEventSource.Log.Measure("Profile.ApplyHeaderUser"))
+                Header.User.Value = userProfile;
 
-            if (loadedUser.ProfileOrder != null)
+            bool showSections = user?.IsBot != true;
+            var target = sectionsContainer;
+            var targetTabs = tabs;
+            sectionLoadCancellation?.Cancel();
+            var cancellation = sectionLoadCancellation = new CancellationTokenSource();
+            LoadComponentAsync(new SectionBatch(loadedUser, userProfile, Online.MosuServerEnvironment.IsThirdPartyServer, showSections), batch =>
             {
-                foreach (string id in loadedUser.ProfileOrder)
+                sections = batch.ToArray();
+                batch.Clear(false);
+                foreach (var section in sections)
                 {
-                    var sec = sections.FirstOrDefault(s => s.Identifier == id);
-
-                    if (sec != null)
-                    {
-                        sec.User.Value = userProfile;
-
-                        sectionsContainer.Add(sec);
-                        tabs.AddItem(sec);
-                    }
+                    target.Add(section);
+                    targetTabs.AddItem(section);
                 }
+                batch.Dispose();
+                loadingLayer.Hide();
+            }, cancellation.Token);
+        }
+
+        private partial class SectionBatch : Container<ProfileSection>
+        {
+            private readonly APIUser loadedUser;
+            private readonly UserProfileData profile;
+            private readonly bool thirdParty;
+            private readonly bool showSections;
+
+            public SectionBatch(APIUser loadedUser, UserProfileData profile, bool thirdParty, bool showSections)
+            {
+                this.loadedUser = loadedUser;
+                this.profile = profile;
+                this.thirdParty = thirdParty;
+                this.showSections = showSections;
             }
 
-            loadingLayer.Hide();
+            [BackgroundDependencyLoader]
+            private void load()
+            {
+                if (!showSections)
+                    return;
+
+                Children = CreateSections(loadedUser, thirdParty);
+                foreach (var section in this)
+                    section.User.Value = profile;
+            }
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (statisticsProvider != null)
+                statisticsProvider.StatisticsUpdated -= onStatisticsUpdated;
+
+            userReq?.Cancel();
+            sectionLoadCancellation?.Cancel();
+            base.Dispose(isDisposing);
+        }
+
+        internal static ProfileSection[] CreateSections(APIUser loadedUser, bool isThirdPartyServer)
+        {
+            if (loadedUser.IsBot || loadedUser.ProfileOrder == null)
+                return Array.Empty<ProfileSection>();
+
+            var result = new List<ProfileSection>();
+            foreach (string id in loadedUser.ProfileOrder.Distinct())
+            {
+                ProfileSection? section = id switch
+                {
+                    "recent_activity" => new RecentSection(),
+                    "top_ranks" => new RanksSection(),
+                    "medals" when !isThirdPartyServer => new MedalsSection(),
+                    "historical" => new HistoricalSection(isThirdPartyServer && !loadedUser.ProfileOrder.Contains("replay_views")),
+                    "replay_views" when isThirdPartyServer => new ReplayViewsSection(),
+                    "beatmaps" => new BeatmapsSection(),
+                    "kudosu" => new KudosuSection(),
+                    _ => null
+                };
+                if (section != null)
+                    result.Add(section);
+            }
+            return result.ToArray();
         }
 
         private void recreateBaseContent()
@@ -318,6 +423,7 @@ namespace osu.Game.Overlays
             ColourProvider.ChangeColourScheme(hue);
 
             RecreateHeader();
+            headerReady = false;
             UpdateColours();
             return true;
         }

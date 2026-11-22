@@ -32,6 +32,11 @@ namespace osu.Game.Rulesets.Mods
             };
         }
 
+        /// <summary>
+        /// Filters mods for visual indicators only. Keep the original collection for gameplay and score data.
+        /// </summary>
+        public static IEnumerable<Mod> AsVisible(this IEnumerable<Mod> mods) => mods.Where(m => m.Acronym != "MRX");
+
         public static IEnumerable<Mod> AsOrdered(this IEnumerable<Mod> mods) => mods
                                                                                 .OrderBy(m => m.Type)
                                                                                 .ThenBy(m => m.Acronym);

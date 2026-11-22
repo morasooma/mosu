@@ -8,25 +8,25 @@ namespace osu.Game.Graphics.UserInterface
 {
     public enum HoverSampleSet
     {
-        [Description("default")]
+        [Description("default"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3592))]
         Default,
 
-        [Description("button")]
+        [Description("button"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3593))]
         Button,
 
-        [Description("button-sidebar")]
+        [Description("button-sidebar"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3594))]
         ButtonSidebar,
 
-        [Description("tabselect")]
+        [Description("tabselect"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3595))]
         TabSelect,
 
-        [Description("dialog-cancel")]
+        [Description("dialog-cancel"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3596))]
         DialogCancel,
 
-        [Description("dialog-ok")]
+        [Description("dialog-ok"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3597))]
         DialogOk,
 
-        [Description("menu-open")]
+        [Description("menu-open"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3598))]
         MenuOpen,
     }
 

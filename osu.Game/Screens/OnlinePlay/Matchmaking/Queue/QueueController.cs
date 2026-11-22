@@ -85,20 +85,14 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             lastRandomMods = randomMods;
             QueueTimer.Restart();
 
-            joinQueue(pool, randomMods, client.Room).FireAndForget();
+            joinQueue(pool, randomMods).FireAndForget();
         }
 
-        private async Task joinQueue(MatchmakingPool pool, bool randomMods, MultiplayerRoom? staleRoom)
+        private async Task joinQueue(MatchmakingPool pool, bool randomMods)
         {
-            // A previous ranked match may still be joined after its screen has gone away (for
-            // example after an interrupted transition). The matchmaking server correctly rejects
-            // queue admission in that state, so leave the stale room before joining the queue.
-            if (staleRoom != null)
-            {
-                Logger.Log($"{nameof(QueueController)}: Leaving stale room {staleRoom.RoomID} before joining matchmaking.", LoggingTarget.Runtime, LogLevel.Important);
-                await client.LeaveRoom().ConfigureAwait(false);
-            }
-
+            // LeaveRoom clears the local snapshot immediately, before the server acknowledges
+            // the leave. Always await the room-operation chain, even when Room is already null.
+            await client.LeaveRoom().ConfigureAwait(false);
             await client.MatchmakingJoinQueue(pool.Id, randomMods).ConfigureAwait(false);
         }
 
@@ -388,7 +382,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         {
             public DuelNotification(QueueController controller, APIUser user, MatchmakingDuelIssuedParams duel)
             {
-                Text = $"{user.Username} challenged you to a duel ({duel.Pool.DisplayName}). Click to accept.";
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4838(user.Username, duel.Pool.DisplayName);
 
                 Activated = () =>
                 {

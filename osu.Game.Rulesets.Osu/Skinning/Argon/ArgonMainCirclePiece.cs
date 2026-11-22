@@ -90,7 +90,7 @@ namespace osu.Game.Rulesets.Osu.Skinning.Argon
                 {
                     liteBody = new Sprite { Size = circle_size, Anchor = Anchor.Centre, Origin = Anchor.Centre },
                     liteRing = new Sprite { Size = circle_size, Anchor = Anchor.Centre, Origin = Anchor.Centre },
-                    number = new OsuSpriteText
+                    number = new ArgonComboNumber
                     {
                         Font = OsuFont.Default.With(size: 52, weight: FontWeight.Bold),
                         Anchor = Anchor.Centre,
@@ -111,7 +111,7 @@ namespace osu.Game.Rulesets.Osu.Skinning.Argon
                 innerGradient = createFill(new Vector2(INNER_GRADIENT_SIZE)), // renders the inner bright gradient
                 innerFill = createFill(new Vector2(INNER_FILL_SIZE)), // renders the inner dark fill
                 kiaiContainer = createKiaiContainer(),
-                number = new OsuSpriteText
+                number = new ArgonComboNumber
                 {
                     Font = OsuFont.Default.With(size: 52, weight: FontWeight.Bold),
                     Anchor = Anchor.Centre,

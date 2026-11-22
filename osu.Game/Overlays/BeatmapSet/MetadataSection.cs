@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Threading;
 using osu.Framework.Extensions;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Bindables;
@@ -25,7 +26,7 @@ namespace osu.Game.Overlays.BeatmapSet
             {
                 if (string.IsNullOrEmpty(value))
                 {
-                    this.FadeOut(TRANSITION_DURATION);
+                    HideMetadata();
                     return;
                 }
 
@@ -43,6 +44,7 @@ namespace osu.Game.Overlays.BeatmapSet
     {
         private readonly FillFlowContainer textContainer;
         private TextFlowContainer? textFlow;
+        private CancellationTokenSource? metadataCancellation;
         private IBindable<Colour4> themeColour = null!;
 
         protected readonly Action<T>? SearchAction;
@@ -102,7 +104,7 @@ namespace osu.Game.Overlays.BeatmapSet
             {
                 if (value == null)
                 {
-                    this.FadeOut(TRANSITION_DURATION);
+                    HideMetadata();
                     return;
                 }
 
@@ -112,24 +114,69 @@ namespace osu.Game.Overlays.BeatmapSet
             }
         }
 
+        protected void HideMetadata()
+        {
+            metadataCancellation?.Cancel();
+            metadataCancellation?.Dispose();
+            metadataCancellation = null;
+            if (textFlow != null)
+            {
+                textContainer.Remove(textFlow, true);
+                textFlow = null;
+            }
+            this.FadeOut(TRANSITION_DURATION);
+        }
+
         private void setTextFlowAsync(T metadata)
         {
-            LoadComponentAsync(new LinkFlowContainer(s => s.Font = s.Font.With(size: 14))
+            metadataCancellation?.Cancel();
+            metadataCancellation?.Dispose();
+            metadataCancellation = new CancellationTokenSource();
+            var token = metadataCancellation.Token;
+
+            // Populate text parts in the flow's dependency loader, before its
+            // LoadAsyncComplete creates/loads the word and link drawables.
+            LoadComponentAsync(new PreparedMetadataFlow(flow => AddMetadata(metadata, flow))
             {
                 RelativeSizeAxes = Axes.X,
                 AutoSizeAxes = Axes.Y,
                 Colour = (OverlayColourProvider.IsLightTheme && colourProvider != null ? (Color4)colourProvider.Content1 : Color4.White).Opacity(0.75f),
             }, loaded =>
             {
-                textFlow?.Expire();
-
-                AddMetadata(metadata, loaded);
-
+                if (token.IsCancellationRequested)
+                    return;
+                if (textFlow != null)
+                    textContainer.Remove(textFlow, true);
                 textContainer.Add(textFlow = loaded);
 
                 // fade in if we haven't yet.
                 textContainer.FadeIn(TRANSITION_DURATION);
-            });
+            }, token);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            metadataCancellation?.Cancel();
+            metadataCancellation?.Dispose();
+            base.Dispose(isDisposing);
+        }
+
+        private partial class PreparedMetadataFlow : LinkFlowContainer
+        {
+            private readonly Action<LinkFlowContainer> populate;
+
+            public PreparedMetadataFlow(Action<LinkFlowContainer> populate)
+                : base(s => s.Font = s.Font.With(size: 14))
+            {
+                this.populate = populate;
+            }
+
+            [BackgroundDependencyLoader]
+            private void load(CancellationToken? cancellation)
+            {
+                cancellation?.ThrowIfCancellationRequested();
+                populate(this);
+            }
         }
 
         protected abstract void AddMetadata(T metadata, LinkFlowContainer loaded);

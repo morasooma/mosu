@@ -47,7 +47,7 @@ namespace osu.Game.Screens.Play
             {
                 new OsuSpriteText
                 {
-                    Text = "Tag Co-op replay",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5080,
                     Font = OsuFont.Default.With(size: 16, weight: FontWeight.Bold),
                 }
             };

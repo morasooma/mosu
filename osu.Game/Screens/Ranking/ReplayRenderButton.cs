@@ -31,7 +31,7 @@ namespace osu.Game.Screens.Ranking
             this.scoreInfo = scoreInfo;
 
             Size = new Vector2(75, 30);
-            TooltipText = "render replay to video";
+            TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5102;
         }
 
         [BackgroundDependencyLoader]

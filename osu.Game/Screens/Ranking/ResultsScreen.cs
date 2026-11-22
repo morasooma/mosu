@@ -19,6 +19,7 @@ using osu.Framework.Input.Bindings;
 using osu.Framework.Input.Events;
 using osu.Framework.Screens;
 using osu.Game.Audio;
+using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
@@ -26,6 +27,7 @@ using osu.Game.Input.Bindings;
 using osu.Game.Localisation;
 using osu.Game.Online.Placeholders;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Overlays.Volume;
 using osu.Game.Scoring;
 using osu.Game.Screens.Play;
@@ -63,9 +65,17 @@ namespace osu.Game.Screens.Ranking
 
         protected StatisticsPanel StatisticsPanel { get; private set; } = null!;
 
+        private LegacyResultsPanel? legacyResultsPanel;
+        private Bindable<ForkSongSelectStyle> resultsStyle = null!;
+        private bool usesLegacyResults => this is SoloResultsScreen && resultsStyle.Value.UsesSkinnedLegacyCarousel();
+
         private Drawable bottomPanel = null!;
         private Box bottomPanelBackground = null!;
+        private Box bottomPanelAccent = null!;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<Colour4>? accentColour;
+        private IBindable<ThemeMode>? themeModeBindable;
+        private IBindable<CustomThemeDefinition>? customThemeBindable;
         private Container<ScorePanel> detachedPanelContainer = null!;
 
         private Task lastFetchTask = Task.CompletedTask;
@@ -89,7 +99,7 @@ namespace osu.Game.Screens.Ranking
         private Sample? popInSample;
 
         [Cached]
-        private OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Aquamarine);
+        private OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Aquamarine, osu.Game.Overlays.CustomTheme.ThemeSurfaceContext.Results);
 
         protected ResultsScreen(ScoreInfo? score)
         {
@@ -99,8 +109,9 @@ namespace osu.Game.Screens.Ranking
         }
 
         [BackgroundDependencyLoader]
-        private void load(AudioManager audio)
+        private void load(AudioManager audio, OsuConfigManager config)
         {
+            resultsStyle = config.GetBindable<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle);
             FillFlowContainer buttons;
 
             popInSample = audio.Samples.Get(@"UI/overlay-pop-in");
@@ -119,12 +130,13 @@ namespace osu.Game.Screens.Ranking
                             {
                                 RelativeSizeAxes = Axes.Both,
                                 ScrollbarVisible = false,
+                                UseLegacyScrolling = () => usesLegacyResults,
                                 Child = new Container
                                 {
                                     RelativeSizeAxes = Axes.Both,
                                     Children = new Drawable[]
                                     {
-                                        new GlobalScrollAdjustsVolume(),
+                                        new ResultsScrollAdjustsVolume { UseLegacyScrolling = () => usesLegacyResults },
                                         StatisticsPanel = new StatisticsPanel
                                         {
                                             RelativeSizeAxes = Axes.Both,
@@ -160,6 +172,14 @@ namespace osu.Game.Screens.Ranking
                                     {
                                         RelativeSizeAxes = Axes.Both,
                                     },
+                                    bottomPanelAccent = new Box
+                                    {
+                                        RelativeSizeAxes = Axes.X,
+                                        Height = 2,
+                                        Anchor = Anchor.TopLeft,
+                                        Origin = Anchor.TopLeft,
+                                        Alpha = 0,
+                                    },
                                     buttons = new FillFlowContainer
                                     {
                                         Anchor = Anchor.Centre,
@@ -180,12 +200,38 @@ namespace osu.Game.Screens.Ranking
                 }
             };
 
-            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-            themeColour.BindValueChanged(_ => bottomPanelBackground.Colour = OverlayColourProvider.IsDarkTheme
-                ? Color4Extensions.FromHex("#0d0d0d")
-                : OverlayColourProvider.IsLightTheme
-                    ? Color4Extensions.FromHex("#e8e8e8")
-                    : Color4Extensions.FromHex("#333"), true);
+            if (this is SoloResultsScreen)
+            {
+                VerticalScrollContent.Add(legacyResultsPanel = new LegacyResultsPanel
+                {
+                    RelativeSizeAxes = Axes.X,
+                    Score = { BindTarget = SelectedScore },
+                });
+                resultsStyle.BindValueChanged(_ =>
+                {
+                    legacyResultsPanel.Alpha = usesLegacyResults ? 1 : 0;
+                    ScorePanelList.Alpha = usesLegacyResults ? 0 : 1;
+                    if (usesLegacyResults)
+                        StatisticsPanel.Hide();
+                    Schedule(() =>
+                    {
+                        if (this.IsCurrentScreen())
+                            ApplyToBackground(b => b.BlurAmount.Value = usesLegacyResults ? 0 : BACKGROUND_BLUR);
+                    });
+                }, true);
+            }
+
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Background5);
+            themeColour.BindValueChanged(_ => updateBottomPanelColour());
+
+            accentColour = colourProvider.GetColourBindable(OverlayColour.Highlight1);
+            accentColour.BindValueChanged(_ => updateBottomPanelColour());
+
+            themeModeBindable = OverlayColourProvider.CurrentTheme.GetBoundCopy();
+            themeModeBindable.BindValueChanged(_ => updateBottomPanelColour());
+
+            customThemeBindable = OverlayColourProvider.CustomTheme.GetBoundCopy();
+            customThemeBindable.BindValueChanged(_ => updateBottomPanelColour(), true);
 
             if (Score != null)
             {
@@ -271,6 +317,9 @@ namespace osu.Game.Screens.Ranking
         protected override void Update()
         {
             base.Update();
+
+            if (usesLegacyResults)
+                return;
 
             if (ScorePanelList.IsScrolledToStart)
                 fetchScores(-1);
@@ -416,13 +465,33 @@ namespace osu.Game.Screens.Ranking
         {
         }
 
+        private void updateBottomPanelColour()
+        {
+            if (OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom)
+            {
+                bottomPanelBackground.Colour = colourProvider.Background5;
+                bottomPanelAccent.Colour = colourProvider.Highlight1;
+                bottomPanelAccent.Alpha = 1;
+            }
+            else
+            {
+                bottomPanelAccent.Alpha = 0;
+                if (OverlayColourProvider.IsDarkTheme)
+                    bottomPanelBackground.Colour = Color4Extensions.FromHex("#0d0d0d");
+                else if (OverlayColourProvider.IsLightTheme)
+                    bottomPanelBackground.Colour = Color4Extensions.FromHex("#e8e8e8");
+                else
+                    bottomPanelBackground.Colour = Color4Extensions.FromHex("#333");
+            }
+        }
+
         public override void OnEntering(ScreenTransitionEvent e)
         {
             base.OnEntering(e);
 
             ApplyToBackground(b =>
             {
-                b.BlurAmount.Value = BACKGROUND_BLUR;
+                b.BlurAmount.Value = usesLegacyResults ? 0 : BACKGROUND_BLUR;
                 b.FadeColour(OsuColour.Gray(0.5f), 250);
             });
 
@@ -533,7 +602,7 @@ namespace osu.Game.Screens.Ranking
                     break;
 
                 case GlobalAction.Select:
-                    if (SelectedScore.Value != null)
+                    if (!usesLegacyResults && SelectedScore.Value != null)
                         StatisticsPanel.ToggleVisibility();
                     return true;
             }
@@ -547,21 +616,36 @@ namespace osu.Game.Screens.Ranking
 
         protected override bool OnScroll(ScrollEvent e)
         {
-            // Match stable behaviour of only alt-scroll adjusting volume.
-            // This is the same behaviour as the song selection screen.
+            // Plain wheel scrolls the results; only Alt+wheel may reach volume.
             if (!e.CurrentState.Keyboard.AltPressed)
                 return true;
 
             return base.OnScroll(e);
         }
 
+        private partial class ResultsScrollAdjustsVolume : GlobalScrollAdjustsVolume
+        {
+            public Func<bool> UseLegacyScrolling { get; init; } = () => false;
+
+            protected override bool OnScroll(ScrollEvent e)
+                => (!UseLegacyScrolling() || e.AltPressed) && base.OnScroll(e);
+        }
+
         protected partial class VerticalScrollContainer : OsuScrollContainer
         {
+            public Func<bool> UseLegacyScrolling { get; init; } = () => false;
+
             protected override Container<Drawable> Content => content;
 
             private readonly Container content;
 
-            protected override bool OnScroll(ScrollEvent e) => !e.ControlPressed && !e.AltPressed && !e.ShiftPressed && !e.SuperPressed;
+            protected override bool OnScroll(ScrollEvent e)
+            {
+                if (e.ControlPressed || e.AltPressed || e.ShiftPressed || e.SuperPressed)
+                    return false;
+
+                return !UseLegacyScrolling() || base.OnScroll(e);
+            }
 
             public VerticalScrollContainer()
             {
@@ -573,7 +657,19 @@ namespace osu.Game.Screens.Ranking
             protected override void Update()
             {
                 base.Update();
-                content.Height = Math.Max(screen_height, DrawHeight);
+                // Modern panels use a fixed design-height canvas. LegacyResultsPanel already
+                // scales to the viewport: that minimum would add empty scroll space below it.
+                bool legacy = UseLegacyScrolling();
+                float height = legacy ? DrawHeight : Math.Max(screen_height, DrawHeight);
+                if (legacy)
+                {
+                    foreach (var panel in content.Children.OfType<LegacyResultsPanel>())
+                    {
+                        panel.Height = DrawHeight;
+                        height = Math.Max(height, panel.RequiredScrollHeight);
+                    }
+                }
+                content.Height = height;
             }
         }
     }

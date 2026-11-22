@@ -15,7 +15,7 @@ namespace osu.Game.Rulesets.Catch.Mods
 {
     public class CatchModMirror : ModMirror, IApplicableToBeatmap
     {
-        public override LocalisableString Description => "Fruits are flipped horizontally.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3622;
 
         /// <remarks>
         /// <see cref="IApplicableToBeatmap"/> is used instead of <see cref="IApplicableToHitObject"/>,

@@ -9,7 +9,7 @@ namespace osu.Game.Rulesets.Osu.Mods
 {
     public class OsuModEasy : ModEasyWithExtraLives
     {
-        public override LocalisableString Description => @"Larger circles, more forgiving HP drain, less accuracy required, and extra lives!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3689;
 
         public override void ApplyToDifficulty(BeatmapDifficulty difficulty)
         {

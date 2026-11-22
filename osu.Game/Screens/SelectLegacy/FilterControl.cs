@@ -82,6 +82,8 @@ namespace osu.Game.Screens.SelectLegacy
             criteria.RulesetCriteria = ruleset.Value.CreateInstance().CreateRulesetFilterCriteria();
 
             FilterQueryParser.ApplyQueries(criteria, query);
+            if (russianLayoutSearch.Value)
+                criteria.EnableRussianLayoutSearch();
             return criteria;
         }
 
@@ -166,7 +168,7 @@ namespace osu.Game.Screens.SelectLegacy
                                         Empty(),
                                         new OsuTabControlCheckbox
                                         {
-                                            Text = "Show converted",
+                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5275,
                                             Current = config.GetBindable<bool>(OsuSetting.ShowConvertedBeatmaps),
                                             Anchor = Anchor.BottomRight,
                                             Origin = Anchor.BottomRight,
@@ -208,6 +210,9 @@ namespace osu.Game.Screens.SelectLegacy
                     }
                 }
             };
+
+            config.BindWith(OsuSetting.ForkRussianLayoutSearch, russianLayoutSearch);
+            russianLayoutSearch.BindValueChanged(_ => updateCriteria());
 
             config.BindWith(OsuSetting.ShowConvertedBeatmaps, showConverted);
             showConverted.ValueChanged += _ => updateCriteria();
@@ -263,6 +268,7 @@ namespace osu.Game.Screens.SelectLegacy
         private IBindable<IReadOnlyList<Mod>> mods { get; set; } = null!;
 
         private readonly Bindable<bool> showConverted = new Bindable<bool>();
+        private readonly Bindable<bool> russianLayoutSearch = new Bindable<bool>();
         private readonly Bindable<double> minimumStars = new BindableDouble();
         private readonly Bindable<double> maximumStars = new BindableDouble();
 

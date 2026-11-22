@@ -46,7 +46,7 @@ namespace osu.Game.Overlays.Profile.Sections.Ranks
                             {
                                 Font = OsuFont.GetFont(size: 14, weight: FontWeight.Bold, italics: true),
                                 Text = Score.PP.HasValue
-                                    ? LocalisableString.Interpolate($"{Score.PP * weight:N0}pp")
+                                    ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4004(Score.PP * weight)
                                     : string.Empty,
                             },
                         }

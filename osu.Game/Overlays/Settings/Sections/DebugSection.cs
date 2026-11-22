@@ -12,7 +12,7 @@ namespace osu.Game.Overlays.Settings.Sections
 {
     public partial class DebugSection : SettingsSection
     {
-        public override LocalisableString Header => @"Debug";
+        public override LocalisableString Header => global::osu.Game.Localisation.ClientTranslationStrings.J4019;
 
         public override Drawable CreateIcon() => new SpriteIcon
         {

@@ -3,6 +3,7 @@
 
 using osu.Framework.Allocation;
 using osu.Game.Input.Bindings;
+using osu.Game.Graphics;
 
 namespace osu.Game.Overlays.Toolbar
 {
@@ -12,6 +13,7 @@ namespace osu.Game.Overlays.Toolbar
         {
             ButtonContent.Width *= 1.4f;
             Hotkey = GlobalAction.ToggleSettings;
+            SetIcon(OsuIcon.Settings);
         }
 
         [BackgroundDependencyLoader(true)]

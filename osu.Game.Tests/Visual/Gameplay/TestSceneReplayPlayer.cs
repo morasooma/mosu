@@ -35,6 +35,35 @@ namespace osu.Game.Tests.Visual.Gameplay
         }
 
         [Test]
+        public void TestReplayAnalysisSettingsAreLoaded()
+        {
+            loadPlayerWithBeatmap();
+            AddUntilStep("analysis settings attached and loaded", () => Player.ReplayOverlay.Settings
+                .ChildrenOfType<osu.Game.Rulesets.Osu.UI.ReplayAnalysisSettings>().Any(settings => settings.IsLoaded));
+        }
+
+        [Test]
+        public void TestAdditionalSettingsLoadOffUpdateThread()
+        {
+            AsyncSettingsProbe settings = null!;
+            loadPlayerWithBeatmap();
+            AddUntilStep("player loaded", () => Player.IsLoaded);
+            AddStep("add settings", () => Player.AddSettings(settings = new AsyncSettingsProbe()));
+            AddUntilStep("settings loaded and attached", () => settings.IsLoaded && settings.Parent != null);
+            AddAssert("dependency loading ran off Update", () => !settings.LoadedOnUpdateThread);
+        }
+
+        private partial class AsyncSettingsProbe : osu.Game.Screens.Play.PlayerSettings.PlayerSettingsGroup
+        {
+            public bool LoadedOnUpdateThread { get; private set; }
+
+            public AsyncSettingsProbe() : base("Async probe") { }
+
+            [osu.Framework.Allocation.BackgroundDependencyLoader]
+            private void load() => LoadedOnUpdateThread = osu.Framework.Development.ThreadSafety.IsUpdateThread;
+        }
+
+        [Test]
         public void TestPauseViaSpace()
         {
             loadPlayerWithBeatmap();

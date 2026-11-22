@@ -21,17 +21,17 @@ namespace osu.Game.Rulesets.Taiko.Mods
     {
         public override string Name => "Simplified Rhythm";
         public override string Acronym => "SR";
-        public override LocalisableString Description => "Simplify tricky rhythms!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3753;
         public override IconUsage? Icon => OsuIcon.ModSimplifiedRhythm;
         public override ModType Type => ModType.DifficultyReduction;
 
-        [SettingSource("1/3 to 1/2 conversion", "Converts 1/3 patterns to 1/2 rhythm.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3754), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3755))]
         public Bindable<bool> OneThirdConversion { get; } = new BindableBool();
 
-        [SettingSource("1/6 to 1/4 conversion", "Converts 1/6 patterns to 1/4 rhythm.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3756), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3757))]
         public Bindable<bool> OneSixthConversion { get; } = new BindableBool(true);
 
-        [SettingSource("1/8 to 1/4 conversion", "Converts 1/8 patterns to 1/4 rhythm.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3758), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3759))]
         public Bindable<bool> OneEighthConversion { get; } = new BindableBool();
 
         public void ApplyToBeatmap(IBeatmap beatmap)

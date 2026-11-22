@@ -20,6 +20,8 @@ namespace osu.Game.Online.Rooms
         public readonly long RoomId;
         public readonly long PlaylistItemId;
 
+        public bool? Relax { get; init; }
+
         [CanBeNull]
         public readonly Cursor Cursor;
 
@@ -42,6 +44,9 @@ namespace osu.Game.Online.Rooms
         protected override WebRequest CreateWebRequest()
         {
             var req = base.CreateWebRequest();
+
+            if (Relax is { } relax)
+                req.AddParameter("relax", relax ? "true" : "false");
 
             if (Cursor != null)
             {

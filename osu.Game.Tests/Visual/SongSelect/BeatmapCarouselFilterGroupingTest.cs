@@ -14,6 +14,7 @@ using osu.Game.Collections;
 using osu.Game.Graphics.Carousel;
 using osu.Game.Localisation;
 using osu.Game.Resources.Localisation.Web;
+using osu.Game.Rulesets;
 using osu.Game.Scoring;
 using osu.Game.Screens.Select;
 using osu.Game.Screens.Select.Filter;
@@ -24,6 +25,80 @@ namespace osu.Game.Tests.Visual.SongSelect
     [TestFixture]
     public partial class BeatmapCarouselFilterGroupingTest
     {
+        [Test]
+        public async Task TestDifficultyPanelHeights(
+            [Values(0, 3)] int rulesetId,
+            [Values(false, true)] bool standalone,
+            [Values(false, true)] bool additionalInfo,
+            [Values(false, true)] bool skinnedLegacyCarousel)
+        {
+            var ruleset = new RulesetInfo { OnlineID = rulesetId };
+            var set = TestResources.CreateTestBeatmapSetInfo();
+            foreach (var beatmap in set.Beatmaps)
+                beatmap.Ruleset = ruleset;
+
+            const float stableScale = 1.25f;
+            var groupingFilter = new BeatmapCarouselFilterGrouping
+            {
+                GetCriteria = () => new FilterCriteria
+                {
+                    Ruleset = ruleset,
+                    Group = GroupMode.None,
+                    Sort = standalone ? SortMode.Difficulty : SortMode.Title,
+                },
+                GetCollections = () => new List<BeatmapCollection>(),
+                GetLocalUserTopRanks = _ => new Dictionary<Guid, ScoreRank>(),
+                GetFavouriteBeatmapSets = () => new HashSet<int>(),
+                ShowAdditionalInfo = () => additionalInfo,
+                UseSkinnedLegacyCarousel = () => skinnedLegacyCarousel,
+                GetStableLayoutScale = () => stableScale,
+            };
+
+            var results = await groupingFilter.Run(set.Beatmaps.Select(b => new CarouselItem(b)).ToList(), CancellationToken.None);
+            var difficulties = results.Where(item => item.Model is GroupedBeatmap).ToArray();
+            float expectedHeight = skinnedLegacyCarousel
+                ? PanelBeatmapStandalone.CLASSIC_HEIGHT * stableScale
+                : standalone
+                    ? additionalInfo ? PanelBeatmapStandalone.MANIA_HEIGHT : PanelBeatmapStandalone.HEIGHT
+                    : additionalInfo ? PanelBeatmap.MANIA_HEIGHT : PanelBeatmap.HEIGHT;
+
+            Assert.That(groupingFilter.BeatmapSetsGroupedTogether, Is.EqualTo(!standalone));
+            Assert.That(difficulties, Has.Length.EqualTo(set.Beatmaps.Count));
+            Assert.That(difficulties.Select(item => item.DrawHeight), Is.All.EqualTo(expectedHeight));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task TestSingleMatchingDifficultyDoesNotCreateStableHeader(bool stable)
+        {
+            // Both collections below require two difficulties; the default count is random.
+            var set = TestResources.CreateTestBeatmapSetInfo(2);
+            var filter = new BeatmapCarouselFilterGrouping
+            {
+                GetCriteria = () => new FilterCriteria { Group = GroupMode.Collections, Sort = SortMode.Title },
+                GetCollections = () => new List<BeatmapCollection>
+                {
+                    new BeatmapCollection { Name = "Single", BeatmapMD5Hashes = { set.Beatmaps[0].MD5Hash } },
+                    new BeatmapCollection { Name = "Pair", BeatmapMD5Hashes = { set.Beatmaps[0].MD5Hash, set.Beatmaps[1].MD5Hash } },
+                },
+                GetLocalUserTopRanks = _ => new Dictionary<Guid, ScoreRank>(),
+                GetFavouriteBeatmapSets = () => new HashSet<int>(),
+                UseSkinnedLegacyCarousel = () => stable,
+            };
+            var result = await filter.Run(set.Beatmaps.Take(2).Select(b => new CarouselItem(b)).ToList(), CancellationToken.None);
+            var single = filter.GroupItems.Single(g => g.Key.Title.ToString() == "Single");
+            var pair = filter.GroupItems.Single(g => g.Key.Title.ToString() == "Pair");
+            Assert.Multiple(() =>
+            {
+                Assert.That(single.Value.Count(i => i.Model is GroupedBeatmapSet), Is.EqualTo(stable ? 0 : 1));
+                Assert.That(pair.Value.Count(i => i.Model is GroupedBeatmapSet), Is.EqualTo(1));
+                Assert.That(single.Value.Count(i => i.Model is GroupedBeatmap), Is.EqualTo(1));
+                Assert.That(pair.Value.Count(i => i.Model is GroupedBeatmap), Is.EqualTo(2));
+                Assert.That(result.Single(i => ReferenceEquals(i.Model, pair.Key)).NestedItemCount, Is.EqualTo(stable ? 2 : 1));
+                Assert.That(filter.SetItems.Count, Is.EqualTo(2), "singletons remain available for random and selection");
+            });
+        }
+
         #region No grouping
 
         [Test]

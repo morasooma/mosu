@@ -9,6 +9,7 @@ using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Localisation;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Users;
 using osuTK;
 
 namespace osu.Game.Overlays.Profile.Sections.Medals
@@ -57,7 +58,7 @@ namespace osu.Game.Overlays.Profile.Sections.Medals
                     return $"{medal.Name}\n{medal.Description}\n{date}";
                 }
 
-                return $"{medal.Name}\n{medal.Description}\n(Locked)";
+                return global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3998(medal.Name, medal.Description);
             }
         }
 
@@ -75,7 +76,10 @@ namespace osu.Game.Overlays.Profile.Sections.Medals
             [BackgroundDependencyLoader]
             private void load()
             {
-                Texture = textures.Get(!string.IsNullOrEmpty(medal.IconUrl2x) ? medal.IconUrl2x : medal.IconUrl);
+                string? resource = MorasoomaMedalAssets.Resolve(medal.Slug,
+                    !string.IsNullOrEmpty(medal.IconUrl2x) ? medal.IconUrl2x : medal.IconUrl);
+                if (resource != null)
+                    Texture = textures.Get(resource);
 
                 if (!medal.Achieved)
                 {

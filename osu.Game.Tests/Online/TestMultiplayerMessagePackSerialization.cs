@@ -26,6 +26,38 @@ namespace osu.Game.Tests.Online
     [TestFixture]
     public class TestMultiplayerMessagePackSerialization
     {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestSerialiseModBanWithSignalR(bool confirm)
+        {
+            var request = new RankedPlayModBanRequest { Acronym = "HD", Confirm = confirm };
+            byte[] serialized = MessagePackSerializer.Serialize(typeof(RankedPlayModBanRequest), request, SignalRUnionWorkaroundResolver.OPTIONS);
+            var deserialized = (RankedPlayModBanRequest)MessagePackSerializer.Deserialize<MatchUserRequest>(serialized, SignalRUnionWorkaroundResolver.OPTIONS);
+            Assert.That(deserialized.Acronym, Is.EqualTo("HD"));
+            Assert.That(deserialized.Confirm, Is.EqualTo(confirm));
+        }
+
+        [Test]
+        public void TestSerialiseModBanSnapshot()
+        {
+            MatchRoomState state = new RankedPlayRoomState
+            {
+                Stage = RankedPlayStage.ModBan,
+                RandomMods = true,
+                RandomModRulesetId = 0,
+                BannableRandomMods = ["HD", "HR"],
+                RandomModBans = { [1] = "HD", [2] = null },
+                RandomModBanSelections = { [1] = "HD", [2] = "HR" },
+            };
+            var restored = (RankedPlayRoomState)MessagePackSerializer.Deserialize<MatchRoomState>(MessagePackSerializer.Serialize(state));
+            Assert.That(restored.Stage, Is.EqualTo(RankedPlayStage.ModBan));
+            Assert.That(restored.BannableRandomMods, Is.EqualTo(new[] { "HD", "HR" }));
+            Assert.That(restored.RandomModBans[1], Is.EqualTo("HD"));
+            Assert.That(restored.RandomModBans.ContainsKey(2), Is.True);
+            Assert.That(restored.RandomModBans[2], Is.Null);
+            Assert.That(restored.RandomModBanSelections[2], Is.EqualTo("HR"));
+        }
+
         [Test]
         public void TestSerialiseRoom()
         {

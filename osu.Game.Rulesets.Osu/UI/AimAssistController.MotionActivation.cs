@@ -63,7 +63,9 @@ namespace osu.Game.Rulesets.Osu.UI
             if (!pointMode && moving && context.Tangent.LengthSquared > 0)
                 intent = Math.Max(intent, Vector2.Dot(normaliseOrZero(movement), normaliseOrZero(context.Tangent)));
 
-            bool approaching = moving && intent >= Math.Max(0, getConfiguredIntentThreshold());
+            bool approaching = moving && (pointMode
+                ? IsPointDirectionAllowed(intent, (float)getConfiguredIntentThreshold())
+                : intent >= Math.Max(0, getConfiguredIntentThreshold()));
             bool trackingHold = !pointMode && !moving && outputDistance <= radius;
             bool capturedHold = pointMode && motionTargetCaptured && !moving && outputDistance <= radius;
             double untilHit = toRealTimeWindow(context.FocusTime - Time.Current);
@@ -91,10 +93,11 @@ namespace osu.Game.Rulesets.Osu.UI
             if (withinField && approaching)
                 lastIntentPassTime = Time.Current;
 
+            bool recovery = canRecoverNearTarget(context, rawPosition);
             bool settling = !moving && context.AllowPassiveAssist
                             && Time.Current - lastIntentPassTime <= scaleRealTimeWindow(intent_grace_window);
-            bool passed = (withinField || capturedHold || trackingHold)
-                          && (approaching || settling || capturedHold || trackingHold);
+            bool passed = (withinField || capturedHold || trackingHold || recovery)
+                          && (approaching || settling || capturedHold || trackingHold || recovery);
             if (!passed)
                 return new ActivationState(false, intent, 0);
 
@@ -105,6 +108,24 @@ namespace osu.Game.Rulesets.Osu.UI
             float engage = GetPointCorrectionWeight(strengthFactor, proximity, timing, intentWeight);
             return new ActivationState(engage > 0, intent, Math.Clamp(engage, 0, 1));
         }
+
+        private bool canRecoverNearTarget(AimAssistContext context, Vector2 rawPosition)
+        {
+            bool pointLike = context.ModeName is @"point" or @"stream";
+            Vector2 target = pointLike ? getDisplayCentre(context.Drawable) : context.DesiredPoint;
+            float radius = getDrawableTargetRadius(context.Drawable, context.Drawable.HitObject);
+            return CanRecoverNearTarget(getStrengthFactor(), (target - rawPosition).Length, radius,
+                getTargetGravityRadius(context), toRealTimeWindow(Time.Current - lastIntentPassTime),
+                toRealTimeWindow(context.FocusTime - Time.Current), pointLike && (motionTargetCaptured || motionTargetExited));
+        }
+
+        internal static bool CanRecoverNearTarget(float strength, float distance, float radius, float fieldRadius,
+                                                  double intentAge, double timeUntilHit, bool capturedOrExited)
+            => strength >= 0.9f && !capturedOrExited && intentAge >= 0 && intentAge <= 120
+               && timeUntilHit <= 220 && distance <= Math.Min(fieldRadius, radius * 2.5f);
+
+        internal static bool IsPointDirectionAllowed(float directionAlignment, float configuredIntentThreshold)
+            => directionAlignment >= Math.Clamp(configuredIntentThreshold, -1, 1);
 
         internal static bool ShouldActivatePointTrajectory(float predictedMissDistance, float assistanceRadius, float directionAlignment,
                                                            float configuredIntentThreshold, float confidence)

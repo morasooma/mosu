@@ -18,7 +18,7 @@ namespace osu.Game.Scoring.Render
 {
     /// <summary>
     /// Wraps an FFmpeg child process and exposes its stdin as a <see cref="Stream"/> so
-    /// callers can pipe raw RGBA frames into it.
+    /// callers can pipe raw RGBA, BGRA or NV12 frames into it.
     /// </summary>
     public class FFmpegEncoder : IDisposable
     {
@@ -40,15 +40,12 @@ namespace osu.Game.Scoring.Render
         /// </summary>
         private static bool tryValidateEncoder(string encoder)
         {
-            if (string.IsNullOrEmpty(encoder) || !hardware_encoders.Contains(encoder))
-                return true;
-
             try
             {
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ExecutablePath,
-                    Arguments = $"-hide_banner -f lavfi -i nullsrc=s=2x2:d=0.1 -c:v {encoder} -f null -",
+                    Arguments = BuildEncoderValidationArguments(encoder),
                     UseShellExecute = false,
                     RedirectStandardError = true,
                     RedirectStandardOutput = true,
@@ -59,13 +56,14 @@ namespace osu.Game.Scoring.Render
                 if (process == null)
                     return false;
 
-                string stderr = process.StandardError.ReadToEnd();
+                Task<string> stderrTask = process.StandardError.ReadToEndAsync();
                 if (!process.WaitForExit(10_000))
                 {
-                    try { process.Kill(); } catch { }
+                    try { process.Kill(entireProcessTree: true); } catch { }
                     return false;
                 }
 
+                string stderr = stderrTask.GetAwaiter().GetResult();
                 if (process.ExitCode != 0)
                 {
                     Framework.Logging.Logger.Log(
@@ -86,6 +84,16 @@ namespace osu.Game.Scoring.Render
                     Framework.Logging.LogLevel.Important);
                 return false;
             }
+        }
+
+        internal static string BuildEncoderValidationArguments(string encoder)
+        {
+            // A 2x2 frame is below the supported dimensions of several Windows hardware encoders.
+            // VAAPI additionally requires hardware surfaces, just like the real export pipeline.
+            bool isVaapi = encoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
+            string deviceArgs = isVaapi ? "-vaapi_device /dev/dri/renderD128 " : string.Empty;
+            string formatArgs = isVaapi ? "-vf format=nv12,hwupload" : "-pix_fmt yuv420p";
+            return $"-hide_banner -nostdin {deviceArgs}-f lavfi -i color=s=256x256:r=30 -frames:v 1 {formatArgs} -c:v {encoder} -f null -";
         }
 
         /// <summary>
@@ -113,11 +121,26 @@ namespace osu.Game.Scoring.Render
         public string? LastErrorLine { get; private set; }
 
         public Stream InputStream => ffmpegProcess.StandardInput.BaseStream;
+        internal string SelectedEncoder { get; }
+
+        internal static string BuildRawVideoInputArguments(int width, int height, int fps, bool inputIsBgra, bool inputIsNv12)
+        {
+            if (inputIsNv12 && inputIsBgra)
+                throw new ArgumentException("NV12 and BGRA input formats are mutually exclusive.");
+            if (inputIsNv12 && ((width & 1) != 0 || (height & 1) != 0))
+                throw new ArgumentException("NV12 input requires even dimensions.");
+            string format = inputIsNv12 ? "nv12" : inputIsBgra ? "bgra" : "rgba";
+            string colourArgs = inputIsNv12 ? "-colorspace bt709 -color_range tv -color_primaries bt709 -color_trc bt709" : string.Empty;
+            return $"-probesize 32 -analyzeduration 0 -f rawvideo -pix_fmt {format} {colourArgs} -s {width}x{height} -r {fps} -i pipe:0";
+        }
 
         public FFmpegEncoder(int inputWidth, int inputHeight, int outputWidth, int outputHeight, int fps, int bitrateMbps, string encoder, ReplayRenderQualityPreset qualityPreset, string outputPath, bool flipVertical = false,
                              string? audioPath = null, double audioOffsetMs = 0, double audioDelayMs = 0, double audioFrequencyRate = 1, double audioTempoRate = 1,
-                             double? durationSeconds = null, double? outputDurationSeconds = null, int? videoFrameCount = null, double audioVolume = 1)
+                             double? durationSeconds = null, double? outputDurationSeconds = null, int? videoFrameCount = null, double audioVolume = 1, bool inputIsBgra = false, bool inputIsNv12 = false)
         {
+            if (encoder == RenderEncodingSelector.CompactEncoder && !tryValidateEncoder(encoder))
+                throw new InvalidOperationException("HEVC export requires an FFmpeg build with libx265 support. Install one or set FFMPEG_PATH to it.");
+
             if (hardware_encoders.Contains(encoder) && !tryValidateEncoder(encoder))
             {
                 Framework.Logging.Logger.Log(
@@ -127,24 +150,29 @@ namespace osu.Game.Scoring.Render
                 encoder = "libx264";
             }
 
+            SelectedEncoder = encoder;
             bool isVaapi = encoder.Contains("vaapi", StringComparison.OrdinalIgnoreCase);
 
             string hwAccelArgs = isVaapi
                 ? "-vaapi_device /dev/dri/renderD128"
                 : string.Empty;
 
-            string inputArgs = $"-probesize 32 -analyzeduration 0 -f rawvideo -pix_fmt rgba -s {inputWidth}x{inputHeight} -r {fps} -i pipe:0";
+            string inputFormat = inputIsNv12 ? "nv12" : inputIsBgra ? "bgra" : "rgba";
+            string colourArgs = inputIsNv12 ? "-colorspace bt709 -color_range tv -color_primaries bt709 -color_trc bt709" : string.Empty;
+            string inputArgs = BuildRawVideoInputArguments(inputWidth, inputHeight, fps, inputIsBgra, inputIsNv12);
             string audioArgs = buildAudioInputArgs(audioPath);
             int inputSampleRate = getAudioSampleRate(audioPath);
             string audioFilterArgs = buildAudioFilterArgs(audioArgs, audioOffsetMs, audioDelayMs, audioFrequencyRate, audioTempoRate, audioVolume, inputSampleRate, durationSeconds);
             string vfArgs = buildFilterArgs(isVaapi, flipVertical, inputWidth, inputHeight, outputWidth, outputHeight);
-            string encoderTuningArgs = buildEncoderTuningArgs(encoder, qualityPreset, fps);
+            string encoderTuningArgs = BuildEncoderTuningArgs(encoder, qualityPreset);
             string mapArgs = string.IsNullOrWhiteSpace(audioArgs) ? string.Empty : "-map 0:v:0 -map 1:a:0";
             string audioCodecArgs = string.IsNullOrWhiteSpace(audioArgs) ? string.Empty : "-c:a pcm_s16le";
             string outputLimitArgs = buildOutputLimitArgs(outputDurationSeconds, videoFrameCount);
             string pixFmtArg = isVaapi ? string.Empty : "-pix_fmt yuv420p";
             string containerArgs = outputPath.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase) ? string.Empty : "-movflags +faststart+frag_keyframe+empty_moov";
-            string outputArgs = $"-c:v {encoder} {encoderTuningArgs} -bf 0 -g {fps} -b:v {bitrateMbps}M {pixFmtArg} {audioFilterArgs} {audioCodecArgs} {containerArgs} {mapArgs} {outputLimitArgs} -y \"{outputPath}\"";
+            string rateControlArgs = BuildRateControlArgs(encoder, qualityPreset, bitrateMbps);
+            string codecTagArgs = !outputPath.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase) && encoder == RenderEncodingSelector.CompactEncoder ? "-tag:v hvc1" : string.Empty;
+            string outputArgs = $"-c:v {encoder} {encoderTuningArgs} {rateControlArgs} -g {fps} {pixFmtArg} {colourArgs} {audioFilterArgs} {audioCodecArgs} {codecTagArgs} {containerArgs} {mapArgs} {outputLimitArgs} -y \"{outputPath}\"";
 
             string arguments = string.Join(" ", new[]
             {
@@ -182,7 +210,7 @@ namespace osu.Game.Scoring.Render
             {
             }
 
-            ffmpegProcess.BeginErrorReadLine();
+            Framework.Logging.Logger.Log($"[FFmpeg] Encoding with {encoder}, input={inputFormat}, preset={qualityPreset}", Framework.Logging.LoggingTarget.Runtime);
             ffmpegProcess.ErrorDataReceived += (_, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
@@ -191,6 +219,26 @@ namespace osu.Game.Scoring.Render
                     Framework.Logging.Logger.Log($"[FFmpeg] {e.Data}", Framework.Logging.LoggingTarget.Runtime, Framework.Logging.LogLevel.Verbose);
                 }
             };
+            ffmpegProcess.BeginErrorReadLine();
+        }
+
+        // The compact encoder reorders/buffers frames. A successful capture is not a
+        // successful export until FFmpeg has flushed its queue and closed the container.
+        internal async Task FinishAsync()
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            try
+            {
+                await Task.Run(() => ffmpegProcess.StandardInput.Close()).WaitAsync(timeout.Token).ConfigureAwait(false);
+                await ffmpegProcess.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                throw new TimeoutException("FFmpeg did not finish encoding within 30 seconds of the final frame.");
+            }
+
+            if (ffmpegProcess.ExitCode != 0)
+                throw new InvalidOperationException($"FFmpeg failed to finish encoding (exit {ffmpegProcess.ExitCode}). {LastErrorLine}");
         }
 
         public void Stop()
@@ -331,7 +379,22 @@ namespace osu.Game.Scoring.Render
             return string.Join(" ", args);
         }
 
-        private static string buildEncoderTuningArgs(string encoder, ReplayRenderQualityPreset qualityPreset, int fps)
+        internal static string BuildRateControlArgs(string encoder, ReplayRenderQualityPreset qualityPreset, int bitrateMbps)
+        {
+            if (encoder != RenderEncodingSelector.CompactEncoder)
+                return $"-bf 0 -b:v {bitrateMbps}M";
+
+            // No fixed bitrate or low-latency/B-frame override in the compact offline mode.
+            int crf = qualityPreset switch
+            {
+                ReplayRenderQualityPreset.Fast => 26,
+                ReplayRenderQualityPreset.Quality => 22,
+                _ => 24,
+            };
+            return $"-crf {crf}";
+        }
+
+        internal static string BuildEncoderTuningArgs(string encoder, ReplayRenderQualityPreset qualityPreset)
         {
             return encoder switch
             {
@@ -342,12 +405,20 @@ namespace osu.Game.Scoring.Render
                     ReplayRenderQualityPreset.Quality => $"-preset fast -tune zerolatency -threads 0",
                     _ => $"-preset veryfast -tune zerolatency -threads 0",
                 },
+                RenderEncodingSelector.CompactEncoder => qualityPreset switch
+                {
+                    ReplayRenderQualityPreset.Fast => "-preset veryfast -x265-params pools=4:frame-threads=2",
+                    _ => "-preset fast -x265-params pools=4:frame-threads=2",
+                },
+                // Offline export needs throughput, not immediate packet delivery. Let NVENC
+                // keep its normal surface queue instead of forcing a synchronous -delay 0.
+                // Preserve the selected preset, rate control and visual-quality policy.
                 "h264_nvenc" => qualityPreset switch
                 {
-                    ReplayRenderQualityPreset.Fast => "-preset p1 -tune ll -delay 0 -rc cbr",
-                    ReplayRenderQualityPreset.Balanced => "-preset p4 -tune ll -delay 0 -rc cbr",
-                    ReplayRenderQualityPreset.Quality => "-preset p6 -tune ll -delay 0 -rc cbr",
-                    _ => "-preset p4 -tune ll -delay 0 -rc cbr",
+                    ReplayRenderQualityPreset.Fast => "-preset p1 -tune ll -rc cbr",
+                    ReplayRenderQualityPreset.Balanced => "-preset p4 -tune ll -rc cbr",
+                    ReplayRenderQualityPreset.Quality => "-preset p6 -tune ll -rc cbr",
+                    _ => "-preset p4 -tune ll -rc cbr",
                 },
                 "h264_amf" => qualityPreset switch
                 {
@@ -465,13 +536,13 @@ namespace osu.Game.Scoring.Render
             string url;
             if (isWindows)
             {
-                url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+                url = "https://morasooma.net/client/updates/ffmpeg/ffmpeg-release-essentials.zip";
             }
             else
             {
                 var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
                 string archStr = arch == System.Runtime.InteropServices.Architecture.Arm64 ? "linuxarm64" : "linux64";
-                url = $"https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-{archStr}-gpl.tar.xz";
+                url = $"https://morasooma.net/client/updates/ffmpeg/ffmpeg-master-latest-{archStr}-gpl.tar.xz";
             }
 
             string extension = isWindows ? "zip" : "tar.xz";

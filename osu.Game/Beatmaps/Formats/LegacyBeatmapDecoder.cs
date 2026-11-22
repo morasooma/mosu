@@ -106,6 +106,7 @@ namespace osu.Game.Beatmaps.Formats
 
             foreach (var hitObject in this.beatmap.HitObjects)
             {
+                BackgroundCalculationLimiter.Checkpoint();
                 applyDefaults(hitObject);
                 applySamples(hitObject);
             }

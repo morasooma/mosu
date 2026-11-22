@@ -22,8 +22,12 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
     {
         private readonly List<double> sliderStrains = new List<double>();
 
+        private double localDifficulty;
+        public override double LocalDifficulty => localDifficulty;
+
         private double currentStrain;
         private double currentRhythm = 1;
+        private readonly bool isAutopilot;
         private double maxEndTime;
 
         protected override double HarmonicScale => 20;
@@ -32,6 +36,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         public Speed(Mod[] mods)
             : base(mods)
         {
+            isAutopilot = mods.Any(m => m is OsuModAutopilot);
         }
 
         private double strainDecay(double ms) => DiffUtils.Pow(0.3, ms / 1000);
@@ -48,10 +53,13 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             currentStrain *= decay;
 
+            localDifficulty = 0;
             if (!isOverlapping)
             {
-                currentStrain += calculateAdjustedDifficulty(current) * (1 - decay) * skill_multiplier;
+                double difficulty = calculateAdjustedDifficulty(current);
+                currentStrain += difficulty * (1 - decay) * skill_multiplier;
                 currentRhythm = RhythmEvaluator.EvaluateDifficultyOf(current);
+                localDifficulty = difficulty * skill_multiplier * currentRhythm;
             }
 
             double totalStrain = currentStrain * currentRhythm;
@@ -66,7 +74,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         {
             double difficulty = SpeedEvaluator.EvaluateDifficultyOf(current);
 
-            if (Mods.Any(m => m is OsuModAutopilot))
+            if (isAutopilot)
                 difficulty *= 0.5;
 
             return difficulty;

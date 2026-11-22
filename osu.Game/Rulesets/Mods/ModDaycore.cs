@@ -17,10 +17,10 @@ namespace osu.Game.Rulesets.Mods
         public override string Acronym => "DC";
         public override IconUsage? Icon => OsuIcon.ModDaycore;
         public override ModType Type => ModType.DifficultyReduction;
-        public override LocalisableString Description => "Whoaaaaa...";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4200;
         public override bool Ranked => UsesDefaultConfiguration;
 
-        [SettingSource("Speed decrease", "The actual decrease to apply", SettingControlType = typeof(MultiplierSettingsSlider))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4201), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4202), SettingControlType = typeof(MultiplierSettingsSlider))]
         public override BindableNumber<double> SpeedChange { get; } = new BindableDouble(0.75)
         {
             MinValue = 0.1,

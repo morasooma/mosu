@@ -31,7 +31,10 @@ namespace osu.Game.Rulesets.Dodge.UI
                     Current = config.GetBindable<double>(DodgeRulesetSetting.PlayfieldDim),
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true,
-                }),
+                })
+                {
+                    FavouriteId = "DodgeRulesetSetting.PlayfieldDim",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = DodgeEditorStrings.GrazeIndicatorBrightness,
@@ -39,13 +42,19 @@ namespace osu.Game.Rulesets.Dodge.UI
                     Current = config.GetBindable<double>(DodgeRulesetSetting.GrazeIndicatorBrightness),
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true,
-                }),
+                })
+                {
+                    FavouriteId = "DodgeRulesetSetting.GrazeIndicatorBrightness",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = DodgeEditorStrings.MissSound,
                     HintText = DodgeEditorStrings.MissSoundHint,
                     Current = config.GetBindable<bool>(DodgeRulesetSetting.MissSoundEnabled),
-                }),
+                })
+                {
+                    FavouriteId = "DodgeRulesetSetting.MissSoundEnabled",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = DodgeEditorStrings.MissSoundVolume,
@@ -53,19 +62,28 @@ namespace osu.Game.Rulesets.Dodge.UI
                     Current = config.GetBindable<double>(DodgeRulesetSetting.MissSoundVolume),
                     KeyboardStep = 5,
                     LabelFormat = value => $"{value:N0}%",
-                }),
+                })
+                {
+                    FavouriteId = "DodgeRulesetSetting.MissSoundVolume",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = DodgeEditorStrings.EffectsEnabled,
                     HintText = DodgeEditorStrings.EffectsEnabledHint,
                     Current = config.GetBindable<bool>(DodgeRulesetSetting.EffectsEnabled),
-                }),
+                })
+                {
+                    FavouriteId = "DodgeRulesetSetting.EffectsEnabled",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = DodgeEditorStrings.PlayerTrailEnabled,
                     HintText = DodgeEditorStrings.PlayerTrailEnabledHint,
                     Current = config.GetBindable<bool>(DodgeRulesetSetting.PlayerTrailEnabled),
-                }),
+                })
+                {
+                    FavouriteId = "DodgeRulesetSetting.PlayerTrailEnabled",
+                },
             };
         }
     }

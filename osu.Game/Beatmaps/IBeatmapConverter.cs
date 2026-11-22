@@ -23,6 +23,9 @@ namespace osu.Game.Beatmaps
 
         IBeatmap Beatmap { get; }
 
+        /// <summary>Isolate native objects when a mod rewrites their timeline.</summary>
+        bool CloneHitObjects { set { } }
+
         /// <summary>
         /// Whether <see cref="Beatmap"/> can be converted by this <see cref="IBeatmapConverter"/>.
         /// </summary>

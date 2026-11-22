@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -50,8 +51,12 @@ namespace osu.Desktop.Performance
         private ConfigSnapshot? previousConfig;
         private ThreadRateSnapshot? previousThreadRates;
         private bool waitingForWindowFocus;
+        private long diagnosticsFocusWaitStarted;
+        private bool diagnosticsMode => string.Equals(options?.BenchmarkMode, MosuDiagnosticsDefaults.BenchmarkMode, StringComparison.Ordinal);
+        private bool quickGameplayMode => options?.BenchmarkMode == "quick-gameplay";
         private bool benchmarkReplayPreparationStarted;
         private bool benchmarkReplayImportCompleted;
+        private DateTime quickReplayVisibilityDeadline;
         private string? benchmarkReplayPreparationFailure;
         private DateTime benchmarkReplayPreparationDeadline;
 
@@ -102,11 +107,13 @@ namespace osu.Desktop.Performance
                 ? $"{(isCarouselBenchmark ? "carousel" : "replay")}-{DateTime.Now:yyyyMMdd-HHmmss}"
                 : options.BenchmarkId;
 
-            GameplayPerformanceSnapshot.BenchmarkRunnerActive = true;
+            GameplayPerformanceSnapshot.BenchmarkRunnerActive = !quickGameplayMode;
             captureBenchmarkExecutionMode();
-            applyBenchmarkConfig();
+            if (!quickGameplayMode)
+                applyBenchmarkConfig();
             enableBenchmarkExecutionMode();
-            applyBenchmarkSkin();
+            if (!quickGameplayMode)
+                applyBenchmarkSkin();
             Scheduler.AddDelayed(tryStart, options.StartDelayMs);
         }
 
@@ -130,7 +137,7 @@ namespace osu.Desktop.Performance
                 return;
             }
 
-            if (!ensureBenchmarkWindowActive(tryStart))
+            if (!quickGameplayMode && !ensureBenchmarkWindowActive(tryStart))
                 return;
 
             synchroniseBenchmarkInactiveThreadRates();
@@ -198,11 +205,12 @@ namespace osu.Desktop.Performance
                     return null;
                 }
 
+                string? actualBeatmapHash = quickGameplayMode ? replayScore.BeatmapInfo?.MD5Hash : replayScore.BeatmapHash;
                 if (!string.IsNullOrWhiteSpace(options.BeatmapHash)
-                    && !string.Equals(replayScore.BeatmapHash, options.BeatmapHash, StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(actualBeatmapHash, options.BeatmapHash, StringComparison.OrdinalIgnoreCase))
                 {
                     benchmarkReplayPreparationFailure =
-                        $"benchmark_replay_beatmap_hash_mismatch:expected={options.BeatmapHash};actual={replayScore.BeatmapHash}";
+                        $"benchmark_replay_beatmap_hash_mismatch:expected={options.BeatmapHash};actual={actualBeatmapHash}";
                     return null;
                 }
 
@@ -214,7 +222,7 @@ namespace osu.Desktop.Performance
                 string beatmapHash = options.BeatmapHash;
 
                 candidates = queryBenchmarkScores(
-                    s => !s.DeletePending && s.BeatmapHash == beatmapHash,
+                    s => !s.DeletePending && (s.BeatmapHash == beatmapHash || (quickGameplayMode && s.BeatmapInfo?.MD5Hash == beatmapHash)),
                     200);
 
                 ScoreInfo? replayScore = firstScoreWithLocalReplay(candidates);
@@ -254,6 +262,12 @@ namespace osu.Desktop.Performance
                 return;
             }
 
+            if (quickGameplayMode && benchmarkReplayImportCompleted && DateTime.UtcNow >= quickReplayVisibilityDeadline)
+            {
+                failBenchmark("quick_gameplay_import_did_not_produce_usable_replay");
+                return;
+            }
+
             if (!benchmarkReplayPreparationStarted)
             {
                 string replayPath = resolveBenchmarkReplayPath(options.ReplayFilePath);
@@ -278,6 +292,8 @@ namespace osu.Desktop.Performance
                     task => Schedule(() =>
                     {
                         benchmarkReplayImportCompleted = true;
+                        // The import worker can finish before the query sees the committed score.
+                        quickReplayVisibilityDeadline = DateTime.UtcNow.AddSeconds(2);
 
                         if (task.IsFaulted)
                             benchmarkReplayPreparationFailure = $"benchmark_replay_import_failed:{task.Exception?.GetBaseException().Message}";
@@ -384,17 +400,16 @@ namespace osu.Desktop.Performance
             if (options == null || selectedScore == null)
                 return;
 
-            if (!ensureBenchmarkWindowActive(startNextRun))
-                return;
-
-            currentRun++;
-
-            if (currentRun > options.TotalRuns)
+            if (currentRun >= options.TotalRuns)
             {
                 finishBenchmark();
                 return;
             }
 
+            if (!quickGameplayMode && !ensureBenchmarkWindowActive(startNextRun))
+                return;
+
+            currentRun++;
             synchroniseBenchmarkInactiveThreadRates();
             currentRunCompleted = false;
             bool warmup = currentRun <= options.WarmupRuns;
@@ -416,6 +431,14 @@ namespace osu.Desktop.Performance
                 return;
 
             int run = currentRun;
+
+            if (quickGameplayMode)
+            {
+                if (player is ReplayPlayer replayPlayer)
+                    player.OnGameplayStarted += () => startQuickGameplay(replayPlayer, run);
+                player.OnShowingResults += () => Schedule(() => failBenchmark("replay_ended_before_quick_gameplay_window"));
+                return;
+            }
 
             player.OnGameplayStarted += () =>
             {
@@ -463,6 +486,7 @@ namespace osu.Desktop.Performance
                 return;
 
             benchmarkFailureReason = reason;
+            cancelQuickGameplay();
             MosuDiagnosticsStutterCollector.SetMeasuredGameplayActive(false);
             GameplayPerformanceSnapshot.SetBenchmarkGameplayActive(false);
             Logger.Log($"mosu replay benchmark failed: id={benchmarkId}, reason={reason}.", LoggingTarget.Runtime, LogLevel.Verbose);
@@ -511,11 +535,25 @@ namespace osu.Desktop.Performance
             if (!waitingForWindowFocus)
             {
                 waitingForWindowFocus = true;
+                diagnosticsFocusWaitStarted = Stopwatch.GetTimestamp();
                 Logger.Log("mosu replay benchmark waiting for window focus.", LoggingTarget.Runtime, LogLevel.Important);
             }
 
-            host.Window?.Show();
-            host.Window?.Raise();
+            // Measurements require a focused window, but diagnostics must not steal it from another app.
+            if (diagnosticsMode)
+            {
+                if (Stopwatch.GetElapsedTime(diagnosticsFocusWaitStarted) >= TimeSpan.FromSeconds(30))
+                {
+                    failBenchmark("diagnostics_window_focus_timeout");
+                    return false;
+                }
+            }
+            else
+            {
+                host.Window?.Show();
+                host.Window?.Raise();
+            }
+
             Scheduler.AddDelayed(retry, 250);
             return false;
         }
@@ -526,13 +564,14 @@ namespace osu.Desktop.Performance
                 host.DrawThread.InactiveHz,
                 host.UpdateThread.InactiveHz,
                 host.InputThread.InactiveHz,
-                false);
+                host.AllowBenchmarkInactiveExecution);
         }
 
         private void enableBenchmarkExecutionMode()
         {
             captureBenchmarkExecutionMode();
             synchroniseBenchmarkInactiveThreadRates();
+            host.AllowBenchmarkInactiveExecution = true;
         }
 
         private void synchroniseBenchmarkInactiveThreadRates()
@@ -556,6 +595,7 @@ namespace osu.Desktop.Performance
             host.DrawThread.InactiveHz = previous.DrawInactiveHz;
             host.UpdateThread.InactiveHz = previous.UpdateInactiveHz;
             host.InputThread.InactiveHz = previous.InputInactiveHz;
+            host.AllowBenchmarkInactiveExecution = previous.AllowBenchmarkInactiveExecution;
             GameplayPerformanceSnapshot.BenchmarkRunnerActive = false;
         }
 
@@ -575,8 +615,6 @@ namespace osu.Desktop.Performance
                 Logger.Log($"mosu replay benchmark config step end: {name}.", LoggingTarget.Runtime, LogLevel.Verbose);
                 Logger.Flush();
             }
-
-            bool diagnosticsMode = string.Equals(options.BenchmarkMode, MosuDiagnosticsDefaults.BenchmarkMode, StringComparison.Ordinal);
 
             previousConfig ??= new ConfigSnapshot(
                 config.Get<bool>(OsuSetting.AutomaticallyDownloadMissingBeatmaps),
@@ -602,8 +640,8 @@ namespace osu.Desktop.Performance
                 config.Get<bool>(OsuSetting.ForkSongSelectCarouselPerformanceMode),
                 config.Get<string>(OsuSetting.Skin),
                 frameworkConfig.Get<FrameSync>(FrameworkSetting.FrameSync),
-                false,
-                false);
+                host.AllowTearing.Value,
+                host.UpdateThreadSpinWait.Value);
 
             if (diagnosticsMode)
                 applyStep("auto_download_missing_beatmaps", () => config.SetValue(OsuSetting.AutomaticallyDownloadMissingBeatmaps, true));
@@ -671,6 +709,7 @@ namespace osu.Desktop.Performance
                 applyStep("static_child_lifetime_cache", () =>
                 {
                     config.SetValue(OsuSetting.ForkStaticChildLifetimeCache, options.StaticChildLifetimeCache.Value);
+                    GraphicsPerformanceSettings.CacheStaticChildLifetimes = options.StaticChildLifetimeCache.Value;
                 });
             }
 
@@ -679,11 +718,18 @@ namespace osu.Desktop.Performance
                 applyStep("input_8k", () =>
                 {
                     config.SetValue(OsuSetting.ForkUse8kPollingRate, options.Use8kPollingRate.Value);
+                    ThreadRunner.Use8kInputRate = options.Use8kPollingRate.Value;
                 });
             }
 
             if (options.CarouselPerformanceMode != null)
                 applyStep("carousel_performance_mode", () => config.SetValue(OsuSetting.ForkSongSelectCarouselPerformanceMode, options.CarouselPerformanceMode.Value));
+
+            if (options.AllowTearing != null)
+                applyStep("allow_tearing", () => host.AllowTearing.Value = options.AllowTearing.Value);
+
+            if (options.UpdateThreadSpinWait != null)
+                applyStep("update_thread_spin_wait", () => host.UpdateThreadSpinWait.Value = options.UpdateThreadSpinWait.Value);
 
             if (!diagnosticsMode && options.FrameSync != null)
                 applyStep("frame_sync", () => frameworkConfig.SetValue(FrameworkSetting.FrameSync, options.FrameSync.Value));
@@ -740,10 +786,14 @@ namespace osu.Desktop.Performance
             config.SetValue(OsuSetting.ForkDeferredDirectUniformUpload, previous.DeferredDirectUniformUpload);
             config.SetValue(OsuSetting.ForkVeldridPipelineLookupCache, previous.VeldridPipelineLookupCache);
             config.SetValue(OsuSetting.ForkStaticChildLifetimeCache, previous.StaticChildLifetimeCache);
+            GraphicsPerformanceSettings.CacheStaticChildLifetimes = previous.StaticChildLifetimeCache;
             config.SetValue(OsuSetting.ForkUse8kPollingRate, previous.Use8kPollingRate);
             config.SetValue(OsuSetting.ForkSongSelectCarouselPerformanceMode, previous.CarouselPerformanceMode);
             config.SetValue(OsuSetting.Skin, previous.Skin);
             frameworkConfig.SetValue(FrameworkSetting.FrameSync, previous.FrameSync);
+            host.AllowTearing.Value = previous.AllowTearing;
+            host.UpdateThreadSpinWait.Value = previous.UpdateThreadSpinWait;
+            ThreadRunner.Use8kInputRate = previous.Use8kPollingRate;
 
             if (Guid.TryParse(previous.Skin, out Guid previousSkinId))
             {
@@ -780,8 +830,8 @@ namespace osu.Desktop.Performance
                + $";carousel_perf={config.Get<bool>(OsuSetting.ForkSongSelectCarouselPerformanceMode)}"
                + $";carousel_previews={config.Get<bool>(OsuSetting.ForkSongSelectCarouselPreviews)}"
                + $";carousel_preview_resolution={config.Get<int>(OsuSetting.ForkSongSelectCarouselPreviewResolution)}"
-               + $";allow_tearing=false"
-               + $";spin_wait=false"
+               + $";allow_tearing={host.AllowTearing.Value}"
+               + $";spin_wait={host.UpdateThreadSpinWait.Value}"
                + $";skin={config.Get<string>(OsuSetting.Skin)}"
                + $";frame_sync={frameworkConfig.Get<FrameSync>(FrameworkSetting.FrameSync)}"
                + $";effective_skin={SkinPerformanceMode.DescribeEffectiveState()}";
@@ -850,6 +900,7 @@ namespace osu.Desktop.Performance
         protected override void Dispose(bool isDisposing)
         {
             watchdogDelegate?.Cancel();
+            cancelQuickGameplay();
 
             if (game.ScreenStack != null)
                 game.ScreenStack.ScreenPushed -= screenPushed;
@@ -1331,8 +1382,21 @@ namespace osu.Desktop.Performance
                 if (!enabled)
                     return null;
 
-                if (!skipProfile && forcedSkinId == null && !string.Equals(benchmarkMode, MosuDiagnosticsDefaults.BenchmarkMode, StringComparison.Ordinal))
+                if (benchmarkMode == "quick-gameplay")
+                {
+                    beatmapOnlineId = 0;
+                    warmups = 0;
+                    runs = 1;
+                    minReplayDurationMs = 10000;
+                    startDelay = betweenRunsDelay = exitDelay = 0;
+                    runTimeout = 60000;
+                    exitAfterCompletion = true;
+                }
+                else if (!skipProfile && forcedSkinId == null && !string.Equals(benchmarkMode, MosuDiagnosticsDefaults.BenchmarkMode, StringComparison.Ordinal))
                     forcedSkinId = argon_skin_id;
+
+                if (benchmarkMode == "quick-gameplay")
+                    enablePerformanceLogging = false;
 
                 if (string.Equals(benchmarkMode, MosuDiagnosticsDefaults.BenchmarkMode, StringComparison.Ordinal))
                 {

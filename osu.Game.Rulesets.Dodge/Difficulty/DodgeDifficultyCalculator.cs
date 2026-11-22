@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Newtonsoft.Json;
 using osu.Game.Beatmaps;
 using osu.Game.Database;
@@ -11,6 +12,7 @@ using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Skills;
 using osu.Game.Rulesets.Dodge.Objects;
+using osu.Game.Rulesets.Dodge.Replays;
 using osu.Game.Rulesets.Mods;
 
 namespace osu.Game.Rulesets.Dodge.Difficulty
@@ -167,6 +169,24 @@ namespace osu.Game.Rulesets.Dodge.Difficulty
             AutoplayCollisions = source.AutoplayCollisions,
             IsUnclearable = source.IsUnclearable,
         };
+
+        private IBeatmap? localDifficultyBeatmap;
+        private IReadOnlyList<LocalDifficultySample>? localDifficulty;
+
+        public override IReadOnlyList<LocalDifficultySample> CalculateLocalDifficulty(IBeatmap beatmap, double clockRate = 1, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(localDifficultyBeatmap, beatmap))
+            {
+                var generator = new DodgeAutoGenerator(beatmap, cancellationToken, collisionSafetyMargin: 0);
+                generator.Generate();
+                localDifficulty = generator.LocalDifficulty;
+                localDifficultyBeatmap = beatmap;
+            }
+
+            // Dodge's native calculator uses this calibrated rate exponent as well.
+            return localDifficulty!.Select(s => new LocalDifficultySample(s.Time, s.Difficulty * Math.Pow(clockRate, 1.35))).ToArray();
+        }
 
         protected override IEnumerable<DifficultyHitObject> CreateDifficultyHitObjects(IBeatmap beatmap, Mod[] mods)
             => Enumerable.Empty<DifficultyHitObject>();

@@ -105,12 +105,14 @@ namespace osu.Game.Rulesets.UI.Scrolling
         {
             updateScrollAlgorithm();
 
+            var bakedRate = Mods.OfType<ModSegmentRate>().FirstOrDefault(m => m.BakedTiming.Value);
+            var scrollPoints = bakedRate?.SourceControlPoints ?? Beatmap.ControlPointInfo;
             double lastObjectTime = Beatmap.HitObjects.Any() ? Beatmap.GetLastObjectTime() : double.MaxValue;
             double baseBeatLength = TimingControlPoint.DEFAULT_BEAT_LENGTH;
 
             if (RelativeScaleBeatLengths)
             {
-                baseBeatLength = Beatmap.GetMostCommonBeatLength();
+                baseBeatLength = bakedRate?.SourceBeatLength ?? Beatmap.GetMostCommonBeatLength();
 
                 // The slider multiplier is post-multiplied to determine the final velocity, but for relative scale beat lengths
                 // the multiplier should not affect the effective timing point (the longest in the beatmap), so it is factored out here
@@ -122,8 +124,10 @@ namespace osu.Game.Rulesets.UI.Scrolling
             var lastEffectPoint = new EffectControlPoint();
             var allPoints = new SortedList<ControlPoint>(Comparer<ControlPoint>.Default);
 
-            allPoints.AddRange(Beatmap.ControlPointInfo.TimingPoints);
-            allPoints.AddRange(Beatmap.ControlPointInfo.EffectPoints);
+            // Baked tempo changes affect note rhythm, not scroll velocity. Preserve the
+            // map's authored BPM/SV changes, placing them on the mapped timeline.
+            allPoints.AddRange(scrollPoints.TimingPoints);
+            allPoints.AddRange(scrollPoints.EffectPoints);
 
             // Generate the timing points, making non-timing changes use the previous timing change and vice-versa
             var timingChanges = allPoints.Select(c =>
@@ -139,7 +143,7 @@ namespace osu.Game.Rulesets.UI.Scrolling
                         break;
                 }
 
-                return new MultiplierControlPoint(c.Time)
+                return new MultiplierControlPoint(bakedRate?.RatePlan.Map(c.Time) ?? c.Time)
                 {
                     Velocity = Beatmap.Difficulty.SliderMultiplier,
                     BaseBeatLength = baseBeatLength,

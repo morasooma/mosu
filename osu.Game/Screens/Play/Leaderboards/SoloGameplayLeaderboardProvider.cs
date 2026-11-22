@@ -9,6 +9,7 @@ using osu.Framework.Caching;
 using osu.Framework.Graphics;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Scoring;
+using osu.Game.Scoring.Render;
 
 namespace osu.Game.Screens.Play.Leaderboards
 {
@@ -23,6 +24,9 @@ namespace osu.Game.Screens.Play.Leaderboards
         [Resolved]
         private GameplayState? gameplayState { get; set; }
 
+        [Resolved(CanBeNull = true)]
+        private ReplayRenderSnapshot? renderSnapshot { get; set; }
+
         private readonly Cached sorting = new Cached();
         private bool isPartial;
 
@@ -30,7 +34,7 @@ namespace osu.Game.Screens.Play.Leaderboards
         {
             base.LoadComplete();
 
-            var globalScores = leaderboardManager?.Scores.Value;
+            var globalScores = renderSnapshot?.CreateLeaderboardScores() ?? leaderboardManager?.Scores.Value;
 
             isPartial = globalScores == null || globalScores.IsPartial;
 

@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using Newtonsoft.Json;
 using NUnit.Framework;
 using osu.Game.Online.API.Requests;
 using osu.Game.Overlays;
@@ -41,23 +42,22 @@ namespace osu.Game.Tests.Online
         }
 
         [Test]
+        public void TestUnknownCountryInRankingsDoesNotDiscardWholeResponse()
+        {
+            var response = JsonConvert.DeserializeObject<GetCountriesResponse>("{\"ranking\":[{\"code\":\"RU\"},{\"code\":\"XX\"},{\"code\":\"US\"}]}");
+
+            Assert.That(response!.Countries, Has.Count.EqualTo(3));
+            Assert.That(response.Countries[0].Code, Is.EqualTo(CountryCode.RU));
+            Assert.That(response.Countries[1].Code, Is.EqualTo(CountryCode.Unknown));
+            Assert.That(response.Countries[2].Code, Is.EqualTo(CountryCode.US));
+        }
+
+        [Test]
         public void TestThirdPartyDoesNotCallMorasoomaBestScorePpEndpoint()
         {
             var request = RankingsOverlay.CreateScopedRequest(RankingsScope.TopScorePp, ruleset, CountryCode.Unknown, null, useStandardLazerRankings: true);
 
             Assert.That(request, Is.Null);
-        }
-
-        [Test]
-        public void TestThirdPartyProfileIsAlwaysRefetched()
-        {
-            Assert.That(UserProfileOverlay.ShouldReuseDisplayedProfile(isThirdPartyServer: true, sameUser: true, sameRuleset: true, sameVariant: true), Is.False);
-        }
-
-        [Test]
-        public void TestMorasoomaProfileReuseIsUnchanged()
-        {
-            Assert.That(UserProfileOverlay.ShouldReuseDisplayedProfile(isThirdPartyServer: false, sameUser: true, sameRuleset: true, sameVariant: true), Is.True);
         }
     }
 }

@@ -67,6 +67,8 @@ namespace osu.Game.Beatmaps
 
         public bool IsRewinding { get; private set; }
 
+        internal Action? BeforeSourceFrame { get; set; }
+
         public FramedBeatmapClock(bool applyOffsets, bool requireDecoupling, IClock? source = null)
         {
             this.applyOffsets = applyOffsets;
@@ -165,6 +167,7 @@ namespace osu.Game.Beatmaps
         {
             base.Update();
 
+            BeforeSourceFrame?.Invoke();
             finalClockSource.ProcessFrame();
 
             if (Clock.ElapsedFrameTime != 0)

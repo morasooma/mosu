@@ -30,6 +30,9 @@ namespace osu.Game.Localisation
         /// "Encoder"
         /// </summary>
         public static LocalisableString Encoder => new TranslatableString(getKey(@"encoder"), @"Encoder");
+
+        public static LocalisableString AutoEncoder => new TranslatableString(getKey(@"auto_encoder"), @"Auto — fast");
+        public static LocalisableString CompactHevcEncoder => new TranslatableString(getKey(@"compact_hevc_encoder"), @"HEVC — smaller file (slower)");
         /// <summary>
         /// "Recommended: detecting preferred encoder..."
         /// </summary>

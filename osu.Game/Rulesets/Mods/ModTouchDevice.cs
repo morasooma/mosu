@@ -13,7 +13,7 @@ namespace osu.Game.Rulesets.Mods
         public sealed override string Name => "Touch Device";
         public sealed override string Acronym => "TD";
         public sealed override IconUsage? Icon => OsuIcon.ModTouchDevice;
-        public sealed override LocalisableString Description => "Automatically applied to plays on devices with a touchscreen.";
+        public sealed override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4262;
         public sealed override ModType Type => ModType.System;
         public sealed override bool ValidForMultiplayer => false;
         public sealed override bool ValidForMultiplayerAsFreeMod => false;

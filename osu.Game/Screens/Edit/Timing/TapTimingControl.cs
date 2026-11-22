@@ -20,6 +20,9 @@ namespace osu.Game.Screens.Edit.Timing
 {
     public partial class TapTimingControl : CompositeDrawable
     {
+        // The timing screen supplies an offset control shared by timing and effect selections.
+        public bool ShowOffsetControl { get; init; } = true;
+
         [Resolved]
         private EditorClock editorClock { get; set; } = null!;
 
@@ -31,6 +34,9 @@ namespace osu.Game.Screens.Edit.Timing
 
         [Resolved]
         private Bindable<ControlPointGroup?> selectedGroup { get; set; } = null!;
+
+        [Resolved(canBeNull: true)]
+        private ControlPointSelection? selection { get; set; }
 
         private readonly BindableNumberWithCurrent<double> currentBeatLength = new BindableNumberWithCurrent<double>(TimingControlPoint.DEFAULT_BEAT_LENGTH)
         {
@@ -104,19 +110,21 @@ namespace osu.Game.Screens.Edit.Timing
                         {
                             offsetControl = new FormDiscreteAdjustmentControl<double>(1)
                             {
-                                Caption = "Offset",
+                                Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4333,
+                                Alpha = ShowOffsetControl ? 1 : 0,
+                                BypassAutoSizeAxes = ShowOffsetControl ? Axes.None : Axes.Y,
                                 Current = new BindableDouble
                                 {
                                     Precision = 1,
                                 },
-                                Margin = new MarginPadding { Bottom = padding },
+                                Margin = new MarginPadding { Bottom = ShowOffsetControl ? padding : 0 },
                             },
                         },
                         new Drawable[]
                         {
                             bpmControl = new FormDiscreteAdjustmentControl<double>(0.1)
                             {
-                                Caption = "BPM",
+                                Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4340,
                                 Margin = new MarginPadding { Bottom = padding },
                             },
                         },
@@ -234,31 +242,12 @@ namespace osu.Game.Screens.Edit.Timing
 
             bool wasAtStart = editorClock.CurrentTimeAccurate == selectedGroup.Value.Time;
 
-            // VERY TEMPORARY
-            var currentGroupItems = selectedGroup.Value.ControlPoints.ToArray();
-
-            beatmap.BeginChange();
-            beatmap.ControlPointInfo.RemoveGroup(selectedGroup.Value);
-
-            double newOffset = offsetChange.NewValue;
-
-            foreach (var cp in currentGroupItems)
-            {
-                if (cp is TimingControlPoint tp && configManager.Get<bool>(OsuSetting.EditorAdjustExistingObjectsOnTimingChanges))
-                {
-                    TimingSectionAdjustments.AdjustHitObjectOffset(beatmap, tp, offsetChange.NewValue - offsetChange.OldValue);
-                    beatmap.UpdateAllHitObjects();
-                }
-
-                beatmap.ControlPointInfo.Add(newOffset, cp);
-            }
-
-            // the control point might not necessarily exist yet, if currentGroupItems was empty.
-            selectedGroup.Value = beatmap.ControlPointInfo.GroupAt(newOffset, true);
-            beatmap.EndChange();
+            // The control is also used standalone by the tap timing tests.
+            selection ??= new ControlPointSelection(selectedGroup);
+            selection.ChangeTime(beatmap, offsetChange.NewValue, configManager.Get<bool>(OsuSetting.EditorAdjustExistingObjectsOnTimingChanges));
 
             if (!editorClock.IsRunning && wasAtStart)
-                editorClock.Seek(newOffset);
+                editorClock.Seek(selectedGroup.Value.Time);
         }
 
         private void setBpm(ValueChangedEvent<double> bpmChange)
@@ -287,6 +276,8 @@ namespace osu.Game.Screens.Edit.Timing
 
         private partial class InlineButton : OsuButton
         {
+            protected override bool ApplyGeometryRadius => false;
+
             private readonly IconUsage icon;
             private readonly Anchor anchor;
 

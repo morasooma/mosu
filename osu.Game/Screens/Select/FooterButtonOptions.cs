@@ -19,6 +19,8 @@ namespace osu.Game.Screens.Select
 {
     public partial class FooterButtonOptions : ScreenFooterButton, IHasPopover
     {
+        public override osu.Game.Overlays.CustomTheme.ThemeSurfaceContext? ButtonContext => osu.Game.Overlays.CustomTheme.ThemeSurfaceContext.FooterOptions;
+
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
 
@@ -27,6 +29,9 @@ namespace osu.Game.Screens.Select
 
         [Resolved]
         private ISongSelect? songSelect { get; set; }
+
+        [Resolved]
+        private ScreenFooter? screenFooter { get; set; }
 
         [Resolved]
         private RealmAccess realm { get; set; } = null!;
@@ -54,6 +59,15 @@ namespace osu.Game.Screens.Select
         {
             base.LoadComplete();
             workingBeatmap.BindValueChanged(_ => beatmapChanged(), true);
+        }
+
+        public override bool OnPressed(osu.Framework.Input.Events.KeyBindingPressEvent<GlobalAction> e)
+        {
+            if (e.Action == Hotkey && !e.Repeat && screenFooter?.DefaultChromeVisible == false
+                && screenFooter.TriggerLegacyOptions?.Invoke() == true)
+                return true;
+
+            return base.OnPressed(e);
         }
 
         private void beatmapChanged()

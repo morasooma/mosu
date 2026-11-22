@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Input.Events;
@@ -28,6 +29,8 @@ namespace osu.Game.Overlays.SkinEditor
 
         private readonly RulesetInfo? ruleset;
 
+        internal bool MorasoomaOnly { get; }
+
         private FillFlowContainer fill = null!;
 
         /// <summary>
@@ -35,11 +38,14 @@ namespace osu.Game.Overlays.SkinEditor
         /// </summary>
         /// <param name="target">The target. This is mainly used as a dependency source to find candidate components.</param>
         /// <param name="ruleset">A ruleset to filter components by. If null, only components which are not ruleset-specific will be included.</param>
-        public SkinComponentToolbox(SkinnableContainer target, RulesetInfo? ruleset)
-            : base(ruleset == null ? SkinEditorStrings.Components : LocalisableString.Interpolate($"{SkinEditorStrings.Components} ({ruleset.Name})"))
+        /// <param name="morasoomaOnly">Show native Morasooma additions instead of standard components.</param>
+        public SkinComponentToolbox(SkinnableContainer target, RulesetInfo? ruleset, bool morasoomaOnly = false)
+            : base(morasoomaOnly ? MorasoomaSkinEditorStrings.Components
+                : ruleset == null ? SkinEditorStrings.Components : LocalisableString.Interpolate($"{SkinEditorStrings.Components} ({ruleset.Name})"))
         {
             this.target = target;
             this.ruleset = ruleset;
+            MorasoomaOnly = morasoomaOnly;
         }
 
         [BackgroundDependencyLoader]
@@ -61,7 +67,7 @@ namespace osu.Game.Overlays.SkinEditor
             fill.Clear();
 
             var skinnableTypes = SerialisedDrawableInfo.GetAllAvailableDrawables(ruleset);
-            foreach (var type in skinnableTypes)
+            foreach (var type in skinnableTypes.Where(t => typeof(IMorasoomaSkinComponent).IsAssignableFrom(t) == MorasoomaOnly))
                 attemptAddComponent(type);
         }
 
@@ -186,7 +192,9 @@ namespace osu.Game.Overlays.SkinEditor
                     },
                     new OsuSpriteText
                     {
-                        Text = component.GetType().Name,
+                        Text = component.GetType().IsDefined(typeof(LocalisableDescriptionAttribute), inherit: true)
+                            ? component.GetType().GetLocalisableDescription()
+                            : component.GetType().Name,
                         Anchor = Anchor.BottomCentre,
                         Origin = Anchor.BottomCentre,
                         Margin = new MarginPadding(5),

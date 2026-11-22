@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -25,24 +25,36 @@ namespace osu.Game.Overlays.Settings.Sections.Online
                 {
                     Caption = OnlineSettingsStrings.NotifyOnMentioned,
                     Current = config.GetBindable<bool>(OsuSetting.NotifyOnUsernameMentioned)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.NotifyOnUsernameMentioned",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = OnlineSettingsStrings.NotifyOnPrivateMessage,
                     Current = config.GetBindable<bool>(OsuSetting.NotifyOnPrivateMessage)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.NotifyOnPrivateMessage",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = OnlineSettingsStrings.NotifyOnFriendPresenceChange,
                     HintText = OnlineSettingsStrings.NotifyOnFriendPresenceChangeTooltip,
                     Current = config.GetBindable<bool>(OsuSetting.NotifyOnFriendPresenceChange),
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.NotifyOnFriendPresenceChange",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = AccountsStrings.PrivacyFriendsOnly.ToSentence(),
-                    HintText = "Block private messages, room invites, and duel requests from people not on your friends list.",
+                    HintText = ForkSettingsStrings.OnlinePmFriendsOnlyHint,
                     Current = config.GetBindable<bool>(OsuSetting.PMFriendsOnly),
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.PMFriendsOnly",
+                },
             };
         }
     }

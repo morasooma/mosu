@@ -175,6 +175,8 @@ namespace osu.Game.Screens.Edit.Components
 
         public partial class SampleButton : OsuButton, IHasPopover, IHasContextMenu
         {
+            protected override bool ApplyGeometryRadius => false;
+
             /// <summary>
             /// The expected filename for the sample that this button represents.
             /// Does not contain extension.

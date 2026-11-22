@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
@@ -48,6 +49,23 @@ namespace osu.Game.Rulesets.Dodge.Edit
             Spacing = new Vector2(5);
             Children = new Drawable[]
             {
+                new SettingsCheckbox { LabelText = DodgeEditorStrings.ArenaWorldSpace, Current = settings.ArenaWorldSpace },
+                new ExpandableSlider<float> { ExpandedLabelText = DodgeEditorStrings.ArenaWidth, Current = settings.ArenaWidth, KeyboardStep = 16 },
+                new ExpandableSlider<float> { ExpandedLabelText = DodgeEditorStrings.ArenaHeight, Current = settings.ArenaHeight, KeyboardStep = 16 },
+                new ExpandableSlider<float> { ExpandedLabelText = DodgeEditorStrings.ArenaCentreX, Current = settings.ArenaCentreX, KeyboardStep = 16 },
+                new ExpandableSlider<float> { ExpandedLabelText = DodgeEditorStrings.ArenaCentreY, Current = settings.ArenaCentreY, KeyboardStep = 16 },
+                new ExpandableButton
+                {
+                    RelativeSizeAxes = Axes.X,
+                    ContractedLabelText = DodgeEditorStrings.FitSelectedArena,
+                    ExpandedLabelText = DodgeEditorStrings.FitSelectedArena,
+                    Action = () =>
+                    {
+                        var change = selectedHitObjects.OfType<DodgeArenaChange>().FirstOrDefault();
+                        if (change != null)
+                            settings.FitEditorView(change.TargetPosition + change.TargetSize / 2, change.TargetSize, change.TargetRotation);
+                    },
+                },
                 new ExpandableSlider<float>
                 {
                     ExpandedLabelText = DodgeEditorStrings.ArenaRotation,
@@ -94,15 +112,46 @@ namespace osu.Game.Rulesets.Dodge.Edit
         {
             base.LoadComplete();
 
-            settings.ArenaRotation.BindValueChanged(_ => applyToSelection());
-            settings.ArenaEasing.BindValueChanged(_ => applyToSelection());
-            settings.ArenaKiaiShakeAngle.BindValueChanged(_ => applyToSelection());
-            settings.ArenaBackgroundColour.BindValueChanged(_ => applyToSelection());
-            settings.ArenaBackgroundOpacity.BindValueChanged(_ => applyToSelection());
-            settings.ArenaBorderColour.BindValueChanged(_ => applyToSelection());
-            settings.ArenaBorderOpacity.BindValueChanged(_ => applyToSelection());
+            settings.ArenaWorldSpace.BindValueChanged(value => applyToSelection(change =>
+            {
+                change.WorldSpace = value.NewValue;
+                change.ClampToBaseBounds();
+            }));
+            settings.ArenaWidth.BindValueChanged(value => applyToSelection(change => change.ResizeFromCentre(new Vector2(value.NewValue, change.TargetSize.Y))));
+            settings.ArenaHeight.BindValueChanged(value => applyToSelection(change => change.ResizeFromCentre(new Vector2(change.TargetSize.X, value.NewValue))));
+            settings.ArenaCentreX.BindValueChanged(value => applyToSelection(change =>
+            {
+                change.TargetPosition = new Vector2(value.NewValue - change.TargetSize.X / 2, change.TargetPosition.Y);
+                change.ClampToBaseBounds();
+            }));
+            settings.ArenaCentreY.BindValueChanged(value => applyToSelection(change =>
+            {
+                change.TargetPosition = new Vector2(change.TargetPosition.X, value.NewValue - change.TargetSize.Y / 2);
+                change.ClampToBaseBounds();
+            }));
+            settings.ArenaRotation.BindValueChanged(value => applyToSelection(change => change.TargetRotation = value.NewValue));
+            settings.ArenaEasing.BindValueChanged(value => applyToSelection(change => change.Easing = value.NewValue));
+            settings.ArenaKiaiShakeAngle.BindValueChanged(value => applyToSelection(change => change.KiaiShakeAngle = value.NewValue));
+            settings.ArenaBackgroundColour.BindValueChanged(value => applyToSelection(change => change.Colour = value.NewValue));
+            settings.ArenaBackgroundOpacity.BindValueChanged(value => applyToSelection(change => change.Opacity = value.NewValue));
+            settings.ArenaBorderColour.BindValueChanged(value => applyToSelection(change => change.OutlineColour = value.NewValue));
+            settings.ArenaBorderOpacity.BindValueChanged(value => applyToSelection(change => change.BorderOpacity = value.NewValue));
             selectedHitObjects.BindTo(editorBeatmap.SelectedHitObjects);
-            selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection());
+            selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection(), true);
+            editorBeatmap.HitObjectUpdated += onHitObjectUpdated;
+        }
+
+        private void onHitObjectUpdated(HitObject hitObject)
+        {
+            if (selectedHitObjects.Contains(hitObject))
+                Scheduler.AddOnce(readFromSelection);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (editorBeatmap != null)
+                editorBeatmap.HitObjectUpdated -= onHitObjectUpdated;
+            base.Dispose(isDisposing);
         }
 
         private void readFromSelection()
@@ -113,6 +162,11 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 return;
 
             syncingSelection = true;
+            settings.ArenaWorldSpace.Value = change.WorldSpace;
+            settings.ArenaWidth.Value = change.TargetSize.X;
+            settings.ArenaHeight.Value = change.TargetSize.Y;
+            settings.ArenaCentreX.Value = change.TargetPosition.X + change.TargetSize.X / 2;
+            settings.ArenaCentreY.Value = change.TargetPosition.Y + change.TargetSize.Y / 2;
             settings.ArenaRotation.Value = change.TargetRotation;
             settings.ArenaEasing.Value = change.Easing;
             settings.ArenaKiaiShakeAngle.Value = change.KiaiShakeAngle;
@@ -123,7 +177,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             syncingSelection = false;
         }
 
-        private void applyToSelection()
+        private void applyToSelection(Action<DodgeArenaChange> apply)
         {
             if (syncingSelection)
                 return;
@@ -135,13 +189,18 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
             editorBeatmap.BeginChange();
 
-            foreach (DodgeArenaChange change in changes)
+            try
             {
-                applyAppearance(change);
-                editorBeatmap.Update(change);
+                foreach (DodgeArenaChange change in changes)
+                {
+                    apply(change);
+                    editorBeatmap.Update(change);
+                }
             }
-
-            editorBeatmap.EndChange();
+            finally
+            {
+                editorBeatmap.EndChange();
+            }
         }
 
         private void applyAppearance(DodgeArenaChange change)

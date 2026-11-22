@@ -13,7 +13,7 @@ namespace osu.Game.Rulesets.Mania.Mods
         public override string Name => "One Key";
         public override string Acronym => "1K";
         public override IconUsage? Icon => OsuIcon.ModOneKey;
-        public override LocalisableString Description => @"Play with one key.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3638;
         public override bool Ranked => false;
     }
 }

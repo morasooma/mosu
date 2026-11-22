@@ -125,7 +125,7 @@ namespace osu.Game.Graphics.Containers
             foreach (var w in wavesContainer)
                 w.Show();
 
-            contentContainer.MoveToY(0, APPEAR_DURATION, Easing.OutQuint);
+            contentContainer.MoveToY(0, InterfaceAnimation.MovementDuration(APPEAR_DURATION), Easing.OutQuint);
             samplePopIn?.Play();
             wasShown = true;
         }
@@ -135,7 +135,7 @@ namespace osu.Game.Graphics.Containers
             foreach (var w in wavesContainer)
                 w.Hide();
 
-            contentContainer.MoveToY(2, DISAPPEAR_DURATION, Easing.In);
+            contentContainer.MoveToY(2, InterfaceAnimation.MovementDuration(DISAPPEAR_DURATION), Easing.In);
 
             if (wasShown)
                 samplePopOut?.Play();
@@ -181,11 +181,11 @@ namespace osu.Game.Graphics.Containers
                 Height = Parent!.Parent!.DrawSize.Y * 1.5f;
             }
 
-            protected override void PopIn() => Schedule(() => this.MoveToY(FinalPosition, APPEAR_DURATION, easing_show));
+            protected override void PopIn() => Schedule(() => this.MoveToY(FinalPosition, InterfaceAnimation.MovementDuration(APPEAR_DURATION), easing_show));
 
             protected override void PopOut()
             {
-                double duration = IsLoaded ? DISAPPEAR_DURATION : 0;
+                double duration = IsLoaded ? InterfaceAnimation.MovementDuration(DISAPPEAR_DURATION) : 0;
 
                 // scheduling is required as parent may not be present at the time this is called.
                 Schedule(() => this.MoveToY(Parent!.Parent!.DrawSize.Y, duration, easing_hide));

@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -36,6 +36,7 @@ namespace osu.Game.Overlays.Settings.Sections.Audio
                     Caption = AudioSettingsStrings.OutputDevice,
                 })
                 {
+                    FavouriteId = "ui:AudioSettingsStrings.OutputDevice",
                     Keywords = new[] { "speaker", "headphone", "output" }
                 },
             };
@@ -44,6 +45,7 @@ namespace osu.Game.Overlays.Settings.Sections.Audio
             {
                 Add(new SettingsItemV2(legacyAudio = new LegacyAudioCheckbox())
                 {
+                    FavouriteId = "ui:AudioDevicesSettings:legacyAudio",
                     Keywords = new[] { "wasapi", "latency", "exclusive", "legacy", "experimental" },
                 });
 
@@ -102,6 +104,7 @@ namespace osu.Game.Overlays.Settings.Sections.Audio
     public partial class LegacyAudioCheckbox : FormCheckBox
     {
         private Bindable<bool> configExperimentalAudio = null!;
+        private bool updatingFromConfig;
 
         public LegacyAudioCheckbox()
         {
@@ -122,13 +125,28 @@ namespace osu.Game.Overlays.Settings.Sections.Audio
             // Manual two-way binding because we're inverting what the framework exposes.
             Current.ValueChanged += legacy =>
             {
-                configExperimentalAudio.Value = !legacy.NewValue;
+                if (!updatingFromConfig)
+                    configExperimentalAudio.Value = !legacy.NewValue;
             };
 
-            configExperimentalAudio.BindValueChanged(experimental =>
+            // Backend initialisation can disable WASAPI from the audio thread.
+            // Marshal to the update thread and read the latest value to avoid replaying stale changes.
+            configExperimentalAudio.BindValueChanged(_ => Scheduler.AddOnce(updateCurrent), true);
+        }
+
+        private void updateCurrent()
+        {
+            // Display backend changes without writing them back as user input.
+            // The audio thread may have changed the setting again during propagation.
+            updatingFromConfig = true;
+            try
             {
-                Current.Value = !experimental.NewValue;
-            }, true);
+                Current.Value = !configExperimentalAudio.Value;
+            }
+            finally
+            {
+                updatingFromConfig = false;
+            }
         }
     }
 }

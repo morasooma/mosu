@@ -37,6 +37,11 @@ namespace osu.Game.Graphics.UserInterfaceV2
             }
         }
 
+        public LocalisableString LeftSideLabel
+        {
+            set => ((ShearedDropdownHeader)Header).LeftSideLabel = value;
+        }
+
         public bool OnPressed(KeyBindingPressEvent<GlobalAction> e)
         {
             if (e.Repeat) return false;
@@ -54,6 +59,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
         protected partial class ShearedDropdownMenu : OsuDropdown<T>.OsuDropdownMenu
         {
             private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
+            private readonly IBindable<float> popupRadius = OverlayColourProvider.GetGeometryRadius(osu.Game.Overlays.CustomTheme.GeometryRole.Popup, 4f);
 
             public ShearedDropdownMenu()
             {
@@ -69,7 +75,26 @@ namespace osu.Game.Graphics.UserInterfaceV2
             protected override void LoadComplete()
             {
                 base.LoadComplete();
-                disableShear.BindValueChanged(_ => Shear = OsuGame.SHEAR, true);
+                disableShear.BindValueChanged(_ =>
+                {
+                    Shear = OsuGame.SHEAR;
+                    updateMenuRadius();
+                }, true);
+                popupRadius.BindValueChanged(_ => updateMenuRadius());
+            }
+
+            protected override void Update()
+            {
+                base.Update();
+                updateMenuRadius();
+            }
+
+            private void updateMenuRadius()
+            {
+                float maxRadius = disableShear.Value ? (DrawHeight > 0 ? DrawHeight / 2f : 12f) : 5f;
+                float radius = System.Math.Min(popupRadius.Value, maxRadius);
+                CornerRadius = MaskingContainer.CornerRadius = radius;
+                SetGlassCornerRadius(radius);
             }
 
             protected override DrawableDropdownMenuItem CreateDrawableDropdownMenuItem(MenuItem item) => new ShearedMenuItem(item)
@@ -81,6 +106,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
             public partial class ShearedMenuItem : DrawableOsuDropdownMenuItem
             {
                 private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
+                private readonly IBindable<float> popupRadius = OverlayColourProvider.GetGeometryRadius(osu.Game.Overlays.CustomTheme.GeometryRole.Popup, 4f);
 
                 public ShearedMenuItem(MenuItem item)
                     : base(item)
@@ -91,7 +117,25 @@ namespace osu.Game.Graphics.UserInterfaceV2
                 protected override void LoadComplete()
                 {
                     base.LoadComplete();
-                    disableShear.BindValueChanged(_ => Foreground.Shear = -OsuGame.SHEAR, true);
+                    disableShear.BindValueChanged(_ =>
+                    {
+                        Foreground.Shear = -OsuGame.SHEAR;
+                        updateShearedRadius();
+                    }, true);
+                    popupRadius.BindValueChanged(_ => updateShearedRadius());
+                }
+
+                protected override void Update()
+                {
+                    base.Update();
+                    updateShearedRadius();
+                }
+
+                private void updateShearedRadius()
+                {
+                    // Acute corners on sheared items distort into cat-ears at high corner radii.
+                    float maxRadius = disableShear.Value ? (DrawHeight > 0 ? DrawHeight / 2f : 12f) : 4f;
+                    CornerRadius = System.Math.Min(popupRadius.Value, maxRadius);
                 }
             }
         }
@@ -122,6 +166,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
             private Box headerBackgroundBox = null!;
             private readonly SpriteIcon chevron;
             private IBindable<Colour4> themeColour = null!;
+            private IBindable<float>? radiusBindable;
             private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
             public Container LabelContainer { get; }
@@ -159,14 +204,14 @@ namespace osu.Game.Graphics.UserInterfaceV2
                                     Depth = float.MaxValue,
                                     CornerRadius = ShearedButton.CORNER_RADIUS,
                                     Masking = true,
-                                    AutoSizeAxes = Axes.Both,
+                                    AutoSizeAxes = Axes.Y,
                                     Children = new Drawable[]
                                     {
                                         labelBox = new Box
                                         {
                                             RelativeSizeAxes = Axes.Both
                                         },
-                                        labelText = new OsuSpriteText
+                                        labelText = new TruncatingSpriteText
                                         {
                                             Margin = new MarginPadding
                                             {
@@ -233,12 +278,16 @@ namespace osu.Game.Graphics.UserInterfaceV2
                     updateColour();
                 }, true);
 
+                radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Input, ShearedButton.CORNER_RADIUS);
+                radiusBindable.BindValueChanged(_ => updateRadius(), true);
+
                 disableShear.BindValueChanged(_ =>
                 {
                     Shear = OsuGame.SHEAR;
                     labelText.Shear = -OsuGame.SHEAR;
                     if (valueContainer != null)
                         valueContainer.Shear = -OsuGame.SHEAR;
+                    updateRadius();
                 }, true);
 
                 Dropdown.Menu.StateChanged += _ =>
@@ -258,13 +307,27 @@ namespace osu.Game.Graphics.UserInterfaceV2
                     : colourProvider.Background3;
             }
 
+            private void updateRadius()
+            {
+                float target = radiusBindable?.Value ?? ShearedButton.CORNER_RADIUS;
+                float radius = !disableShear.Value ? System.Math.Min(target, 5f) : target;
+                CornerRadius = radius;
+                LabelContainer.CornerRadius = radius;
+            }
+
             protected override void Update()
             {
                 base.Update();
+                // Translated labels must not consume the entire header: keep at least half
+                // available for the selected value, its padding and the chevron. The label
+                // retains its natural width when it fits, and exposes its full text on hover.
+                labelText.MaxWidth = System.Math.Max(0, DrawWidth * 0.5f - labelText.Margin.TotalHorizontal);
+                LabelContainer.Width = System.Math.Min(DrawWidth * 0.5f, labelText.DrawWidth + labelText.Margin.TotalHorizontal);
+
                 searchBar.Padding = new MarginPadding { Left = LabelContainer.DrawWidth };
 
                 // By limiting the width we avoid this box showing up as an outline around the drawables that are on top of it.
-                Background.Padding = new MarginPadding { Left = LabelContainer.DrawWidth - ShearedButton.CORNER_RADIUS };
+                Background.Padding = new MarginPadding { Left = LabelContainer.DrawWidth - CornerRadius };
             }
 
             protected override bool OnHover(HoverEvent e)
@@ -305,7 +368,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
             {
                 Debug.Assert(Dropdown != null);
                 bool open = Dropdown.Menu.State == MenuState.Open;
-                chevron.ScaleTo(open ? new Vector2(1f, -1f) : Vector2.One, 300, Easing.OutQuint);
+                chevron.ScaleTo(open ? new Vector2(1f, -1f) : Vector2.One, InterfaceAnimation.MovementDuration(300), Easing.OutQuint);
             }
 
             protected override DropdownSearchBar CreateSearchBar() => searchBar = new ShearedDropdownSearchBar();

@@ -77,12 +77,18 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 
         internal override bool MouseDownSelectionRequested(SelectionBlueprint<HitObject> blueprint, MouseButtonEvent e)
         {
-            if (tryHandleLaneGroupSelection(blueprint, e))
-                return true;
-
-            if (e.ShiftPressed && e.Button == MouseButton.Left && pivot != null)
+            if (e.ShiftPressed && e.Button == MouseButton.Left && pivot != null && isTimelineObjectVisible(pivot))
             {
                 handleRangeSelection(blueprint, e.ControlPressed);
+                return true;
+            }
+
+            // Clicking the already selected timeline item starts its move, not
+            // overlap cycling on mouse-up. Keep Ctrl-click and quick-delete intact.
+            if (laneLayout != null && blueprint.IsSelected && e.Button == MouseButton.Left
+                && !e.ControlPressed && !e.ShiftPressed && !e.AltPressed && !e.SuperPressed)
+            {
+                pivot = blueprint.Item;
                 return true;
             }
 
@@ -93,34 +99,8 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             return result;
         }
 
-        private bool tryHandleLaneGroupSelection(SelectionBlueprint<HitObject> blueprint, MouseButtonEvent e)
-        {
-            if (laneLayout == null || e.Button != MouseButton.Left || e.ControlPressed || e.ShiftPressed)
-                return false;
-
-            object groupKey = laneLayout.GetTimelineGroupKey(blueprint.Item);
-
-            if (groupKey == null)
-                return false;
-
-            int lane = laneLayout.GetTimelineLane(blueprint.Item).Index;
-            HitObject[] group = EditorBeatmap.HitObjects
-                                               .Where(item => laneLayout.GetTimelineLane(item).Index == lane)
-                                               .Where(item => EqualityComparer<object>.Default.Equals(laneLayout.GetTimelineGroupKey(item), groupKey))
-                                               .ToArray();
-
-            if (group.Length <= 1)
-                return false;
-
-            // A collapsed marker is only a presentation detail. Selecting the
-            // whole group here made it impossible to immediately drag one of
-            // several objects sharing the same timestamp.
-            EditorBeatmap.SelectedHitObjects.Clear();
-            EditorBeatmap.SelectedHitObjects.Add(blueprint.Item);
-
-            pivot = blueprint.Item;
-            return true;
-        }
+        private bool isTimelineObjectVisible(HitObject item)
+            => laneLayout == null || laneLayout.IsTimelineLaneVisible(laneLayout.GetTimelineLane(item).Index);
 
         /// <summary>
         /// Handles a request for range selection (triggered when Shift is held down).
@@ -145,14 +125,14 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             if (cumulative)
             {
                 pivot = clickedObject;
-                newSelection.UnionWith(EditorBeatmap.SelectedHitObjects);
+                newSelection.UnionWith(EditorBeatmap.SelectedHitObjects.Where(isTimelineObjectVisible));
             }
 
             EditorBeatmap.SelectedHitObjects.Clear();
             EditorBeatmap.SelectedHitObjects.AddRange(newSelection);
 
             bool isInRange(HitObject hitObject, double start, double end)
-                => hitObject.StartTime >= start && hitObject.GetEndTime() <= end;
+                => isTimelineObjectVisible(hitObject) && hitObject.StartTime >= start && hitObject.GetEndTime() <= end;
         }
     }
 }

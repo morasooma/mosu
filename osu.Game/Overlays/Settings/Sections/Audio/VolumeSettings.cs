@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -27,14 +27,20 @@ namespace osu.Game.Overlays.Settings.Sections.Audio
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true,
                     PlaySamplesOnAdjust = false,
-                }),
+                })
+                {
+                    FavouriteId = "ui:AudioSettingsStrings.MasterVolume",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = AudioSettingsStrings.MasterVolumeInactive,
                     Current = config.GetBindable<double>(OsuSetting.VolumeInactive),
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.VolumeInactive",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = AudioSettingsStrings.EffectVolume,
@@ -42,7 +48,10 @@ namespace osu.Game.Overlays.Settings.Sections.Audio
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true,
                     PlaySamplesOnAdjust = false,
-                }),
+                })
+                {
+                    FavouriteId = "ui:AudioSettingsStrings.EffectVolume",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = AudioSettingsStrings.MusicVolume,
@@ -50,7 +59,10 @@ namespace osu.Game.Overlays.Settings.Sections.Audio
                     KeyboardStep = 0.01f,
                     DisplayAsPercentage = true,
                     PlaySamplesOnAdjust = false,
-                }),
+                })
+                {
+                    FavouriteId = "ui:AudioSettingsStrings.MusicVolume",
+                },
             };
         }
     }

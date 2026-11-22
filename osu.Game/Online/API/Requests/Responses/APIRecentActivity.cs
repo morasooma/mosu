@@ -81,6 +81,12 @@ namespace osu.Game.Online.API.Requests.Responses
 
         public class RecentActivityAchievement
         {
+            [JsonProperty("icon_url_2x")]
+            public string IconUrl2x;
+
+            [JsonProperty("icon_url")]
+            public string IconUrl;
+
             [JsonProperty("slug")]
             public string Slug;
 

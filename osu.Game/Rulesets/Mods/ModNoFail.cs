@@ -17,7 +17,7 @@ namespace osu.Game.Rulesets.Mods
         public override string Acronym => "NF";
         public override IconUsage? Icon => OsuIcon.ModNoFail;
         public override ModType Type => ModType.DifficultyReduction;
-        public override LocalisableString Description => "You can't fail, no matter what.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4242;
         public override Type[] IncompatibleMods => new[] { typeof(ModFailCondition), typeof(ModCinema) };
         public override bool Ranked => UsesDefaultConfiguration;
         public override bool ValidForFreestyleAsRequiredMod => true;

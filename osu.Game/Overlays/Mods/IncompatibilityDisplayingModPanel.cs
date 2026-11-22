@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
-using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
@@ -45,10 +44,20 @@ namespace osu.Game.Overlays.Mods
             incompatible.Value = IsIncompatibleWithSelected(selectedMods.Value);
         }
 
-        protected virtual bool IsIncompatibleWithSelected(IReadOnlyList<Mod> selectedMods) =>
-            selectedMods.Count > 0
-            && selectedMods.All(selected => selected.GetType() != Mod.GetType())
-            && !ModUtils.CheckCompatibleSet(selectedMods.Append(Mod));
+        protected virtual bool IsIncompatibleWithSelected(IReadOnlyList<Mod> selectedMods)
+        {
+            if (selectedMods.Count == 0)
+                return false;
+
+            var candidateType = Mod.GetType();
+            for (int i = 0; i < selectedMods.Count; i++)
+            {
+                if (selectedMods[i].GetType() == candidateType)
+                    return false;
+            }
+
+            return !ModUtils.CheckCompatibleSet(selectedMods, Mod);
+        }
 
         protected override Colour4 BackgroundColour => incompatible.Value ? ColourProvider.Background6 : base.BackgroundColour;
         protected override Colour4 ForegroundColour => incompatible.Value ? ColourProvider.Background5 : base.ForegroundColour;

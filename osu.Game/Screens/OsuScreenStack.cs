@@ -5,15 +5,45 @@ using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Screens;
 using osu.Game.Graphics.Containers;
+using osu.Game.Graphics.Backgrounds;
 
 namespace osu.Game.Screens
 {
-    public partial class OsuScreenStack : ScreenStack
+    [Cached(typeof(IBackgroundSceneSource))]
+    public partial class OsuScreenStack : ScreenStack, ISongSelectBackdropBlurSource, IBackgroundSceneSource
     {
         [Cached]
         private BackgroundScreenStack backgroundScreenStack;
 
         private readonly ParallaxContainer parallaxContainer;
+
+        public BackdropBlurContainer BackgroundBlurSource { get; } = new BackdropBlurContainer(backgroundOnly: true);
+
+        public osu.Framework.Graphics.Sprites.Sprite? BackgroundSprite => backgroundScreenStack.BackgroundSprite;
+
+        IBackdropBlurSource ISongSelectBackdropBlurSource.Source => BackgroundBlurSource;
+
+        /// <summary>Unpadded viewport used by the background, independently of screen UI layout.</summary>
+        public System.Func<Drawable>? BackgroundViewport { get; set; }
+        private osu.Framework.Graphics.Sprites.BufferedContainerView<Drawable>? backgroundView;
+
+        protected override void Update()
+        {
+            base.Update();
+            if (backgroundView != null)
+                backgroundView.Alpha = BackgroundBlurSource.BufferingActive ? 1 : 0;
+            if (BackgroundViewport == null)
+                return;
+
+            var viewport = BackgroundViewport();
+            var quad = viewport.ScreenSpaceDrawQuad;
+            var parent = BackgroundBlurSource.Parent ?? this;
+            var topLeft = parent.ToLocalSpace(quad.TopLeft);
+            var bottomRight = parent.ToLocalSpace(quad.BottomRight);
+            BackgroundBlurSource.RelativeSizeAxes = Axes.None;
+            BackgroundBlurSource.Position = topLeft;
+            BackgroundBlurSource.Size = bottomRight - topLeft;
+        }
 
         protected float ParallaxAmount => parallaxContainer.ParallaxAmount;
 
@@ -25,7 +55,11 @@ namespace osu.Game.Screens
 
         public OsuScreenStack()
         {
-            InternalChild = parallaxContainer = new ParallaxContainer
+            // Menu overlays must sample the current background too, but hidden
+            // surfaces must not enable background effects during gameplay/loading.
+            BackgroundBlurSource.AllowEffects = () => CurrentScreen != null && CurrentScreen is not Play.Player and not Play.PlayerLoader;
+            InternalChild = BackgroundBlurSource;
+            BackgroundBlurSource.SceneContent = parallaxContainer = new ParallaxContainer
             {
                 RelativeSizeAxes = Axes.Both,
                 Child = backgroundScreenStack = new BackgroundScreenStack { RelativeSizeAxes = Axes.Both },
@@ -33,6 +67,15 @@ namespace osu.Game.Screens
 
             ScreenPushed += screenPushed;
             ScreenExited += ScreenChanged;
+        }
+
+        /// <summary>Keep the full background outside the UI capture; capture only its sharp view.</summary>
+        public BackdropBlurContainer DetachBackgroundSource()
+        {
+            BackgroundBlurSource.CaptureOriginal = () => CurrentScreen is Select.ISongSelect or SelectLegacy.SongSelect;
+            RemoveInternal(BackgroundBlurSource, false);
+            AddInternal(backgroundView = BackgroundBlurSource.CreateOriginalView());
+            return BackgroundBlurSource;
         }
 
         public void PushSynchronously(OsuScreen screen)

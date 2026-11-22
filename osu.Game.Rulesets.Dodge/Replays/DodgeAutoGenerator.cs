@@ -62,6 +62,10 @@ namespace osu.Game.Rulesets.Dodge.Replays
         private readonly DodgeHitObject[] hitObjects;
         private readonly DodgeArenaStateEvaluator arenaEvaluator;
         private readonly DodgeCameraStateEvaluator cameraEvaluator;
+        private readonly DodgeTriggerStateEvaluator triggerEvaluator;
+        private readonly osu.Framework.Graphics.Primitives.RectangleF? worldBounds;
+        private readonly bool hasPlayerMoves;
+        private readonly Dictionary<DodgeTrigger, Vector2> selectedMoveSources = new Dictionary<DodgeTrigger, Vector2>();
         private readonly List<Projectile> projectiles = new List<Projectile>();
         private readonly List<BeamThreat> beams = new List<BeamThreat>();
         private readonly float movementSpeed;
@@ -99,6 +103,9 @@ namespace osu.Game.Rulesets.Dodge.Replays
 
         public IReadOnlyList<DodgeAutoplayRoutePoint> Route { get; private set; } = Array.Empty<DodgeAutoplayRoutePoint>();
 
+        public IReadOnlyList<osu.Game.Rulesets.Difficulty.LocalDifficultySample> LocalDifficulty { get; private set; }
+            = Array.Empty<osu.Game.Rulesets.Difficulty.LocalDifficultySample>();
+
         public DodgeAutoGenerator(
             IBeatmap beatmap,
             CancellationToken cancellationToken = default,
@@ -106,10 +113,13 @@ namespace osu.Game.Rulesets.Dodge.Replays
             : base(beatmap)
         {
             hitObjects = beatmap.HitObjects.OfType<DodgeHitObject>().ToArray();
-            arenaEvaluator = new DodgeArenaStateEvaluator(hitObjects.OfType<DodgeArenaChange>());
+            triggerEvaluator = new DodgeTriggerStateEvaluator(hitObjects.OfType<DodgeTrigger>());
+            worldBounds = DodgeWorldGeometry.Bounds(hitObjects);
+            hasPlayerMoves = hitObjects.OfType<DodgeTrigger>().Any(t => t.Action == DodgeTriggerAction.MovePlayer);
+            arenaEvaluator = new DodgeArenaStateEvaluator(hitObjects.OfType<DodgeArenaChange>(), hitObjects.OfType<DodgeTrigger>());
             DodgeCameraChange[] cameraChanges = hitObjects.OfType<DodgeCameraChange>().ToArray();
             cameraEvaluator = new DodgeCameraStateEvaluator(cameraChanges);
-            hasCameraChanges = cameraChanges.Length > 0;
+            hasCameraChanges = cameraEvaluator.HasChanges;
             movementSpeed = (float)(DodgeBeatmapSettings.GetPlayerSpeed(beatmap.Difficulty) / 1000);
             playerSize = DodgeBeatmapSettings.GetPlayerSize(beatmap.Difficulty);
             this.collisionSafetyMargin = Math.Max(0, collisionSafetyMargin);
@@ -121,6 +131,7 @@ namespace osu.Game.Rulesets.Dodge.Replays
         {
             Analysis = default;
             Route = Array.Empty<DodgeAutoplayRoutePoint>();
+            LocalDifficulty = Array.Empty<osu.Game.Rulesets.Difficulty.LocalDifficultySample>();
             cancellationToken.ThrowIfCancellationRequested();
 
             int threatCount = projectiles.Count + beams.Count;
@@ -152,6 +163,13 @@ namespace osu.Game.Rulesets.Dodge.Replays
             if (times.Count == 1)
                 times.Add(startTime + timeStep);
 
+            foreach (DodgeTrigger move in hitObjects.OfType<DodgeTrigger>().Where(t => t.Action == DodgeTriggerAction.MovePlayer))
+            {
+                if (move.StartTime > startTime && move.StartTime < lastThreatTime) times.Add(move.StartTime);
+                if (move.EndTime > startTime && move.EndTime < lastThreatTime) times.Add(move.EndTime);
+            }
+            times = times.Distinct().OrderBy(t => t).ToList();
+
             List<Projectile>[] activeProjectiles = buildActiveProjectileLists(times);
             List<BeamThreat>[] activeBeams = buildActiveBeamLists(times);
             List<Vector2>[] movementOffsets = new List<Vector2>[times.Count];
@@ -175,6 +193,11 @@ namespace osu.Game.Rulesets.Dodge.Replays
             }
 
             DodgeArenaState[] arenas = times.Select(arenaEvaluator.Evaluate).ToArray();
+            if (worldBounds.HasValue || hasPlayerMoves)
+            {
+                generateWorldRoute(times, arenas, activeProjectiles, activeBeams, movementOffsets);
+                return;
+            }
             viabilityMap = buildViabilityMap(times, arenas, activeProjectiles, activeBeams, timeStep);
             var history = new List<List<PlannerState>>(times.Count);
 
@@ -237,6 +260,79 @@ namespace osu.Game.Rulesets.Dodge.Replays
                 activeProjectiles,
                 activeBeams,
                 movementOffsets,
+                countCollisionSections(route, times, arenas, activeProjectiles, activeBeams));
+            addReplayFrames(route);
+        }
+
+        // Sparse world-space beam: bounded state count rather than allocating a 4096² grid.
+        private void generateWorldRoute(IReadOnlyList<double> times, IReadOnlyList<DodgeArenaState> arenas,
+            IReadOnlyList<List<Projectile>> activeProjectiles, IReadOnlyList<List<BeamThreat>> activeBeams,
+            IReadOnlyList<List<Vector2>> movementOffsets)
+        {
+            maximumViability = 1;
+            DodgeTrigger? initialMove = triggerEvaluator.PlayerMoveAt(times[0]);
+            Vector2 initial = DodgePlayer.ClampToArena(initialMove == null ? DodgePlayfield.BASE_SIZE / 2
+                : DodgeTriggerStateEvaluator.PlayerPositionAt(initialMove, times[0]), arenas[0].Position, arenas[0].Size, playerSize, arenas[0].Rotation);
+            var history = new List<List<PlannerState>> { new List<PlannerState> { createPlannerState(0, initial, 0, -1, false, 1) } };
+            for (int step = 1; step < times.Count; step++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var candidates = new Dictionary<(int, int), PlannerState>();
+                DodgeTrigger? move = triggerEvaluator.PlayerMoveAt(times[step]);
+                bool forced = move != null && (times[step] <= move.EndTime || move.StartTime > times[step - 1]);
+                double bestFallback = double.NegativeInfinity;
+                PlannerState fallback = default;
+                for (int parent = 0; parent < history[^1].Count; parent++)
+                {
+                    PlannerState previous = history[^1][parent];
+                    Vector2 carried = cameraCarriedPosition(previous.Position, times[step - 1], times[step], arenas[step]);
+                    foreach (Vector2 offset in forced ? (IEnumerable<Vector2>)new[] { Vector2.Zero } : movementOffsets[step])
+                    {
+                        Vector2 source = forced && move!.MoveFromCurrentPosition
+                            ? previous.ActiveMove == move ? previous.MoveSource : previous.Position
+                            : move?.SourcePosition ?? Vector2.Zero;
+                        Vector2 target = forced ? DodgeTriggerStateEvaluator.PlayerPositionAt(move!, times[step], source) : carried + offset;
+                        target = DodgePlayer.ClampToArena(target, arenas[step].Position, arenas[step].Size, playerSize, arenas[step].Rotation);
+                        double clearance = calculateClearance(target, times[step], activeProjectiles[step], activeBeams[step]);
+                        double score = previous.Score + Math.Min(96, clearance) * 0.02 - (forced ? 0 : offset.Length * 0.08);
+                        bool safe = isTransitionSafe(previous.Position, target, times[step - 1], times[step], arenas[step - 1], arenas[step], activeProjectiles[step], activeBeams[step], forced ? source : null);
+                        var state = createPlannerState(0, target, score, parent, !safe, 1) with
+                        {
+                            ActiveMove = forced ? move : previous.ActiveMove,
+                            MoveSource = forced ? source : previous.MoveSource,
+                        };
+                        if (score > bestFallback) { bestFallback = score; fallback = state; }
+                        if (!safe) continue;
+                        var key = ((int)MathF.Round(target.X / position_grid_size), (int)MathF.Round(target.Y / position_grid_size));
+                        if (!candidates.TryGetValue(key, out PlannerState existing) || existing.Score < score) candidates[key] = state;
+                    }
+                }
+                List<PlannerState> ordered = candidates.Values.OrderByDescending(s => s.Score).ToList();
+                var next = new List<PlannerState>();
+                var regions = new HashSet<(int, int)>();
+                foreach (PlannerState state in ordered)
+                {
+                    if (regions.Add(((int)MathF.Floor(state.Position.X / diversity_bin_size), (int)MathF.Floor(state.Position.Y / diversity_bin_size))))
+                        next.Add(state);
+                    if (next.Count >= maximum_diverse_states) break;
+                }
+                foreach (PlannerState state in ordered)
+                {
+                    if (!next.Contains(state)) next.Add(state);
+                    if (next.Count >= beam_width) break;
+                }
+                if (next.Count == 0) next.Add(fallback);
+                history.Add(next);
+            }
+            List<DodgeAutoplayRoutePoint> route = backtrackRoute(history, times);
+            selectedMoveSources.Clear();
+            foreach (DodgeTrigger move in hitObjects.OfType<DodgeTrigger>().Where(t => t.Action == DodgeTriggerAction.MovePlayer && t.MoveFromCurrentPosition))
+            {
+                DodgeAutoplayRoutePoint sourcePoint = route.FirstOrDefault(p => p.Time >= move.StartTime);
+                selectedMoveSources[move] = sourcePoint.Position;
+            }
+            Route = route;
+            Analysis = analyseRoute(route, history, times, arenas, activeProjectiles, activeBeams, movementOffsets,
                 countCollisionSections(route, times, arenas, activeProjectiles, activeBeams));
             addReplayFrames(route);
         }
@@ -685,7 +781,9 @@ namespace osu.Game.Rulesets.Dodge.Replays
                 // Camera scroll and a moving/rotating arena can carry or clamp the
                 // player without any input. Only deliberate displacement is
                 // movement strain; otherwise cosmetic motion changes stars.
-                Vector2 displacement = endPosition - passiveEndPosition;
+                DodgeTrigger? forcedMove = triggerEvaluator.PlayerMoveAt(segmentEnd);
+                Vector2 displacement = forcedMove != null && (segmentEnd <= forcedMove.EndTime || forcedMove.StartTime > segmentStart)
+                    ? Vector2.Zero : endPosition - passiveEndPosition;
                 double movementRatio = current.UsedFallback
                     ? 1
                     : displacement.Length / Math.Max(0.001, movementSpeed * (segmentEnd - segmentStart));
@@ -841,6 +939,14 @@ namespace osu.Game.Rulesets.Dodge.Replays
                     sectionPressurePeaks[section] = pressure;
             }
 
+            LocalDifficulty = difficultySections.OrderBy(pair => pair.Key)
+                .Select(pair => new osu.Game.Rulesets.Difficulty.LocalDifficultySample(
+                    startTime + pair.Key * 400,
+                    pair.Value.IsRelevant
+                        ? Math.Sqrt(pair.Value.MovementDifficulty + pair.Value.PathDifficulty + pair.Value.ReadingDifficulty)
+                        : 0))
+                .ToArray();
+
             double weightedStrain = weightedPeakAverage(sectionPeaks.Values);
             double weightedMovement = weightedPeakAverage(sectionMovementPeaks.Values);
             double weightedPressure = weightedPeakAverage(sectionPressurePeaks.Values);
@@ -934,6 +1040,13 @@ namespace osu.Game.Rulesets.Dodge.Replays
             DodgeArenaState arena,
             out double information)
         {
+            if (worldBounds.HasValue || hasPlayerMoves)
+            {
+                int successful = Enumerable.Range(0, states.Count).Count(i => successfulStates[i] && !states[i].UsedFallback);
+                double worldFreedom = Math.Clamp((double)successful / Math.Max(1, Math.Min(beam_width, states.Count)), 0, 1);
+                information = -Math.Log2(Math.Max(worldFreedom, 1.0 / beam_width));
+                return Math.Pow(1 - worldFreedom, 1.2);
+            }
             Array.Clear(occupiedDiversityBins);
             int occupied = 0;
 
@@ -995,6 +1108,30 @@ namespace osu.Game.Rulesets.Dodge.Replays
             out double information,
             out ushort safeDirectionMask)
         {
+            if (worldBounds.HasValue || hasPlayerMoves)
+            {
+                DodgeTrigger? move = triggerEvaluator.PlayerMoveAt(time);
+                if (move != null && (time <= move.EndTime || move.StartTime > previousTime))
+                {
+                    information = 0;
+                    safeDirectionMask = 0;
+                    return 0; // Authored motion is not a player decision.
+                }
+                Vector2 carried = cameraCarriedPosition(previousPosition, previousTime, time, arena);
+                int safe = 0;
+                safeDirectionMask = 0;
+                foreach (Vector2 offset in movementOffsets)
+                {
+                    Vector2 target = DodgePlayer.ClampToArena(carried + offset, arena.Position, arena.Size, playerSize, arena.Rotation);
+                    if (!isTransitionSafe(previousPosition, target, previousTime, time, previousArena, arena, activeProjectiles, activeBeams))
+                        continue;
+                    safe++;
+                    safeDirectionMask |= actionDirectionMask(target - carried);
+                }
+                double worldFreedom = (double)safe / Math.Max(1, movementOffsets.Count);
+                information = -Math.Log2(Math.Max(worldFreedom, 1.0 / Math.Max(1, movementOffsets.Count)));
+                return Math.Pow(1 - worldFreedom, 0.75);
+            }
             Vector2 from = DodgePlayer.ClampToArena(
                 previousPosition,
                 previousArena.Position,
@@ -1391,31 +1528,10 @@ namespace osu.Game.Rulesets.Dodge.Replays
                 previousStandalonePatternId = patternId;
 
                 double endTime = bullet.ContinueUntilExit
-                    ? (hasCameraChanges
-                        ? DodgeTrajectory.CalculateExitTimeWithCamera(
-                            bullet.StartTime,
-                            bullet.Duration,
-                            bullet.Position,
-                            bullet.EndPosition,
-                            bullet.BulletSize,
-                            bullet.MovementType,
-                            bullet.WaveAmplitude,
-                            bullet.WaveCycles,
-                            bullet.WavePhase,
-                            evaluateCamera,
-                            continuedEndTime,
-                            bullet.MovementEasing)
-                        : DodgeTrajectory.CalculateExitTime(
-                            bullet.StartTime,
-                            bullet.Duration,
-                            bullet.Position,
-                            bullet.EndPosition,
-                            bullet.BulletSize,
-                            bullet.MovementType,
-                            bullet.WaveAmplitude,
-                            bullet.WaveCycles,
-                            bullet.WavePhase,
-                            bullet.MovementEasing))
+                    ? DodgeWorldGeometry.ExitTime(worldBounds ?? new osu.Framework.Graphics.Primitives.RectangleF(0, 0, DodgePlayfield.WIDTH, DodgePlayfield.HEIGHT),
+                        arenaEvaluator, bullet.StartTime, bullet.Duration, bullet.Position, bullet.EndPosition,
+                        bullet.BulletSize, bullet.MovementType, bullet.WaveAmplitude, bullet.WaveCycles, bullet.WavePhase, bullet.MovementEasing,
+                        hasCameraChanges ? evaluateCamera : null, continuedEndTime)
                     : bullet.EndTime;
                 projectiles.Add(Projectile.FromTrajectory(
                     patternId,
@@ -1442,34 +1558,12 @@ namespace osu.Game.Rulesets.Dodge.Replays
                     for (int i = 0; i < emitter.EffectiveBulletCount; i++)
                     {
                         double startTime = emitter.EmissionTimeAt(burst);
-                        Vector2 sourcePosition = emitter.SourcePositionAt(burst);
-                        Vector2 endPosition = emitter.EndPositionAt(burst, i);
+                        var (sourcePosition, endPosition) = emitter.TrajectoryPointsAt(burst, i);
                         double endTime = emitter.ContinueUntilExit
-                            ? (hasCameraChanges
-                                ? DodgeTrajectory.CalculateExitTimeWithCamera(
-                                    startTime,
-                                    emitter.Duration,
-                                    sourcePosition,
-                                    endPosition,
-                                    emitter.BulletSize,
-                                    emitter.MovementType,
-                                    emitter.WaveAmplitude,
-                                    emitter.WaveCycles,
-                                    emitter.WavePhase,
-                                    evaluateCamera,
-                                    continuedEndTime,
-                                    emitter.MovementEasing)
-                                : DodgeTrajectory.CalculateExitTime(
-                                    startTime,
-                                    emitter.Duration,
-                                    sourcePosition,
-                                    endPosition,
-                                    emitter.BulletSize,
-                                    emitter.MovementType,
-                                    emitter.WaveAmplitude,
-                                    emitter.WaveCycles,
-                                    emitter.WavePhase,
-                                    emitter.MovementEasing))
+                            ? DodgeWorldGeometry.ExitTime(worldBounds ?? new osu.Framework.Graphics.Primitives.RectangleF(0, 0, DodgePlayfield.WIDTH, DodgePlayfield.HEIGHT),
+                                arenaEvaluator, startTime, emitter.Duration, sourcePosition, endPosition,
+                                emitter.BulletSize, emitter.MovementType, emitter.WaveAmplitude, emitter.WaveCycles, emitter.WavePhase,
+                                emitter.MovementEasing, hasCameraChanges ? evaluateCamera : null, continuedEndTime)
                             : startTime + emitter.Duration;
                         projectiles.Add(Projectile.FromTrajectory(
                             patternId,
@@ -1863,7 +1957,8 @@ namespace osu.Game.Rulesets.Dodge.Replays
             DodgeArenaState startArena,
             DodgeArenaState endArena,
             IReadOnlyList<Projectile> active,
-            IReadOnlyList<BeamThreat> activeBeams)
+            IReadOnlyList<BeamThreat> activeBeams,
+            Vector2? moveSource = null)
         {
             bool staticArena = arenaIsStatic(startArena, endArena);
             // Camera easing can curve an otherwise linear projectile between two
@@ -1878,22 +1973,13 @@ namespace osu.Game.Rulesets.Dodge.Replays
             {
                 double segmentStart = startTime + (endTime - startTime) * subdivision / subdivisions;
                 double segmentEnd = startTime + (endTime - startTime) * (subdivision + 1) / subdivisions;
-                float startProgress = (float)((segmentStart - startTime) / Math.Max(0.001, endTime - startTime));
-                float endProgress = (float)((segmentEnd - startTime) / Math.Max(0.001, endTime - startTime));
                 DodgeArenaState segmentStartArena = staticArena ? startArena : arenaEvaluator.Evaluate(segmentStart);
                 DodgeArenaState segmentEndArena = staticArena ? endArena : arenaEvaluator.Evaluate(segmentEnd);
-                Vector2 playerStart = DodgePlayer.ClampToArena(
-                    Vector2.Lerp(from, to, startProgress),
-                    segmentStartArena.Position,
-                    segmentStartArena.Size,
-                    playerSize,
-                    segmentStartArena.Rotation);
-                Vector2 playerEnd = DodgePlayer.ClampToArena(
-                    Vector2.Lerp(from, to, endProgress),
-                    segmentEndArena.Position,
-                    segmentEndArena.Size,
-                    playerSize,
-                    segmentEndArena.Rotation);
+                Vector2 playerStart = playerPositionAtTransition(from, to, startTime, endTime, segmentStart, segmentStartArena, moveSource);
+                Vector2 playerEnd = playerPositionAtTransition(from, to, startTime, endTime, segmentEnd, segmentEndArena, moveSource);
+                DodgeTrigger? enteredMove = triggerEvaluator.PlayerMoveAt(segmentEnd);
+                if (enteredMove != null && !enteredMove.MoveFromCurrentPosition && enteredMove.StartTime > segmentStart)
+                    playerStart = playerEnd; // The authored snap to the source is not a swept traversal.
                 Vector2 segmentStartCamera = evaluateCamera(segmentStart);
                 Vector2 segmentEndCamera = evaluateCamera(segmentEnd);
 
@@ -1910,10 +1996,10 @@ namespace osu.Game.Rulesets.Dodge.Replays
                     Vector2 endCamera = overlapEnd == segmentEnd ? segmentEndCamera : evaluateCamera(overlapEnd);
                     Vector2 overlapPlayerStart = overlapStart == segmentStart
                         ? playerStart
-                        : playerPositionAtTransition(from, to, startTime, endTime, overlapStart, staticArena ? startArena : arenaEvaluator.Evaluate(overlapStart));
+                        : playerPositionAtTransition(from, to, startTime, endTime, overlapStart, staticArena ? startArena : arenaEvaluator.Evaluate(overlapStart), moveSource);
                     Vector2 overlapPlayerEnd = overlapEnd == segmentEnd
                         ? playerEnd
-                        : playerPositionAtTransition(from, to, startTime, endTime, overlapEnd, staticArena ? endArena : arenaEvaluator.Evaluate(overlapEnd));
+                        : playerPositionAtTransition(from, to, startTime, endTime, overlapEnd, staticArena ? endArena : arenaEvaluator.Evaluate(overlapEnd), moveSource);
                     Vector2 relativeStart = projectile.PositionAt(overlapStart, startCamera) - overlapPlayerStart;
                     Vector2 relativeEnd = projectile.PositionAt(overlapEnd, endCamera) - overlapPlayerEnd;
                     float collisionDistance = (projectile.BulletSize + playerSize) / 2 + collisionSafetyMargin;
@@ -1933,10 +2019,10 @@ namespace osu.Game.Rulesets.Dodge.Replays
 
                     Vector2 overlapPlayerStart = overlapStart == segmentStart
                         ? playerStart
-                        : playerPositionAtTransition(from, to, startTime, endTime, overlapStart, staticArena ? startArena : arenaEvaluator.Evaluate(overlapStart));
+                        : playerPositionAtTransition(from, to, startTime, endTime, overlapStart, staticArena ? startArena : arenaEvaluator.Evaluate(overlapStart), moveSource);
                     Vector2 overlapPlayerEnd = overlapEnd == segmentEnd
                         ? playerEnd
-                        : playerPositionAtTransition(from, to, startTime, endTime, overlapEnd, staticArena ? endArena : arenaEvaluator.Evaluate(overlapEnd));
+                        : playerPositionAtTransition(from, to, startTime, endTime, overlapEnd, staticArena ? endArena : arenaEvaluator.Evaluate(overlapEnd), moveSource);
                     Vector2 relativeStart = overlapPlayerStart
                                             - beam.PositionAt(overlapStart, overlapStart == segmentStart ? segmentStartCamera : evaluateCamera(overlapStart));
                     Vector2 relativeEnd = overlapPlayerEnd
@@ -1961,11 +2047,17 @@ namespace osu.Game.Rulesets.Dodge.Replays
             double startTime,
             double endTime,
             double time,
-            DodgeArenaState arena)
+            DodgeArenaState arena,
+            Vector2? moveSource = null)
         {
             float progress = (float)((time - startTime) / Math.Max(0.001, endTime - startTime));
+            DodgeTrigger? move = triggerEvaluator.PlayerMoveAt(time);
+            bool forced = move != null && (time <= move.EndTime || move.StartTime > startTime);
+            Vector2 source = move?.SourcePosition ?? Vector2.Zero;
+            if (forced && move!.MoveFromCurrentPosition)
+                source = moveSource ?? (selectedMoveSources.TryGetValue(move, out Vector2 captured) ? captured : from);
             return DodgePlayer.ClampToArena(
-                Vector2.Lerp(from, to, progress),
+                forced ? DodgeTriggerStateEvaluator.PlayerPositionAt(move!, time, source) : Vector2.Lerp(from, to, progress),
                 arena.Position,
                 arena.Size,
                 playerSize,
@@ -2258,7 +2350,8 @@ namespace osu.Game.Rulesets.Dodge.Replays
 
         private Vector2 snapToGridWithinArena(Vector2 position, DodgeArenaState arena)
             => DodgePlayer.ClampToArena(
-                snapToGrid(position),
+                worldBounds.HasValue ? new Vector2(MathF.Round(position.X / position_grid_size) * position_grid_size,
+                    MathF.Round(position.Y / position_grid_size) * position_grid_size) : snapToGrid(position),
                 arena.Position,
                 arena.Size,
                 playerSize,
@@ -2351,7 +2444,11 @@ namespace osu.Game.Rulesets.Dodge.Replays
             bool UsedFallback,
             byte Viability,
             bool FullyViable,
-            bool ProjectedSafe);
+            bool ProjectedSafe)
+        {
+            public DodgeTrigger? ActiveMove { get; init; }
+            public Vector2 MoveSource { get; init; }
+        }
 
         private sealed class SectionDifficultyAccumulator
         {
@@ -2544,7 +2641,7 @@ namespace osu.Game.Rulesets.Dodge.Replays
 
             public int SuggestedSubdivisionCount(double startTime, double endTime)
             {
-                if (MovementType != DodgeMovementType.Sine || Duration <= 0)
+                if (MovementType == DodgeMovementType.Linear || Duration <= 0)
                     return 1;
 
                 double overlapStart = Math.Max(StartTime, startTime);

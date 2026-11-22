@@ -35,6 +35,201 @@ namespace osu.Game.Tests.Visual.Online
         }
 
         [Test]
+        public void TestLargeHistoryIsAdmittedAcrossFrames()
+        {
+            RecordingDrawableChannel recording = null!;
+            int previousCount = 0;
+            int largestFrame = 0;
+            AddStep("create full history", () =>
+            {
+                Clear();
+                channel.AddNewMessages(Enumerable.Range(1, Channel.MAX_HISTORY).Select(createHistoryMessage).ToArray());
+                Child = drawableChannel = recording = new RecordingDrawableChannel(channel);
+                recording.OnUpdate += _ =>
+                {
+                    largestFrame = Math.Max(largestFrame, recording.CreatedCount - previousCount);
+                    previousCount = recording.CreatedCount;
+                };
+            });
+            AddUntilStep("all history published", () => drawableChannel.ChildrenOfType<ChatLine>().Count(), () => Is.EqualTo(Channel.MAX_HISTORY));
+            AddAssert("at most eight lines admitted per update", () => largestFrame, () => Is.InRange(1, 8));
+            AddAssert("message order preserved", () => drawableChannel.ChildrenOfType<ChatLine>().Select(line => line.Message.Id),
+                () => Is.EqualTo(Enumerable.Range(1, Channel.MAX_HISTORY).Select(id => (long?)id)));
+        }
+
+        [Test]
+        public void TestArrivalDuringHistoryAdmission()
+        {
+            RecordingDrawableChannel recording = null!;
+            AddStep("create full history", () =>
+            {
+                Clear();
+                channel.AddNewMessages(Enumerable.Range(1, Channel.MAX_HISTORY).Select(createHistoryMessage).ToArray());
+                Child = drawableChannel = recording = new RecordingDrawableChannel(channel);
+            });
+            AddUntilStep("history partially admitted", () => recording.CreatedCount is > 0 and < Channel.MAX_HISTORY);
+            AddStep("append a new message", () => channel.AddNewMessages(createHistoryMessage(Channel.MAX_HISTORY + 1)));
+            AddUntilStep("newest message published", () => drawableChannel.ChildrenOfType<ChatLine>().LastOrDefault()?.Message.Id,
+                () => Is.EqualTo(Channel.MAX_HISTORY + 1));
+            AddUntilStep("history limit preserved", () => drawableChannel.ChildrenOfType<ChatLine>().Count(), () => Is.EqualTo(Channel.MAX_HISTORY));
+            AddAssert("remaining message order preserved", () => drawableChannel.ChildrenOfType<ChatLine>().Select(line => line.Message.Id),
+                () => Is.EqualTo(Enumerable.Range(2, Channel.MAX_HISTORY).Select(id => (long?)id)));
+        }
+
+        [Test]
+        public void TestRemovedPendingMessageIsNeverPublished()
+        {
+            RecordingDrawableChannel recording = null!;
+            AddStep("create full history", () =>
+            {
+                Clear();
+                channel.AddNewMessages(Enumerable.Range(1, Channel.MAX_HISTORY).Select(id =>
+                {
+                    var message = createHistoryMessage(id);
+                    if (id == Channel.MAX_HISTORY)
+                        message.Sender = new APIUser { Id = 42, Username = "Removed sender" };
+                    return message;
+                }).ToArray());
+                Child = drawableChannel = recording = new RecordingDrawableChannel(channel);
+            });
+            AddUntilStep("history partially admitted", () => recording.CreatedCount is > 0 and < Channel.MAX_HISTORY);
+            AddStep("remove last pending message", () => channel.RemoveMessagesFromUser(42));
+            AddUntilStep("remaining history published", () => drawableChannel.ChildrenOfType<ChatLine>().Count(),
+                () => Is.EqualTo(Channel.MAX_HISTORY - 1));
+            AddAssert("removed message absent", () => drawableChannel.ChildrenOfType<ChatLine>().All(line => line.Message.SenderId != 42));
+        }
+
+        [Test]
+        public void TestOlderMessagesDuringHistoryAdmissionRemainOrdered()
+        {
+            RecordingDrawableChannel recording = null!;
+            AddStep("create later history", () =>
+            {
+                Clear();
+                channel.AddNewMessages(Enumerable.Range(101, 200).Select(createHistoryMessage).ToArray());
+                Child = drawableChannel = recording = new RecordingDrawableChannel(channel);
+            });
+            AddUntilStep("history partially admitted", () => recording.CreatedCount is > 0 and < 200);
+            AddStep("prepend old history", () => channel.AddNewMessages(Enumerable.Range(1, 100).Select(createHistoryMessage).ToArray()));
+            AddUntilStep("all history published", () => drawableChannel.ChildrenOfType<ChatLine>().Count(), () => Is.EqualTo(Channel.MAX_HISTORY));
+            AddAssert("message order preserved", () => drawableChannel.ChildrenOfType<ChatLine>().Select(line => line.Message.Id),
+                () => Is.EqualTo(Enumerable.Range(1, Channel.MAX_HISTORY).Select(id => (long?)id)));
+        }
+
+        [Test]
+        public void TestPendingLocalEchoResolution()
+        {
+            RecordingDrawableChannel recording = null!;
+            LocalEchoMessage echo = null!;
+            AddStep("create history and echo", () =>
+            {
+                Clear();
+                channel.AddNewMessages(Enumerable.Range(1, 100).Select(createHistoryMessage).ToArray());
+                var message = createHistoryMessage(101);
+                channel.AddLocalEcho(echo = new LocalEchoMessage
+                {
+                    ChannelId = channel.Id, Sender = message.Sender, Content = message.Content,
+                    Timestamp = message.Timestamp, Uuid = "pending-echo",
+                });
+                Child = drawableChannel = recording = new RecordingDrawableChannel(channel);
+            });
+            AddUntilStep("history partially admitted", () => recording.CreatedCount is > 0 and < 100);
+            AddStep("resolve pending echo", () => channel.ReplaceMessage(echo, createHistoryMessage(101)));
+            AddUntilStep("all history published", () => drawableChannel.ChildrenOfType<ChatLine>().Count(), () => Is.EqualTo(101));
+            AddAssert("resolved final id published", () => drawableChannel.ChildrenOfType<ChatLine>().Last().Message.Id, () => Is.EqualTo(101));
+            AddAssert("echo absent", () => drawableChannel.ChildrenOfType<ChatLine>().All(line => line.Message is not LocalEchoMessage));
+        }
+
+        [Test]
+        public void TestHighlightWaitsForPendingHistory()
+        {
+            RecordingDrawableChannel recording = null!;
+            Message target = null!;
+            AddStep("create history with pending highlight", () =>
+            {
+                Clear();
+                channel.AddNewMessages(Enumerable.Range(1, Channel.MAX_HISTORY).Select(createHistoryMessage).ToArray());
+                target = channel.Messages.Last();
+                channel.HighlightedMessage.Value = target;
+                Child = drawableChannel = recording = new RecordingDrawableChannel(channel);
+            });
+            AddUntilStep("history partially admitted", () => recording.CreatedCount is > 0 and < Channel.MAX_HISTORY);
+            AddAssert("highlight not discarded while pending", () => channel.HighlightedMessage.Value, () => Is.SameAs(target));
+            AddUntilStep("highlight applied when target exists", () => channel.HighlightedMessage.Value == null);
+            AddAssert("target line exists", () => drawableChannel.ChildrenOfType<ChatLine>().Any(line => line.Message == target));
+        }
+
+        [Test]
+        public void TestDetachedHistoryResumesOnReattach()
+        {
+            RecordingDrawableChannel recording = null!;
+            int detachedCount = 0;
+            AddStep("create full history", () =>
+            {
+                Clear();
+                channel.AddNewMessages(Enumerable.Range(1, Channel.MAX_HISTORY).Select(createHistoryMessage).ToArray());
+                Child = drawableChannel = recording = new RecordingDrawableChannel(channel);
+            });
+            AddUntilStep("history partially admitted", () => recording.CreatedCount is > 0 and < Channel.MAX_HISTORY);
+            AddStep("detach without disposing", () =>
+            {
+                Remove(recording, false);
+                detachedCount = recording.CreatedCount;
+            });
+            AddWaitStep("several detached frames", 3);
+            AddAssert("no detached admission", () => recording.CreatedCount, () => Is.EqualTo(detachedCount));
+            AddStep("append while detached", () => channel.AddNewMessages(createHistoryMessage(Channel.MAX_HISTORY + 1)));
+            AddStep("reattach", () => Add(recording));
+            AddUntilStep("latest message published", () => drawableChannel.ChildrenOfType<ChatLine>().LastOrDefault()?.Message.Id,
+                () => Is.EqualTo(Channel.MAX_HISTORY + 1));
+            AddUntilStep("history capped after reattach", () => drawableChannel.ChildrenOfType<ChatLine>().Count(), () => Is.EqualTo(Channel.MAX_HISTORY));
+        }
+
+        [Test]
+        public void TestDisposeDuringHistoryAdmission()
+        {
+            RecordingDrawableChannel recording = null!;
+            int disposedCount = 0;
+            AddStep("create full history", () =>
+            {
+                Clear();
+                channel.AddNewMessages(Enumerable.Range(1, Channel.MAX_HISTORY).Select(createHistoryMessage).ToArray());
+                Child = drawableChannel = recording = new RecordingDrawableChannel(channel);
+            });
+            AddUntilStep("history partially admitted", () => recording.CreatedCount is > 0 and < Channel.MAX_HISTORY);
+            AddStep("dispose channel", () => Clear());
+            AddUntilStep("channel disposed", () => recording.Disposed);
+            AddStep("remember disposed count", () => disposedCount = recording.CreatedCount);
+            AddStep("arrive after dispose", () => channel.AddNewMessages(createHistoryMessage(Channel.MAX_HISTORY + 1)));
+            AddWaitStep("no further publication", 3);
+            AddAssert("disposed channel does not create lines", () => recording.CreatedCount, () => Is.EqualTo(disposedCount));
+        }
+
+        private Message createHistoryMessage(int id) => new Message(id)
+        {
+            ChannelId = channel.Id,
+            Content = $"History message {id}",
+            Sender = new APIUser { Id = 3, Username = "Local fixture" },
+            Timestamp = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero).AddSeconds(id),
+        };
+
+        private partial class RecordingDrawableChannel : DrawableChannel
+        {
+            public int CreatedCount { get; private set; }
+            public bool Disposed => IsDisposed;
+
+            public RecordingDrawableChannel(Channel source) : base(source)
+            {
+            }
+
+            protected override ChatLine CreateChatLine(Message message)
+            {
+                CreatedCount++;
+                return base.CreateChatLine(message);
+            }
+        }
+
+        [Test]
         public void TestMention()
         {
             AddStep("add normal message", () => channel.AddNewMessages(

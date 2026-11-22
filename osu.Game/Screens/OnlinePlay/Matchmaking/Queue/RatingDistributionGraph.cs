@@ -98,7 +98,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                     {
                                         Anchor = Anchor.CentreLeft,
                                         Origin = Anchor.TopCentre,
-                                        Text = "Players",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4846,
                                         Font = OsuFont.Default.With(size: 12),
                                         Rotation = -90,
                                         Colour = colourProvider.Foreground1
@@ -177,7 +177,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                     {
                                         Anchor = Anchor.CentreRight,
                                         Origin = Anchor.TopCentre,
-                                        Text = "Cumulative",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4847,
                                         Font = OsuFont.Default.With(size: 12),
                                         Rotation = 90,
                                         Colour = colourProvider.Foreground1
@@ -201,7 +201,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                             Anchor = Anchor.BottomCentre,
                             Origin = Anchor.BottomCentre,
                             Margin = new MarginPadding { Top = 2 },
-                            Text = "Rating",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4848,
                             Font = OsuFont.Default.With(size: 12),
                             Colour = colourProvider.Foreground1
                         },
@@ -392,9 +392,9 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             }
 
             if (data.Length == 0)
-                descriptionText.Text = "No games have been played yet.";
+                descriptionText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4849;
             else if (userRating == null)
-                descriptionText.Text = "Play more games to get rated!";
+                descriptionText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4850;
             else
             {
                 int countPlayersBelow = data.Where(d => d.x < userRating).Sum(d => d.y);
@@ -403,13 +403,13 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                 float p = totalPlayers > 0 ? (float)countPlayersBelow / totalPlayers : 0;
 
                 descriptionText.Clear();
-                descriptionText.AddText("You are better than ");
+                descriptionText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4851);
                 descriptionText.AddText($"{p:P1}", s =>
                 {
                     s.Font = OsuFont.GetFont(weight: FontWeight.SemiBold);
                     s.Colour = colours.Green;
                 });
-                descriptionText.AddText(" of players.");
+                descriptionText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4852);
             }
 
             int currentCount = 0;
@@ -612,7 +612,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                         Anchor = Anchor.TopCentre,
                         Origin = Anchor.BottomCentre,
                         Y = -4,
-                        Text = $"Your rating ({rating})",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4853(rating),
                         Font = OsuFont.Torus.With(size: 12),
                     }
                 };

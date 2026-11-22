@@ -2,17 +2,24 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Text.Json;
 using System.Linq;
 using System.Threading.Tasks;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Track;
 using osu.Framework.Bindables;
+using osu.Framework.Logging;
 using osu.Framework.Timing;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Beatmaps.Timing;
 using osu.Game.Overlays;
+using osu.Game.Rulesets.Mods;
+using osu.Game.Scoring;
 using osu.Game.Storyboards;
 
 namespace osu.Game.Screens.Play
@@ -46,9 +53,22 @@ namespace osu.Game.Screens.Play
             Precision = 0.01,
         };
 
-        private readonly IBeatmap beatmap;
+        private IBeatmap beatmap;
 
         private Track track;
+        private ModSegmentRate? bakedRate;
+        private IBeatmap? skipBeatmap;
+
+        public void UsePlayableBeatmapForSkipping(IBeatmap playableBeatmap) => skipBeatmap = playableBeatmap;
+
+        public void UseSegmentBeatmapTiming(ModSegmentRate mod, IBeatmap playableBeatmap)
+        {
+            if (!mod.BakedTiming.Value)
+                return;
+            bakedRate = mod;
+            beatmap = playableBeatmap;
+            ChangeSource(new SegmentTrackClock(track, mod.RatePlan, mod.UpdateRate));
+        }
 
         [Resolved]
         private MusicController musicController { get; set; } = null!;
@@ -63,6 +83,8 @@ namespace osu.Game.Screens.Play
         {
             beatmap = working.Beatmap;
             track = working.Track;
+            GameplayClock.BeforeSourceFrame = recoverFrozenSource;
+            OnSeek += freezeRecovery.Reset;
 
             GameplayStartTime = gameplayStartTime;
             StartTime = findEarliestStartTime(gameplayStartTime, beatmap, working.Storyboard);
@@ -122,9 +144,11 @@ namespace osu.Game.Screens.Play
         public bool SkipBreak(BreakPeriod breakPeriod, int breakIndex, bool multiplayerServerAuthorised)
         {
             double currentTime = GameplayClock.CurrentTime;
-            double skipTarget = breakPeriod.EndTime - MINIMUM_SKIP_TIME;
+            IBeatmap playable = skipBeatmap ?? beatmap;
+            BreakPeriod[] periods = GameplaySkipTiming.GetBreaks(playable);
+            double skipTarget = GameplaySkipTiming.GetBreakTarget(playable, breakPeriod);
 
-            if (breakIndex < 0
+            if (breakIndex < 0 || breakIndex >= periods.Length || !periods[breakIndex].Equals(breakPeriod)
                 || !double.IsFinite(currentTime)
                 || !double.IsFinite(breakPeriod.StartTime)
                 || !double.IsFinite(breakPeriod.EndTime)
@@ -137,9 +161,8 @@ namespace osu.Game.Screens.Play
 
             bool wasRunning = GameplayClock.IsRunning;
             Seek(skipTarget);
-
-            double timeAfterSeek = GameplayClock.CurrentTime;
-            return wasRunning && double.IsFinite(timeAfterSeek) && timeAfterSeek - currentTime >= 0.001;
+            double after = GameplayClock.CurrentTime;
+            return wasRunning && double.IsFinite(after) && after - currentTime >= 0.001;
         }
 
         /// <summary>
@@ -150,10 +173,10 @@ namespace osu.Game.Screens.Play
             removeAdjustmentsFromTrack();
 
             track = new TrackVirtual(track.Length);
-            track.Seek(CurrentTime);
+            track.Seek(bakedRate?.RatePlan.Unmap(CurrentTime) ?? CurrentTime);
             if (IsRunning)
                 track.Start();
-            ChangeSource(track);
+            ChangeSource(bakedRate == null ? track : new SegmentTrackClock(track, bakedRate.RatePlan, bakedRate.UpdateRate));
 
             addAdjustmentsToTrack();
         }
@@ -169,9 +192,85 @@ namespace osu.Game.Screens.Play
                 referenceTrack.Start();
 
             track = referenceTrack;
+            bakedRate = null;
             ChangeSource(track);
 
             addAdjustmentsToTrack();
+        }
+
+        private readonly GameplayFreezeRecovery freezeRecovery = new GameplayFreezeRecovery();
+        private readonly bool freezeRecoveryEnabled = Environment.GetEnvironmentVariable("MOSU_CLOCK_FREEZE_RECOVERY") == "1";
+
+        private void recoverFrozenSource()
+        {
+            if (!freezeRecoveryEnabled)
+                return;
+
+            bool running = !IsPaused.Value && track.IsRunning && track.CurrentTime >= 0 && track.CurrentTime < track.Length;
+            double missing = freezeRecovery.GetMissingProgress(
+                Stopwatch.GetTimestamp() * 1000d / Stopwatch.Frequency, track.CurrentTime, GameplayClock.Rate, running);
+            if (missing <= 0)
+                return;
+
+            // Do not call the public Seek path: this is lost-time recovery, not an
+            // authorised practice/intro skip and must not subtract time from validation.
+            double target = Math.Min(track.Length, track.CurrentTime + missing);
+            GameplayClock.Seek((bakedRate?.RatePlan.Map(target) ?? target) + GameplayClock.TotalAppliedOffset);
+            Logger.Log($"Gameplay freeze recovery: missing_ms={missing:F2} target_track_ms={target:F2}", level: LogLevel.Important);
+        }
+
+        protected override void StopGameplayClock()
+        {
+            freezeRecovery.Reset();
+            base.StopGameplayClock();
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+            recordFreezeProbe();
+        }
+
+        // Explicit local diagnostic opt-in; never enabled by a normal client launch.
+        private readonly string freezeProbeDirectory = Environment.GetEnvironmentVariable("MOSU_CLOCK_FREEZE_PROBE");
+        private long lastFreezeProbeTicks;
+
+        private void recordFreezeProbe()
+        {
+            if (string.IsNullOrEmpty(freezeProbeDirectory) || !GameplayClock.IsRunning || GameplayClock.CurrentTime < 1000)
+                return;
+
+            long now = Stopwatch.GetTimestamp();
+            if (lastFreezeProbeTicks != 0 && Stopwatch.GetElapsedTime(lastFreezeProbeTicks, now).TotalMilliseconds < 100)
+                return;
+            lastFreezeProbeTicks = now;
+
+            try
+            {
+                Directory.CreateDirectory(freezeProbeDirectory);
+                string snapshot = JsonSerializer.Serialize(new
+                {
+                    pid = Environment.ProcessId,
+                    monotonicTicks = now,
+                    frequency = Stopwatch.Frequency,
+                    gameplayMs = GameplayClock.CurrentTime,
+                    trackMs = track.CurrentTime,
+                    rate = GameplayClock.Rate,
+                    running = GameplayClock.IsRunning,
+                    utc = DateTimeOffset.UtcNow,
+                });
+                // Atomic replacement lets the external harness reject stale/menu samples.
+                string temporary = Path.Combine(freezeProbeDirectory, "clock.tmp");
+                File.WriteAllText(temporary, snapshot);
+                File.Move(temporary, Path.Combine(freezeProbeDirectory, "clock.json"), true);
+            }
+            catch (IOException)
+            {
+                // Diagnostics must not interrupt gameplay when its output is unavailable.
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
 
         private bool speedAdjustmentsApplied;

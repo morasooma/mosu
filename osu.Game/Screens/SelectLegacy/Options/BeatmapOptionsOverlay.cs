@@ -34,8 +34,8 @@ namespace osu.Game.Screens.SelectLegacy.Options
 
         public override bool BlockScreenWideMouse => false;
 
-        protected override string PopInSampleName => "SongSelect/options-pop-in";
-        protected override string PopOutSampleName => "SongSelect/options-pop-out";
+        protected override string PopInSampleName => "SongSelectClassic/overlay-pop-in";
+        protected override string PopOutSampleName => "SongSelectClassic/overlay-pop-out";
 
         public BeatmapOptionsOverlay()
         {

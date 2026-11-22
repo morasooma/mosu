@@ -5,6 +5,7 @@ using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Bindables;
+using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osuTK;
 using osu.Framework.Input.Bindings;
@@ -31,6 +32,38 @@ namespace osu.Game.Graphics.Containers
         /// </summary>
         protected virtual bool DimMainContent => true;
 
+        /// <summary>
+        /// A substantial opaque background, not a control, icon or the screen-wide dim.
+        /// Overlays without one keep the default rendering path.
+        /// </summary>
+        protected virtual BackdropBlurSurface? OpaqueBackground => null;
+
+        internal virtual bool CanUseOpaqueDrawPrepass => IsLoaded
+                                                       && State.Value == Visibility.Visible
+                                                       && !OverlayTransparency.Enabled.Value
+                                                       && HasOpaqueBackground;
+
+        protected virtual bool HasOpaqueBackground => IsOpaqueBackgroundReady(OpaqueBackground);
+
+        protected bool IsOpaqueBackgroundReady(BackdropBlurSurface? background)
+        {
+            if (background?.IsLoaded != true || background.SurfaceColour.A != 1 || background.DrawSize.X <= 0 || background.DrawSize.Y <= 0)
+                return false;
+
+            // Check the actual background and its ancestor chain, not just the overlay's
+            // local Alpha. Some overlays animate their content rather than themselves.
+            for (Drawable? current = background; current != null; current = current.Parent)
+            {
+                if (!current.IsPresent || current.DrawColourInfo.Colour.MinAlpha != 1 || current.LatestTransformEndTime > current.Time.Current)
+                    return false;
+
+                if (current == this)
+                    return true;
+            }
+
+            return false;
+        }
+
         [Resolved]
         private IOverlayManager? overlayManager { get; set; }
 
@@ -39,6 +72,7 @@ namespace osu.Game.Graphics.Containers
 
         private Sample? samplePopIn;
         private Sample? samplePopOut;
+        private IBindable<osu.Game.Configuration.InterfaceAnimationMode>? animationMode;
 
         [BackgroundDependencyLoader]
         private void load(AudioManager? audio)
@@ -61,6 +95,7 @@ namespace osu.Game.Graphics.Containers
                     State.Value = Visibility.Hidden;
             }, true);
 
+            animationMode = InterfaceAnimation.Observe(this, true);
             base.LoadComplete();
         }
 
@@ -156,6 +191,13 @@ namespace osu.Game.Graphics.Containers
             }
 
             base.UpdateState(state);
+
+            if (InterfaceAnimation.Mode.Value == osu.Game.Configuration.InterfaceAnimationMode.Disabled)
+            {
+                // Only the overlay's own transition; never flush scheduled actions in its children.
+                foreach (string member in new[] { "Alpha", "Position", "Scale" })
+                    FinishTransforms(false, member);
+            }
         }
 
         protected override void PopOut()

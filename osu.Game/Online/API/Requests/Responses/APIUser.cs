@@ -67,6 +67,10 @@ namespace osu.Game.Online.API.Requests.Responses
         [JsonProperty(@"avatar_url")]
         public string AvatarUrl;
 
+        [JsonProperty(@"profile_background_url")]
+        [CanBeNull]
+        public string ProfileBackgroundUrl;
+
         [JsonProperty(@"cover_url")]
         public string CoverUrl
         {
@@ -311,6 +315,12 @@ namespace osu.Game.Online.API.Requests.Responses
 
         [JsonProperty("groups")]
         public APIUserGroup[] Groups;
+
+        [JsonProperty("daily_challenge_proposals_count")]
+        public int DailyChallengeProposalsCount;
+
+        [JsonProperty("daily_challenge_maps_count")]
+        public int DailyChallengeMapsCount;
 
         [JsonProperty("daily_challenge_user_stats")]
         public APIUserDailyChallengeStatistics DailyChallengeStatistics = new APIUserDailyChallengeStatistics();

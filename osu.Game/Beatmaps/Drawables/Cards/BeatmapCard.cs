@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
@@ -9,6 +10,8 @@ using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input;
 using osu.Framework.Input.Events;
+using osu.Framework.Testing;
+using osu.Game.Beatmaps.Drawables.Cards.Buttons;
 using osu.Game.Configuration;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
@@ -28,7 +31,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
 
         public IBindable<bool> Expanded { get; }
 
-        public readonly APIBeatmapSet BeatmapSet;
+        public APIBeatmapSet BeatmapSet { get; private set; }
 
         protected readonly Bindable<BeatmapSetFavouriteState> FavouriteState;
 
@@ -39,6 +42,11 @@ namespace osu.Game.Beatmaps.Drawables.Cards
 
         private readonly Bindable<bool> preferNoVideo = new BindableBool();
         private InputManager? containingInputManager;
+        private PlayButton? playButton;
+        private FavouriteButton? favouriteButton;
+
+        internal bool IsPreviewPlaying => playButton?.IsPreviewActive == true;
+        internal bool HasPendingFavouriteRequest => favouriteButton?.IsRequestPending == true;
 
         [Resolved]
         private BeatmapSetOverlay? beatmapSetOverlay { get; set; }
@@ -59,6 +67,34 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             DownloadTracker = new BeatmapDownloadTracker(beatmapSet);
         }
 
+        private Bindable<BeatmapSetFavouriteState>? entryFavouriteState;
+
+        internal void BindFavouriteState(Bindable<BeatmapSetFavouriteState> state)
+        {
+            if (entryFavouriteState != null)
+                FavouriteState.UnbindFrom(entryFavouriteState);
+            entryFavouriteState = state;
+            FavouriteState.BindTo(state);
+        }
+
+        internal void ReleaseForPool()
+        {
+            ChangeBeatmapSet(new APIBeatmapSet(), new Bindable<BeatmapSetFavouriteState>());
+        }
+
+        internal void ChangeBeatmapSet(APIBeatmapSet set, Bindable<BeatmapSetFavouriteState> state)
+        {
+            if (IsPreviewPlaying || HasPendingFavouriteRequest)
+                throw new InvalidOperationException("Cannot recycle an active card.");
+            BeatmapSet = set;
+            BindFavouriteState(state);
+            DownloadTracker.ChangeTrackedItem(set);
+            OnBeatmapSetChanged();
+            FinishTransforms(true);
+        }
+
+        protected virtual void OnBeatmapSetChanged() { }
+
         [BackgroundDependencyLoader]
         private void load(OsuConfigManager configManager)
         {
@@ -76,6 +112,8 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             FinishTransforms(true);
 
             containingInputManager = GetContainingInputManager();
+            playButton = this.ChildrenOfType<PlayButton>().SingleOrDefault();
+            favouriteButton = this.ChildrenOfType<FavouriteButton>().SingleOrDefault();
 
             if (Action == null)
                 throw new InvalidOperationException($"An action should be assigned to this {nameof(BeatmapCard)}. To use the default, assign {nameof(DefaultAction)}.");
@@ -123,18 +161,18 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         /// <summary>
         /// Creates a beatmap card of the given <paramref name="size"/> for the supplied <paramref name="beatmapSet"/>.
         /// </summary>
-        public static BeatmapCard Create(APIBeatmapSet beatmapSet, BeatmapCardSize size, bool allowExpansion = true)
+        public static BeatmapCard Create(APIBeatmapSet beatmapSet, BeatmapCardSize size, bool allowExpansion = true, bool keepCoversLoaded = false)
         {
             switch (size)
             {
                 case BeatmapCardSize.Nano:
-                    return new BeatmapCardNano(beatmapSet);
+                    return new BeatmapCardNano(beatmapSet, keepCoversLoaded);
 
                 case BeatmapCardSize.Normal:
-                    return new BeatmapCardNormal(beatmapSet, allowExpansion);
+                    return new BeatmapCardNormal(beatmapSet, allowExpansion, keepCoversLoaded);
 
                 case BeatmapCardSize.Extra:
-                    return new BeatmapCardExtra(beatmapSet, allowExpansion);
+                    return new BeatmapCardExtra(beatmapSet, allowExpansion, keepCoversLoaded);
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(size), size, @"Unsupported card size");

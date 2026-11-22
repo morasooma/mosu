@@ -144,17 +144,19 @@ namespace osu.Game.Online.Legacy
                 ID = 1,
                 OwnerID = match.HostUserId,
                 RulesetID = match.RulesetId,
-                RequiredMods = toApiMods(match.Mods),
-                AllowedMods = match.FreeMods ? toApiMods(all_stable_freemod_mods) : [],
+                RequiredMods = toApiMods(match.Mods, match.RulesetId),
+                AllowedMods = match.FreeMods ? toApiMods(all_stable_freemod_mods, match.RulesetId) : [],
                 Freestyle = match.FreeMods,
             };
         }
 
         private const int all_stable_freemod_mods = (int)(LegacyMods.NoFail | LegacyMods.Easy | LegacyMods.Hidden | LegacyMods.HardRock | LegacyMods.SuddenDeath | LegacyMods.Flashlight | LegacyMods.Perfect);
 
-        private static APIMod[] toApiMods(int mods)
+        private static APIMod[] toApiMods(int mods, int rulesetId)
         {
-            var result = new List<APIMod> { new APIMod { Acronym = "CL" } };
+            var result = new List<APIMod>();
+            if (StableModCompatibility.RequiresClassic(rulesetId))
+                result.Add(new APIMod { Acronym = "CL" });
             var legacy = (LegacyMods)mods;
 
             add(LegacyMods.NoFail, "NF");

@@ -1,6 +1,11 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
+using System.Linq;
+using osu.Framework.Allocation;
+using osu.Game.Online.API;
+using osu.Game.Online.API.Requests;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.UserInterface;
@@ -16,14 +21,26 @@ namespace osu.Game.Overlays.BeatmapListing
         public readonly Bindable<SortDirection> SortDirection = new Bindable<SortDirection>(Overlays.SortDirection.Descending);
 
         private (SearchCategory category, bool hasQuery)? currentParameters;
+        private BeatmapCatalogueSource catalogue = BeatmapCatalogueSource.Official;
+
+        public void SetCatalogue(BeatmapCatalogueSource source, SearchCategory category, bool hasQuery)
+        {
+            if (catalogue != source)
+                currentParameters = null;
+            catalogue = source;
+            Reset(category, hasQuery);
+        }
+
+        [BackgroundDependencyLoader]
+        private void load()
+        {
+            if (currentParameters == null)
+                Reset(SearchCategory.Leaderboard, false);
+        }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
-
-            if (currentParameters == null)
-                Reset(SearchCategory.Leaderboard, false);
-
             Current.BindValueChanged(_ => SortDirection.Value = Overlays.SortDirection.Descending);
         }
 
@@ -31,42 +48,55 @@ namespace osu.Game.Overlays.BeatmapListing
         {
             var newParameters = (category, hasQuery);
 
+            bool tabsChanged = false;
             if (currentParameters != newParameters)
             {
-                TabControl.Clear();
-
-                TabControl.AddItem(SortCriteria.Title);
-                TabControl.AddItem(SortCriteria.Artist);
-                TabControl.AddItem(SortCriteria.Difficulty);
-
-                if (category == SearchCategory.Any || category > SearchCategory.Loved)
-                    TabControl.AddItem(SortCriteria.Updated);
-
-                if (category < SearchCategory.Pending || category == SearchCategory.Mine)
-                    TabControl.AddItem(SortCriteria.Ranked);
-
-                TabControl.AddItem(SortCriteria.Rating);
-                TabControl.AddItem(SortCriteria.Plays);
-                TabControl.AddItem(SortCriteria.Favourites);
-
-                if (hasQuery)
-                    TabControl.AddItem(SortCriteria.Relevance);
-
-                if (category == SearchCategory.Pending)
-                    TabControl.AddItem(SortCriteria.Nominations);
+                // Filter before construction: adding to an already loaded tab
+                // control synchronously loads every label/button/sample subtree.
+                // A query/category change can leave the supported mirror tabs
+                // identical, so keep their existing geometry and bindings too.
+                var criteria = availableCriteria(category, hasQuery)
+                    .Where(c => catalogue == BeatmapCatalogueSource.Official || BeatmapCatalogueSearch.SupportsSort(catalogue, c))
+                    .ToArray();
+                if (!TabControl.Items.SequenceEqual(criteria))
+                {
+                    TabControl.Clear();
+                    foreach (var criterion in criteria)
+                        TabControl.AddItem(criterion);
+                    tabsChanged = true;
+                }
             }
 
             var nonQueryCriteria = category >= SearchCategory.Pending ? SortCriteria.Updated : SortCriteria.Ranked;
 
-            Current.Value = hasQuery ? SortCriteria.Relevance : nonQueryCriteria;
+            Current.Value = catalogue != BeatmapCatalogueSource.Official ? SortCriteria.Updated : hasQuery ? SortCriteria.Relevance : nonQueryCriteria;
             SortDirection.Value = Overlays.SortDirection.Descending;
 
             // if the new criteria isn't different from the previous one,
             // then re-adding tab items will not mark the current tab as selected.
             // see: https://github.com/ppy/osu-framework/issues/5412
-            TabControl.Current.TriggerChange();
+            if (tabsChanged)
+                TabControl.Current.TriggerChange();
 
             currentParameters = newParameters;
+        }
+
+        private IEnumerable<SortCriteria> availableCriteria(SearchCategory category, bool hasQuery)
+        {
+            yield return SortCriteria.Title;
+            yield return SortCriteria.Artist;
+            yield return SortCriteria.Difficulty;
+            if (catalogue != BeatmapCatalogueSource.Official || category == SearchCategory.Any || category > SearchCategory.Loved)
+                yield return SortCriteria.Updated;
+            if (category < SearchCategory.Pending || category == SearchCategory.Mine)
+                yield return SortCriteria.Ranked;
+            yield return SortCriteria.Rating;
+            yield return SortCriteria.Plays;
+            yield return SortCriteria.Favourites;
+            if (hasQuery)
+                yield return SortCriteria.Relevance;
+            if (category == SearchCategory.Pending)
+                yield return SortCriteria.Nominations;
         }
 
         protected override SortTabControl CreateControl() => new BeatmapSortTabControl

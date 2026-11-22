@@ -22,7 +22,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
         [BackgroundDependencyLoader]
         private void load()
         {
-            Text = "Create room";
+            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4945;
 
             isConnected = multiplayerClient.IsConnected.GetBoundCopy();
             operationInProgress = ongoingOperationTracker.InProgress.GetBoundCopy();

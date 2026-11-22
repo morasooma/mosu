@@ -62,16 +62,28 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content2);
             themeColour.BindValueChanged(_ => textFlow.Colour = colourProvider.Content2, true);
+
+            // Construct the initial words and tooltip icon while this hierarchy is
+            // still loading, so their dependency/glyph loading stays off Update.
+            updateDisplay();
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
-            updateDisplay();
+
+            // Properties may have changed after async loading, before attachment.
+            if (!appliedCaption.Equals(caption) || !appliedTooltipText.Equals(tooltipText))
+                updateDisplay();
         }
+
+        private LocalisableString appliedCaption;
+        private LocalisableString appliedTooltipText;
 
         private void updateDisplay()
         {
+            appliedCaption = caption;
+            appliedTooltipText = tooltipText;
             textFlow.Text = caption;
 
             if (TooltipText != default)

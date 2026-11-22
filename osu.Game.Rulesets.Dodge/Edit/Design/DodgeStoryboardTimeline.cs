@@ -176,7 +176,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                                                     Origin = Anchor.CentreLeft,
                                                     X = 8,
                                                     Width = label_width - 8,
-                                                    Text = "ВРЕМЯ",
+                                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J3384,
                                                     Font = OsuFont.GetFont(size: 11, weight: FontWeight.Bold),
                                                 },
                                                 ruler = new Container
@@ -286,7 +286,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
             base.Update();
 
             double currentTime = editorClock.CurrentTimeAccurate;
-            currentTimeText.Text = $"СЕЙЧАС  {DodgeStoryboardEditing.FormatTime(currentTime)}";
+            currentTimeText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3385(DodgeStoryboardEditing.FormatTime(currentTime));
 
             float progress = (float)((currentTime - viewStart) / Math.Max(1, viewEnd - viewStart));
             playheadLine.X = progress;
@@ -343,8 +343,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
 
             snapButton.BackgroundColour = snapEnabled ? colourProvider.Highlight1 : colourProvider.Background3;
             snapButton.Text = snapEnabled
-                ? "Snap: вкл"
-                : "Snap: выкл";
+                ? global::osu.Game.Localisation.ClientTranslationStrings.J3386
+                : global::osu.Game.Localisation.ClientTranslationStrings.J3387;
         }
 
         protected override bool OnScroll(ScrollEvent e)
@@ -374,7 +374,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
             double end = sprite.EndTimeForDisplay;
             selectionText.Text = selectedCommand == null
                 ? $"{sprite.Path}  |  {DodgeStoryboardEditing.FormatTime(start)}–{DodgeStoryboardEditing.FormatTime(end)}  |  {DodgeEditorStrings.StoryboardTimelineRangeHelp}"
-                : $"{commandTrackName(selectedCommand)}  |  ключ {DodgeStoryboardEditing.FormatTime(selectedCommand.StartTime)}–{DodgeStoryboardEditing.FormatTime(selectedCommand.EndTime)}  |  переход: {selectedCommand.Easing}";
+                : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3388(commandTrackName(selectedCommand), DodgeStoryboardEditing.FormatTime(selectedCommand.StartTime), DodgeStoryboardEditing.FormatTime(selectedCommand.EndTime), selectedCommand.Easing);
 
             var objectTrack = new TimelineTrack(
                 DodgeEditorStrings.StoryboardTimelineObjectRange.ToString(),
@@ -433,7 +433,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                 bar.Selected = ReferenceEquals(bar.Command, command);
 
             selectionText.Text =
-                $"{commandTrackName(command)}  |  ключ {DodgeStoryboardEditing.FormatTime(command.StartTime)}–{DodgeStoryboardEditing.FormatTime(command.EndTime)}  |  переход: {command.Easing}";
+                global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3388(commandTrackName(command), DodgeStoryboardEditing.FormatTime(command.StartTime), DodgeStoryboardEditing.FormatTime(command.EndTime), command.Easing);
         }
 
         private static string commandTrackName(IStoryboardCommand command) => command switch

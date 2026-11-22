@@ -26,6 +26,7 @@ namespace osu.Game.Overlays
 {
     public partial class SupporterQuestsOverlay : OnlineOverlay<SupporterQuestsHeader>
     {
+        public override osu.Framework.Graphics.Sprites.IconUsage Icon => osu.Game.Graphics.OsuIcon.NavigationCrown;
         [Resolved]
         private OsuGame game { get; set; } = null!;
 
@@ -39,6 +40,7 @@ namespace osu.Game.Overlays
         private IconButton closeButton = null!;
         private IBindable<Colour4> themeColour = null!;
         private GetSupporterQuestsRequest? request;
+        private bool allQuestsExpanded;
 
         public event Action<int>? QuestsLoaded;
 
@@ -114,6 +116,7 @@ namespace osu.Game.Overlays
                                     new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeature2, secondary: true),
                                     new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeature3, secondary: true),
                                     new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeature4, secondary: true),
+                                    new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeature6, secondary: true),
                                     new SupporterQuestText(ForkSettingsStrings.SupporterQuestFeature5, secondary: true),
                                 },
                             }),
@@ -149,6 +152,13 @@ namespace osu.Game.Overlays
                                 Direction = FillDirection.Vertical,
                                 Spacing = new Vector2(0, 12),
                             },
+                            new SupporterQuestButton
+                            {
+                                RelativeSizeAxes = Axes.X,
+                                Height = 44,
+                                Text = SupporterQuestsStrings.OtherQuests,
+                                Action = () => game.OpenUrlExternally("https://morasooma.net/quests"),
+                            },
                         },
                     },
                 },
@@ -178,6 +188,7 @@ namespace osu.Game.Overlays
         protected override void PopIn()
         {
             base.PopIn();
+            allQuestsExpanded = false;
             fetchQuests();
         }
 
@@ -231,24 +242,35 @@ namespace osu.Game.Overlays
             overallProgress.SetProgress(progress, true);
 
             int activeIndex = quests.FindIndex(q => !q.Completed);
-            int hiddenCount = 0;
+            // Keep the next actionable quest visible; completed and future quests are opt-in.
+            // Reuse the fetched snapshot when expanding, without another API request.
+            if (activeIndex < 0 && !allQuestsExpanded)
+                questList.Add(new SupporterQuestText(SupporterQuestsStrings.AllCompleted, secondary: true));
 
             for (int i = 0; i < quests.Count; i++)
             {
+                if (!allQuestsExpanded && i != activeIndex)
+                    continue;
+
                 var quest = quests[i];
                 bool locked = !quest.Completed && activeIndex != -1 && i > activeIndex;
-
-                if (locked && i > activeIndex + 2)
-                {
-                    hiddenCount++;
-                    continue;
-                }
-
                 questList.Add(new SupporterQuestCard(quest, i == activeIndex, locked, ColourProvider));
             }
 
-            if (hiddenCount > 0)
-                questList.Add(new SupporterQuestPlaceholderCard(hiddenCount, ColourProvider));
+            if (quests.Count > (activeIndex >= 0 ? 1 : 0))
+            {
+                questList.Add(new SupporterQuestButton
+                {
+                    RelativeSizeAxes = Axes.X,
+                    Height = 44,
+                    Text = allQuestsExpanded ? SupporterQuestsStrings.CollapseAll : SupporterQuestsStrings.ShowAll(quests.Count),
+                    Action = () =>
+                    {
+                        allQuestsExpanded = !allQuestsExpanded;
+                        updateQuests(quests);
+                    },
+                });
+            }
         }
 
         private void showMessage(LocalisableString message)

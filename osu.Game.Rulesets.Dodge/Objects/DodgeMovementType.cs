@@ -13,5 +13,14 @@ namespace osu.Game.Rulesets.Dodge.Objects
 
         [LocalisableDescription(typeof(DodgeEditorStrings), nameof(DodgeEditorStrings.MovementSine))]
         Sine,
+
+        [LocalisableDescription(typeof(DodgeEditorStrings), nameof(DodgeEditorStrings.MovementPingPong))]
+        PingPong,
+
+        [LocalisableDescription(typeof(DodgeEditorStrings), nameof(DodgeEditorStrings.MovementOrbitClockwise))]
+        OrbitClockwise,
+
+        [LocalisableDescription(typeof(DodgeEditorStrings), nameof(DodgeEditorStrings.MovementOrbitCounterclockwise))]
+        OrbitCounterclockwise,
     }
 }

@@ -220,7 +220,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                                 RelativePositionAxes = Axes.Y,
                                 Font = OsuFont.GetFont(weight: FontWeight.Bold, size: 12),
                                 Origin = Anchor.Centre,
-                                Text = @"SKIP",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4953,
                                 Y = secondary_y,
                             },
                         }

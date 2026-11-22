@@ -61,6 +61,22 @@ namespace osu.Game.Rulesets.Dodge.Objects
 
         public bool ContinueUntilExit { get; set; }
 
+        public DodgeEmitterLoopScope LoopScope { get; set; }
+        public Vector2 LoopOffset { get; set; } = new Vector2(128, 0);
+
+        // Authored source/aim remain intact. Only the derived per-ray trajectory
+        // changes, so fan, burst and moving-source edits remain procedural.
+        public (Vector2 Start, Vector2 End) TrajectoryPointsAt(int burstIndex, int rayIndex)
+        {
+            Vector2 source = SourcePositionAt(burstIndex);
+            Vector2 end = EndPositionAt(burstIndex, rayIndex);
+            if (!MovementType.IsLooping() || LoopScope == DodgeEmitterLoopScope.Individual)
+                return (source, end);
+            return LoopScope == DodgeEmitterLoopScope.TranslatePattern
+                ? (end, end + LoopOffset)
+                : (end, source * 2 - end);
+        }
+
         public int BurstCount { get; set; } = MIN_BURST_COUNT;
 
         public double BurstInterval { get; set; } = DEFAULT_BURST_INTERVAL;
@@ -215,8 +231,7 @@ namespace osu.Game.Rulesets.Dodge.Objects
             if (Duration <= 0)
                 return EndPositionAt(burstIndex, index);
 
-            Vector2 sourcePosition = SourcePositionAt(burstIndex);
-            Vector2 endPosition = EndPositionAt(burstIndex, index);
+            var (sourcePosition, endPosition) = TrajectoryPointsAt(burstIndex, index);
             double maximumProgress = (ExitTimeAt(burstIndex, index) - emissionTime) / Duration;
             float progress = (float)Math.Clamp((time - emissionTime) / Duration, 0, maximumProgress);
             return DodgeTrajectory.PositionAtProgress(
@@ -237,8 +252,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
                 ? 1
                 : (float)Math.Clamp((time - emissionTime) / Duration, 0, (ExitTimeAt(burstIndex, index) - emissionTime) / Duration);
             return DodgeTrajectory.TangentAtProgress(
-                SourcePositionAt(burstIndex),
-                EndPositionAt(burstIndex, index),
+                TrajectoryPointsAt(burstIndex, index).Start,
+                TrajectoryPointsAt(burstIndex, index).End,
                 progress,
                 MovementType,
                 WaveAmplitude,
@@ -254,6 +269,16 @@ namespace osu.Game.Rulesets.Dodge.Objects
             double emissionTime = EmissionTimeAt(burstIndex);
             Vector2 sourcePosition = SourcePositionAt(burstIndex);
             Vector2 endPosition = EndPositionAt(burstIndex, index);
+
+            if (MovementType.IsLooping())
+                return emissionTime + Math.Max(0, Duration);
+
+            if (ArenaTimeline is { HasChanges: true } arena)
+                return ContinueUntilExit
+                    ? DodgeWorldGeometry.ExitTime(WorldBounds ?? new osu.Framework.Graphics.Primitives.RectangleF(0, 0, UI.DodgePlayfield.WIDTH, UI.DodgePlayfield.HEIGHT),
+                        arena, emissionTime, Duration, sourcePosition, endPosition, BulletSize,
+                        MovementType, WaveAmplitude, WaveCycles, WavePhase, MovementEasing)
+                    : emissionTime + Duration;
 
             if (!DodgeTrajectory.RayIntersectsPlayfield(sourcePosition, endPosition, BulletSize, WaveAmplitude))
                 return emissionTime;
@@ -277,6 +302,9 @@ namespace osu.Game.Rulesets.Dodge.Objects
 
         public Vector2 TrajectoryEndPositionAt(int burstIndex, int index)
         {
+            if (MovementType.IsLooping())
+                return PositionAt(burstIndex, index, EmissionTimeAt(burstIndex) + Math.Max(0, Duration));
+
             Vector2 sourcePosition = SourcePositionAt(burstIndex);
             Vector2 endPosition = EndPositionAt(burstIndex, index);
             return ContinueUntilExit

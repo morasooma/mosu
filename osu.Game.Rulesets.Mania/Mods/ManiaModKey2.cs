@@ -13,7 +13,7 @@ namespace osu.Game.Rulesets.Mania.Mods
         public override string Name => "Two Keys";
         public override string Acronym => "2K";
         public override IconUsage? Icon => OsuIcon.ModTwoKeys;
-        public override LocalisableString Description => @"Play with two keys.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3640;
         public override bool Ranked => false;
     }
 }

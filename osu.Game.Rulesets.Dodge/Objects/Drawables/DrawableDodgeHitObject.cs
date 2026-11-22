@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Primitives;
 using osu.Game.Audio;
 using osu.Game.Rulesets.Dodge.UI;
 using osu.Game.Rulesets.Objects.Drawables;
@@ -66,6 +67,15 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
 
         public double CollisionEndTime => getEffectiveMovementEndTime();
 
+        // Editor timeline lifetime extensions must not make expired projectiles
+        // selectable on the canvas. Use the same end/clear state as gameplay.
+        internal bool IsInEditorSelectionWindow => bulletCacheValid
+            && Time.Current >= Bullet.StartTime - Bullet.TimePreempt
+            && Time.Current <= getEffectiveMovementEndTime()
+            && playfield.ProjectileExists(Bullet.StartTime, Time.Current);
+
+        internal Quad EditorSelectionQuad => body.ScreenSpaceDrawQuad;
+
         public bool CollisionProcessingComplete => Result.HasResult;
 
         protected override double InitialLifetimeOffset => Bullet.TimePreempt;
@@ -124,8 +134,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             hasPreviousBulletPosition = true;
 
             if (cachedBulletState.Shape != DodgeBulletShape.Circle
-                && cachedBulletState.MovementType == DodgeMovementType.Sine
-                && cachedBulletState.WaveAmplitude != 0)
+                && cachedBulletState.MovementType != DodgeMovementType.Linear)
             {
                 body.Direction = tangentAt(Math.Min(Time.Current, movementEndTime));
             }
@@ -405,7 +414,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 Bullet.WavePhase,
                 Bullet.TrajectoryGuideStyle);
 
-            if (bulletCacheValid && state == cachedBulletState)
+            if (bulletCacheValid && state == cachedBulletState && cameraAnchorVersion == playfield.CameraStateVersion)
             {
                 if (trajectoryGuide != null && trajectoryGuideShowsFullPath != showFullTrajectory)
                     rebuildTrajectoryGuide(showFullTrajectory);
@@ -428,31 +437,10 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
             if (direction.LengthSquared > 0)
                 direction.Normalize();
 
-            double exitTime = playfield.HasCameraChanges
-                ? DodgeTrajectory.CalculateExitTimeWithCamera(
-                    state.StartTime,
-                    state.Duration,
-                    state.Position,
-                    state.EndPosition,
-                    state.BulletSize,
-                    state.MovementType,
-                    state.WaveAmplitude,
-                    state.WaveCycles,
-                    state.WavePhase,
-                    playfield.CameraOffsetAt,
-                    playfield.ContinuedBulletEndTime,
-                    state.MovementEasing)
-                : DodgeTrajectory.CalculateExitTime(
-                    state.StartTime,
-                    state.Duration,
-                    state.Position,
-                    state.EndPosition,
-                    state.BulletSize,
-                    state.MovementType,
-                    state.WaveAmplitude,
-                    state.WaveCycles,
-                    state.WavePhase,
-                    state.MovementEasing);
+            double exitTime = DodgeWorldGeometry.ExitTime(playfield.WorldBounds ?? new osu.Framework.Graphics.Primitives.RectangleF(0, 0, DodgePlayfield.WIDTH, DodgePlayfield.HEIGHT),
+                    playfield.ArenaTimeline, state.StartTime, state.Duration, state.Position, state.EndPosition,
+                    state.BulletSize, state.MovementType, state.WaveAmplitude, state.WaveCycles, state.WavePhase,
+                    state.MovementEasing, playfield.HasCameraChanges ? playfield.CameraOffsetAt : null, playfield.ContinuedBulletEndTime);
 
             cachedMovementEndTime = state.ContinueUntilExit ? exitTime : state.StartTime + state.Duration;
             maximumProgress = state.Duration > 0

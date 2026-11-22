@@ -19,6 +19,8 @@ namespace osu.Game.Overlays
     {
         private LoginPanel panel = null!;
         private BackdropBlurSurface background = null!;
+
+        protected override BackdropBlurSurface OpaqueBackground => background;
         private IBindable<Colour4> themeColour = null!;
 
         private const float transition_time = 400;

@@ -9,7 +9,7 @@ namespace osu.Game.Overlays.BeatmapListing
 {
     public enum SearchExtra
     {
-        [Description("Server Exclusive")]
+        [Description("Server Exclusive"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3892))]
         ServerExclusive,
 
         [LocalisableDescription(typeof(BeatmapsStrings), nameof(BeatmapsStrings.ExtraVideo))]

@@ -37,9 +37,9 @@ namespace osu.Game.Screens.Edit.Components.Timelines.Summary.Parts
                         foreach (var group in args.NewItems.OfType<ControlPointGroup>())
                         {
                             // as an optimisation, don't add a visualisation if there are already groups with the same types in close proximity.
-                            // for newly added control points (ie. lazer editor first where group is added empty) we always skip for simplicity.
-                            // that is fine, because cases where this is causing a performance issue are mostly where external tools were used to create an insane number of points.
-                            if (Children.Any(g => Math.Abs(g.Group.Time - group.Time) < 500 && g.IsVisuallyRedundant(group)))
+                            // Empty groups must get a visualisation: the editor populates them after insertion,
+                            // and an empty group would otherwise be considered redundant with every nearby group.
+                            if (group.ControlPoints.Count > 0 && Children.Any(g => Math.Abs(g.Group.Time - group.Time) < 500 && g.IsVisuallyRedundant(group)))
                                 continue;
 
                             Add(new GroupVisualisation(group));

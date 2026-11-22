@@ -20,12 +20,12 @@ namespace osu.Game.Rulesets.Osu.Mods
 {
     public class OsuModHidden : ModHidden, IHidesApproachCircles
     {
-        [SettingSource("Only fade approach circles", "The main object body will not fade when enabled.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3693), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3694))]
         public Bindable<bool> OnlyFadeApproachCircles { get; } = new BindableBool();
 
-        public override LocalisableString Description => @"Play with no approach circles and fading circles/sliders.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3695;
 
-        public override Type[] IncompatibleMods => new[] { typeof(IRequiresApproachCircles), typeof(OsuModSpinIn), typeof(OsuModDepth), typeof(OsuModFreezeFrame) };
+        public override Type[] IncompatibleMods => new[] { typeof(IRequiresApproachCircles), typeof(OsuModSpinIn), typeof(OsuModDepth) };
 
         public const double FADE_IN_DURATION_MULTIPLIER = 0.4;
         public const double FADE_OUT_DURATION_MULTIPLIER = 0.3;
@@ -43,7 +43,7 @@ namespace osu.Game.Rulesets.Osu.Mods
             {
                 // Sliders retain their default TimeFadeIn to match Stable
                 if (osuObject is not Slider)
-                    osuObject.TimeFadeIn = osuObject.TimePreempt * FADE_IN_DURATION_MULTIPLIER;
+                    osuObject.TimeFadeIn = (osuObject.TimePreempt - osuObject.FreezeFramePreemptAdjustment) * FADE_IN_DURATION_MULTIPLIER;
 
                 foreach (var nested in osuObject.NestedHitObjects.OfType<OsuHitObject>())
                     applyFadeInAdjustment(nested);

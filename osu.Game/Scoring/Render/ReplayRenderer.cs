@@ -84,7 +84,7 @@ namespace osu.Game.Scoring.Render
                 string renderDir = storage.GetStorageForDirectory("renders").GetFullPath(".");
                 Directory.CreateDirectory(renderDir);
                 string rawTitle = score.BeatmapInfo?.Metadata?.Title ?? "unknown";
-                string sanitizedTitle = string.Join("_", rawTitle.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+                string sanitizedTitle = ReplayRenderFileName.SanitizeTitle(rawTitle);
                 string outputPath = Path.Combine(renderDir, $"render_{sanitizedTitle}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.mp4");
 
                 // On Linux, OpenGL returns pixels upside-down (bottom-up row order).

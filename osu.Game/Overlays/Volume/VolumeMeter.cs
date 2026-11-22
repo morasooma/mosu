@@ -265,7 +265,7 @@ namespace osu.Game.Overlays.Volume
 
                 if (displayVolume >= 0.995f)
                 {
-                    text.Text = "MAX";
+                    text.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4066;
                     maxGlow.EffectColour = meterColour.Opacity(2f);
                 }
                 else

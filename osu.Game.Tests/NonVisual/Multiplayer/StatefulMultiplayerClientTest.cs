@@ -1,7 +1,9 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Humanizer;
 using NUnit.Framework;
 using osu.Framework.Extensions.ObjectExtensions;
@@ -20,6 +22,29 @@ namespace osu.Game.Tests.NonVisual.Multiplayer
         {
             base.SetUpSteps();
             AddStep("join room", () => JoinRoom(CreateDefaultRoom()));
+            WaitForJoined();
+        }
+
+        [Test]
+        public void TestLeaveCompletesOnServerWhenRoomUpdatedListenerThrows()
+        {
+            Task leave = null!;
+            Action listener = () => throw new InvalidOperationException("Test room listener failure");
+            AddStep("leave with failing UI listener", () =>
+            {
+                MultiplayerClient.RoomUpdated += listener;
+                leave = MultiplayerClient.LeaveRoom();
+            });
+            AddUntilStep("leave task completed", () => leave.IsCompleted);
+            AddStep("failure is still observable", () =>
+            {
+                MultiplayerClient.RoomUpdated -= listener;
+                Assert.That(leave.Exception?.GetBaseException(), Is.TypeOf<InvalidOperationException>());
+                Assert.That(leave.Exception!.GetBaseException().Message, Is.EqualTo("Test room listener failure"));
+            });
+            AddAssert("local and server rooms cleared", () => MultiplayerClient.ClientRoom == null
+                && MultiplayerClient.ServerRoom == null && !MultiplayerClient.RoomJoined);
+            AddStep("join again without reconnect", () => JoinRoom(MultiplayerClient.ServerSideRooms.Single()));
             WaitForJoined();
         }
 

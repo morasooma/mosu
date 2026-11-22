@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Linq;
 using osu.Framework.Allocation;
+using osu.Game.Graphics;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Bindables;
@@ -20,6 +21,7 @@ using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Input.Bindings;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Resources.Localisation.Web;
 using osuTK;
 using osuTK.Graphics;
@@ -64,6 +66,7 @@ namespace osu.Game.Graphics.UserInterface
             private Sample? sampleClose;
             private IBindable<Colour4>? themeColour;
             private IBindable<ThemeMode>? themeMode;
+            private IBindable<float>? popupRadius;
             private readonly BackdropBlurSurface glassBackground;
 
             public new Color4 BackgroundColour
@@ -85,6 +88,7 @@ namespace osu.Game.Graphics.UserInterface
                 CornerRadius = corner_radius;
 
                 MaskingContainer.CornerRadius = corner_radius;
+                glassBackground.CornerRadius = corner_radius;
                 Alpha = 0;
 
                 // todo: this uses the same styling as OsuMenu. hopefully we can just use OsuMenu in the future with some refactoring
@@ -94,6 +98,14 @@ namespace osu.Game.Graphics.UserInterface
             [BackgroundDependencyLoader(true)]
             private void load(OverlayColourProvider? colourProvider, OsuColour colours, AudioManager audio)
             {
+                popupRadius = colourProvider?.GetRadiusBindable(GeometryRole.Popup, corner_radius) ?? OverlayColourProvider.GetGeometryRadius(GeometryRole.Popup, corner_radius);
+                popupRadius.BindValueChanged(r =>
+                {
+                    CornerRadius = r.NewValue;
+                    MaskingContainer.CornerRadius = r.NewValue;
+                    glassBackground.CornerRadius = r.NewValue;
+                }, true);
+
                 if (colourProvider != null)
                 {
                     themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
@@ -140,7 +152,7 @@ namespace osu.Game.Graphics.UserInterface
             protected override void AnimateOpen()
             {
                 wasOpened = true;
-                this.FadeIn(300, Easing.OutQuint);
+                this.FadeIn(InterfaceAnimation.FadeDuration(300), Easing.OutQuint);
                 sampleOpen?.Play();
             }
 
@@ -148,10 +160,14 @@ namespace osu.Game.Graphics.UserInterface
             {
                 if (wasOpened)
                 {
-                    this.FadeOut(300, Easing.OutQuint);
+                    this.FadeOut(InterfaceAnimation.FadeDuration(300), Easing.OutQuint);
                     sampleClose?.Play();
                 }
             }
+
+            // The glass surface masks its own backdrop view, so its corners must match the
+            // menu mask too (especially visible around the border of form dropdowns).
+            protected void SetGlassCornerRadius(float radius) => glassBackground.CornerRadius = radius;
 
             private Vector2? targetSize;
 
@@ -277,6 +293,7 @@ namespace osu.Game.Graphics.UserInterface
                 }
 
                 private IBindable<Colour4>? themeColour;
+                private IBindable<float>? itemRadius;
 
                 public DrawableOsuDropdownMenuItem(MenuItem item)
                     : base(item)
@@ -289,9 +306,25 @@ namespace osu.Game.Graphics.UserInterface
                     CornerRadius = corner_radius;
                 }
 
+                private float lastDrawHeight;
+
+                private void updateCornerRadius()
+                {
+                    if (itemRadius == null)
+                        return;
+
+                    float target = itemRadius.Value <= 0f ? 0f : itemRadius.Value - 2f;
+                    float maxRadius = DrawHeight > 0 ? DrawHeight / 2f : 12f;
+                    CornerRadius = target <= 0f ? 0f : System.Math.Clamp(target, 1f, maxRadius);
+                }
+
                 [BackgroundDependencyLoader]
                 private void load(OverlayColourProvider? colourProvider)
                 {
+                    itemRadius = colourProvider?.GetRadiusBindable(GeometryRole.Popup, corner_radius)
+                        ?? OverlayColourProvider.GetGeometryRadius(GeometryRole.Popup, corner_radius);
+                    itemRadius.BindValueChanged(_ => updateCornerRadius(), true);
+
                     if (colourProvider != null)
                     {
                         themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
@@ -304,6 +337,17 @@ namespace osu.Game.Graphics.UserInterface
                     }
 
                     AddInternal(new HoverSounds());
+                }
+
+                protected override void Update()
+                {
+                    base.Update();
+
+                    if (DrawHeight != lastDrawHeight)
+                    {
+                        lastDrawHeight = DrawHeight;
+                        updateCornerRadius();
+                    }
                 }
 
                 protected override void UpdateBackgroundColour()
@@ -395,13 +439,13 @@ namespace osu.Game.Graphics.UserInterface
 
                             if (hovering)
                             {
-                                Chevron.FadeIn(400, Easing.OutQuint);
-                                Chevron.MoveToX(0, 400, Easing.OutQuint);
+                                Chevron.FadeIn(InterfaceAnimation.FadeDuration(400), Easing.OutQuint);
+                                Chevron.MoveToX(0, InterfaceAnimation.MovementDuration(400), Easing.OutQuint);
                             }
                             else
                             {
-                                Chevron.FadeOut(200);
-                                Chevron.MoveToX(chevron_offset, 200, Easing.In);
+                                Chevron.FadeOut(InterfaceAnimation.FadeDuration(200));
+                                Chevron.MoveToX(chevron_offset, InterfaceAnimation.MovementDuration(200), Easing.In);
                             }
                         }
                     }
@@ -479,6 +523,7 @@ namespace osu.Game.Graphics.UserInterface
 
             private IBindable<Colour4>? themeColour;
             private IBindable<ThemeMode>? themeMode;
+            private IBindable<float>? cornerRadiusBindable;
 
             [Resolved]
             private OsuColour colours { get; set; } = null!;
@@ -497,6 +542,10 @@ namespace osu.Game.Graphics.UserInterface
                     themeMode = OverlayColourProvider.CurrentTheme.GetBoundCopy();
                     themeMode.BindValueChanged(_ => updateColour(), true);
                 }
+
+                cornerRadiusBindable = colourProvider?.GetRadiusBindable(GeometryRole.Input, corner_radius)
+                    ?? OverlayColourProvider.GetGeometryRadius(GeometryRole.Input, corner_radius);
+                cornerRadiusBindable.BindValueChanged(r => CornerRadius = r.NewValue, true);
 
                 if (Dropdown != null)
                     Dropdown.Menu.StateChanged += _ => updateChevron();
@@ -550,7 +599,7 @@ namespace osu.Game.Graphics.UserInterface
             {
                 Debug.Assert(Dropdown != null);
                 bool open = Dropdown.Menu.State == MenuState.Open;
-                Chevron.ScaleTo(open ? new Vector2(1f, -1f) : Vector2.One, 300, Easing.OutQuint);
+                Chevron.ScaleTo(open ? new Vector2(1f, -1f) : Vector2.One, InterfaceAnimation.MovementDuration(300), Easing.OutQuint);
             }
 
             protected override DropdownSearchBar CreateSearchBar() => new OsuDropdownSearchBar

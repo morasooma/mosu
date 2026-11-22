@@ -21,15 +21,15 @@ namespace osu.Game.Online.API.Requests.Responses
 
     public enum SessionVerificationMethod
     {
-        [Description("Timed one-time password")]
+        [Description("Timed one-time password"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3807))]
         [EnumMember(Value = "totp")]
         TimedOneTimePassword,
 
-        [Description("E-mail")]
+        [Description("E-mail"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3808))]
         [EnumMember(Value = "mail")]
         EmailMessage,
 
-        [Description("Telegram")]
+        [Description("Telegram"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3809))]
         [EnumMember(Value = "telegram")]
         TelegramMessage,
     }

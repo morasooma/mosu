@@ -145,11 +145,11 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
                 };
 
                 text.AddUserLink(newScore.User);
-                text.AddText(" scored ");
+                text.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4370);
                 text.AddLink($"{newScore.TotalScore:N0}", () => PresentScore?.Invoke(newScore.ScoreID));
 
                 if (newScore.NewRank != null)
-                    text.AddText($" and achieved rank #{newScore.NewRank.Value:N0}");
+                    text.AddText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4371(newScore.NewRank.Value));
 
                 text.AddText("!");
 

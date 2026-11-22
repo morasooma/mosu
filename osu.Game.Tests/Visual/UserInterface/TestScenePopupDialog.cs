@@ -9,6 +9,7 @@ using osu.Framework.Graphics.Sprites;
 using osu.Framework.Testing;
 using osu.Game.Graphics;
 using osu.Game.Overlays.Dialog;
+using osu.Game.Screens.Select;
 using osuTK;
 using osuTK.Input;
 
@@ -62,6 +63,27 @@ namespace osu.Game.Tests.Visual.UserInterface
             AddStep("click button", () => InputManager.Click(MouseButton.Left));
             AddAssert("action invoked", () => dialog.NonHideActionInvoked, () => Is.True);
             AddAssert("dialog is still visible", () => dialog.State.Value, () => Is.EqualTo(Visibility.Visible));
+        }
+
+        [Test]
+        public void TestBeatmapUploadHelpBackButton()
+        {
+            BeatmapUploadHelpDialog helpDialog = null!;
+            AddStep("show beatmap upload help", () => Child = helpDialog = new BeatmapUploadHelpDialog
+            {
+                State = { Value = Visibility.Visible },
+            });
+            AddAssert("back label has layout", () =>
+            {
+                var label = helpDialog.Buttons.Single().ChildrenOfType<SpriteText>().Single();
+                return !string.IsNullOrWhiteSpace(label.Current.Value) && label.DrawWidth > 0 && label.IsPresent;
+            });
+            AddStep("click back", () =>
+            {
+                InputManager.MoveMouseTo(helpDialog.Buttons.Single());
+                InputManager.Click(MouseButton.Left);
+            });
+            AddAssert("help dialog is hidden", () => helpDialog.State.Value, () => Is.EqualTo(Visibility.Hidden));
         }
 
         private partial class TestPopupDialog : PopupDialog

@@ -6,8 +6,6 @@
 using System;
 using JetBrains.Annotations;
 using osu.Framework.Allocation;
-using osu.Framework.Audio;
-using osu.Framework.Audio.Sample;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
@@ -27,27 +25,17 @@ namespace osu.Game.Screens.Menu
 {
     public partial class IntroTriangles : IntroScreen
     {
-        protected override string BeatmapHash => "a1556d0801b3a6b175dda32ef546f0ec812b400499f575c44fccbe9c67f9b1e5";
+        internal const string BEATMAP_SET_HASH = "a1556d0801b3a6b175dda32ef546f0ec812b400499f575c44fccbe9c67f9b1e5";
 
-        protected override string BeatmapFile => "triangles.osz";
+        protected override string BeatmapHash => BEATMAP_SET_HASH;
 
-        [Resolved]
-        private AudioManager audio { get; set; }
-
-        private Sample welcome;
+        protected override double ThemedIntroMusicStartTime => 3012;
 
         private TrianglesIntroSequence intro;
 
         public IntroTriangles([CanBeNull] Func<MainMenu> createNextScreen = null)
             : base(createNextScreen)
         {
-        }
-
-        [BackgroundDependencyLoader]
-        private void load()
-        {
-            if (MenuVoice.Value)
-                welcome = audio.Samples.Get(@"Intro/welcome");
         }
 
         protected override void LogoArriving(OsuLogo logo, bool resuming)
@@ -58,15 +46,17 @@ namespace osu.Game.Screens.Menu
             {
                 PrepareMenuLoad();
 
-                var decouplingClock = new DecouplingFramedClock(UsingThemedIntro ? Track : null);
+                // Follow screen time, not audio or a separate real-time stopwatch.
+                var animationClock = new FramedOffsetClock(Clock, false) { Offset = -Clock.CurrentTime };
 
                 LoadComponentAsync(intro = new TrianglesIntroSequence(logo, () => FadeInBackground())
                 {
                     RelativeSizeAxes = Axes.Both,
-                    Clock = new InterpolatingFramedClock(decouplingClock),
+                    Clock = animationClock,
                     LoadMenu = LoadMenu
                 }, _ =>
                 {
+                    animationClock.Offset = -Clock.CurrentTime;
                     AddInternal(intro);
 
                     // There is a chance that the intro timed out before being displayed, and this scheduled callback could
@@ -76,18 +66,10 @@ namespace osu.Game.Screens.Menu
                     if (DidLoadMenu)
                         return;
 
-                    if (!UsingThemedIntro)
-                    {
-                        // If the user has requested no theme, fallback to the same intro voice and delay as IntroCircles.
-                        // The triangles intro voice and theme are combined which makes it impossible to use.
-                        welcome?.Play();
-                        Scheduler.AddDelayed(StartTrack, IntroCircles.TRACK_START_DELAY);
-                    }
-                    else
+                    if (UsingThemedIntro)
                         StartTrack();
-
-                    // no-op for the case of themed intro, no harm in calling for both scenarios as a safety measure.
-                    decouplingClock.Start();
+                    else
+                        Scheduler.AddDelayed(StartTrack, IntroCircles.TRACK_START_DELAY);
                 });
             }
         }
@@ -96,7 +78,7 @@ namespace osu.Game.Screens.Menu
         {
             base.OnSuspending(e);
 
-            // important as there is a clock attached to a track which will likely be disposed before returning to this screen.
+            // Do not keep the completed intro animation alive behind the menu.
             intro.Expire();
         }
 
@@ -196,17 +178,17 @@ namespace osu.Game.Screens.Menu
                 using (BeginAbsoluteSequence(0))
                 {
                     using (BeginDelayedSequence(text_1))
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "wel");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4358);
 
                     using (BeginDelayedSequence(text_2))
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4357);
 
                     using (BeginDelayedSequence(text_3))
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome to");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4359);
 
                     using (BeginDelayedSequence(text_4))
                     {
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome to Morasooma");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4360);
                         welcomeText.TransformTo(nameof(welcomeText.Spacing), new Vector2(50, 0), 5000);
                     }
 

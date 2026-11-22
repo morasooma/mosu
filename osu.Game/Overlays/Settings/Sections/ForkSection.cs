@@ -15,7 +15,7 @@ namespace osu.Game.Overlays.Settings.Sections
 {
     public partial class ForkSection : SettingsSection
     {
-        public override LocalisableString Header => @"Morasooma";
+        public override LocalisableString Header => global::osu.Game.Localisation.ClientTranslationStrings.J4020;
 
         protected override bool HeaderUsesThemeColour => false;
 
@@ -32,14 +32,15 @@ namespace osu.Game.Overlays.Settings.Sections
             Icon = OsuIcon.Settings
         };
 
-        public ForkSection(PerformanceOptimisationSettingsPanel performanceOptimisationSettings)
+        public ForkSection(PerformanceOptimisationSettingsPanel performanceOptimisationSettings, CustomThemeSettingsPanel? customThemeSettings = null, SkinVisibilitySettingsPanel? skinVisibility = null, BackgroundCalculationSettingsPanel? backgroundCalculations = null, AiFunctionSettingsPanel? aiSettings = null)
         {
             FlowContent.Margin = new MarginPadding { Top = 68 };
 
             Add(new ForkConnectionSettings());
             Add(new ForkSettings());
-            Add(new ForkPerformanceSettings(performanceOptimisationSettings));
-            Add(new ForkInterfaceSettings());
+            Add(new ForkPerformanceSettings(performanceOptimisationSettings, backgroundCalculations));
+            Add(new ForkInterfaceSettings(customThemeSettings, skinVisibility));
+            Add(new ForkAiSettings(aiSettings));
             Add(new ForkDebugSettings());
             Add(new ForkCommunitySettings());
             Add(new ConfigurationBackupSettings());
@@ -47,7 +48,7 @@ namespace osu.Game.Overlays.Settings.Sections
         }
 
         public ForkSection()
-            : this(new PerformanceOptimisationSettingsPanel())
+            : this(new PerformanceOptimisationSettingsPanel(), new CustomThemeSettingsPanel())
         {
         }
 

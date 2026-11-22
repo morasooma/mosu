@@ -28,10 +28,10 @@ namespace osu.Game.Screens.Ranking.Expanded
 
         private readonly bool playAppearanceSound;
         private ClickableUsername username = null!;
-        private IBindable<Colour4> themeColour = null!;
+        private IBindable<Colour4>? themeColour;
 
-        [Resolved]
-        private OverlayColourProvider colourProvider { get; set; } = null!;
+        [Resolved(canBeNull: true)]
+        private OverlayColourProvider? colourProvider { get; set; }
 
         /// <summary>
         /// Creates a new <see cref="ExpandedPanelTopContent"/>.
@@ -76,12 +76,15 @@ namespace osu.Game.Screens.Ranking.Expanded
                 }
             };
 
-            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-            themeColour.BindValueChanged(_ =>
+            if (colourProvider != null)
             {
-                username.IdleColour = OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : Color4.White;
-                username.HoverColour = OverlayColourProvider.IsLightTheme ? colourProvider.Light1 : null;
-            }, true);
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ =>
+                {
+                    username.IdleColour = OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : Color4.White;
+                    username.HoverColour = OverlayColourProvider.IsLightTheme ? colourProvider.Light1 : null;
+                }, true);
+            }
         }
 
         protected override void LoadComplete()

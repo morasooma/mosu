@@ -123,6 +123,14 @@ namespace osu.Game.Online.Multiplayer
 
         public event Action<MultiplayerRoomUser, MultiplayerUserState>? UserStateChanged;
 
+        public event Action<ServerPlayInvitation>? ServerPlayInvited;
+        public event Action<string>? ServerPlayInvitationRevoked;
+
+        public void ReceiveServerPlayInvitation(ServerPlayInvitation invitation) => Scheduler.Add(() => ServerPlayInvited?.Invoke(invitation));
+        public void RevokeServerPlayInvitation(string id) => Scheduler.Add(() => ServerPlayInvitationRevoked?.Invoke(id));
+        public virtual Task InviteServer() => Task.CompletedTask;
+        public void PresentServerInvitation(long roomId) => PresentMatch?.Invoke(new Room { RoomID = roomId }, string.Empty);
+
         public event Action? MatchmakingQueueJoined;
         public event Action? MatchmakingQueueLeft;
         public event Action<MatchmakingRoomInvitationParams>? MatchmakingRoomInvited;
@@ -357,8 +365,16 @@ namespace osu.Game.Online.Multiplayer
                 {
                     await joinOrLeaveTaskChain.Add(async () =>
                     {
-                        await scheduledReset.ConfigureAwait(false);
-                        await LeaveRoomInternal().ConfigureAwait(false);
+                        try
+                        {
+                            await scheduledReset.ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            // A UI listener must not leave us joined on the server after the local room was cleared.
+                            // Still propagate its exception after the server-side leave has completed.
+                            await LeaveRoomInternal().ConfigureAwait(false);
+                        }
                     }).ConfigureAwait(false);
                 }
                 finally

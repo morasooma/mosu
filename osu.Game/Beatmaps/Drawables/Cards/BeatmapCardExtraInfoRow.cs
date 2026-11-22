@@ -15,6 +15,15 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         [Resolved(CanBeNull = true)]
         private BeatmapCardContent? content { get; set; }
 
+        private readonly BeatmapSetOnlineStatusPill status;
+        private readonly DifficultySpectrumDisplay spectrum;
+
+        internal void ChangeBeatmapSet(APIBeatmapSet set)
+        {
+            status.Status = set.Status;
+            spectrum.BeatmapSet = set;
+        }
+
         public BeatmapCardExtraInfoRow(APIBeatmapSet beatmapSet)
         {
             RelativeSizeAxes = Axes.X;
@@ -28,14 +37,14 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                 Spacing = new Vector2(3, 0),
                 Children = new Drawable[]
                 {
-                    new BeatmapSetOnlineStatusPill
+                    status = new BeatmapSetOnlineStatusPill
                     {
                         Status = beatmapSet.Status,
                         Anchor = Anchor.CentreLeft,
                         Origin = Anchor.CentreLeft,
                         TextSize = 13f
                     },
-                    new DifficultySpectrumDisplay
+                    spectrum = new DifficultySpectrumDisplay
                     {
                         BeatmapSet = beatmapSet,
                         Anchor = Anchor.CentreLeft,

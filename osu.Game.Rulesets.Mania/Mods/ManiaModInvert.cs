@@ -21,7 +21,7 @@ namespace osu.Game.Rulesets.Mania.Mods
 
         public override string Acronym => "IN";
 
-        public override LocalisableString Description => "Hold the keys. To the beat.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3637;
 
         public override IconUsage? Icon => OsuIcon.ModInvert;
 

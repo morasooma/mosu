@@ -14,7 +14,7 @@ namespace osu.Game.Rulesets.Mods
     {
         public override string Name => "No Mod";
         public override string Acronym => "NM";
-        public override LocalisableString Description => "No mods applied.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4243;
         public override IconUsage? Icon => OsuIcon.ModNoMod;
         public override ModType Type => ModType.System;
     }

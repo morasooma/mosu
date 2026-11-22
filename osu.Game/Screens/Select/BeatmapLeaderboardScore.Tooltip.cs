@@ -122,8 +122,7 @@ namespace osu.Game.Screens.Select
                             new StatisticRow(s.DisplayName.ToUpper(), s.Count.ToLocalisableString("N0"), colours.ForHitResult(s.Result)));
 
                         var ruleset = value.Ruleset.CreateInstance();
-                        var scoreMultiplierCalculator = ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(score.BeatmapInfo!.Difficulty));
-                        double multiplier = scoreMultiplierCalculator.CalculateFor(value.Mods);
+                        double multiplier = ModUtils.CalculateScoreMultiplierForDisplay(ruleset, score.BeatmapInfo!, value.Mods);
 
                         var generalStatistics = new[]
                         {
@@ -307,7 +306,7 @@ namespace osu.Game.Screens.Select
                 private void setPerformanceValue(ScoreInfo scoreInfo, double pp)
                 {
                     int ppValue = (int)Math.Round(pp, MidpointRounding.AwayFromZero);
-                    ValueText.Text = LocalisableString.Interpolate(@$"{ppValue:N0}pp");
+                    ValueText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5152(ppValue);
 
                     if (!ModPerformancePointHelper.BeatmapAwardsPerformancePoints(scoreInfo.Ruleset, scoreInfo.BeatmapInfo) ||
                         hasUnrankedMods(scoreInfo))
@@ -343,7 +342,7 @@ namespace osu.Game.Screens.Select
                         {
                             Show();
 
-                            modsFlow.ChildrenEnumerable = mods.AsOrdered().Select(m => new ModIcon(m)
+                            modsFlow.ChildrenEnumerable = mods.AsVisible().AsOrdered().Select(m => new ModIcon(m)
                             {
                                 Anchor = Anchor.Centre,
                                 Origin = Anchor.Centre,

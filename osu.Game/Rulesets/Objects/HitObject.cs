@@ -104,6 +104,7 @@ namespace osu.Game.Rulesets.Objects
         /// <param name="cancellationToken">The cancellation token.</param>
         public void ApplyDefaults(ControlPointInfo controlPointInfo, IBeatmapDifficultyInfo difficulty, CancellationToken cancellationToken = default)
         {
+            BackgroundCalculationLimiter.Checkpoint();
             cancellationToken.ThrowIfCancellationRequested();
 
             ApplyDefaultsToSelf(controlPointInfo, difficulty);
@@ -120,9 +121,7 @@ namespace osu.Game.Rulesets.Objects
 
                     if (hitObject is IHasComboInformation n)
                     {
-                        n.ComboIndexBindable.BindTo(hasCombo.ComboIndexBindable);
-                        n.ComboIndexWithOffsetsBindable.BindTo(hasCombo.ComboIndexWithOffsetsBindable);
-                        n.IndexInCurrentComboBindable.BindTo(hasCombo.IndexInCurrentComboBindable);
+                        BindNestedComboInformation(n, hasCombo);
                     }
                 }
             }
@@ -135,22 +134,33 @@ namespace osu.Game.Rulesets.Objects
             // `ApplyDefaults()` may be called multiple times on a single hitobject.
             // to prevent subscribing to `StartTimeBindable.ValueChanged` multiple times with the same callback,
             // remove the previous subscription (if present) before (re-)registering.
-            StartTimeBindable.ValueChanged -= onStartTimeChanged;
+            startTimeChanged ??= onStartTimeChanged;
+            StartTimeBindable.ValueChanged -= startTimeChanged;
 
             // this callback must be (re-)registered after default application
             // to ensure that the read of `this.GetEndTime()` within `onStartTimeChanged` doesn't return an invalid value
             // if `StartTimeBindable` is changed prior to default application.
-            StartTimeBindable.ValueChanged += onStartTimeChanged;
+            StartTimeBindable.ValueChanged += startTimeChanged;
 
             DefaultsApplied?.Invoke(this);
+        }
 
-            void onStartTimeChanged(ValueChangedEvent<double> time)
-            {
-                double offset = time.NewValue - time.OldValue;
+        // Reuse the same delegate when defaults are applied again (editor/mod/reuse paths),
+        // rather than allocating two instance-method delegates for -= and += each time.
+        private Action<ValueChangedEvent<double>> startTimeChanged;
 
-                foreach (var nested in nestedHitObjects)
-                    nested.StartTime += offset;
-            }
+        private void onStartTimeChanged(ValueChangedEvent<double> time)
+        {
+            double offset = time.NewValue - time.OldValue;
+            foreach (var nested in nestedHitObjects)
+                nested.StartTime += offset;
+        }
+
+        protected virtual void BindNestedComboInformation(IHasComboInformation nested, IHasComboInformation parent)
+        {
+            nested.ComboIndexBindable.BindTo(parent.ComboIndexBindable);
+            nested.ComboIndexWithOffsetsBindable.BindTo(parent.ComboIndexWithOffsetsBindable);
+            nested.IndexInCurrentComboBindable.BindTo(parent.IndexInCurrentComboBindable);
         }
 
         protected virtual void ApplyDefaultsToSelf(ControlPointInfo controlPointInfo, IBeatmapDifficultyInfo difficulty)
@@ -165,7 +175,11 @@ namespace osu.Game.Rulesets.Objects
         {
         }
 
-        protected void AddNested(HitObject hitObject) => nestedHitObjects.Add(hitObject);
+        protected void AddNested(HitObject hitObject)
+        {
+            BackgroundCalculationLimiter.Checkpoint();
+            nestedHitObjects.Add(hitObject);
+        }
 
         /// <summary>
         /// The <see cref="Judgement"/> that represents the scoring information for this <see cref="HitObject"/>.

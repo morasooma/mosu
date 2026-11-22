@@ -24,58 +24,54 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
             IEnumerable<DodgeHitObject> hitObjects,
             float bulletSize)
         {
+            BreakPeriod[] breakPeriods = breaks.ToArray();
+            if (breakPeriods.Length == 0)
+                return breakPeriods;
+
             DodgeHitObject[] objects = hitObjects.ToArray();
 
             if (objects.Length == 0)
-                return breaks.ToArray();
+                return breakPeriods;
 
-            double continuedBulletEndTime = DodgeGameplayTiming.GetContinuedProjectileEndTime(
-                objects,
-                DodgePlayfield.CONTINUED_BULLET_GRACE_PERIOD);
+            double lastBreakEnd = breakPeriods.Max(period => period.EndTime);
+
+            var arena = DodgeWorldGeometry.ApplyArenaTimeline(objects);
+            var worldBounds = DodgeWorldGeometry.Bounds(objects) ?? new osu.Framework.Graphics.Primitives.RectangleF(0, 0, DodgePlayfield.WIDTH, DodgePlayfield.HEIGHT);
+
+            // The global continued-flight limit is at least every projectile's natural
+            // exit. Computing it here repeats every expensive exit query without
+            // constraining any movement period.
             var movementPeriods = new List<MovementPeriod>();
 
             foreach (DodgeBullet bullet in objects.OfType<DodgeBullet>())
             {
+                if (bullet.StartTime >= lastBreakEnd)
+                    continue;
                 double movementEndTime = bullet.ContinueUntilExit
-                    ? DodgeTrajectory.CalculateExitTime(
-                        bullet.StartTime,
-                        bullet.Duration,
-                        bullet.Position,
-                        bullet.EndPosition,
-                        bulletSize,
-                        bullet.MovementType,
-                        bullet.WaveAmplitude,
-                        bullet.WaveCycles,
-                        bullet.WavePhase,
-                        bullet.MovementEasing)
+                    ? DodgeWorldGeometry.ExitTime(worldBounds, arena, bullet.StartTime, bullet.Duration, bullet.Position, bullet.EndPosition,
+                        bulletSize, bullet.MovementType, bullet.WaveAmplitude, bullet.WaveCycles, bullet.WavePhase, bullet.MovementEasing)
                     : bullet.EndTime;
 
-                addMovementPeriod(bullet.StartTime, Math.Min(movementEndTime, continuedBulletEndTime) + PROJECTILE_CLEARANCE);
+                addMovementPeriod(bullet.StartTime, movementEndTime + PROJECTILE_CLEARANCE);
             }
 
             foreach (DodgeEmitter emitter in objects.OfType<DodgeEmitter>())
             {
+                if (emitter.StartTime >= lastBreakEnd)
+                    continue;
                 double movementEndTime = emitter.EndTime;
 
                 if (emitter.ContinueUntilExit)
                 {
                     movementEndTime = Enumerable.Range(0, emitter.EffectiveBurstCount)
                                                 .SelectMany(burst => Enumerable.Range(0, emitter.EffectiveBulletCount)
-                                                                               .Select(index => DodgeTrajectory.CalculateExitTime(
-                                                                                   emitter.EmissionTimeAt(burst),
-                                                                                   emitter.Duration,
-                                                                                   emitter.SourcePositionAt(burst),
-                                                                                   emitter.EndPositionAt(burst, index),
-                                                                                   bulletSize,
-                                                                                   emitter.MovementType,
-                                                                                   emitter.WaveAmplitude,
-                                                                                   emitter.WaveCycles,
-                                                                                   emitter.WavePhase,
-                                                                                   emitter.MovementEasing)))
+                                                                               .Select(index => DodgeWorldGeometry.ExitTime(worldBounds, arena, emitter.EmissionTimeAt(burst), emitter.Duration,
+                                                                                       emitter.SourcePositionAt(burst), emitter.EndPositionAt(burst, index), bulletSize,
+                                                                                       emitter.MovementType, emitter.WaveAmplitude, emitter.WaveCycles, emitter.WavePhase, emitter.MovementEasing)))
                                                 .Max();
                 }
 
-                addMovementPeriod(emitter.StartTime, Math.Min(movementEndTime, continuedBulletEndTime) + PROJECTILE_CLEARANCE);
+                addMovementPeriod(emitter.StartTime, movementEndTime + PROJECTILE_CLEARANCE);
             }
 
             foreach (DodgeBeam beam in objects.OfType<DodgeBeam>())
@@ -86,7 +82,7 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
             MovementPeriod[] mergedMovementPeriods = mergePeriods(movementPeriods);
             var adjustedBreaks = new List<BreakPeriod>();
 
-            foreach (BreakPeriod breakPeriod in breaks)
+            foreach (BreakPeriod breakPeriod in breakPeriods)
             {
                 double availableStart = breakPeriod.StartTime;
 

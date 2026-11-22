@@ -3,10 +3,14 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Globalization;
 using System.Linq;
+using System.Threading;
+using osu.Framework.IO.Network;
 using osu.Framework.IO.Stores;
 using osu.Framework.Logging;
 using osu.Game.Configuration;
+using osu.Game.Online.Hinamizawa;
 
 namespace osu.Game.Online
 {
@@ -36,6 +40,75 @@ namespace osu.Game.Online
             this.configManager = configManager;
         }
 
+        // TextureLoaderStore uses GetStream -> Get, including for asynchronous texture loads.
+        // Keep the original resource name as the texture cache key; only change its transport.
+        public override byte[] Get(string url)
+        {
+            if (!string.IsNullOrWhiteSpace(configManager?.Get<string>(OsuSetting.CustomApiUrl)))
+                return base.Get(url);
+
+            return GetWithCoverFallback(url, downloadCover, original => base.Get(original))!;
+        }
+
+        internal static byte[]? GetWithCoverFallback(string url, Func<string, byte[]?> getMirror, Func<string, byte[]?> getOriginal)
+        {
+            string? mirrorUrl = GetMirrorCoverUrl(url);
+            if (mirrorUrl != null)
+            {
+                byte[]? data = getMirror(mirrorUrl);
+                if (data?.Length > 0)
+                    return data;
+            }
+
+            return getOriginal(url);
+        }
+
+        internal static string? GetMirrorCoverUrl(string url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+                uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort || uri.UserInfo.Length != 0 ||
+                !string.Equals(uri.Host, "assets.ppy.sh", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            string[] parts = uri.AbsolutePath.Split('/');
+            if (parts.Length != 5 || parts[1] != "beatmaps" || parts[3] != "covers" ||
+                !int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out int setId) || setId <= 0)
+                return null;
+
+            if (parts[4] is not ("cover.jpg" or "cover@2x.jpg" or "card.jpg" or "card@2x.jpg" or
+                "list.jpg" or "list@2x.jpg" or "slimcover.jpg" or "slimcover@2x.jpg"))
+                return null;
+
+            // The documented render endpoint preserves the variant and revision query,
+            // caches hot images, and can reconstruct missing covers from archived artwork.
+            return $"{HinamizawaClient.HOST}/v3/osu/beatmaps/proxy-image?url={Uri.EscapeDataString(url)}";
+        }
+
+        private static byte[]? downloadCover(string url)
+        {
+            try
+            {
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                using var request = new CoverWebRequest(url)
+                {
+                    Timeout = 3000,
+                    AllowRetryOnTimeout = false,
+                };
+                request.PerformAsync(deadline.Token).GetAwaiter().GetResult();
+                return request.GetResponseData();
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Beatmap cover mirror failed; falling back to the original URL: {ex.Message}", LoggingTarget.Network);
+                return null;
+            }
+        }
+
+        private sealed class CoverWebRequest(string url) : WebRequest(url)
+        {
+            protected override string UserAgent => $"Morasooma/{typeof(TrustedDomainOnlineStore).Assembly.GetName().Version} (+https://github.com/GooGuTeam/osu)";
+        }
+
         protected override string GetLookupUrl(string url)
         {
             string? customApiUrl = configManager?.Get<string>(OsuSetting.CustomApiUrl);
@@ -49,7 +122,9 @@ namespace osu.Game.Online
         {
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
                 (trustedDomainRoots.Any(root => isSameOrSubdomain(uri.Host, root)) ||
-                 trustedHosts.Any(host => string.Equals(uri.Host, host, StringComparison.OrdinalIgnoreCase))))
+                 trustedHosts.Any(host => string.Equals(uri.Host, host, StringComparison.OrdinalIgnoreCase)) ||
+                 (uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort && uri.UserInfo.Length == 0 &&
+                  string.Equals(uri.Host, "mirror.hinamizawa.ai", StringComparison.OrdinalIgnoreCase))))
             {
                 return url;
             }

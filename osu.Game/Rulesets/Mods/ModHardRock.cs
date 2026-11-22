@@ -18,12 +18,12 @@ namespace osu.Game.Rulesets.Mods
         public override string Acronym => "HR";
         public override IconUsage? Icon => OsuIcon.ModHardRock;
         public override ModType Type => ModType.DifficultyIncrease;
-        public override LocalisableString Description => "Everything just got a bit harder...";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4226;
         public override Type[] IncompatibleMods => new[] { typeof(ModEasy), typeof(ModDifficultyAdjust) };
         public override bool Ranked => UsesDefaultConfiguration;
         public override bool ValidForFreestyleAsRequiredMod => true;
 
-        [SettingSource("Не изменять ХП", "Сохранять потерю здоровья (HP) оригинальной.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4227), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4228))]
         public BindableBool LockHPAdjust { get; } = new BindableBool();
 
         protected const float ADJUST_RATIO = 1.4f;
@@ -33,7 +33,7 @@ namespace osu.Game.Rulesets.Mods
             get
             {
                 if (!Online.MosuServerEnvironment.IsThirdPartyServer && !LockHPAdjust.IsDefault)
-                    yield return ("Не изменять ХП", LockHPAdjust.Value ? "Да" : "Нет");
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4227, LockHPAdjust.Value ? global::osu.Game.Localisation.ClientTranslationStrings.J4229 : global::osu.Game.Localisation.ClientTranslationStrings.J4230);
             }
         }
 

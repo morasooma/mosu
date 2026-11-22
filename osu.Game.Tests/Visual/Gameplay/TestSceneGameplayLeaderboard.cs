@@ -19,6 +19,7 @@ using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Scoring;
+using osu.Game.Skinning;
 using osu.Game.Screens.Play;
 using osu.Game.Screens.Play.HUD;
 using osu.Game.Screens.Play.Leaderboards;
@@ -233,6 +234,53 @@ namespace osu.Game.Tests.Visual.Gameplay
                 var quitScore = this.ChildrenOfType<SoloGameplayLeaderboardProvider>().Single().Scores.Single(s => s.User.Username == "Quit");
                 quitScore.HasQuit.Value = true;
             });
+        }
+
+        [Test]
+        public void TestOptionalLivePerformanceSourceAndAppearanceBindings()
+        {
+            createLeaderboard();
+            AddUntilStep("tracked row loaded", () => leaderboard.TrackedScore?.IsLoaded == true);
+            AddStep("enable additional information", () =>
+            {
+                leaderboard.MosuLeaderboardStyle.Value = GameplayLeaderboardStyle.Morasooma;
+                leaderboard.MosuLeaderboardPanels.Value = GameplayLeaderboardPanelStyle.Solid;
+                leaderboard.MosuLeaderboardPp.Value = leaderboard.MosuLeaderboardMisses.Value = true;
+            });
+            AddUntilStep("one pp calculator without HUD counter", () => gameplayState.LivePerformanceCounters.Count, () => Is.EqualTo(1));
+            AddAssert("row style propagated", () => leaderboard.TrackedScore!.Style.Value, () => Is.EqualTo(GameplayLeaderboardStyle.Morasooma));
+            AddAssert("row is taller", () => leaderboard.TrackedScore!.Height, () => Is.EqualTo(54));
+            AddStep("apply judgement to shared source", () =>
+            {
+                var result = new osu.Game.Rulesets.Osu.Judgements.OsuJudgementResult(gameplayState.Beatmap.HitObjects[0], new osu.Game.Rulesets.Osu.Judgements.OsuJudgement())
+                {
+                    Type = osu.Game.Rulesets.Scoring.HitResult.Great,
+                };
+                gameplayState.ApplyResult(result);
+                gameplayState.ScoreProcessor.ApplyResult(result);
+            });
+            AddUntilStep("live pp reaches row", () => gameplayState.LivePerformance.Value.HasValue && !leaderboard.TrackedScore!.ExtraInformation.Contains("— pp"));
+            AddStep("add normal HUD pp counter", () => ((DependencyProvidingContainer)Child).Add(new ArgonPerformancePointsCounter()));
+            AddUntilStep("normal HUD replaces optional source", () => gameplayState.LivePerformanceCounters.Count == 1 && gameplayState.LivePerformanceCounters.Keys.Single() is ArgonPerformancePointsCounter);
+            AddStep("disable pp",  () => leaderboard.MosuLeaderboardPp.Value = false);
+            AddAssert("normal HUD calculator remains", () => gameplayState.LivePerformanceCounters.Count, () => Is.EqualTo(1));
+            AddStep("remove normal HUD counter", () => ((DependencyProvidingContainer)Child).RemoveAll(d => d is ArgonPerformancePointsCounter, true));
+            AddUntilStep("calculators disposed", () => gameplayState.LivePerformanceCounters.Count, () => Is.Zero);
+            AddAssert("unavailable pp cleared", () => gameplayState.LivePerformance.Value, () => Is.Null);
+        }
+
+        [Test]
+        public void TestRoundingDoesNotRoundScrollViewport()
+        {
+            createLeaderboard();
+            AddUntilStep("row loaded", () => leaderboard.TrackedScore?.IsLoaded == true);
+            AddStep("set capsule radius", () => SkinComponentGeometry.Restore(leaderboard, 200));
+            AddWaitStep("geometry applied", 4);
+            AddAssert("scroll clip stays rectangular", () => leaderboard.ChildrenOfType<ScrollContainer<Drawable>>().Single().CornerRadius, () => Is.Zero);
+            AddAssert("actual row still rounded", () => leaderboard.TrackedScore!.PanelRadius, () => Is.EqualTo(200));
+            AddStep("change radius live", () => SkinComponentGeometry.For(leaderboard).Radius.Value = 18);
+            AddAssert("scroll clip is not a skin surface", () => leaderboard.ChildrenOfType<ScrollContainer<Drawable>>().Single().CornerRadius, () => Is.Zero);
+            AddAssert("row radius follows setting", () => leaderboard.TrackedScore!.PanelRadius, () => Is.EqualTo(18));
         }
 
         private void createLeaderboard()

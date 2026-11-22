@@ -12,6 +12,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Game.Configuration;
 using osu.Game.Graphics.Containers;
 using osu.Game.Localisation.SkinComponents;
+using osu.Game.Localisation;
 using osu.Game.Screens.Play.Leaderboards;
 using osu.Game.Skinning;
 using osuTK;
@@ -33,7 +34,35 @@ namespace osu.Game.Screens.Play.HUD
         [SettingSource(typeof(SkinnableComponentStrings), nameof(SkinnableComponentStrings.CollapseDuringGameplay), nameof(SkinnableComponentStrings.CollapseDuringGameplayDescription))]
         public Bindable<bool> CollapseDuringGameplay { get; } = new BindableBool(true);
 
+        [SettingSource(typeof(MorasoomaSkinEditorStrings), nameof(MorasoomaSkinEditorStrings.LeaderboardStyle))]
+        public Bindable<GameplayLeaderboardStyle> MosuLeaderboardStyle { get; } = new Bindable<GameplayLeaderboardStyle>();
+
+        [SettingSource(typeof(MorasoomaSkinEditorStrings), nameof(MorasoomaSkinEditorStrings.LeaderboardPanels))]
+        public Bindable<GameplayLeaderboardPanelStyle> MosuLeaderboardPanels { get; } = new Bindable<GameplayLeaderboardPanelStyle>();
+
+        [SettingSource(typeof(MorasoomaSkinEditorStrings), nameof(MorasoomaSkinEditorStrings.LeaderboardMisses))]
+        public BindableBool MosuLeaderboardMisses { get; } = new BindableBool();
+
+        [SettingSource(typeof(MorasoomaSkinEditorStrings), nameof(MorasoomaSkinEditorStrings.LeaderboardPp))]
+        public BindableBool MosuLeaderboardPp { get; } = new BindableBool();
+
+        [SettingSource(typeof(MorasoomaSkinEditorStrings), nameof(MorasoomaSkinEditorStrings.LeaderboardMods))]
+        public BindableBool MosuLeaderboardMods { get; } = new BindableBool();
+
+        [SettingSource(typeof(MorasoomaSkinEditorStrings), nameof(MorasoomaSkinEditorStrings.LeaderboardAccuracy))]
+        public BindableBool MosuLeaderboardAccuracy { get; } = new BindableBool(true);
+
+        [SettingSource(typeof(MorasoomaSkinEditorStrings), nameof(MorasoomaSkinEditorStrings.LeaderboardCombo))]
+        public BindableBool MosuLeaderboardCombo { get; } = new BindableBool(true);
+
         private readonly Bindable<bool> expanded = new BindableBool();
+
+        [Resolved]
+        private GameplayState? gameplayState { get; set; }
+
+        private LeaderboardPerformanceSource? performanceSource;
+        private double nextPerformanceSourceCheck;
+        private bool supportsPerformance;
 
         [Resolved]
         private Player? player { get; set; }
@@ -81,6 +110,7 @@ namespace osu.Game.Screens.Play.HUD
         [BackgroundDependencyLoader]
         private void load(OsuConfigManager config, GameplayState? gameplayState, HUDOverlay? hudOverlay)
         {
+            supportsPerformance = gameplayState?.Ruleset.CreatePerformanceCalculator() != null;
             config.BindWith(OsuSetting.GameplayLeaderboard, configVisibility);
 
             if (gameplayState != null)
@@ -135,6 +165,13 @@ namespace osu.Game.Screens.Play.HUD
             }
 
             drawable.Expanded.BindTo(expanded);
+            drawable.Style.BindTo(MosuLeaderboardStyle);
+            drawable.PanelStyle.BindTo(MosuLeaderboardPanels);
+            drawable.ShowMisses.BindTo(MosuLeaderboardMisses);
+            drawable.ShowPp.BindTo(MosuLeaderboardPp);
+            drawable.ShowMods.BindTo(MosuLeaderboardMods);
+            drawable.ShowAccuracy.BindTo(MosuLeaderboardAccuracy);
+            drawable.ShowCombo.BindTo(MosuLeaderboardCombo);
 
             Flow.Add(drawable);
             drawable.ScorePosition.BindValueChanged(_ => Scheduler.AddOnce(sort));
@@ -159,6 +196,7 @@ namespace osu.Game.Screens.Play.HUD
             Width = Math.Max(Width, Flow.X + DrawableGameplayLeaderboardScore.MIN_WIDTH);
             Height = Math.Max(Height, DrawableGameplayLeaderboardScore.PANEL_HEIGHT);
 
+            updatePerformanceSource();
             requiresScroll = Flow.DrawHeight > Height;
 
             if (requiresScroll && TrackedScore != null)
@@ -168,7 +206,7 @@ namespace osu.Game.Screens.Play.HUD
                 scroll.ScrollTo(scrollTarget);
             }
 
-            const float panel_height = DrawableGameplayLeaderboardScore.PANEL_HEIGHT;
+            float panel_height = DrawableGameplayLeaderboardScore.PANEL_HEIGHT + (MosuLeaderboardMisses.Value || MosuLeaderboardPp.Value || MosuLeaderboardMods.Value ? 16 : 0);
 
             float fadeBottom = (float)(scroll.Current + scroll.DrawHeight);
             float fadeTop = (float)(scroll.Current + panel_height);
@@ -205,6 +243,38 @@ namespace osu.Game.Screens.Play.HUD
                     }
                 }
             }
+        }
+
+        private void updatePerformanceSource()
+        {
+            if (!MosuLeaderboardPp.Value || gameplayState == null || !supportsPerformance)
+            {
+                if (performanceSource != null)
+                {
+                    RemoveInternal(performanceSource, true);
+                    performanceSource = null;
+                }
+                return;
+            }
+            // The normal HUD pp counter is authoritative. Only create a non-drawing
+            // instance of the same calculator when this skin has no pp counter at all.
+            if (Time.Current < nextPerformanceSourceCheck) return;
+            nextPerformanceSourceCheck = Time.Current + 250;
+            bool hasHudCounter = gameplayState.LivePerformanceCounters.Keys.Any(c => c != performanceSource && c is not LeaderboardPerformanceSource);
+            bool hasOtherSource = gameplayState.LivePerformanceCounters.Keys.Any(c => c != performanceSource);
+            if (hasHudCounter && performanceSource != null)
+            {
+                RemoveInternal(performanceSource, true);
+                performanceSource = null;
+            }
+            else if (!hasOtherSource && performanceSource == null)
+                AddInternal(performanceSource = new LeaderboardPerformanceSource());
+        }
+
+        private partial class LeaderboardPerformanceSource : PerformancePointsCounter
+        {
+            public override bool IsPresent => true;
+            public LeaderboardPerformanceSource() { Alpha = 0; }
         }
 
         private void sort()

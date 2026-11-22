@@ -228,12 +228,12 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
                                                                     {
                                                                         maximumParticipantsCheckbox = new FormCheckBox
                                                                         {
-                                                                            Caption = "Limited slots",
-                                                                            HintText = "When enabled, total players allowed in a room will be limited. Unlimited when disabled."
+                                                                            Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4961,
+                                                                            HintText = global::osu.Game.Localisation.ClientTranslationStrings.J4962
                                                                         },
                                                                         maximumParticipantsSliderBar = new FormSliderBar<byte>
                                                                         {
-                                                                            Caption = "Slot count",
+                                                                            Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4963,
                                                                             RelativeSizeAxes = Axes.X,
                                                                             Margin = new MarginPadding { Top = 5 },
                                                                             Current = new BindableNumber<byte>(16)
@@ -263,7 +263,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
                                                                 {
                                                                     Child = AutoSkipCheckbox = new OsuCheckbox
                                                                     {
-                                                                        LabelText = "Automatically skip the beatmap intro"
+                                                                        LabelText = global::osu.Game.Localisation.ClientTranslationStrings.J4966
                                                                     }
                                                                 }
                                                             }
@@ -290,7 +290,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
                                                         {
                                                             RelativeSizeAxes = Axes.X,
                                                             Height = 40,
-                                                            Text = "Select beatmap",
+                                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4967,
                                                             Action = () => matchSubScreen.ShowSongSelect()
                                                         }
                                                     }
@@ -468,8 +468,8 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
 
                 // A newly-created room has no playlist item until the user chooses a beatmap.
                 // Keep Tag Co-op visible during that initial state, then hide it only when a
-                // selected item explicitly uses a ruleset other than osu!standard.
-                bool playlistSupportsTagCoop = drawablePlaylist.Items.All(item => item.RulesetID == 0);
+                // selected item uses a ruleset other than osu!standard or enables freestyle.
+                bool playlistSupportsTagCoop = drawablePlaylist.Items.All(item => item.RulesetID == 0 && !item.Freestyle);
                 TypePicker.TagCoopAvailable = playlistSupportsTagCoop;
 
                 ApplyButton.Enabled.Value = room.Playlist.Count > 0 && NameField.Text.Length > 0 && !operationInProgress.Value;
@@ -481,7 +481,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
                 if (!ApplyButton.Enabled.Value)
                     return;
 
-                if (TypePicker.Current.Value == MatchType.TagCoop && drawablePlaylist.Items.Any(item => item.RulesetID != 0))
+                if (TypePicker.Current.Value == MatchType.TagCoop && drawablePlaylist.Items.Any(item => item.RulesetID != 0 || item.Freestyle))
                     return;
 
                 byte? maxParticipants = maximumParticipantsCheckbox.Current.Value ? maximumParticipantsSliderBar.Current.Value : null;
@@ -557,7 +557,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
                     const string not_found_prefix = "beatmaps not found:";
 
                     if (message.StartsWith(not_found_prefix, StringComparison.Ordinal))
-                        ErrorText.Text = "The selected beatmap is not available online.";
+                        ErrorText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4968;
                     else
                         ErrorText.Text = message;
 
@@ -594,28 +594,28 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match
             {
                 base.Update();
 
-                Text = room.RoomID == null ? "Create" : "Update";
+                Text = room.RoomID == null ? global::osu.Game.Localisation.ClientTranslationStrings.J4969 : global::osu.Game.Localisation.ClientTranslationStrings.J4970;
             }
         }
 
         private enum StartMode
         {
-            [Description("Off")]
+            [Description("Off"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4971))]
             Off = 0,
 
-            [Description("10 seconds")]
+            [Description("10 seconds"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4972))]
             Seconds10 = 10,
 
-            [Description("30 seconds")]
+            [Description("30 seconds"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4973))]
             Seconds30 = 30,
 
-            [Description("1 minute")]
+            [Description("1 minute"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4974))]
             Seconds60 = 60,
 
-            [Description("3 minutes")]
+            [Description("3 minutes"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4975))]
             Seconds180 = 180,
 
-            [Description("5 minutes")]
+            [Description("5 minutes"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4976))]
             Seconds300 = 300
         }
     }

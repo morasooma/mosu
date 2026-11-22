@@ -15,6 +15,10 @@ namespace osu.Game.Overlays
         public const float MAX_BLUR_SIGMA = 10f;
 
         public static readonly Bindable<bool> Enabled = new Bindable<bool>();
+        public static readonly Bindable<bool> SongSelectEnabled = new Bindable<bool>();
+
+        public static bool SongSelectActive => SongSelectEnabled.Value;
+        public static float SongSelectSurfaceAlpha => SongSelectActive ? SURFACE_ALPHA : 1f;
         public static readonly Bindable<double> BlurStrength = new Bindable<double>();
         public static readonly Bindable<double> DimAmount = new Bindable<double>();
     }

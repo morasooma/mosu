@@ -25,6 +25,8 @@ namespace osu.Game.Skinning.Select
         private Container components = null!;
         private Container buttonsContainer = null!;
         private Sprite modeDecoration = null!;
+        private Box fallbackBackground = null!;
+        private Sprite footerBackground = null!;
         private LogoTrackingContainer logoTrackingContainer = null!;
         private IDisposable? logoTracking;
 
@@ -85,11 +87,8 @@ namespace osu.Game.Skinning.Select
             // con los botones classic bundleados.
             bool useSkin = config.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle).UsesStableStyle();
 
-            // null = agarra las texturas del skin actual asi se ven los footers skineados, si no el
-            // classic bundleado. el fallback por textura al classic vive en LegacyFooterButton, y cada
-            // boton tiene un hit area FIJO de 74x90 que no depende de la textura del skin. asi un skin
-            // que no trae selection-* o lo trae con un tamaño raro igual te da un boton clickeable en
-            // vez de colapsar o irse de pantalla.
+            // Use each skin button's natural dimensions and hover hitbox. Only missing
+            // assets fall back to classic; custom-sized buttons must not be clamped.
             ISkin? buttonSource = useSkin ? null : skins.DefaultClassicSkin;
             // cuando skineamos siempre queremos un fondo de footer: el songselect-bottom del skin, si no
             // el classic bundleado (el default con borde azul). esta es la capa de ATRAS; la tarjeta de
@@ -108,9 +107,16 @@ namespace osu.Game.Skinning.Select
 
             InternalChildren = new Drawable[]
             {
+                new osu.Game.Graphics.Containers.SongSelectBackdropSurface
+                {
+                    RelativeSizeAxes = Axes.X,
+                    Height = footer_bar_height,
+                    Anchor = Anchor.BottomLeft,
+                    Origin = Anchor.BottomLeft,
+                },
                 // barra de fallback limpia, se muestra cuando no hay footer de skin que dibujar
                 // (ni songselect-bottom ni una decoracion selection-mode).
-                new Box
+                fallbackBackground = new Box
                 {
                     RelativeSizeAxes = Axes.X,
                     Height = footer_bar_height,
@@ -120,7 +126,7 @@ namespace osu.Game.Skinning.Select
                     Alpha = showCleanBar ? 1 : 0,
                 },
                 // fondo del footer (capa de ATRAS): el songselect-bottom del skin, si no el classic bundleado.
-                new Sprite
+                footerBackground = new Sprite
                 {
                     Texture = bottomTexture,
                     RelativeSizeAxes = Axes.X,
@@ -146,9 +152,10 @@ namespace osu.Game.Skinning.Select
                     Child = new LegacyFooterUser
                     {
                         Anchor = Anchor.BottomLeft,
-                        Origin = Anchor.BottomLeft,
+                        Origin = Anchor.TopLeft,
                         X = user_pos_off + 3 * 1.6f,
-                        Y = 2 * 1.6f,
+                        // Stable's user panel starts at y=429, independent of its auto-size.
+                        Y = -51 * 1.6f,
                     },
                 },
                 // capa de ADELANTE: el cosmetic selection-mode del skin, encima de la tarjeta de stats
@@ -170,7 +177,7 @@ namespace osu.Game.Skinning.Select
                         Texture = modeTexture,
                         Anchor = Anchor.BottomLeft,
                         Origin = Anchor.BottomLeft,
-                        Position = new Vector2(buttons_pos_16_9, -2),
+                        Position = new Vector2(buttons_pos_16_9, 0),
                     },
                 },
                 // los botones del footer (mode/mods/random/options), ENCIMA de la decoracion selection-mode
@@ -195,7 +202,7 @@ namespace osu.Game.Skinning.Select
                         {
                             Anchor = Anchor.BottomLeft,
                             Origin = Anchor.BottomLeft,
-                            AutoSizeAxes = Axes.Both,
+                            RelativeSizeAxes = Axes.Both,
                             Children = new LegacyFooterButton[]
                             {
                                 new LegacyRulesetFooterButton { TextureSource = buttonSource, SuppressBaseGlyph = skinFooterDecoration },
@@ -224,6 +231,11 @@ namespace osu.Game.Skinning.Select
         protected override void Update()
         {
             base.Update();
+
+            float surfaceAlpha = osu.Game.Overlays.OverlayTransparency.SongSelectSurfaceAlpha;
+            fallbackBackground.Alpha = footerBackground.Texture == null ? surfaceAlpha : 0;
+            footerBackground.Alpha = footerBackground.Texture != null ? surfaceAlpha : 0;
+            modeDecoration.Alpha = surfaceAlpha;
 
             bool isWidescreen = Precision.DefinitelyBigger(DrawWidth, 1024);
             components.X = isWidescreen ? buttons_pos_16_9 : buttons_pos_4_3;

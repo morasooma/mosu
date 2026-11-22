@@ -18,7 +18,7 @@ namespace osu.Game.Rulesets.Mods
 
         public abstract BindableNumber<double> SpeedChange { get; }
 
-        [SettingSource("Блокировать AR/OD", "Сохранять скорость сближения (AR) и общую сложность (OD) оригинальными независимо от изменения скорости.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4253), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4254))]
         public BindableBool LockDifficultyAdjust { get; } = new BindableBool();
 
 
@@ -40,10 +40,10 @@ namespace osu.Game.Rulesets.Mods
             get
             {
                 if (!SpeedChange.IsDefault)
-                    yield return ("Изменение скорости", FormattableString.Invariant($@"{SpeedChange.Value:N2}x"));
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4255, FormattableString.Invariant($@"{SpeedChange.Value:N2}x"));
 
                 if (!Online.MosuServerEnvironment.IsThirdPartyServer && !LockDifficultyAdjust.IsDefault)
-                    yield return ("Блокировать AR/OD", LockDifficultyAdjust.Value ? "Да" : "Нет");
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4253, LockDifficultyAdjust.Value ? global::osu.Game.Localisation.ClientTranslationStrings.J4229 : global::osu.Game.Localisation.ClientTranslationStrings.J4230);
             }
         }
 

@@ -18,6 +18,7 @@ using osu.Framework.Localisation;
 using osu.Framework.Utils;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 using osuTK.Graphics;
 using osuTK.Input;
@@ -105,6 +106,8 @@ namespace osu.Game.Overlays.Notifications
             set
             {
                 isInToastTray = value;
+                if (toastLifetimeBar != null)
+                    toastLifetimeBar.Alpha = value ? 1 : 0;
 
                 if (!isInToastTray)
                 {
@@ -118,7 +121,16 @@ namespace osu.Game.Overlays.Notifications
         private readonly Box initialFlash;
 
         private Box background = null!;
+        private Box toastLifetimeBar = null!;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<Colour4> accentColour = null!;
+        private IBindable<float> popupRadius = null!;
+
+        internal float ToastLifetimeProgress
+        {
+            get => toastLifetimeBar.Width;
+            set => toastLifetimeBar.Width = Math.Clamp(value, 0, 1);
+        }
 
         protected Notification()
         {
@@ -206,6 +218,15 @@ namespace osu.Game.Overlays.Notifications
                             RelativeSizeAxes = Axes.Both,
                             Blending = BlendingParameters.Additive,
                         },
+                        toastLifetimeBar = new Box
+                        {
+                            Anchor = Anchor.BottomLeft,
+                            Origin = Anchor.BottomLeft,
+                            RelativeSizeAxes = Axes.X,
+                            Width = 1,
+                            Height = 3,
+                            Alpha = IsInToastTray ? 1 : 0,
+                        },
                     }
                 })
             };
@@ -223,6 +244,10 @@ namespace osu.Game.Overlays.Notifications
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background3);
             themeColour.BindValueChanged(_ => background.Colour = colourProvider.Background3, true);
+            accentColour = colourProvider.GetColourBindable(OverlayColour.Highlight1);
+            accentColour.BindValueChanged(_ => toastLifetimeBar.Colour = colourProvider.Highlight1, true);
+            popupRadius = colourProvider.GetRadiusBindable(GeometryRole.Popup, CORNER_RADIUS);
+            popupRadius.BindValueChanged(radius => MainContent.CornerRadius = radius.NewValue, true);
         }
 
         protected override bool OnHover(HoverEvent e)

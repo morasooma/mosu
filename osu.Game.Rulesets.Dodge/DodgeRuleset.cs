@@ -92,6 +92,8 @@ namespace osu.Game.Rulesets.Dodge
                         new DodgeModMosuStaticBpm(),
                         new DodgeModMosuTargetDifficulty(),
                         new DodgeModAudioEffects(),
+                        new DodgeModGlitch(),
+                        new DodgeModFlatline(),
                         new DodgeModFullPaths(),
                     };
 
@@ -191,10 +193,10 @@ namespace osu.Game.Rulesets.Dodge
         public override IConvertibleReplayFrame CreateConvertibleReplayFrame() => new DodgeReplayFrame();
 
         public void WriteEditorState(EditorBeatmap beatmap, System.IO.Stream stream)
-            => DodgeBeatmapSerializer.Serialize(beatmap, beatmap.Storyboard, stream);
+            => DodgeEditorStateSerializer.Serialize(beatmap, stream);
 
         public void ApplyEditorState(EditorBeatmap beatmap, byte[] previousState, byte[] newState)
-            => DodgeBeatmapSerializer.ApplyToEditor(beatmap, newState);
+            => DodgeEditorStateSerializer.Apply(beatmap, newState);
 
         public void EncodeCompatibilityBeatmap(IBeatmap beatmap, osu.Game.Skinning.ISkin? skin, osu.Game.Storyboards.Storyboard? storyboard, System.IO.Stream stream)
             => DodgeBeatmapSerializer.EncodeCompatibilityBeatmap(beatmap, skin, storyboard, stream);

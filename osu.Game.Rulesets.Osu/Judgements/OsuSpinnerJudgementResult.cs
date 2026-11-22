@@ -26,6 +26,8 @@ namespace osu.Game.Rulesets.Osu.Judgements
         /// </summary>
         public readonly SpinnerSpinHistory History = new SpinnerSpinHistory();
 
+        public Scoring.StableSpinnerState? StableState { get; set; }
+
         /// <summary>
         /// Time instant at which the spin was started (the first user input which caused an increase in spin).
         /// </summary>

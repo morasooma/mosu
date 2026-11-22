@@ -13,6 +13,6 @@ namespace osu.Game.Rulesets.Mania.Mods
         public override string Name => "Four Keys";
         public override string Acronym => "4K";
         public override IconUsage? Icon => OsuIcon.ModFourKeys;
-        public override LocalisableString Description => @"Play with four keys.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3642;
     }
 }

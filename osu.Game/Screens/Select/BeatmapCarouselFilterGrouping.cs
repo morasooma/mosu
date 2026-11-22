@@ -50,6 +50,7 @@ namespace osu.Game.Screens.Select
         public required Func<HashSet<int>> GetFavouriteBeatmapSets { get; init; }
         public Func<bool>? ShowAdditionalInfo { get; init; }
         public Func<bool>? UseSkinnedLegacyCarousel { get; init; }
+        public Func<float>? GetStableLayoutScale { get; init; }
 
         public async Task<List<CarouselItem>> Run(IEnumerable<CarouselItem> items, CancellationToken cancellationToken)
         {
@@ -62,8 +63,9 @@ namespace osu.Game.Screens.Select
 
                 var criteria = GetCriteria();
                 var newItems = new List<CarouselItem>();
-                bool expandedManiaPanels = (criteria.Ruleset?.OnlineID == 3) || (ShowAdditionalInfo?.Invoke() == true);
+                bool expandedDifficultyPanels = ShowAdditionalInfo?.Invoke() == true;
                 bool skinnedLegacyCarousel = UseSkinnedLegacyCarousel?.Invoke() == true;
+                float stableScale = GetStableLayoutScale?.Invoke() ?? 1;
 
 
                 BeatmapSetsGroupedTogether = ShouldGroupBeatmapsTogether(criteria);
@@ -79,6 +81,10 @@ namespace osu.Game.Screens.Select
                     HashSet<CarouselItem>? currentGroupItems = null;
                     HashSet<CarouselItem>? currentSetItems = null;
                     BeatmapInfo? lastBeatmap = null;
+                    var matchingCounts = skinnedLegacyCarousel
+                        ? itemsInGroup.GroupBy(i => ((BeatmapInfo)i.Model).BeatmapSet!.ID).ToDictionary(g => g.Key, g => g.Count())
+                        : null;
+                    bool groupThisSet = BeatmapSetsGroupedTogether;
 
                     if (group != null)
                     {
@@ -86,8 +92,9 @@ namespace osu.Game.Screens.Select
 
                         addItem(groupItem = new CarouselItem(group)
                         {
-                            DrawHeight = PanelGroup.HEIGHT,
+                            DrawHeight = skinnedLegacyCarousel ? PanelBeatmapSet.CLASSIC_HEIGHT * stableScale : PanelGroup.HEIGHT,
                             DepthLayer = -2,
+                            NestedItemCount = skinnedLegacyCarousel ? itemsInGroup.Count : 0,
                         });
                     }
 
@@ -106,33 +113,36 @@ namespace osu.Game.Screens.Select
                                 newSetMap[groupedBeatmapSet] = currentSetItems = new HashSet<CarouselItem>();
                         }
 
-                        if (BeatmapSetsGroupedTogether)
+                        // A single matching difficulty is already a complete stable row;
+                        // it must not require expanding a redundant set header.
+                        groupThisSet = BeatmapSetsGroupedTogether && (matchingCounts == null || matchingCounts[beatmap.BeatmapSet.ID] >= 2);
+                        if (groupThisSet)
                         {
                             if (newBeatmapSet)
                             {
-                                if (groupItem != null)
+                                if (groupItem != null && !skinnedLegacyCarousel)
                                     groupItem.NestedItemCount++;
 
                                 addItem(new CarouselItem(groupedBeatmapSet)
                                 {
-                                    DrawHeight = skinnedLegacyCarousel ? PanelBeatmapSet.CLASSIC_HEIGHT : PanelBeatmapSet.HEIGHT,
+                                    DrawHeight = skinnedLegacyCarousel ? PanelBeatmapSet.CLASSIC_HEIGHT * stableScale : PanelBeatmapSet.HEIGHT,
                                     DepthLayer = -1
                                 });
                             }
                         }
                         else
                         {
-                            if (groupItem != null)
+                            if (groupItem != null && !skinnedLegacyCarousel)
                                 groupItem.NestedItemCount++;
                         }
 
                         addItem(new CarouselItem(new GroupedBeatmap(group, beatmap))
                         {
                             DrawHeight = skinnedLegacyCarousel
-                                ? PanelBeatmapStandalone.CLASSIC_HEIGHT
+                                ? PanelBeatmapStandalone.CLASSIC_HEIGHT * stableScale
                                 : BeatmapSetsGroupedTogether
-                                    ? expandedManiaPanels ? PanelBeatmap.MANIA_HEIGHT : PanelBeatmap.HEIGHT
-                                    : expandedManiaPanels ? PanelBeatmapStandalone.MANIA_HEIGHT : PanelBeatmapStandalone.HEIGHT,
+                                    ? expandedDifficultyPanels ? PanelBeatmap.MANIA_HEIGHT : PanelBeatmap.HEIGHT
+                                    : expandedDifficultyPanels ? PanelBeatmapStandalone.MANIA_HEIGHT : PanelBeatmapStandalone.HEIGHT,
                         });
                         lastBeatmap = beatmap;
                         displayedBeatmapsCount++;
@@ -146,7 +156,7 @@ namespace osu.Game.Screens.Select
                         currentGroupItems?.Add(i);
                         currentSetItems?.Add(i);
 
-                        i.IsVisible = i.Model is GroupDefinition || (group == null && (i.Model is GroupedBeatmapSet || !BeatmapSetsGroupedTogether));
+                        i.IsVisible = i.Model is GroupDefinition || (group == null && (i.Model is GroupedBeatmapSet || !groupThisSet));
                     }
                 }
 
@@ -164,7 +174,7 @@ namespace osu.Game.Screens.Select
         {
             // In certain cases, we intentionally split out difficulties
             // where it's more relevant or convenient to view them as individual items.
-            if (criteria.Sort == SortMode.Difficulty || criteria.Group == GroupMode.Difficulty)
+            if (criteria.Sort is SortMode.Difficulty or SortMode.Performance || criteria.Group == GroupMode.Difficulty)
                 return false;
             if (criteria.Sort == SortMode.LastPlayed && criteria.Group == GroupMode.LastPlayed)
                 return false;
@@ -215,7 +225,7 @@ namespace osu.Game.Screens.Select
                     return getGroupsBy(b => defineGroupByBPM(FormatUtils.RoundBPM(b.BPM)), items);
 
                 case GroupMode.Difficulty:
-                    return getGroupsBy(b => defineGroupByStars(b.StarRating), items);
+                    return getGroupsBy(b => defineGroupByStars(criteria.GetSortStars(b)), items);
 
                 case GroupMode.Length:
                     return getGroupsBy(b => defineGroupByLength(b.Length), items);

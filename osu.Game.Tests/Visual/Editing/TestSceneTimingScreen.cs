@@ -11,9 +11,12 @@ using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.UserInterface;
+using osu.Framework.Input;
+using osu.Framework.Platform;
 using osu.Framework.Testing;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Graphics.Containers;
+using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Overlays;
 using osu.Game.Rulesets.Edit;
 using osu.Game.Screens.Edit;
@@ -212,6 +215,199 @@ namespace osu.Game.Tests.Visual.Editing
 
             AddAssert("Second timing point changed time signature", () => editorBeatmap.ControlPointInfo.TimingPoints.Last().TimeSignature.Numerator == 1);
             AddAssert("First timing point preserved time signature", () => editorBeatmap.ControlPointInfo.TimingPoints.First().TimeSignature.Numerator == 4);
+        }
+
+        [Test]
+        public void TestShiftSelectionAndOffsetUndoRedo()
+        {
+            prepareSelectionRows();
+            clickRow(0);
+            clickRow(2, Key.ShiftLeft);
+            AddAssert("three rows selected", () => timingScreen.Selection.SelectedGroups.Count, () => Is.EqualTo(3));
+
+            AddStep("adjust offset by 10", () =>
+                timingScreen.ChildrenOfType<FormDiscreteAdjustmentControl<double>>().First().Current.Value += 10);
+            AddAssert("all selected and related effects moved once", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1010, 1110, 1210, 1310, 2000 }));
+            AddAssert("selection retained", () => timingScreen.Selection.SelectedGroups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1010, 1110, 1210 }));
+
+            AddStep("undo", () => changeHandler.RestoreState(-1));
+            AddAssert("all offsets restored", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1000, 1100, 1200, 1300, 2000 }));
+            AddAssert("detached selection cleared", () => timingScreen.Selection.SelectedGroups, () => Is.Empty);
+            AddStep("redo", () => changeHandler.RestoreState(1));
+            AddAssert("all offsets reapplied", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1010, 1110, 1210, 1310, 2000 }));
+        }
+
+        [Test]
+        public void TestEffectOnlySelectionHasUsableOffsetPanel()
+        {
+            prepareSelectionRows();
+            clickRow(1);
+            clickRow(3, Key.ShiftLeft);
+            AddUntilStep("offset panel is visible for effects", () =>
+            {
+                var form = timingScreen.ChildrenOfType<FormDiscreteAdjustmentControl<double>>().First(f => f.Caption.ToString() == "Offset");
+                return form.PropagatePositionalInputSubTree && timingScreen.ChildrenOfType<ControlPointSettings>().Single()
+                    .ScreenSpaceDrawQuad.AABBFloat.Contains(form.ScreenSpaceDrawQuad.Centre);
+            });
+            AddStep("click offset increment", () =>
+            {
+                var form = timingScreen.ChildrenOfType<FormDiscreteAdjustmentControl<double>>().First(f => f.Caption.ToString() == "Offset");
+                var control = form.ChildrenOfType<DiscreteAdjustmentControl<double>>().Single();
+                InputManager.MoveMouseTo(control.ScreenSpaceDrawQuad.Centre + new Vector2(5, 0));
+                InputManager.Click(MouseButton.Left);
+            });
+            AddAssert("all selected effects nudged", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1000, 1101, 1201, 1301, 2000 }));
+        }
+
+        [Test]
+        public void TestEffectOffsetTextInputAndUndo()
+        {
+            prepareSelectionRows();
+            clickRow(1);
+            clickRow(3, Key.ControlLeft);
+            AddStep("enter absolute offset for primary effect", () =>
+            {
+                var form = timingScreen.ChildrenOfType<FormDiscreteAdjustmentControl<double>>().First(f => f.Caption.ToString() == "Offset");
+                InputManager.MoveMouseTo(form.ChildrenOfType<TextBox>().Single());
+                InputManager.Click(MouseButton.Left);
+                Dependencies.Get<Clipboard>().SetText("1350");
+                InputManager.Keys(PlatformAction.SelectAll);
+                InputManager.Keys(PlatformAction.Paste);
+            });
+            AddStep("commit effect offset", () => InputManager.Key(Key.Enter));
+            AddAssert("both selected effects shifted by 50", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1000, 1150, 1200, 1350, 2000 }));
+            AddStep("undo effect offsets", () => changeHandler.RestoreState(-1));
+            AddAssert("original effects restored", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1000, 1100, 1200, 1300, 2000 }));
+        }
+
+        [Test]
+        public void TestOffsetPanelWithoutSelection()
+        {
+            prepareSelectionRows();
+            AddStep("clear selection", () => timingScreen.Selection.Clear());
+            AddStep("try offset increment without selection", () =>
+            {
+                var form = timingScreen.ChildrenOfType<FormDiscreteAdjustmentControl<double>>().First(f => f.Caption.ToString() == "Offset");
+                var control = form.ChildrenOfType<DiscreteAdjustmentControl<double>>().Single();
+                InputManager.MoveMouseTo(control.ScreenSpaceDrawQuad.Centre + new Vector2(5, 0));
+                InputManager.Click(MouseButton.Left);
+            });
+            AddAssert("offsets unchanged", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1000, 1100, 1200, 1300, 2000 }));
+        }
+
+        [Test]
+        public void TestControlSelectionAndTimeField()
+        {
+            prepareSelectionRows();
+            clickRow(1);
+            clickRow(3, Key.ControlLeft);
+            AddAssert("two effects selected", () => timingScreen.Selection.SelectedGroups.Count, () => Is.EqualTo(2));
+            AddStep("edit time of primary effect", () =>
+            {
+                var form = timingScreen.ChildrenOfType<FormTextBox>().Single(f => f.Caption.ToString() == "Time");
+                var textBox = form.ChildrenOfType<TextBox>().Single();
+                InputManager.MoveMouseTo(textBox);
+                InputManager.Click(MouseButton.Left);
+                Dependencies.Get<Clipboard>().SetText("1350");
+                InputManager.Keys(PlatformAction.SelectAll);
+                InputManager.Keys(PlatformAction.Paste);
+            });
+            AddStep("commit time", () => InputManager.Key(Key.Enter));
+            AddAssert("only selected effects moved", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1000, 1150, 1200, 1350, 2000 }));
+            AddAssert("selection retained after time edit", () => timingScreen.Selection.SelectedGroups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1150, 1350 }));
+            clickRow(1);
+            AddAssert("plain click resets selection", () => timingScreen.Selection.SelectedGroups.Count, () => Is.EqualTo(1));
+        }
+
+        [Test]
+        public void TestTimingTimeFieldCarriesUnselectedEffects()
+        {
+            prepareSelectionRows();
+            clickRow(0);
+            AddStep("focus timing time", () =>
+            {
+                var form = timingScreen.ChildrenOfType<FormTextBox>().Single(f => f.Caption.ToString() == "Time");
+                InputManager.MoveMouseTo(form.ChildrenOfType<TextBox>().Single());
+                InputManager.Click(MouseButton.Left);
+                Dependencies.Get<Clipboard>().SetText("1050");
+                InputManager.Keys(PlatformAction.SelectAll);
+                InputManager.Keys(PlatformAction.Paste);
+            });
+            AddStep("commit timing time", () => InputManager.Key(Key.Enter));
+            AddAssert("related effects moved but next timing did not", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1050, 1150, 1250, 1350, 2000 }));
+            AddAssert("only timing remains selected", () => timingScreen.Selection.SelectedGroups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1050 }));
+        }
+
+        [Test]
+        public void TestUseCurrentTimeMovesSelectedEffects()
+        {
+            prepareSelectionRows();
+            clickRow(1);
+            clickRow(3, Key.ShiftLeft);
+            AddStep("seek to target", () => EditorClock.Seek(1400));
+            AddStep("use current time", () => timingScreen.ChildrenOfType<RoundedButton>().Single(b => b.Text.ToString() == "Use current time").TriggerClick());
+            AddAssert("selected effects moved by same delta", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1000, 1200, 1300, 1400, 2000 }));
+            AddStep("nudge selected effects again", () => timingScreen.Selection.ChangeTime(editorBeatmap, 1410, false));
+            AddAssert("selection follows replacement rows", () => timingScreen.Selection.SelectedGroups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1210, 1310, 1410 }));
+        }
+
+        [Test]
+        public void TestDeleteMultipleEffectsAndUndo()
+        {
+            prepareSelectionRows();
+            clickRow(1);
+            clickRow(3, Key.ShiftLeft);
+            AddStep("delete selected rows", () => timingScreen.ChildrenOfType<RoundedButton>().Single(b => b.Text.ToString() == "-").TriggerClick());
+            AddAssert("only timings remain", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1000, 2000 }));
+            AddStep("undo deletion", () => changeHandler.RestoreState(-1));
+            AddAssert("all effects restored in one undo", () => editorBeatmap.ControlPointInfo.Groups.Select(g => g.Time),
+                () => Is.EqualTo(new double[] { 1000, 1100, 1200, 1300, 2000 }));
+        }
+
+        private void prepareSelectionRows()
+        {
+            AddStep("create rows for selection", () =>
+            {
+                timingScreen.Selection.Clear();
+                editorBeatmap.ControlPointInfo.Clear();
+                editorBeatmap.ControlPointInfo.GroupAt(1000, true).Add(new TimingControlPoint());
+                editorBeatmap.ControlPointInfo.GroupAt(1100, true).Add(new EffectControlPoint { KiaiMode = true });
+                editorBeatmap.ControlPointInfo.GroupAt(1200, true).Add(new EffectControlPoint());
+                editorBeatmap.ControlPointInfo.GroupAt(1300, true).Add(new EffectControlPoint { KiaiMode = true });
+                editorBeatmap.ControlPointInfo.GroupAt(2000, true).Add(new TimingControlPoint { BeatLength = 600 });
+                EditorClock.Seek(1000);
+                changeHandler.SaveState();
+            });
+            AddUntilStep("five rows ready", () => timingScreen.ChildrenOfType<ControlPointTable.DrawableControlGroup>().Count(), () => Is.EqualTo(5));
+        }
+
+        private void clickRow(int index, Key? modifier = null)
+        {
+            AddStep($"click row {index} with {modifier}", () =>
+            {
+                var row = timingScreen.ChildrenOfType<ControlPointTable.DrawableControlGroup>().OrderBy(r => r.Current.Value.Time).ElementAt(index);
+                InputManager.MoveMouseTo(row);
+                if (modifier.HasValue)
+                    InputManager.PressKey(modifier.Value);
+                InputManager.Click(MouseButton.Left);
+                if (modifier.HasValue)
+                    InputManager.ReleaseKey(modifier.Value);
+            });
         }
 
         protected override void Dispose(bool isDisposing)

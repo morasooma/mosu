@@ -20,6 +20,7 @@ using osu.Game.Extensions;
 using osu.Game.IO;
 using osu.Game.IO.Archives;
 using osu.Game.Overlays.Notifications;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Objects.Types;
 using Realms;
@@ -64,10 +65,10 @@ namespace osu.Game.Beatmaps
                 {
                     // Transfer local values which should be persisted across a beatmap update.
                     s.DateAdded = originalDateAdded;
-
-                    // Re-run processing even in this case. We might have outdated metadata.
-                    ProcessBeatmap?.Invoke(s, MetadataLookupScope.OnlineFirst);
                 });
+
+                // Queue only after the write has committed, so another thread can resolve the updated model.
+                first.PerformRead(s => ProcessBeatmap?.Invoke(s, MetadataLookupScope.OnlineFirst));
                 return first;
             }
 
@@ -230,12 +231,19 @@ namespace osu.Game.Beatmaps
 
             // Scores are stored separately from beatmaps, and persist even when a beatmap is modified or deleted.
             // Let's reattach any matching scores that exist in the database, based on hash.
-            foreach (BeatmapInfo beatmap in model.Beatmaps)
+            using (PerformancePhaseLogger.Begin("Import.UpdateLocalScores"))
             {
-                beatmap.UpdateLocalScores(realm);
+                foreach (BeatmapInfo beatmap in model.Beatmaps)
+                    beatmap.UpdateLocalScores(realm);
             }
+        }
 
-            ProcessBeatmap?.Invoke(model, parameters.Batch ? MetadataLookupScope.LocalCacheFirst : MetadataLookupScope.OnlineFirst);
+        protected override void PostImportCommitted(BeatmapSetInfo model, ImportParameters parameters)
+        {
+            base.PostImportCommitted(model, parameters);
+
+            using (PerformancePhaseLogger.Begin("Import.ProcessBeatmap"))
+                ProcessBeatmap?.Invoke(model, parameters.Batch ? MetadataLookupScope.LocalCacheFirst : MetadataLookupScope.OnlineFirst);
         }
 
         private void validateOnlineIds(BeatmapSetInfo beatmapSet, Realm realm)
@@ -366,6 +374,7 @@ namespace osu.Game.Beatmaps
         /// </summary>
         private List<BeatmapInfo> createBeatmapDifficulties(BeatmapSetInfo beatmapSet, Realm realm)
         {
+            using var difficultiesPhase = PerformancePhaseLogger.Begin("Import.BeatmapDifficulties");
             var beatmaps = new List<BeatmapInfo>();
 
             // stable appears to ignore `.osu` files which are not placed at the top level of the beatmap archive.
@@ -374,10 +383,12 @@ namespace osu.Game.Beatmaps
             // only testing the `/` path separator character is sufficient as `RealmNamedFileUsage`s are normalised to use the front slash unix path separator convention
             foreach (var file in beatmapSet.Files.Where(f => !f.Filename.Contains('/') && f.Filename.EndsWith(@".osu", StringComparison.OrdinalIgnoreCase)))
             {
+                using var difficultyPhase = PerformancePhaseLogger.Begin("Import.BeatmapDifficulty", detail: PerformancePhaseLogger.Enabled ? $"file={file.Filename}" : null);
                 using (var memoryStream = new MemoryStream(Files.Store.Get(file.File.GetStoragePath()))) // we need a memory stream so we can seek
                 {
                     IBeatmap decoded;
 
+                    using (PerformancePhaseLogger.Begin("Import.DecodeBeatmap"))
                     using (var lineReader = new LineBufferedReader(memoryStream, true))
                     {
                         if (lineReader.PeekLine() == null)
@@ -405,7 +416,8 @@ namespace osu.Game.Beatmaps
                                 decoded.BeatmapInfo.Ruleset = customRuleset;
 
                                 using var sidecarStream = new MemoryStream(sidecarData);
-                                decoded = customFormat.DecodeSidecar(decoded, sidecarStream);
+                                using (PerformancePhaseLogger.Begin("Import.DecodeSidecar"))
+                                    decoded = customFormat.DecodeSidecar(decoded, sidecarStream);
                             }
                         }
                     }
@@ -467,12 +479,16 @@ namespace osu.Game.Beatmaps
                     };
 
                     beatmaps.Add(beatmap);
+                    if (PerformancePhaseLogger.Enabled)
+                        difficultyPhase.SetEndDetail($"file={file.Filename} objects={beatmap.TotalObjectCount} ruleset={ruleset.OnlineID}");
                 }
             }
 
             if (!beatmaps.Any())
                 throw new ArgumentException("No valid beatmap files found in the beatmap archive.");
 
+            if (PerformancePhaseLogger.Enabled)
+                difficultiesPhase.SetEndDetail($"difficulties={beatmaps.Count}");
             return beatmaps;
         }
 

@@ -10,6 +10,7 @@ using osu.Framework.Graphics.UserInterface;
 using osu.Game.Extensions;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Graphics.UserInterfaceV2;
+using osu.Game.Localisation;
 using osu.Game.Overlays;
 using osu.Game.Rulesets.Mods;
 
@@ -38,9 +39,9 @@ namespace osu.Game.Overlays.Settings
             InternalChild = numberBox = new FormTextBox
             {
                 RelativeSizeAxes = Axes.X,
-                Caption = "Exact value",
-                HintText = "Type a precise value for this setting. Leave empty to use the beatmap value.",
-                PlaceholderText = "Beatmap value",
+                Caption = ForkSettingsStrings.SettingsExactValueCaption,
+                HintText = ForkSettingsStrings.SettingsDifficultyExactValueHint,
+                PlaceholderText = ForkSettingsStrings.SettingsDifficultyExactValuePlaceholder,
             };
         }
 

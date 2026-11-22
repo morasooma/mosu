@@ -31,12 +31,12 @@ namespace osu.Game.Screens.Edit.Timing
                     FixedLabelWidth = 220,
                     Current = configManager.GetBindable<bool>(OsuSetting.EditorAdjustExistingObjectsOnTimingChanges),
                 },
-                new TapTimingControl(),
+                new TapTimingControl { ShowOffsetControl = false },
                 timeSignature = new LabelledTimeSignature
                 {
-                    Label = "Time Signature"
+                    Label = global::osu.Game.Localisation.ClientTranslationStrings.J4341
                 },
-                omitBarLine = new LabelledSwitchButton { Label = "Skip Bar Line" },
+                omitBarLine = new LabelledSwitchButton { Label = global::osu.Game.Localisation.ClientTranslationStrings.J4342 },
             });
         }
 

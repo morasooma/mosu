@@ -28,7 +28,7 @@ namespace osu.Game.Overlays.Dashboard
         [LocalisableDescription(typeof(FriendsStrings), nameof(FriendsStrings.TitleCompact))]
         Friends,
 
-        [LocalisableDescription(typeof(UserInterfaceStrings), nameof(UserInterfaceStrings.CurrentlyOnline))]
+        [LocalisableDescription(typeof(PresenceStrings), nameof(PresenceStrings.CurrentlyOnline))]
         CurrentlyPlaying,
 
         [LocalisableDescription(typeof(UserInterfaceStrings), nameof(UserInterfaceStrings.UserSearch))]

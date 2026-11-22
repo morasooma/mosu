@@ -77,7 +77,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                         new OsuSpriteText
                         {
                             Margin = new MarginPadding { Left = 20, Top = 16 },
-                            Text = "ВЫБЕРИ КАРТИНКУ ДЛЯ БИБЛИОТЕКИ ТЕКСТУР",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4630,
                             Font = OsuFont.Default.With(size: 18, weight: FontWeight.Bold),
                             Colour = colours.Pink1,
                         },
@@ -93,7 +93,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                             Margin = new MarginPadding { Bottom = 14 },
                             Width = 220,
                             Height = 32,
-                            Text = "Отмена",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4631,
                             Action = Close,
                         },
                     },

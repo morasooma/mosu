@@ -27,7 +27,12 @@ namespace osu.Game.Overlays.Settings
 
         protected OverlayColourProvider? SubsectionColourProvider { get; private set; }
 
+        [Resolved(canBeNull: true)]
+        private SettingsPanel? settingsPanel { get; set; }
+
         protected abstract LocalisableString Header { get; }
+
+        public LocalisableString SidebarHeader => Header;
 
         public virtual IEnumerable<LocalisableString> FilterTerms => new[] { Header };
 
@@ -73,6 +78,16 @@ namespace osu.Game.Overlays.Settings
                 if (headerText != null)
                     headerText.Colour = colourProvider.Content1;
             }, true);
+        }
+
+        public override bool UpdateSubTree()
+        {
+            // The fork's first section is much larger than the others. Bound
+            // its first-frame work too, without withholding searchable children.
+            if (!IsLoaded && LoadState == LoadState.Ready && settingsPanel?.AdmitSubsectionFirstUpdate() == false)
+                return false;
+
+            return base.UpdateSubTree();
         }
 
         protected virtual Drawable CreateHeader()

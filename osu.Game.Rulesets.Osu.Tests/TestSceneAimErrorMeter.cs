@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Linq;
 using osu.Framework.Graphics;
 using osu.Framework.Testing;
 using osu.Game.Rulesets.Scoring;
@@ -140,6 +141,24 @@ namespace osu.Game.Rulesets.Osu.Tests
 
             AddStep("Switch position display to absolute", () => aimErrorMeter.PositionDisplayStyle.Value = AimErrorMeter.PositionDisplay.Absolute);
             AddStep("Switch position display to relative", () => aimErrorMeter.PositionDisplayStyle.Value = AimErrorMeter.PositionDisplay.Normalised);
+        }
+
+        [Test]
+        public void TestMarkersKeepStylesAndExpire()
+        {
+            AddStep("add hit", () => aimErrorMeter.AddPoint(new Vector2(10, -5)));
+            AddAssert("marker uses unmasked shapes", () => aimErrorMeter.ChildrenOfType<FastCircle>().Count() == 11);
+            AddStep("change styles and rotation", () =>
+            {
+                aimErrorMeter.HitMarkerStyle.Value = AimErrorMeter.MarkerStyle.Plus;
+                aimErrorMeter.AverageMarkerStyle.Value = AimErrorMeter.MarkerStyle.X;
+                aimErrorMeter.Rotation = 37;
+            });
+            AddStep("clear", () => aimErrorMeter.Clear());
+            AddUntilStep("pooled marker removed", () => aimErrorMeter.ChildrenOfType<FastCircle>().Count() == 9);
+            AddStep("reuse", () => aimErrorMeter.AddPoint(new Vector2(-10, 5)));
+            AddAssert("reused marker visible", () => aimErrorMeter.ChildrenOfType<FastCircle>().Count() == 11);
+            AddUntilStep("marker expires naturally", () => aimErrorMeter.ChildrenOfType<FastCircle>().Count() == 9);
         }
 
         [Test]

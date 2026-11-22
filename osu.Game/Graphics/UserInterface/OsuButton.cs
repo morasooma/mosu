@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -11,6 +12,8 @@ using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input.Events;
 using osu.Framework.Localisation;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 using osuTK.Graphics;
 
@@ -61,6 +64,12 @@ namespace osu.Game.Graphics.UserInterface
 
         protected override Container<Drawable> Content { get; }
 
+        public new float CornerRadius
+        {
+            get => Content.CornerRadius;
+            set => Content.CornerRadius = value;
+        }
+
         public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) =>
             // base call is checked for cases when `OsuClickableContainer` has masking applied to it directly (ie. externally in object initialisation).
             base.ReceivePositionalInputAt(screenSpacePos)
@@ -72,6 +81,10 @@ namespace osu.Game.Graphics.UserInterface
         protected SpriteText SpriteText;
 
         private readonly Box flashLayer;
+        private IBindable<float>? cornerRadius;
+        private IBindable<osu.Game.Configuration.InterfaceAnimationMode>? animationMode;
+
+        protected virtual bool ApplyGeometryRadius => true;
 
         protected OsuButton(HoverSampleSet? hoverSounds = HoverSampleSet.Button)
         {
@@ -119,25 +132,32 @@ namespace osu.Game.Graphics.UserInterface
                 AddInternal(new HoverClickSounds(hoverSounds.Value) { Enabled = { BindTarget = Enabled } });
         }
 
-        [BackgroundDependencyLoader]
-        private void load(OsuColour colours)
+        [BackgroundDependencyLoader(true)]
+        private void load(OsuColour colours, OverlayColourProvider? overlayColourProvider)
         {
             DefaultBackgroundColour = colours.BlueDark;
+
+            if (ApplyGeometryRadius)
+            {
+                cornerRadius = overlayColourProvider?.GetRadiusBindable(GeometryRole.Button) ?? OverlayColourProvider.GetGeometryRadius(GeometryRole.Button);
+                cornerRadius.BindValueChanged(r => Content.CornerRadius = r.NewValue, true);
+            }
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
 
+            animationMode = InterfaceAnimation.Observe(this, true);
             Colour = dimColour;
-            Enabled.BindValueChanged(_ => this.FadeColour(dimColour, 200, Easing.OutQuint));
+            Enabled.BindValueChanged(_ => this.FadeColour(dimColour, InterfaceAnimation.FadeDuration(200), Easing.OutQuint));
         }
 
         private Color4 dimColour => Enabled.Value ? Color4.White : Color4.Gray;
 
         protected override bool OnClick(ClickEvent e)
         {
-            if (Enabled.Value)
+            if (Enabled.Value && InterfaceAnimation.AllowDecorativeMovement)
                 flashLayer.FadeOutFromOne(500, Easing.OutQuint);
 
             return base.OnClick(e);
@@ -149,9 +169,12 @@ namespace osu.Game.Graphics.UserInterface
         {
             if (Enabled.Value)
             {
-                Hover.FadeTo(0.2f, 40, Easing.OutQuint)
-                     .Then()
-                     .FadeTo(HoverLayerFinalAlpha, 800, Easing.OutQuint);
+                if (InterfaceAnimation.AllowDecorativeMovement)
+                    Hover.FadeTo(0.2f, 40, Easing.OutQuint)
+                         .Then()
+                         .FadeTo(HoverLayerFinalAlpha, 800, Easing.OutQuint);
+                else
+                    Hover.FadeTo(HoverLayerFinalAlpha, InterfaceAnimation.FadeDuration(100), Easing.OutQuint);
             }
 
             return base.OnHover(e);
@@ -161,18 +184,18 @@ namespace osu.Game.Graphics.UserInterface
         {
             base.OnHoverLost(e);
 
-            Hover.FadeOut(800, Easing.OutQuint);
+            Hover.FadeOut(InterfaceAnimation.FadeDuration(800), Easing.OutQuint);
         }
 
         protected override bool OnMouseDown(MouseDownEvent e)
         {
-            Content.ScaleTo(0.9f, 4000, Easing.OutQuint);
+            Content.ScaleTo(InterfaceAnimation.AllowDecorativeMovement ? 0.9f : 1, InterfaceAnimation.MovementDuration(4000), Easing.OutQuint);
             return base.OnMouseDown(e);
         }
 
         protected override void OnMouseUp(MouseUpEvent e)
         {
-            Content.ScaleTo(1, 1000, Easing.OutElastic);
+            Content.ScaleTo(1, InterfaceAnimation.MovementDuration(1000), Easing.OutElastic);
             base.OnMouseUp(e);
         }
 

@@ -14,8 +14,7 @@ MosuPp = Mosu/Realistik RX calculator + the rules below. Vanilla PP and star rat
 Version names: **MosuPp X.Y.Z** — X = full rework, Y = a rule added or removed, Z = numbers changed in existing rules.
 The "cache" number is `ForkDataStore.RELAX_MOSU_PP_PERFORMANCE_CALCULATION_VERSION`; it goes up by 1 with every change so cached PP is recalculated.
 Examples are SS scores, RX, with all rules of that version.
-Numbering restarts after 1.13.0: **1.13.0 = 0.0.1**. Before / after numbers are made with the test polygon in
-`tools/MosuPpLab` (`./lab.sh`), which calculates the maps of `tools/MosuPpLab/maps.txt` with the baseline and the current code.
+Numbering restarts after 1.13.0: **1.13.0 = 0.0.1**. Before / after numbers compare the baseline and updated code.
 
 ## MosuPp 1.0.0 (cache 40) — test release
 
@@ -162,7 +161,7 @@ This revision also includes the 0.1.0–0.3.0 rules below. The client cache revi
 
 
 - **Arles (RX)**: content detector shared by the client and the polygon (`RxArles.cs`), calibrated on the ten
-  maps in `tools/MosuPpLab/dataset.txt`. Wide jumps with changes of spacing and non-trivial turns, mixed with
+  maps in a labelled sample. Wide jumps with changes of spacing and non-trivial turns, mixed with
   flowing bursts or wider technical jump/burst sections. Dense streams, slider-heavy tech and simple jump spam
   are gated out. Does not use map IDs, titles or authors. Arles is the fifth pattern style; Reading remains a
   separate low-AR classification override. The existing RP classification/scales are retained.
@@ -174,7 +173,7 @@ This revision also includes the 0.1.0–0.3.0 rules below. The client cache revi
   Arles in the old player's note and is now relabelled. The other 86 map/mod combinations keep both PP and
   classifier output exactly. Another 310 modifier/score cases cover DT, HD, HR, HT, DT lock, DA AR/CS and
   1/15/20 misses: RP and existing skills before the Arles factor remain unchanged; factor stays in [1, 1.3]
-  and is independent of score accuracy/misses. Results: `tools/MosuPpLab/results/arles/`.
+  and is independent of score accuracy/misses.
 - This is a heuristic calibrated on a small labelled sample, not a learned model or a guarantee for unseen
   maps. Extend both positive labels and negative controls before widening thresholds.
 
@@ -211,7 +210,7 @@ This revision also includes the 0.1.0–0.3.0 rules below. The client cache revi
 - **RP Balance (RX)** (new): RP (respect points) is a difficulty value of a map + mods built only from what the player physically
   faces, independent of the PP formulas; the total PP moves to RP within ±20%: total × clamp(RP / SS PP, 0.8, 1.2), where SS PP is
   the MosuPp PP of an SS on the same map + mods (all other rules applied). One multiplier per map + mods, the same for every
-  accuracy / miss count. Code: `RxRespectPoints.cs` (port of the `tools/MosuPpLab` prototype, identical RP on all test maps).
+  accuracy / miss count. Code: `RxRespectPoints.cs`.
   - Map type by content: streams (≥ ~190 BPM), aim slop (jumps, any length), tech (≥ 55% sliders), aim control (stream-like density
     below ~190 BPM), reading (effective AR ≤ ~8).
   - Skill pressure, hardest 20 s: every move (velocity / 50 circles per s)^1.5 — "speed × size", faster moves weigh more; moves after

@@ -21,6 +21,7 @@ using osu.Framework.Platform;
 using osu.Framework.Testing;
 using osu.Game.Beatmaps;
 using osu.Game.Graphics;
+using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Online;
@@ -112,6 +113,13 @@ namespace osu.Game.Tests.Visual.Ranking
             AddUntilStep("co-op score label shown", () => this.ChildrenOfType<OsuSpriteText>().Any(text => text.Text.ToString() == "Tag Co-op score"));
             AddUntilStep("first player shown", () => this.ChildrenOfType<OsuSpriteText>().Any(text => text.Text.ToString().Contains("first")));
             AddUntilStep("second player shown", () => this.ChildrenOfType<OsuSpriteText>().Any(text => text.Text.ToString().Contains("second")));
+            AddUntilStep("statistics are scrollable", () => this.ChildrenOfType<StatisticsPanel>().Single().ChildrenOfType<OsuScrollContainer>().Any());
+            AddAssert("co-op heading stays below panel top", () =>
+            {
+                var panel = this.ChildrenOfType<StatisticsPanel>().Single();
+                var heading = panel.ChildrenOfType<OsuSpriteText>().First(text => text.Text.ToString() == "Tag Co-op score");
+                return heading.ScreenSpaceDrawQuad.TopLeft.Y >= panel.ScreenSpaceDrawQuad.TopLeft.Y;
+            });
         }
 
         [Test]

@@ -50,6 +50,13 @@ namespace osu.Game.Scoring.Legacy
 
             foreach (var mod in ModUtils.FlattenMods(mods))
             {
+                // GL/FN are local-only and must not be included in exported replays.
+                if (mod is ModSegmentRate)
+                {
+                    convertedClientMods = true;
+                    continue;
+                }
+
                 if (mod.Type == ModType.Mosu)
                 {
                     convertedClientMods = true;

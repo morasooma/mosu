@@ -52,7 +52,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Card
                                     [
                                         new OsuSpriteText
                                         {
-                                            Text = "Length",
+                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4931,
                                             Font = OsuFont.GetFont(size: 9, weight: FontWeight.Medium),
                                             Anchor = Anchor.CentreLeft,
                                             Origin = Anchor.CentreLeft,
@@ -79,7 +79,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Card
                                     [
                                         new OsuSpriteText
                                         {
-                                            Text = "BPM",
+                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4932,
                                             Font = OsuFont.GetFont(size: 9, weight: FontWeight.Medium),
                                             Anchor = Anchor.CentreLeft,
                                             Origin = Anchor.CentreLeft,

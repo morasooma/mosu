@@ -70,7 +70,7 @@ namespace osu.Game.Rulesets.Edit
             if (toolboxGroup != null)
                 throw new InvalidOperationException($"{nameof(AttachToToolbox)} may be called only once for a single {nameof(ComposerDistanceSnapProvider)} instance.");
 
-            toolboxContainer.Add(toolboxGroup = new EditorToolboxGroup("snapping")
+            toolboxContainer.Add(toolboxGroup = new EditorToolboxGroup(global::osu.Game.Localisation.ClientTranslationStrings.J4077)
             {
                 Name = "snapping",
                 Spacing = new Vector2(5),
@@ -82,7 +82,7 @@ namespace osu.Game.Rulesets.Edit
                         KeyboardStep = adjust_step,
                         // Manual binding in LoadComplete to handle one-way event flow.
                         Current = DistanceSpacingMultiplier.GetUnboundCopy(),
-                        ExpandedLabelText = "Distance spacing",
+                        ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J4078,
                     },
                     currentDistanceSpacingButton = new ExpandableButton
                     {
@@ -180,14 +180,14 @@ namespace osu.Game.Rulesets.Edit
                 currentDistanceSpacingButton.Enabled.Value = currentDistanceSpacingButton.Expanded.Value
                                                              && !DistanceSpacingMultiplier.Disabled
                                                              && !Precision.AlmostEquals(currentSnap, DistanceSpacingMultiplier.Value, DistanceSpacingMultiplier.Precision / 2);
-                currentDistanceSpacingButton.ContractedLabelText = $"current {currentSnap:N2}x";
-                currentDistanceSpacingButton.ExpandedLabelText = $"Use current ({currentSnap:N2}x)";
+                currentDistanceSpacingButton.ContractedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4079(currentSnap);
+                currentDistanceSpacingButton.ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4080(currentSnap);
             }
             else
             {
                 currentDistanceSpacingButton.Enabled.Value = false;
                 currentDistanceSpacingButton.ContractedLabelText = string.Empty;
-                currentDistanceSpacingButton.ExpandedLabelText = "Use current (unavailable)";
+                currentDistanceSpacingButton.ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J4081;
             }
         }
 

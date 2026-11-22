@@ -335,9 +335,9 @@ namespace osu.Game.Screens.Play.PlayerSettings
                 }
             }
 
-            offsetText.AddText("You can also ", t => t.Font = OsuFont.Style.Caption2);
-            offsetText.AddLink("adjust the global offset", () => settings?.ShowAtControl<AudioOffsetAdjustControl>(), creationParameters: t => t.Font = OsuFont.Style.Caption2);
-            offsetText.AddText(" based off this play.", t => t.Font = OsuFont.Style.Caption2);
+            offsetText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5093, t => t.Font = OsuFont.Style.Caption2);
+            offsetText.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J5094, () => settings?.ShowAtControl<AudioOffsetAdjustControl>(), creationParameters: t => t.Font = OsuFont.Style.Caption2);
+            offsetText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5095, t => t.Font = OsuFont.Style.Caption2);
         }
 
         private bool applySuggestedOffset()

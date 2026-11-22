@@ -20,6 +20,7 @@ using osu.Game.Online.API;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets;
 using osu.Game.Screens.Edit;
 using osu.Game.Screens.Menu;
 using osu.Game.Screens.Play;
@@ -39,6 +40,10 @@ namespace osu.Game.Screens.Select
 
         private PlayerLoader? playerLoader;
         private IReadOnlyList<Mod>? modsAtGameplayStart;
+        private RulesetInfo? legacyRulesetAtGameplayStart;
+
+        [Resolved]
+        private OsuConfigManager songSelectConfig { get; set; } = null!;
 
         [Resolved]
         private BeatmapSetOverlay? beatmapOverlay { get; set; }
@@ -127,6 +132,14 @@ namespace osu.Game.Screens.Select
 
             modsAtGameplayStart = Mods.Value.Select(m => m.DeepClone()).ToArray();
 
+            if (songSelectConfig.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle).UsesSkinnedLegacyCarousel())
+            {
+                legacyRulesetAtGameplayStart = Ruleset.Value;
+                var nativeRuleset = Beatmap.Value.BeatmapInfo.Ruleset;
+                if (nativeRuleset.OnlineID > 0 && !nativeRuleset.Equals(Ruleset.Value))
+                    Ruleset.Value = nativeRuleset;
+            }
+
             // Ctrl+Enter should start map with autoplay enabled.
             if (GetContainingInputManager()?.CurrentState?.Keyboard.ControlPressed == true)
             {
@@ -182,8 +195,10 @@ namespace osu.Game.Screens.Select
 
         public override void OnResuming(ScreenTransitionEvent e)
         {
-            base.OnResuming(e);
+            // Drop the loader (and its consumed Player factory/closures) before base resume work refreshes
+            // the carousel. The loader is no longer on the screen stack after returning from gameplay.
             revertMods();
+            base.OnResuming(e);
         }
 
         public override bool OnExiting(ScreenExitEvent e)
@@ -201,8 +216,12 @@ namespace osu.Game.Screens.Select
         {
             if (playerLoader == null) return;
 
+            if (legacyRulesetAtGameplayStart != null)
+                Ruleset.Value = legacyRulesetAtGameplayStart;
+            legacyRulesetAtGameplayStart = null;
             Mods.Value = modsAtGameplayStart;
             playerLoader = null;
+            modsAtGameplayStart = null;
         }
 
         private partial class PlayerLoader : Play.PlayerLoader

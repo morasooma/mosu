@@ -9,6 +9,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Testing;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Online.API;
 using osu.Game.Overlays;
 using osu.Game.Overlays.BeatmapListing;
 using osuTK;
@@ -48,6 +49,12 @@ namespace osu.Game.Tests.Visual.UserInterface
 
             control.SortDirection.BindValueChanged(sortDirection => direction.Text = $"Sort direction: {sortDirection.NewValue}", true);
             control.Current.BindValueChanged(criteria => current.Text = $"Criteria: {criteria.NewValue}", true);
+        }
+
+        [SetUpSteps]
+        public void ResetCatalogue()
+        {
+            AddStep("reset catalogue", () => control.SetCatalogue(BeatmapCatalogueSource.Official, SearchCategory.Leaderboard, false));
         }
 
         [Test]
@@ -131,6 +138,71 @@ namespace osu.Game.Tests.Visual.UserInterface
             });
 
             AddAssert("sort direction is descending", () => control.SortDirection.Value == SortDirection.Descending);
+        }
+
+        [TestCase(BeatmapCatalogueSource.Mirria)]
+        [TestCase(BeatmapCatalogueSource.OsuDirect)]
+        [TestCase(BeatmapCatalogueSource.Hinamizawa)]
+        [TestCase(BeatmapCatalogueSource.Nekoha)]
+        public void TestQueryChangeRetainsUnchangedMirrorTabs(BeatmapCatalogueSource source)
+        {
+            TabItem<SortCriteria>[] originalTabs = null!;
+            AddStep("select mirror without query", () => control.SetCatalogue(source, SearchCategory.Leaderboard, false));
+            AddWaitStep("tabs loaded", 2);
+            AddStep("remember tabs and change query", () =>
+            {
+                originalTabs = control.TabControl.ChildrenOfType<TabItem<SortCriteria>>().ToArray();
+                control.Current.Value = control.TabControl.Items[0];
+                control.SortDirection.Value = SortDirection.Ascending;
+                control.SetCatalogue(source, SearchCategory.Leaderboard, true);
+            });
+            AddAssert("same tab objects in the same order", () => originalTabs.Length > 0
+                && control.TabControl.ChildrenOfType<TabItem<SortCriteria>>().SequenceEqual(originalTabs));
+            AddAssert("query still resets sort and direction", () => control.Current.Value == SortCriteria.Updated
+                && control.SortDirection.Value == SortDirection.Descending);
+            AddAssert("updated is selected", () => control.TabControl.ChildrenOfType<TabItem<SortCriteria>>()
+                .Single(t => t.Active.Value).Value == SortCriteria.Updated);
+        }
+
+        [Test]
+        public void TestMirrorResetOnlyConstructsSupportedTabs()
+        {
+            CountingSortTabControl? counting = null;
+            AddStep("add instrumented sort control", () => Add(counting = new CountingSortTabControl()));
+            AddUntilStep("instrumented control loaded", () => counting?.IsLoaded == true);
+            AddStep("select Mirria", () =>
+            {
+                counting!.CreatedItems = 0;
+                counting.SetCatalogue(BeatmapCatalogueSource.Mirria, SearchCategory.Leaderboard, false);
+            });
+            AddAssert("only updated constructed", () => counting!.CreatedItems == 1
+                && counting.TabControl.Items.SequenceEqual(new[] { SortCriteria.Updated }));
+            AddStep("clear query without changing mirror tabs", () =>
+            {
+                counting!.CreatedItems = 0;
+                counting.SetCatalogue(BeatmapCatalogueSource.Mirria, SearchCategory.Leaderboard, true);
+            });
+            AddAssert("no redundant construction", () => counting!.CreatedItems == 0);
+            AddStep("remove instrumented control", () => Remove(counting!, true));
+        }
+
+        private partial class CountingSortTabControl : BeatmapListingSortTabControl
+        {
+            public int CreatedItems;
+
+            protected override SortTabControl CreateControl() => new CountingTabControl { Created = () => CreatedItems++ };
+
+            private partial class CountingTabControl : SortTabControl
+            {
+                public System.Action Created = null!;
+                protected override bool AddEnumEntriesAutomatically => false;
+
+                protected override TabItem<SortCriteria> CreateTabItem(SortCriteria value)
+                {
+                    Created();
+                    return base.CreateTabItem(value);
+                }
+            }
         }
 
         private void criteriaShowsOnCategory(bool expected, SortCriteria criteria, SearchCategory category)

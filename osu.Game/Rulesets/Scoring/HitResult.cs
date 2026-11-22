@@ -30,27 +30,27 @@ namespace osu.Game.Rulesets.Scoring
         /// This miss window should determine how early a hit can be before it is considered for judgement (as opposed to being ignored as
         /// "too far in the future"). It should also define when a forced miss should be triggered (as a result of no user input in time).
         /// </remarks>
-        [Description(@"Miss")]
+        [Description(@"Miss"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4271))]
         [EnumMember(Value = "miss")]
         [Order(5)]
         Miss,
 
-        [Description(@"Meh")]
+        [Description(@"Meh"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4272))]
         [EnumMember(Value = "meh")]
         [Order(4)]
         Meh,
 
-        [Description(@"OK")]
+        [Description(@"OK"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4273))]
         [EnumMember(Value = "ok")]
         [Order(3)]
         Ok,
 
-        [Description(@"Good")]
+        [Description(@"Good"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4274))]
         [EnumMember(Value = "good")]
         [Order(2)]
         Good,
 
-        [Description(@"Great")]
+        [Description(@"Great"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4275))]
         [EnumMember(Value = "great")]
         [Order(1)]
         Great,
@@ -62,7 +62,7 @@ namespace osu.Game.Rulesets.Scoring
         /// By default, this does not give any bonus accuracy or score.
         /// To have it affect scoring, consider adding a nested bonus object.
         /// </remarks>
-        [Description(@"Perfect")]
+        [Description(@"Perfect"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4276))]
         [EnumMember(Value = "perfect")]
         [Order(0)]
         Perfect,
@@ -77,7 +77,7 @@ namespace osu.Game.Rulesets.Scoring
         /// <summary>
         /// Indicates a small tick hit.
         /// </summary>
-        [Description(@"S Tick")]
+        [Description(@"S Tick"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4277))]
         [EnumMember(Value = "small_tick_hit")]
         [Order(7)]
         SmallTickHit,
@@ -92,7 +92,7 @@ namespace osu.Game.Rulesets.Scoring
         /// <summary>
         /// Indicates a large tick hit.
         /// </summary>
-        [Description(@"L Tick")]
+        [Description(@"L Tick"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4278))]
         [EnumMember(Value = "large_tick_hit")]
         [Order(6)]
         LargeTickHit,
@@ -100,7 +100,7 @@ namespace osu.Game.Rulesets.Scoring
         /// <summary>
         /// Indicates a small bonus.
         /// </summary>
-        [Description("S Bonus")]
+        [Description("S Bonus"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4279))]
         [EnumMember(Value = "small_bonus")]
         [Order(10)]
         SmallBonus,
@@ -108,7 +108,7 @@ namespace osu.Game.Rulesets.Scoring
         /// <summary>
         /// Indicates a large bonus.
         /// </summary>
-        [Description("L Bonus")]
+        [Description("L Bonus"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4280))]
         [EnumMember(Value = "large_bonus")]
         [Order(9)]
         LargeBonus,

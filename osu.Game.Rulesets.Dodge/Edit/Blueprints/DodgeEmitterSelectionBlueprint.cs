@@ -4,6 +4,7 @@
 using System;
 using osu.Framework.Graphics.Primitives;
 using osu.Game.Rulesets.Dodge.Objects;
+using osu.Game.Rulesets.Dodge.Objects.Drawables;
 using osu.Game.Rulesets.Edit;
 using osuTK;
 
@@ -16,6 +17,9 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         private readonly DodgeEmitterPathPiece pathPiece;
 
         protected override bool AlwaysShowWhenSelected => true;
+
+        public override bool IsSelectable => base.IsSelectable
+            && DrawableObject is DrawableDodgeEmitter { IsInEditorSelectionWindow: true };
 
         public DodgeEmitterSelectionBlueprint(DodgeEmitter hitObject)
             : base(hitObject)
@@ -54,6 +58,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             }
         }
 
-        public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => pathPiece.ReceivePositionalInputAt(screenSpacePos);
+        public override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
+            => IsSelectable && pathPiece.ReceivePositionalInputAt(screenSpacePos);
     }
 }

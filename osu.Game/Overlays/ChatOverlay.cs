@@ -43,6 +43,8 @@ namespace osu.Game.Overlays
         private ChatTextBar textBar = null!;
         private Container<DrawableChannel> currentChannelContainer = null!;
         private BackdropBlurSurface background = null!;
+
+        protected override BackdropBlurSurface OpaqueBackground => background;
         private IBindable<Colour4> themeColour = null!;
 
         private readonly Dictionary<Channel, DrawableChannel> loadedChannels = new Dictionary<Channel, DrawableChannel>();
@@ -294,8 +296,8 @@ namespace osu.Game.Overlays
 
         protected override void PopIn()
         {
-            this.MoveToY(0, transition_length, Easing.OutQuint);
-            this.FadeIn(transition_length, Easing.OutQuint);
+            this.MoveToY(0, InterfaceAnimation.TransitionDuration(transition_length), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+            this.FadeIn(InterfaceAnimation.TransitionFadeDuration(transition_length), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
 
             // The active channel may have received its initial history while the overlay
             // was hidden, without causing a CurrentChannel change when it is shown again.
@@ -310,8 +312,8 @@ namespace osu.Game.Overlays
         {
             base.PopOut();
 
-            this.MoveToY(Height, transition_length, Easing.InSine);
-            this.FadeOut(transition_length, Easing.InSine);
+            this.MoveToY(Height, InterfaceAnimation.TransitionDuration(transition_length), InterfaceAnimation.TransitionEasing(Easing.InSine));
+            this.FadeOut(InterfaceAnimation.TransitionFadeDuration(transition_length), InterfaceAnimation.TransitionEasing(Easing.InSine));
 
             textBar.TextBoxKillFocus();
         }

@@ -9,6 +9,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Input.Bindings;
 using osu.Framework.Input.Events;
 using osu.Game.Rulesets.Dodge.Replays;
+using osu.Game.Rulesets.Dodge.Objects;
 using osu.Game.Rulesets.Dodge.Skinning;
 using osu.Game.Rulesets.Dodge.Skinning.Components;
 using osu.Game.Rulesets.UI;
@@ -64,6 +65,12 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         private Vector2 previousCameraOffset;
         private bool cameraOffsetInitialised;
+        private DodgeTrigger? previousAuthoredMove;
+        private double previousUpdateTime = double.NaN;
+        private Vector2 authoredMoveSource;
+        private readonly System.Collections.Generic.Dictionary<DodgeTrigger, Vector2> moveSources = new System.Collections.Generic.Dictionary<DodgeTrigger, Vector2>();
+
+        public bool AuthoredMoveDiscontinuity { get; private set; }
 
         public DodgePlayer()
         {
@@ -119,12 +126,57 @@ namespace osu.Game.Rulesets.Dodge.UI
             var replayState = (GetContainingInputManager()?.CurrentState as RulesetInputManagerInputState<DodgeAction>)?.LastReplayState
                               as DodgeFramedReplayInputHandler.DodgeReplayState;
 
+            DodgeTrigger? move = playfield?.TriggerEvaluator?.PlayerMoveAt(Time.Current);
+            bool moveChanged = move != previousAuthoredMove;
+            bool rewound = (move != null || previousAuthoredMove != null)
+                           && !double.IsNaN(previousUpdateTime) && Time.Current < previousUpdateTime;
+            AuthoredMoveDiscontinuity = rewound || (moveChanged && move?.MoveFromCurrentPosition == false);
+            bool crossedMoveEnd = move != null && previousUpdateTime <= move.EndTime && Time.Current > move.EndTime;
+            double oldTime = previousUpdateTime;
+            DodgeTrigger? oldMove = previousAuthoredMove;
+            previousAuthoredMove = move;
+            previousUpdateTime = Time.Current;
+
+            // Recorded world positions are authoritative, including the captured source
+            // of current-position moves. Never replace them with a map's preview path.
             if (replayState?.PlayerPosition is Vector2 replayPosition)
             {
                 Position = ClampToArena(replayPosition, ArenaPosition, ArenaSize, PlayerSize, ArenaRotation);
-                updateTrail(replayPosition);
+                updateTrail(Position);
                 return;
             }
+
+            if (move != null && (Time.Current <= move.EndTime || crossedMoveEnd || moveChanged || rewound))
+            {
+                if (moveChanged || rewound)
+                {
+                    if (!move.MoveFromCurrentPosition)
+                        authoredMoveSource = move.SourcePosition;
+                    else if (rewound && moveSources.TryGetValue(move, out Vector2 savedSource))
+                        authoredMoveSource = savedSource;
+                    else
+                    {
+                        authoredMoveSource = oldMove != null && move.StartTime <= oldMove.EndTime
+                            ? DodgeTriggerStateEvaluator.PlayerPositionAt(oldMove, move.StartTime, authoredMoveSource)
+                            : Position;
+                        moveSources[move] = authoredMoveSource;
+                    }
+                }
+                Position = ClampToArena(DodgeTriggerStateEvaluator.PlayerPositionAt(move, Time.Current, authoredMoveSource),
+                    ArenaPosition, ArenaSize, PlayerSize, ArenaRotation);
+                double remaining = Math.Max(0, Time.Current - Math.Max(move.EndTime, double.IsNaN(oldTime) ? Time.Current : oldTime));
+                if (remaining > 0)
+                {
+                    var inputDirection = new Vector2((rightPressed ? 1 : 0) - (leftPressed ? 1 : 0), (downPressed ? 1 : 0) - (upPressed ? 1 : 0));
+                    Position = CalculatePosition(Position, inputDirection, SlowActive, remaining,
+                        ArenaPosition, ArenaSize, MovementSpeed, PlayerSize, ArenaRotation);
+                }
+                updateTrail(Position);
+                return;
+            }
+
+            if (rewound)
+                Position = ClampToArena(DodgePlayfield.BASE_SIZE / 2, ArenaPosition, ArenaSize, PlayerSize, ArenaRotation);
 
             var direction = new Vector2(
                 (rightPressed ? 1 : 0) - (leftPressed ? 1 : 0),
@@ -146,6 +198,9 @@ namespace osu.Game.Rulesets.Dodge.UI
                 trailVisible = visible;
                 Trail.Reset(position, Time.Current);
             }
+
+            if (AuthoredMoveDiscontinuity)
+                Trail.Reset(position, Time.Current);
 
             if (visible)
                 Trail.UpdatePosition(position, Time.Current);
@@ -182,8 +237,8 @@ namespace osu.Game.Rulesets.Dodge.UI
 
             if (Math.Abs(arenaRotation) < 0.001f)
             {
-                position.X = Math.Clamp(position.X, arenaPosition.X + halfSize, arenaPosition.X + arenaSize.X - halfSize);
-                position.Y = Math.Clamp(position.Y, arenaPosition.Y + halfSize, arenaPosition.Y + arenaSize.Y - halfSize);
+                position.X = Math.Clamp(position.X, arenaPosition.X + Math.Min(halfSize, arenaSize.X / 2), arenaPosition.X + arenaSize.X - Math.Min(halfSize, arenaSize.X / 2));
+                position.Y = Math.Clamp(position.Y, arenaPosition.Y + Math.Min(halfSize, arenaSize.Y / 2), arenaPosition.Y + arenaSize.Y - Math.Min(halfSize, arenaSize.Y / 2));
                 return position;
             }
 

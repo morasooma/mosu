@@ -13,7 +13,7 @@ namespace osu.Game.Rulesets.Mods
     {
         public override Type[] IncompatibleMods => new[] { typeof(ModNoFail), typeof(ModCinema) };
 
-        [SettingSource("Restart on fail", "Automatically restarts when failed.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4182), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4219))]
         public BindableBool Restart { get; } = new BindableBool();
 
         public virtual bool PerformFail() => true;

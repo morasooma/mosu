@@ -4,6 +4,7 @@
 using System;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
@@ -26,7 +27,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
         /// </summary>
         public void SetValue(string value) => textBox.Text = value;
 
-        public LabelledEditorField(string label, string? hint, string value, OsuColour colours, Action onCommit)
+        public LabelledEditorField(LocalisableString label, LocalisableString? hint, string value, OsuColour colours, Action onCommit)
         {
             RelativeSizeAxes = Axes.X;
             AutoSizeAxes = Axes.Y;
@@ -39,10 +40,10 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                 Spacing = new Vector2(0, 2),
             };
 
-            content.Add(WrappedText.Paragraph(label.ToUpperInvariant(), colours.Pink1, 11, FontWeight.Bold));
+            content.Add(WrappedText.Paragraph(new CaseTransformableString(label, Casing.UpperCase), colours.Pink1, 11, FontWeight.Bold));
 
-            if (!string.IsNullOrEmpty(hint))
-                content.Add(WrappedText.Paragraph(hint, colours.GrayA, 10));
+            if (!LocalisableString.IsNullOrEmpty(hint))
+                content.Add(WrappedText.Paragraph(hint.Value, colours.GrayA, 10));
 
             content.Add(textBox = new OsuTextBox
             {

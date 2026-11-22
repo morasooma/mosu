@@ -61,7 +61,8 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
                 wavePhase,
                 movementEasing);
 
-            if (movementType == DodgeMovementType.Linear || waveAmplitude == 0 || start == controlEnd)
+            if (movementType == DodgeMovementType.Linear || start == controlEnd
+                || movementType == DodgeMovementType.Sine && waveAmplitude == 0)
             {
                 syncLinearGuide();
 

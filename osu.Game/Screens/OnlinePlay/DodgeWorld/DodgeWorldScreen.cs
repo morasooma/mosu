@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using osu.Framework.Localisation;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -367,23 +368,23 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             switch (availability)
             {
                 case DodgeWorldAvailability.Loading:
-                    editorPanel.SetStatus("Загрузка Dodge World с сервера…");
-                    hud.SetRoom("LOADING WORLD…");
+                    editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4376);
+                    hud.SetRoom(global::osu.Game.Localisation.ClientTranslationStrings.J4377);
                     break;
 
                 case DodgeWorldAvailability.LoginRequired:
-                    editorPanel.SetStatus("Для Dodge World нужна активная онлайн-сессия.");
-                    hud.SetRoom("ONLINE REQUIRED");
+                    editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4378);
+                    hud.SetRoom(global::osu.Game.Localisation.ClientTranslationStrings.J4379);
                     break;
 
                 case DodgeWorldAvailability.Unreachable:
-                    editorPanel.SetStatus("Сервер Dodge World недоступен.");
-                    hud.SetRoom("WORLD UNAVAILABLE");
+                    editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4380);
+                    hud.SetRoom(global::osu.Game.Localisation.ClientTranslationStrings.J4381);
                     break;
 
                 case DodgeWorldAvailability.InvalidDocument:
-                    editorPanel.SetStatus("Сервер вернул некорректный документ мира.");
-                    hud.SetRoom("WORLD DATA ERROR");
+                    editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4382);
+                    hud.SetRoom(global::osu.Game.Localisation.ClientTranslationStrings.J4383);
                     break;
             }
         }
@@ -417,7 +418,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             worldLoaded = true;
             enterRoom(initial);
-            editorPanel.SetStatus($"Мир загружен: комнат {rooms.Count}, сохранение №{session.Revision.Value}.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4384(rooms.Count, session.Revision.Value));
         }
 
         private WeaponSkin? resolveSkin(string? id) =>
@@ -456,7 +457,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             skin.Damage = Math.Clamp(damage, WeaponSkin.MIN_DAMAGE, WeaponSkin.MAX_DAMAGE);
             localPlayerState.SetSwordDamage(skin.EffectiveDamage);
-            editorPanel.SetStatus($"Урон меча: {skin.EffectiveDamage}. Сохрани мир, чтобы это увидели остальные.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4386(skin.EffectiveDamage));
         }
 
         /// <summary>
@@ -485,7 +486,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             editorPanel.SetRoom(room.Name, currentRoomSize);
             setSelection(null);
             roomPendingDeletion = null;
-            editorPanel.SetStatus($"Комната: {room.Name}." + (room.Id == initialRoomId ? " Начальная." : string.Empty));
+            editorPanel.SetStatus(LocalisableString.Interpolate($"{(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4387(room.Name))}{(room.Id == initialRoomId ? global::osu.Game.Localisation.ClientTranslationStrings.J4388 : string.Empty)}"));
 
             // Announced after the local player has been placed, so the position that goes out with the
             // join is where they actually are rather than where they were in the room just left.
@@ -675,7 +676,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             simulation.ReplaceLayout(buildLayout(room));
 
             if (!editorMode)
-                announce("МИР ИЗМЕНИЛСЯ");
+                announce(global::osu.Game.Localisation.ClientTranslationStrings.J4391);
         }
 
         private bool visibleToPlayer(EntityRecord record) =>
@@ -751,8 +752,8 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
                     string from = record.DisplayName ?? record.Id;
 
                     var marker = new ArrivalMarker(colours, authored
-                        ? $"сюда из «{room.Name}» • {from} • вручную"
-                        : $"сюда из «{room.Name}» • {from} • авто", authored)
+                        ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4392(room.Name, from)
+                        : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4393(room.Name, from), authored)
                     {
                         Position = point,
                         Depth = -9000,
@@ -792,7 +793,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (undoHistory.Count == 0)
             {
-                editorPanel.SetStatus("Отменять нечего.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4394);
                 return;
             }
 
@@ -802,7 +803,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             rooms[previous.Id] = previous;
             currentRoomName = previous.Name;
             enterRoom(previous);
-            editorPanel.SetStatus($"Отменено. Шагов в истории: {undoHistory.Count}.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4395(undoHistory.Count));
         }
 
         private void applyRoomSize(Vector2 size)
@@ -877,7 +878,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (!rooms.TryGetValue(roomId, out RoomDefinition? room))
             {
-                editorPanel.SetStatus($"Комната с ID «{roomId}» не существует.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4396(roomId));
                 return;
             }
 
@@ -1303,9 +1304,9 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         /// Long enough to be read, since some of these announcements explain why something the player
         /// expected did not happen.
         /// </remarks>
-        private void announce(string message, double hold = announcement_hold)
+        private void announce(LocalisableString message, double hold = announcement_hold)
         {
-            passageText.Text = message.ToUpperInvariant();
+            passageText.Text = new CaseTransformableString(message, Casing.UpperCase);
             passageText.ClearTransforms();
             passageText.FadeIn(120).Delay(hold).FadeOut(400, Easing.OutQuint);
         }
@@ -1387,7 +1388,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
                 return;
 
             warnedRoomIsUnrewarded = true;
-            announce("КОМНАТА НЕ НА СЕРВЕРЕ: НАГРАДЫ НЕ НАЧИСЛЯЮТСЯ", long_announcement_hold);
+            announce(global::osu.Game.Localisation.ClientTranslationStrings.J4397, long_announcement_hold);
         }
 
         private bool warnedRoomIsUnrewarded;
@@ -1407,7 +1408,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             // the setting having no effect. A cooldown refusal is not — it means a kill landed a moment
             // after another in the same zone, which is normal and not the player's business.
             if (reward.Reason == "maximum_farm_level")
-                announce("НАГРАДА НЕ НАЧИСЛЕНА: ПРЕВЫШЕН УРОВЕНЬ ЗОНЫ", long_announcement_hold);
+                announce(global::osu.Game.Localisation.ClientTranslationStrings.J4398, long_announcement_hold);
         }
 
         #endregion
@@ -1454,7 +1455,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
                 if (selectedEntity != null)
                 {
                     setSelection(null);
-                    editorPanel.SetStatus("Выделение снято. Ещё раз — выход из редактора.");
+                    editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4399);
                     return true;
                 }
 
@@ -1466,7 +1467,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
                 return false;
 
             exitConfirmationDeadline = Time.Current + exit_confirmation_window;
-            announce("НАЖМИ ЕЩЁ РАЗ, ЧТОБЫ ПОКИНУТЬ МИР", long_announcement_hold);
+            announce(global::osu.Game.Localisation.ClientTranslationStrings.J4400, long_announcement_hold);
             return true;
         }
 
@@ -1481,7 +1482,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
                 if (session.CanEdit.Value)
                     setEditorMode(!editorMode);
                 else
-                    editorPanel.SetStatus("У этого аккаунта нет доступа к редактору мира.");
+                    editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4401);
 
                 return true;
             }
@@ -1576,7 +1577,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
         private void unlockWarp(WorldWarp warp)
         {
-            announce(warp.UnlockCost > 0 ? $"ОТКРЫТИЕ ВАРПА: {warp.UnlockCost} МОНЕТ…" : "ОТКРЫТИЕ ВАРПА…");
+            announce(warp.UnlockCost > 0 ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4402(warp.UnlockCost) : global::osu.Game.Localisation.ClientTranslationStrings.J4403);
 
             session.UnlockWarp(currentRoomId, warp.EntityId, outcome =>
             {
@@ -1586,15 +1587,15 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
                     case WarpOutcome.AlreadyUnlocked:
                         warp.SetUnlocked(true);
                         warp.Pulse();
-                        announce($"ВАРП «{warp.DisplayName}» ОТКРЫТ");
+                        announce(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4404(warp.DisplayName));
                         break;
 
                     case WarpOutcome.NotEnoughCoins:
-                        announce($"НЕ ХВАТАЕТ МОНЕТ: НУЖНО {warp.UnlockCost}", long_announcement_hold);
+                        announce(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4405(warp.UnlockCost), long_announcement_hold);
                         break;
 
                     default:
-                        announce("ВАРП НЕДОСТУПЕН", long_announcement_hold);
+                        announce(global::osu.Game.Localisation.ClientTranslationStrings.J4406, long_announcement_hold);
                         break;
                 }
             });
@@ -1653,7 +1654,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             if (!rooms.ContainsKey(destination.RoomId))
             {
-                announce("КОМНАТА ВАРПА НЕ НАЙДЕНА", long_announcement_hold);
+                announce(global::osu.Game.Localisation.ClientTranslationStrings.J4407, long_announcement_hold);
                 return;
             }
 
@@ -1667,15 +1668,15 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
                         break;
 
                     case WarpOutcome.NotEnoughCoins:
-                        announce($"НЕ ХВАТАЕТ МОНЕТ: НУЖНО {destination.TravelCost}", long_announcement_hold);
+                        announce(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4405(destination.TravelCost), long_announcement_hold);
                         break;
 
                     case WarpOutcome.NotUnlocked:
-                        announce("ЭТОТ ВАРП ЕЩЁ НЕ ОТКРЫТ", long_announcement_hold);
+                        announce(global::osu.Game.Localisation.ClientTranslationStrings.J4408, long_announcement_hold);
                         break;
 
                     default:
-                        announce("ПЕРЕХОД НЕ УДАЛСЯ", long_announcement_hold);
+                        announce(global::osu.Game.Localisation.ClientTranslationStrings.J4409, long_announcement_hold);
                         break;
                 }
             });
@@ -1737,7 +1738,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
                 case Key.F when selectedEntity != null:
                     cameraPosition = selectedEntity.Position;
-                    editorPanel.SetStatus("Камера наведена на выбранный объект.");
+                    editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4410);
                     return true;
 
                 // Not with Alt held: those four are the volume, and the editor has no business taking the
@@ -1894,7 +1895,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             room.MapX = position.X;
             room.MapY = position.Y;
-            editorPanel.SetStatus($"Комната «{room.Name}» размещена на карте. Сохрани мир, чтобы запомнить.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4411(room.Name));
         }
 
         #endregion
@@ -2025,7 +2026,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         public void OnSelectionEdited()
         {
             reloadLayout();
-            editorPanel.SetStatus(selectedEntity == null ? "Изменения применены." : $"«{selectedEntity.DisplayName}» обновлён.");
+            editorPanel.SetStatus(selectedEntity == null ? global::osu.Game.Localisation.ClientTranslationStrings.J4412 : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4413(selectedEntity.DisplayName));
         }
 
         public void ApplyRoomProperties(string name, string width, string height)
@@ -2048,7 +2049,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             rooms[currentRoomId] = captureCurrentRoom();
             editorPanel.SetRoom(currentRoomName, currentRoomSize);
-            editorPanel.SetStatus($"Комната: {currentRoomName}, {currentRoomSize.X:0} × {currentRoomSize.Y:0}.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4414(currentRoomName, currentRoomSize.X, currentRoomSize.Y));
             reloadLayout();
         }
 
@@ -2059,58 +2060,52 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             room.SpawnX = localPlayerState.Position.X;
             room.SpawnY = localPlayerState.Position.Y;
-            editorPanel.SetStatus("Точка входа перенесена под игрока.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4415);
         }
 
         public void AddSurface() => addNewEntity(EntityKinds.SURFACE, $"{SurfaceKind.CUSTOM_ID_PREFIX}-", "Room panel",
-            "Панель комнаты добавлена. Перетащи её и измени размер маркерами.");
+            global::osu.Game.Localisation.ClientTranslationStrings.J4417);
 
         public void AddCollisionZone() => addNewEntity(EntityKinds.COLLISION, "collision-custom-", "Collision zone",
-            "Зона коллизии добавлена. Она видна только в редакторе.");
+            global::osu.Game.Localisation.ClientTranslationStrings.J4420);
 
         public void AddNpc() => addNewEntity(EntityKinds.NPC, "npc-custom-", "NPC",
-            "NPC добавлен. Открой вкладку «Диалог» и заполни реплики.");
+            global::osu.Game.Localisation.ClientTranslationStrings.J4423);
 
         public void AddMobSpawnZone() => addNewEntity(EntityKinds.MOB_SPAWN, "mob-spawn-", "Mob spawn",
-            "Зона появления мобов добавлена в текущую комнату.");
+            global::osu.Game.Localisation.ClientTranslationStrings.J4426);
 
         public void AddEmitter() => addNewEntity(EntityKinds.EMITTER, "emitter-", "Emitter",
-            "Эмиттер добавлен. Направление, цикл и сдвиг фазы — в свойствах.");
+            global::osu.Game.Localisation.ClientTranslationStrings.J4429);
 
         public void AddBeam() => addNewEntity(EntityKinds.BEAM, "beam-", "Beam",
-            "Луч добавлен. Длину, цикл и сдвиг фазы — в свойствах.");
+            global::osu.Game.Localisation.ClientTranslationStrings.J4432);
 
         public void AddWarp() => addNewEntity(EntityKinds.WARP, "warp-", "Warp",
-            "Варп добавлен. Задай цену открытия и цену перехода во вкладке «Объект»; 0 — бесплатно.");
+            global::osu.Game.Localisation.ClientTranslationStrings.J4435);
 
         public void AddPortal() => addNewEntity(EntityKinds.PORTAL, "portal-", "Portal",
-            "Портал добавлен и пока никуда не ведёт. Впиши ID комнаты во вкладке «Объект»"
-            + " или нажми «Создать комнату из выбранного прохода».");
+            global::osu.Game.Localisation.ClientTranslationStrings.J4438);
 
         public void AddSidePassage() => addNewEntity(EntityKinds.PASSAGE, "passage-", "Passage",
-            "Проход добавлен и пока никуда не ведёт. Впиши ID комнаты во вкладке «Объект»"
-            + " или нажми «Создать комнату из выбранного прохода».");
+            global::osu.Game.Localisation.ClientTranslationStrings.J4441);
 
         public void AddTerminal() => addNewEntity(EntityKinds.TERMINAL, "quest-board-", "Quest board",
-            "Доска заданий добавлена. Вид киоска меняется кнопкой «Сменить вид» — их четыре.",
+            global::osu.Game.Localisation.ClientTranslationStrings.J4444,
             record => record.Style = TerminalVariants.QUEST_BOARD);
 
         public void AddShop() => addNewEntity(EntityKinds.TERMINAL, "shop-", "Shop",
-            "Магазин добавлен. Вид киоска меняется кнопкой «Сменить вид» — их четыре.",
+            global::osu.Game.Localisation.ClientTranslationStrings.J4447,
             record => record.Style = TerminalVariants.SHOP);
 
         /// <summary>
         /// Puts a new object of <paramref name="kindName"/> in the middle of the view.
         /// </summary>
-        /// <param name="kindName">The entity kind name.</param>
-        /// <param name="idPrefix">The identifier prefix for the new entity.</param>
-        /// <param name="namePrefix">The display name prefix for the new entity.</param>
-        /// <param name="status">The status message to display.</param>
         /// <param name="configure">
         /// Applied to the record before the object is built, for a button that means one particular variant
         /// of a kind rather than the kind's default.
         /// </param>
-        private void addNewEntity(string kindName, string idPrefix, string namePrefix, string status,
+        private void addNewEntity(string kindName, string idPrefix, string namePrefix, LocalisableString status,
                                   Action<EntityRecord>? configure = null)
         {
             IWorldEntityKind? kind = registry.Find(kindName);
@@ -2147,7 +2142,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (selectedEntity == null)
             {
-                editorPanel.SetStatus("Сначала выбери объект.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4448);
                 return;
             }
 
@@ -2155,11 +2150,11 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             if (clipboard == null)
             {
-                editorPanel.SetStatus("Этот объект скопировать нельзя.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4449);
                 return;
             }
 
-            editorPanel.SetStatus($"«{selectedEntity.DisplayName}» скопирован. Ctrl+V — вставить, в том числе в другой комнате.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4450(selectedEntity.DisplayName));
         }
 
         /// <summary>
@@ -2169,7 +2164,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (clipboard == null)
             {
-                editorPanel.SetStatus("Буфер пуст. Скопируй объект через Ctrl+C.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4451);
                 return;
             }
 
@@ -2183,7 +2178,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (selectedEntity == null)
             {
-                editorPanel.SetStatus("Сначала выбери объект.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4448);
                 return;
             }
 
@@ -2191,7 +2186,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             if (source == null)
             {
-                editorPanel.SetStatus("Этот объект скопировать нельзя.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4449);
                 return;
             }
 
@@ -2207,7 +2202,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             if (kind == null)
             {
-                editorPanel.SetStatus("Такого типа объекта здесь нет.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4454);
                 return;
             }
 
@@ -2251,7 +2246,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (selectedEntity == null)
             {
-                editorPanel.SetStatus("Сначала выбери объект.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4448);
                 return;
             }
 
@@ -2267,21 +2262,21 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             // The depths are recomputed from the list every frame, so moving it here is the whole change.
             editorPanel.SetStatus(toFront
-                ? $"«{moved.DisplayName}» — на передний план."
-                : $"«{moved.DisplayName}» — на задний план.");
+                ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4455(moved.DisplayName)
+                : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4456(moved.DisplayName));
         }
 
         public void CreateConnectedRoom()
         {
             if (selectedEntity is not WorldPassage passage)
             {
-                editorPanel.SetStatus("Сначала выбери портал или проход для новой комнаты.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4457);
                 return;
             }
 
             if (!string.IsNullOrEmpty(passage.DestinationRoomId))
             {
-                editorPanel.SetStatus("Этот проход уже связан с комнатой.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4458);
                 return;
             }
 
@@ -2315,7 +2310,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (selectedEntity is not WorldPassage passage)
             {
-                editorPanel.SetStatus("Сначала выбери портал или проход.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4460);
                 return;
             }
 
@@ -2333,7 +2328,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (previousRoomId == null || !rooms.ContainsKey(previousRoomId))
             {
-                editorPanel.SetStatus("Предыдущей комнаты нет — ты ещё никуда не переходил.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4461);
                 return;
             }
 
@@ -2344,13 +2339,13 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (selectedEntity is not WorldPassage passage)
             {
-                editorPanel.SetStatus("Сначала выбери портал или проход.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4460);
                 return;
             }
 
             if (!rooms.TryGetValue(roomId, out RoomDefinition? room))
             {
-                editorPanel.SetStatus($"Комната с ID «{roomId}» не существует.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4396(roomId));
                 return;
             }
 
@@ -2369,7 +2364,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             rooms[currentRoomId] = captureCurrentRoom();
             refreshArrivalMarkers();
             editorPanel.SetSelection(passage);
-            editorPanel.SetStatus($"«{passage.DisplayName}» ведёт в «{room.Name}». {pairing}");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4462(passage.DisplayName, room.Name, pairing));
         }
 
         /// <summary>
@@ -2514,7 +2509,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             if (!rooms.TryGetValue(sourceRoomId, out RoomDefinition? source))
             {
-                editorPanel.SetStatus($"Комната с ID «{sourceRoomId}» не существует.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4396(sourceRoomId));
                 return;
             }
 
@@ -2526,7 +2521,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             if (doors.Length == 0)
             {
-                editorPanel.SetStatus($"В «{source.Name}» нет прохода, ведущего сюда. Сначала свяжи проход с этой комнатой.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4473(source.Name));
                 return;
             }
 
@@ -2547,15 +2542,15 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             refreshArrivalMarkers();
 
             editorPanel.SetStatus(doors.Length == 1
-                ? $"Из «{source.Name}» игрок будет выходить здесь — отмечено крестом. Сохрани мир."
-                : $"Из «{source.Name}» сюда ведут {doors.Length} прохода — все будут выводить в отмеченной точке. Сохрани мир.");
+                ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4474(source.Name)
+                : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4475(source.Name, doors.Length));
         }
 
         public void OpenLinkedRoom()
         {
             if (selectedEntity is not WorldPassage passage || string.IsNullOrEmpty(passage.DestinationRoomId))
             {
-                editorPanel.SetStatus("Сначала выбери связанный портал или проход.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4476);
                 return;
             }
 
@@ -2571,13 +2566,12 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (initialRoomId == currentRoomId)
             {
-                editorPanel.SetStatus($"«{currentRoomName}» и так начальная комната.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4477(currentRoomName));
                 return;
             }
 
             initialRoomId = currentRoomId;
-            editorPanel.SetStatus($"Мир будет начинаться в «{currentRoomName}», и сюда же будет возвращать смерть."
-                                  + " Сохрани мир.");
+            editorPanel.SetStatus(LocalisableString.Interpolate($"{(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4478(currentRoomName))}{(global::osu.Game.Localisation.ClientTranslationStrings.J4479)}"));
         }
 
         /// <summary>
@@ -2591,21 +2585,20 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (currentRoomId == initialRoomId)
             {
-                editorPanel.SetStatus("Начальную комнату удалить нельзя: сначала сделай начальной другую.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4480);
                 return;
             }
 
             if (rooms.Count <= 1)
             {
-                editorPanel.SetStatus("Это последняя комната мира.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4481);
                 return;
             }
 
             if (roomPendingDeletion != currentRoomId)
             {
                 roomPendingDeletion = currentRoomId;
-                editorPanel.SetStatus($"Удалить «{currentRoomName}» со всем, что в ней? Нажми ещё раз."
-                                      + " Отменить через Ctrl+Z будет нельзя.");
+                editorPanel.SetStatus(LocalisableString.Interpolate($"{(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4482(currentRoomName))}{(global::osu.Game.Localisation.ClientTranslationStrings.J4483)}"));
                 return;
             }
 
@@ -2623,9 +2616,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             undoHistory.Clear();
             enterRoom(rooms[initialRoomId]);
 
-            editorPanel.SetStatus($"Комната «{removed}» удалена."
-                                  + (clearedLinks > 0 ? $" Проходов, которые в неё вели: {clearedLinks} — они больше никуда не ведут." : string.Empty)
-                                  + " Сохрани мир, чтобы это стало окончательным.");
+            editorPanel.SetStatus(LocalisableString.Interpolate($"{(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4484(removed))}{(clearedLinks > 0 ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4485(clearedLinks) : string.Empty)}{(global::osu.Game.Localisation.ClientTranslationStrings.J4486)}"));
         }
 
         /// <summary>
@@ -2669,7 +2660,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
                 Rooms = rooms.Values.OrderBy(room => room.Id).ToList(),
             };
 
-            editorPanel.SetStatus("Сохранение мира…");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4487);
 
             session.Publish(document, outcome => editorPanel.SetStatus(outcome switch
             {
@@ -2677,9 +2668,9 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
                 // holds every room, and each save of it bumps the count by one. It is what lets the server
                 // refuse a save written on top of somebody else's.
                 PublishOutcome.Published =>
-                    $"Мир сохранён целиком: комнат {rooms.Count}, сохранение №{session.Revision.Value}.",
-                PublishOutcome.Forbidden => "Публиковать мир может только администратор Dodge World.",
-                _ => "Публикация не удалась. Перезагрузи мир: возможно, его изменил другой редактор.",
+                    global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4488(rooms.Count, session.Revision.Value),
+                PublishOutcome.Forbidden => global::osu.Game.Localisation.ClientTranslationStrings.J4489,
+                _ => global::osu.Game.Localisation.ClientTranslationStrings.J4490,
             }));
         }
 
@@ -2692,7 +2683,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
                 : DefaultWorld.CreateConnectedRoom(currentRoomId, currentRoomName, initialRoomId, initialRoomName);
 
             enterRoom(rooms[currentRoomId]);
-            editorPanel.SetStatus("Стандартная планировка восстановлена. Сохрани мир.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4491);
         }
 
         public void CloseEditor() => setEditorMode(false);
@@ -2701,21 +2692,21 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (selectedEntity is not MobSpawnZone zone)
             {
-                editorPanel.SetStatus("Сначала выбери зону появления мобов.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4492);
                 return;
             }
 
             pushUndo();
             zone.SpawnCount = Math.Clamp(zone.SpawnCount + delta, MobSpawnKind.MIN_SPAWN_COUNT, MobSpawnKind.MAX_SPAWN_COUNT);
             reloadLayout();
-            editorPanel.SetStatus($"Мобов в зоне: {zone.SpawnCount}.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4493(zone.SpawnCount));
         }
 
         public void CycleSelectedStyle()
         {
             if (selectedEntity?.CanStyle != true)
             {
-                editorPanel.SetStatus("У этого объекта нет цветовых вариантов.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4494);
                 return;
             }
 
@@ -2727,7 +2718,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (selectedEntity?.CanRound != true)
             {
-                editorPanel.SetStatus("У этого объекта нет скругления.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4495);
                 return;
             }
 
@@ -2740,7 +2731,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (selectedEntity == null)
             {
-                editorPanel.SetStatus("Сначала выбери объект на карте.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4496);
                 return;
             }
 
@@ -2752,7 +2743,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             entities.Remove(removed);
             worldCamera.Remove(removed, true);
             reloadLayout();
-            editorPanel.SetStatus($"«{removed.DisplayName}» удалён.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4497(removed.DisplayName));
         }
 
         public void SetSelectedCornerRadius(float value)
@@ -2830,7 +2821,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (!session.CanEdit.Value)
             {
-                announce("ТЕКСТУРЫ МОЖЕТ ДОБАВЛЯТЬ ТОЛЬКО АВТОР МИРА", long_announcement_hold);
+                announce(global::osu.Game.Localisation.ClientTranslationStrings.J4498, long_announcement_hold);
                 return;
             }
 
@@ -2878,7 +2869,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             string contentType = extension is ".jpg" or ".jpeg" ? "image/jpeg" : "image/png";
             var upload = new TextureImport(content, contentType, extension, file.Name, importPurpose);
 
-            editorPanel.SetStatus($"Загрузка текстуры: {file.Name}…");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4500(file.Name));
 
             ITexturedEntity? target = textureImportTarget;
 
@@ -2909,7 +2900,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (selectedEntity is not ITexturedEntity target)
             {
-                editorPanel.SetStatus("Текстуру можно применить к поверхности, NPC или зоне мобов.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4504);
                 return;
             }
 
@@ -2917,13 +2908,13 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             if (entry == null)
             {
-                editorPanel.SetStatus("Сначала выбери текстуру в библиотеке.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4505);
                 return;
             }
 
             if (entry.BuiltIn || string.IsNullOrWhiteSpace(entry.Path))
             {
-                editorPanel.SetStatus("Стандартный меч предназначен только для оружия. Выбери другую текстуру.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4506);
                 return;
             }
 
@@ -2933,8 +2924,8 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             editorPanel.SetMaterialLabels(target);
             // Mobs are only built when the editor closes, so they pick the image up then.
             editorPanel.SetStatus(target is MobSpawnZone
-                ? $"Текстура «{entry.Name}» применена к мобам зоны."
-                : $"Текстура «{entry.Name}» применена к «{selectedEntity.DisplayName}».");
+                ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4507(entry.Name)
+                : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4508(entry.Name, selectedEntity.DisplayName));
         }
 
         public void ApplySelectedTextureToWeapon()
@@ -2943,7 +2934,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
 
             if (entry == null)
             {
-                editorPanel.SetStatus("Сначала выбери текстуру в библиотеке.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4505);
                 return;
             }
 
@@ -2951,7 +2942,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             {
                 defaultWeaponSkinId = null;
                 textureLibrary.SetActiveSkin(null);
-                editorPanel.SetStatus("Выбран встроенный стандартный меч.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4509);
                 return;
             }
 
@@ -2972,14 +2963,14 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             weaponSkins[skin_id] = skin;
             defaultWeaponSkinId = skin_id;
             textureLibrary.SetActiveSkin(skin);
-            editorPanel.SetStatus($"Текстура меча готова: {sourceName}. Сохрани мир для публикации.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4510(sourceName));
         }
 
         public void ClearSurfaceTexture()
         {
             if (selectedEntity is not ITexturedEntity target)
             {
-                editorPanel.SetStatus("Сначала выбери объект с текстурой.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4511);
                 return;
             }
 
@@ -2987,7 +2978,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
             target.SetTexturePath(null);
             target.SetTexture(null);
             editorPanel.SetMaterialLabels(target);
-            editorPanel.SetStatus("Текстура удалена.");
+            editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4512);
         }
 
         /// <summary>
@@ -2998,7 +2989,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld
         {
             if (selectedEntity is not ITexturedEntity target || target.TextureFillModeName == null)
             {
-                editorPanel.SetStatus("У этого объекта картинка всегда вписывается целиком.");
+                editorPanel.SetStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4513);
                 return;
             }
 

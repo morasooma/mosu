@@ -113,7 +113,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
                 else
                 {
                     addButton.Enabled.Value = false;
-                    addButton.TooltipText = "Maximum combo colours reached";
+                    addButton.TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J3601;
                 }
             }, true);
             updateState();

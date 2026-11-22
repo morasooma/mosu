@@ -26,6 +26,8 @@ namespace osu.Android
         DataMimeType = "*/*")]
     [IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault }, Label = "Import replay", DataScheme = "content", DataPathPattern = ".*\\\\.osr", DataHost = "*",
         DataMimeType = "*/*")]
+    [IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault }, Label = "Import resources", DataScheme = "content", DataPathPattern = ".*\\\\.morars", DataHost = "*", DataMimeType = "*/*")]
+    [IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault }, Label = "Import resources", DataScheme = "content", DataMimeType = "application/x-morasooma-resources")]
     [IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault }, Label = "Import beatmap", DataScheme = "content", DataMimeType = "application/x-osu-beatmap-archive")]
     [IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault }, Label = "Import skin", DataScheme = "content", DataMimeType = "application/x-osu-skin-archive")]
     [IntentFilter(new[] { Intent.ActionView }, Categories = new[] { Intent.CategoryDefault }, Label = "Import replay", DataScheme = "content", DataMimeType = "application/x-osu-replay")]
@@ -82,6 +84,8 @@ namespace osu.Android
 
         protected override void OnCreate(Bundle? savedInstanceState)
         {
+            // The server expects a platform proof for protected score submissions.
+            // Register it before AndroidGameActivity creates the game and connects online.
             base.OnCreate(savedInstanceState);
 
             // OnNewIntent() only fires for an activity if it's *re-launched* while it's on top of the activity stack.

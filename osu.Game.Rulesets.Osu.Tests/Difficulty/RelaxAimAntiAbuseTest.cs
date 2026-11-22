@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using osu.Game.Beatmaps;
+using osu.Game.Configuration;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Mods;
@@ -17,9 +18,22 @@ using osu.Game.Tests.Beatmaps;
 namespace osu.Game.Rulesets.Osu.Tests.Difficulty
 {
     [TestFixture]
+    [NonParallelizable]
     public class RelaxAimAntiAbuseTest : DifficultyCalculatorTest
     {
         protected override string ResourceAssembly => "osu.Game.Rulesets.Osu.Tests";
+
+        private ForkRelaxPpSystem originalSystem;
+
+        [SetUp]
+        public void SelectOriginalCalculator()
+        {
+            originalSystem = RelaxPpSystemSelection.Current;
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuRealistik;
+        }
+
+        [TearDown]
+        public void RestoreCalculator() => RelaxPpSystemSelection.Current = originalSystem;
 
         [Test]
         public void StreamLabDtCs10AntiAbuseRegression()
@@ -178,7 +192,7 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
             difficultyAdjust.CircleSize.Value = 10;
 
             Mod[] noRelaxMods = { new OsuModDoubleTime(), difficultyAdjust };
-            Mod[] relaxMods = { new OsuModDoubleTime(), difficultyAdjust, new OsuModMosuRelax() };
+            Mod[] relaxMods = { new OsuModDoubleTime(), difficultyAdjust, new OsuModRelax() };
             var calculator = new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working);
             var noRelax = (OsuDifficultyAttributes)calculator.Calculate(noRelaxMods);
             var relax = (OsuDifficultyAttributes)calculator.Calculate(relaxMods);
@@ -213,8 +227,8 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
         {
             IWorkingBeatmap working = GetBeatmap(beatmapName);
             Mod[] mods = rate < 1
-                ? new Mod[] { new OsuModMosuRelax(), new OsuModHalfTime { SpeedChange = { Value = rate } } }
-                : new Mod[] { new OsuModMosuRelax() };
+                ? new Mod[] { new OsuModRelax(), new OsuModHalfTime { SpeedChange = { Value = rate } } }
+                : new Mod[] { new OsuModRelax() };
 
             var difficulty = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
             int totalHits = difficulty.HitCircleCount + difficulty.SliderCount + difficulty.SpinnerCount;

@@ -39,6 +39,8 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Spectate
         /// </summary>
         public readonly int UserId;
 
+        public bool IsRankedPlay { get; init; }
+
         /// <summary>
         /// The <see cref="Spectate.SpectatorPlayerClock"/> used to control the gameplay running state of a loaded <see cref="Player"/>.
         /// </summary>
@@ -111,7 +113,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Spectate
 
             stack.Push(new MultiSpectatorPlayerLoader(Score, () =>
             {
-                var player = new MultiSpectatorPlayer(Score, SpectatorPlayerClock);
+                var player = new MultiSpectatorPlayer(Score, SpectatorPlayerClock, IsRankedPlay);
                 player.OnGameplayStarted += () => OnGameplayStarted?.Invoke();
 
                 clockAdjustmentsFromMods.BindAdjustments(player.ClockAdjustmentsFromMods);

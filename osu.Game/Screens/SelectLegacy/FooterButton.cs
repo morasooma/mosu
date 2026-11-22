@@ -13,6 +13,7 @@ using osu.Framework.Input.Events;
 using osu.Framework.Localisation;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Graphics.UserInterface;
 using osu.Game.Input.Bindings;
 using osuTK;
 using osuTK.Graphics;
@@ -23,6 +24,9 @@ namespace osu.Game.Screens.SelectLegacy
 {
     public partial class FooterButton : OsuClickableContainer, IKeyBindingHandler<GlobalAction>
     {
+        protected override HoverSounds CreateHoverSounds(HoverSampleSet sampleSet)
+            => new ClassicSongSelectSounds { Enabled = { BindTarget = Enabled } };
+
         public const float SHEAR_WIDTH = 7.5f;
 
         protected static readonly Vector2 SHEAR = new Vector2(SHEAR_WIDTH / Footer.HEIGHT, 0);

@@ -2,6 +2,11 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Linq;
+using System.Collections.Generic;
+using osu.Framework.Graphics.UserInterface;
+using osu.Game.Graphics.UserInterface;
+using osu.Game.Rulesets.Edit;
+using osu.Game.Rulesets.Dodge.Localisation;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Primitives;
@@ -25,6 +30,20 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
         [Resolved]
         private DodgeHitObjectComposer composer { get; set; } = null!;
+
+        protected override IEnumerable<MenuItem> GetContextMenuItemsForSelection(IEnumerable<SelectionBlueprint<HitObject>> selection)
+        {
+            foreach (var item in base.GetContextMenuItemsForSelection(selection))
+                yield return item;
+            yield return new OsuMenuItem(DodgeEditorStrings.CopyAppearance, MenuItemType.Standard, composer.CopyAppearance)
+            {
+                Action = { Disabled = !composer.CanCopyAppearance },
+            };
+            yield return new OsuMenuItem(DodgeEditorStrings.PasteAppearance, MenuItemType.Standard, composer.PasteAppearance)
+            {
+                Action = { Disabled = !composer.CanPasteAppearance },
+            };
+        }
 
         public override bool HandleMovement(MoveSelectionEvent<HitObject> moveEvent)
         {
@@ -53,7 +72,10 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 if (hitObject is not DodgeBullet bullet)
                 {
                     if (hitObject is DodgeTrigger trigger)
-                        trigger.Position += delta;
+                    {
+                        var points = DodgeSelectionTransformUtils.GetPoints(trigger);
+                        DodgeSelectionTransformUtils.SetPoints(trigger, points.Start + delta, points.End + delta);
+                    }
 
                     if (hitObject is DodgeArenaChange arenaChange)
                     {

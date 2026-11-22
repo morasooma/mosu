@@ -25,7 +25,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
         public float Length { get; set; } = 700;
 
         /// <summary>How thick the beam is, in world units.</summary>
-        public new float Width { get; set; } = 46;
+        public float Width { get; set; } = 46;
 
         /// <summary>How long the beam is lethal within each cycle, in milliseconds.</summary>
         public int ActiveMilliseconds { get; set; } = 900;

@@ -82,7 +82,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
         public override bool ShouldCalculateLivePerformance(ScoreInfo score, HitObject hitObject, bool isReverting)
         {
-            if (!ManagedRealistikRelaxCalculator.IsRelax(score.Mods))
+            if (!usesPrerelease(score) && !score.Mods.Any(m => m is OsuModRelax))
                 return true;
 
             // Relax PP uses the combo of completed osu! objects. Slider ticks and repeats
@@ -103,12 +103,17 @@ namespace osu.Game.Rulesets.Osu.Difficulty
         }
 
         public override bool RequiresBackgroundLivePerformanceCalculation(ScoreInfo score)
-            => RelaxPpSystemSelection.UsesManagedRealistik
-               && ManagedRealistikRelaxCalculator.IsRelax(score.Mods);
+            => usesPrerelease(score) || (RelaxPpSystemSelection.UsesManagedRealistik && score.Mods.Any(m => m is OsuModRelax));
+
+        private static bool usesPrerelease(ScoreInfo score)
+            => RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuPpPrerelease && ManagedRealistikRelaxCalculator.IsRelax(score.Mods);
 
         protected override PerformanceAttributes CreatePerformanceAttributes(ScoreInfo score, DifficultyAttributes attributes)
         {
             var osuAttributes = (OsuDifficultyAttributes)attributes;
+
+            if (usesPrerelease(score))
+                return Relax.TazikPp2.Mp2PrereleaseCalculator.CalculatePerformance(score, osuAttributes);
 
             usingClassicSliderAccuracy = score.Mods.OfType<OsuModClassic>().Any(m => m.NoSliderHeadAccuracy.Value);
             usingScoreV2 = score.Mods.Any(m => m is ModScoreV2);
@@ -148,14 +153,17 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
             // The pinned Mosu/Realistik RX calculator owns relax PP under the fork system;
             // LazerVanilla falls through to the upstream lazer relax formula below.
-            // MosuPp: the self-contained MosuPp calculator (Relax/MosuPpRelax), identical to the MosuPp development build.
-            if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuPp
-                && ManagedRealistikRelaxCalculator.IsRelax(score.Mods))
-                return Relax.MosuPpRelax.MosuPpRelaxCalculator.CalculatePerformance(score);
+            if (score.Mods.Any(m => m is OsuModRelax))
+            {
+                if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.TazikPp)
+                    return Relax.TazikPpRelax.TazikPpRelaxCalculator.CalculatePerformance(score, osuAttributes);
 
-            if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuRealistik
-                && ManagedRealistikRelaxCalculator.IsRelax(score.Mods))
-                return ManagedRealistikRelaxCalculator.CalculatePerformance(score, osuAttributes);
+                if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuPp)
+                    return Relax.MosuPpRelax.MosuPpRelaxCalculator.CalculatePerformance(score);
+
+                if (RelaxPpSystemSelection.Current == ForkRelaxPpSystem.MosuRealistik)
+                    return ManagedRealistikRelaxCalculator.CalculatePerformance(score, osuAttributes);
+            }
 
             double comboBasedEstimatedMissCount = calculateComboBasedEstimatedMissCount(osuAttributes);
             double? scoreBasedEstimatedMissCount = null;
@@ -191,7 +199,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty
             if (score.Mods.Any(m => m is OsuModSpunOut) && totalHits > 0)
                 multiplier *= 1.0 - DiffUtils.Pow((double)osuAttributes.SpinnerCount / totalHits, 0.85);
 
-            if (score.Mods.Any(h => h is OsuModRelax or OsuModMosuRelax))
+            if (score.Mods.Any(h => h is OsuModRelax))
             {
                 // https://www.desmos.com/calculator/vspzsop6td
                 // we use OD13.3 as maximum since it's the value at which great hitwidow becomes 0
@@ -285,22 +293,21 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
             // The historical aim scale-up belongs to the fork's Mosu relax balance;
             // the vanilla PP system must stay faithful to upstream lazer.
-            if (score.Mods.Any(h => h is OsuModRelax or OsuModMosuRelax)
+            if (score.Mods.Any(h => h is OsuModRelax)
                 && RelaxPpSystemSelection.Current != ForkRelaxPpSystem.LazerVanilla)
                 aimValue *= RELAX_AIM_MULTIPLIER;
 
-            // Aim assist directly reduces the movement and precision required from the player.
-            // Preserve the fork's anti-abuse PP penalty on top of the current upstream formula.
-            if (score.BeatmapInfo?.Status.BypassesMappingAntiAbuse() != true &&
-                score.Mods.OfType<OsuModMosuAimAssist>().FirstOrDefault() is OsuModMosuAimAssist aimAssist)
-                aimValue *= DiffUtils.Pow(1.0 - aimAssist.Strength.Value, 1.25);
+            // Aim assist reduces the player's aim requirement regardless of map status.
+            // Ranked/Approved exemptions concern mapping anti-abuse, not player assistance.
+            if (score.Mods.OfType<OsuModMosuAimAssist>().FirstOrDefault() is OsuModMosuAimAssist aimAssist)
+                aimValue *= DiffUtils.Pow(1.0 - aimAssist.PerformancePenaltyStrength, 1.25);
 
             return aimValue;
         }
 
         private double computeSpeedValue(ScoreInfo score, OsuDifficultyAttributes attributes)
         {
-            if (score.Mods.Any(h => h is OsuModRelax or OsuModMosuRelax) || speedDeviation == null)
+            if (score.Mods.Any(h => h is OsuModRelax) || speedDeviation == null)
                 return 0.0;
 
             double speedValue = HarmonicSkill.DifficultyToPerformance(attributes.SpeedDifficulty);
@@ -336,7 +343,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
         private double computeAccuracyValue(ScoreInfo score, OsuDifficultyAttributes attributes)
         {
-            if (score.Mods.Any(h => h is OsuModRelax or OsuModMosuRelax))
+            if (score.Mods.Any(h => h is OsuModRelax))
                 return 0.0;
 
             // This percentage only considers HitCircles of any value - in this part of the calculation we focus on hitting the timing hit window.

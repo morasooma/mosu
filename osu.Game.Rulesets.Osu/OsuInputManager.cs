@@ -18,6 +18,7 @@ using osu.Game.Configuration;
 using osu.Game.Input.Bindings;
 using osu.Game.Rulesets.Osu.Objects.Drawables;
 using osu.Game.Rulesets.Osu.UI;
+using osu.Game.Rulesets.Osu.Scoring;
 using osu.Game.Rulesets.UI;
 using osu.Game.Screens.Play.HUD.HitErrorMeters;
 using osuTK;
@@ -29,6 +30,8 @@ namespace osu.Game.Rulesets.Osu
         private const double virtual_cursor_delay = 200;
 
         public SlimReadOnlyListWrapper<OsuAction> PressedActions => KeyBindingContainer.PressedActions;
+
+        internal StableButtonState StableButtonState { get; } = new StableButtonState();
 
         /// <summary>
         /// Whether gameplay input buttons should be allowed.
@@ -265,6 +268,13 @@ namespace osu.Game.Rulesets.Osu
         {
             base.Update();
 
+            if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol)
+            {
+                int buttons = (PressedActions.Contains(OsuAction.LeftButton) ? 1 : 0)
+                              | (PressedActions.Contains(OsuAction.RightButton) ? 2 : 0);
+                StableButtonState.Update(buttons);
+            }
+
             if (virtualCursorDelayEnabled.Value && !externalVirtualCursorActive)
                 updateDelayedCursorPosition();
         }
@@ -447,31 +457,31 @@ namespace osu.Game.Rulesets.Osu
 
     public enum OsuAction
     {
-        [Description("Left button")]
+        [Description("Left button"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5692))]
         LeftButton,
 
-        [Description("Right button")]
+        [Description("Right button"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5693))]
         RightButton,
 
-        [Description("Smoke")]
+        [Description("Smoke"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5694))]
         Smoke,
 
-        [Description("Hit circle tool")]
+        [Description("Hit circle tool"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5695))]
         EditorHitCircleTool = 10000,
 
-        [Description("Slider tool")]
+        [Description("Slider tool"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5696))]
         EditorSliderTool,
 
-        [Description("Spinner tool")]
+        [Description("Spinner tool"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5697))]
         EditorSpinnerTool,
 
-        [Description("Grid from points tool")]
+        [Description("Grid from points tool"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5698))]
         EditorGridFromPointsTool,
 
-        [Description("Toggle grid snap")]
+        [Description("Toggle grid snap"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5699))]
         EditorToggleGridSnap,
 
-        [Description("Toggle distance snap")]
+        [Description("Toggle distance snap"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5700))]
         EditorToggleDistanceSnap,
     }
 }

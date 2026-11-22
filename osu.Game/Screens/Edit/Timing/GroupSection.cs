@@ -1,7 +1,6 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
@@ -17,11 +16,16 @@ namespace osu.Game.Screens.Edit.Timing
     internal partial class GroupSection : CompositeDrawable
     {
         private FormTextBox textBox = null!;
+        private FormDiscreteAdjustmentControl<double> offsetControl = null!;
+        private bool changingGroup;
 
         private OsuButton button = null!;
 
         [Resolved]
-        protected Bindable<ControlPointGroup> SelectedGroup { get; private set; } = null!;
+        protected Bindable<ControlPointGroup?> SelectedGroup { get; private set; } = null!;
+
+        [Resolved]
+        private ControlPointSelection selection { get; set; } = null!;
 
         [Resolved]
         protected EditorBeatmap Beatmap { get; private set; } = null!;
@@ -31,9 +35,6 @@ namespace osu.Game.Screens.Edit.Timing
 
         [Resolved]
         private EditorClock clock { get; set; } = null!;
-
-        [Resolved]
-        private IEditorChangeHandler? changeHandler { get; set; }
 
         [BackgroundDependencyLoader]
         private void load()
@@ -55,12 +56,17 @@ namespace osu.Game.Screens.Edit.Timing
                     {
                         textBox = new FormTextBox
                         {
-                            Caption = "Time",
+                            Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4332,
                             SelectAllOnFocus = true,
+                        },
+                        offsetControl = new FormDiscreteAdjustmentControl<double>(1)
+                        {
+                            Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4333,
+                            Current = new BindableDouble { Precision = 1 },
                         },
                         button = new RoundedButton
                         {
-                            Text = "Use current time",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4334,
                             RelativeSizeAxes = Axes.X,
                             Action = () => changeSelectedGroupTime(clock.CurrentTime)
                         }
@@ -91,15 +97,37 @@ namespace osu.Game.Screens.Edit.Timing
 
                     // cannot use textBox.Current.Disabled due to https://github.com/ppy/osu-framework/issues/3919
                     textBox.ReadOnly = true;
+                    offsetControl.Current.Disabled = true;
                     button.Enabled.Value = false;
                     return;
                 }
 
                 textBox.ReadOnly = false;
                 button.Enabled.Value = true;
+                offsetControl.Current.Disabled = false;
 
-                textBox.Current.Value = $"{group.NewValue.Time:n0}";
+                changingGroup = true;
+                try
+                {
+                    textBox.Current.Value = $"{group.NewValue.Time:n0}";
+                    offsetControl.Current.Value = group.NewValue.Time;
+                }
+                finally
+                {
+                    changingGroup = false;
+                }
             }, true);
+
+            offsetControl.Current.BindValueChanged(offset =>
+            {
+                if (changingGroup || SelectedGroup.Value == null)
+                    return;
+
+                bool wasAtStart = clock.CurrentTimeAccurate == SelectedGroup.Value.Time;
+                changeSelectedGroupTime(offset.NewValue);
+                if (!clock.IsRunning && wasAtStart)
+                    clock.Seek(SelectedGroup.Value.Time);
+            });
         }
 
         private void changeSelectedGroupTime(in double time)
@@ -107,28 +135,7 @@ namespace osu.Game.Screens.Edit.Timing
             if (SelectedGroup.Value == null || time == SelectedGroup.Value.Time)
                 return;
 
-            changeHandler?.BeginChange();
-
-            var currentGroupItems = SelectedGroup.Value.ControlPoints.ToArray();
-
-            Beatmap.ControlPointInfo.RemoveGroup(SelectedGroup.Value);
-
-            foreach (var cp in currentGroupItems)
-            {
-                // Only adjust hit object offsets if the group contains a timing control point
-                if (cp is TimingControlPoint tp && configManager.Get<bool>(OsuSetting.EditorAdjustExistingObjectsOnTimingChanges))
-                {
-                    TimingSectionAdjustments.AdjustHitObjectOffset(Beatmap, tp, time - SelectedGroup.Value.Time);
-                    Beatmap.UpdateAllHitObjects();
-                }
-
-                Beatmap.ControlPointInfo.Add(time, cp);
-            }
-
-            // the control point might not necessarily exist yet, if currentGroupItems was empty.
-            SelectedGroup.Value = Beatmap.ControlPointInfo.GroupAt(time, true);
-
-            changeHandler?.EndChange();
+            selection.ChangeTime(Beatmap, time, configManager.Get<bool>(OsuSetting.EditorAdjustExistingObjectsOnTimingChanges));
         }
     }
 }

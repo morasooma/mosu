@@ -54,8 +54,8 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                 Spacing = new Vector2(0, 10),
                 Children = new Drawable[]
                 {
-                    header = WrappedText.Paragraph("ОБЪЕКТ НЕ ВЫБРАН", colours.Orange1, 16, FontWeight.Bold),
-                    emptyHint = WrappedText.Paragraph("Щёлкни объект на карте, чтобы увидеть его свойства.", colours.GrayA),
+                    header = WrappedText.Paragraph(global::osu.Game.Localisation.ClientTranslationStrings.J4626, colours.Orange1, 16, FontWeight.Bold),
+                    emptyHint = WrappedText.Paragraph(global::osu.Game.Localisation.ClientTranslationStrings.J4627, colours.GrayA),
                     fieldFlow = new FillFlowContainer
                     {
                         RelativeSizeAxes = Axes.X,
@@ -79,7 +79,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
 
             if (entity == null)
             {
-                header.Text = "ОБЪЕКТ НЕ ВЫБРАН";
+                header.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4626;
                 emptyHint.Alpha = 1;
                 return;
             }
@@ -88,7 +88,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
             header.Text = $"{entity.DisplayName.ToUpperInvariant()}  •  {describeKind(entity)}";
 
             // Present on every kind, so it is offered here rather than declared by each one.
-            addField(new EntityField("Название", "как объект называется в редакторе и в сохранении",
+            addField(new EntityField(global::osu.Game.Localisation.ClientTranslationStrings.J4628, global::osu.Game.Localisation.ClientTranslationStrings.J4629,
                 e => e.DisplayName,
                 (e, text) =>
                 {
@@ -149,10 +149,10 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
         /// <summary>
         /// Captions currently on show, in order.
         /// </summary>
-        internal IReadOnlyList<string> FieldLabels => controls.Select(entry => entry.Field.Label).ToArray();
+        internal IReadOnlyList<string> FieldLabels => controls.Select(entry => entry.Field.Label.ToString()).ToArray();
 
         /// <summary>The control showing one property, for tests to read what it is and to work it.</summary>
         internal IEditorFieldControl? ControlForTesting(string label) =>
-            controls.FirstOrDefault(entry => entry.Field.Label == label).Control;
+            controls.FirstOrDefault(entry => entry.Field.Label.ToString() == label).Control;
     }
 }

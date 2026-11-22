@@ -21,17 +21,21 @@ namespace osu.Game.Rulesets.Dodge.UI
     {
         private readonly DodgeCameraChange[] changes;
         private readonly Vector2[] startOffsets;
+        private readonly DodgeCameraChange[] modeChanges;
 
         public DodgeCameraStateEvaluator(IEnumerable<DodgeCameraChange> changes)
         {
-            this.changes = changes.OrderBy(c => c.StartTime).ToArray();
+            modeChanges = changes.OrderBy(c => c.StartTime).ToArray();
+            this.changes = modeChanges;
             startOffsets = new Vector2[this.changes.Length];
 
             for (int i = 0; i < this.changes.Length; i++)
                 startOffsets[i] = evaluate(this.changes[i].StartTime, i);
         }
 
-        public bool HasChanges => changes.Length > 0;
+        public bool HasChanges => changes.Any(c => c.Mode == DodgeCameraMode.Scroll);
+
+        public DodgeCameraChange? ModeAt(double time) => modeChanges.LastOrDefault(c => c.StartTime <= time);
 
         public Vector2 Evaluate(double time) => changes.Length > 0 ? evaluate(time, changes.Length) : Vector2.Zero;
 
@@ -65,6 +69,9 @@ namespace osu.Game.Rulesets.Dodge.UI
                 return Vector2.Zero;
 
             DodgeCameraChange change = changes[activeIndex];
+            if (change.Mode != DodgeCameraMode.Scroll)
+                return startOffsets[activeIndex];
+
             Vector2 vector = change.EndPosition - change.Position;
 
             if (change.Continuous)

@@ -153,9 +153,9 @@ namespace osu.Game.Overlays.Changelog
                 },
             };
 
-            supportLinkText.AddText("Support further development of Morasooma and ");
-            supportLinkText.AddLink("become a Morasooma Supporter", @"https://pay.cloudtips.ru/p/72f10912", t => t.Font = t.Font.With(weight: FontWeight.Bold));
-            supportLinkText.AddText(" today!");
+            supportLinkText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3906);
+            supportLinkText.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J3907, @"https://pay.cloudtips.ru/p/72f10912", t => t.Font = t.Font.With(weight: FontWeight.Bold));
+            supportLinkText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3908);
         }
 
         private partial class SupporterPromoLinkFlowContainer : LinkFlowContainer

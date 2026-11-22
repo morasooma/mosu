@@ -738,6 +738,10 @@ namespace osu.Game.Online.Chat
 
         private void addMessages(List<Message> messages)
         {
+            // Channel creation responses may omit recent_messages or explicitly return null for an empty history.
+            if (messages == null || messages.Count == 0)
+                return;
+
             var channels = JoinedChannels.ToList();
             var blockedUserIds = localUserBlocks.Select(b => b.TargetID).ToList();
 

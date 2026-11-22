@@ -35,6 +35,7 @@ namespace osu.Game.Tests.Visual.SongSelect
 {
     public abstract partial class BeatmapCarouselTestScene : OsuManualInputManagerTestScene
     {
+        protected override bool UseFreshStoragePerRun => true;
         protected readonly Stack<BeatmapSetInfo> BeatmapSetRequestedSelections = new Stack<BeatmapSetInfo>();
         protected readonly Stack<BeatmapInfo> BeatmapRequestedSelections = new Stack<BeatmapInfo>();
 

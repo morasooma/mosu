@@ -12,6 +12,6 @@ namespace osu.Game.Rulesets.Dodge.Mods
     public class DodgeModCinema : ModCinema<DodgeHitObject>
     {
         public override ModReplayData CreateReplayData(IBeatmap beatmap, IReadOnlyList<Mod> mods)
-            => new ModReplayData(new DodgeAutoGenerator(beatmap).Generate(), new ModCreatedUser { Username = "DodgeBot" });
+            => new ModReplayData(new DodgeAutoGenerator(beatmap).Generate(), new ModCreatedUser { Username = "MoraBot" });
     }
 }

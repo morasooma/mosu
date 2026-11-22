@@ -72,13 +72,17 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
         public RankedPlayRoomState RoomState { get; private set; } = null!;
 
-        public bool IsOwnTurn => RoomState.ActiveUserId == client.LocalUser?.UserID;
+        public int PlayerId { get; set; }
+
+        public bool IsSpectating => client.LocalUser?.Role == MultiplayerRoomUserRole.Spectator;
+
+        public bool IsOwnTurn => RoomState.ActiveUserId == PlayerId;
 
         public bool IsOpponentTurn => RoomState.ActiveUserId == OpponentId;
 
         public int CurrentRound => RoomState.CurrentRound;
 
-        public int OpponentId => RoomState.Users.Keys.Single(u => u != client.LocalUser?.UserID);
+        public int OpponentId => RoomState.Users.Keys.Single(u => u != PlayerId);
 
         private readonly List<RankedPlayCardWithPlaylistItem> playerCards = new List<RankedPlayCardWithPlaylistItem>();
         private readonly List<RankedPlayCardWithPlaylistItem> opponentCards = new List<RankedPlayCardWithPlaylistItem>();
@@ -87,13 +91,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         [Resolved]
         private MultiplayerClient client { get; set; } = null!;
 
-        private APIUser player = null!;
-
         protected override void LoadComplete()
         {
             base.LoadComplete();
 
-            player = client.LocalUser!.User!;
+            if (PlayerId == 0)
+                PlayerId = client.LocalUser!.UserID;
 
             client.MatchRoomStateChanged += onMatchRoomStateChanged;
             client.RankedPlayCardAdded += onCardAdded;
@@ -101,6 +104,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             client.RankedPlayCardPlayed += onCardPlayed;
 
             var roomState = (RankedPlayRoomState)client.Room!.MatchState!;
+
+            if (roomState.LastPlayedCard != null)
+            {
+                LastPlayedCard = client.GetCardWithPlaylistItem(roomState.LastPlayedCard);
+                LastPlayedCard.PlaylistItem.Value = client.Room.CurrentPlaylistItem;
+            }
 
             onMatchRoomStateChanged(roomState);
 
@@ -120,20 +129,21 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
             RoomState = roomState;
 
-            stage.Value = roomState.Stage;
-
             foreach (var (userId, userInfo) in roomState.Users)
             {
-                if (userId == player.Id)
+                if (userId == PlayerId)
                     PlayerHealth.Value = userInfo.Life;
                 else
                     OpponentHealth.Value = userInfo.Life;
             }
+
+            // Consumers must observe health and room state from the same stage snapshot.
+            stage.Value = roomState.Stage;
         }
 
         private void onCardAdded(int userId, RankedPlayCardWithPlaylistItem item)
         {
-            if (userId == player.Id)
+            if (userId == PlayerId)
             {
                 playerCards.Add(item);
                 PlayerCardAdded?.Invoke(item);
@@ -147,7 +157,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
         private void onCardRemoved(int userId, RankedPlayCardWithPlaylistItem item)
         {
-            if (userId == player.Id)
+            if (userId == PlayerId)
             {
                 playerCards.Remove(item);
                 PlayerCardRemoved?.Invoke(item);

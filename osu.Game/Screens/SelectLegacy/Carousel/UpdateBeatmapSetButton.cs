@@ -101,7 +101,7 @@ namespace osu.Game.Screens.SelectLegacy.Carousel
                             Anchor = Anchor.CentreLeft,
                             Origin = Anchor.CentreLeft,
                             Font = OsuFont.Default.With(weight: FontWeight.Bold),
-                            Text = "Update",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5308,
                         }
                     }
                 },
@@ -159,7 +159,7 @@ namespace osu.Game.Screens.SelectLegacy.Carousel
             else
             {
                 Enabled.Value = true;
-                TooltipText = "Update beatmap with online changes";
+                TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5309;
 
                 progressFill.ResizeWidthTo(0, 100, Easing.OutQuint);
             }

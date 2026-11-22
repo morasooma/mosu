@@ -271,7 +271,8 @@ namespace osu.Game.Tests.Visual.SongSelect
                 {
                 }
 
-                public void Process(BeatmapSetInfo beatmapSet, MetadataLookupScope lookupScope = MetadataLookupScope.LocalCacheFirst)
+                public void Process(BeatmapSetInfo beatmapSet, MetadataLookupScope lookupScope = MetadataLookupScope.LocalCacheFirst,
+                                    Func<BeatmapInfo, bool>? skipCalculation = null)
                 {
                 }
 

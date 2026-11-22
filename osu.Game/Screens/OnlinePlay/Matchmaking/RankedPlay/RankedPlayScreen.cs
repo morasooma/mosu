@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
@@ -35,6 +36,7 @@ using osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Card;
 using osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Components;
 using osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Intro;
 using osu.Game.Screens.OnlinePlay.Multiplayer;
+using osu.Game.Screens.OnlinePlay.Multiplayer.Spectate;
 using osu.Game.Users;
 using osuTK;
 
@@ -43,7 +45,11 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
     [Cached]
     public sealed partial class RankedPlayScreen : OsuScreen, IPreviewTrackOwner, IHandlePresentBeatmap
     {
-        protected override bool InitialBackButtonVisibility => false;
+        protected override bool InitialBackButtonVisibility => IsSpectating;
+
+        public bool IsSpectating => spectatedPlayerId.HasValue;
+
+        private readonly int? spectatedPlayerId;
 
         public override bool? ApplyModTrackAdjustments => true;
 
@@ -87,6 +93,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         private QueueController? controller { get; set; }
 
         private readonly MultiplayerRoom room;
+        private readonly LocalRankedPlayVisualMods localVisualMods;
 
         private APIUser localUser = null!;
         private APIUser opponentUser = null!;
@@ -108,8 +115,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
         private readonly Container content;
 
-        [Cached]
-        private readonly RankedPlayChatDisplay chat;
+        private readonly RankedPlayChatDisplay? chat;
 
         [Cached]
         private readonly RankedPlayMatchInfo matchInfo;
@@ -123,15 +129,17 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         [Cached]
         private BackgroundMusicManager backgroundMusic;
 
-        public RankedPlayScreen(MultiplayerRoom room)
+        public RankedPlayScreen(MultiplayerRoom room, LocalRankedPlayVisualMods? localVisualMods = null, int? spectatedPlayerId = null)
         {
             this.room = room;
+            this.spectatedPlayerId = spectatedPlayerId;
+            this.localVisualMods = localVisualMods ?? new LocalRankedPlayVisualMods();
 
-            Activity.Value = new UserActivity.InLobby(room);
+            Activity.Value = IsSpectating ? null : new UserActivity.InLobby(room);
 
             InternalChildren = new Drawable[]
             {
-                matchInfo = new RankedPlayMatchInfo(),
+                matchInfo = new RankedPlayMatchInfo { PlayerId = spectatedPlayerId ?? 0 },
                 backgroundMusic = new BackgroundMusicManager(),
                 new RankedPlayBeatmapAvailabilityTracker(),
                 new GlobalScrollAdjustsVolume(),
@@ -169,7 +177,11 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                         particleContainer = new SongPreviewParticleContainer(),
                     },
                 },
-                chat = new RankedPlayChatDisplay(room)
+            };
+
+            if (!IsSpectating)
+            {
+                AddInternal(chat = new RankedPlayChatDisplay(room)
                 {
                     Anchor = Anchor.BottomRight,
                     Origin = Anchor.BottomRight,
@@ -179,8 +191,16 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                         Right = 10
                     },
                     State = { Value = Visibility.Hidden }
-                },
-            };
+                });
+            }
+        }
+
+        protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
+        {
+            var dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
+            if (chat != null)
+                dependencies.CacheAs(chat);
+            return dependencies;
         }
 
         [BackgroundDependencyLoader]
@@ -204,10 +224,21 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             client.UserStateChanged += onUserStateChanged;
             client.LoadRequested += onLoadRequested;
             client.GameplayAborted += onGameplayAborted;
+            client.BeatmapAvailabilityChanged += onSpectatorBeatmapAvailabilityChanged;
 
+            // Children complete loading after their parent. Do not consume matchInfo's snapshot
+            // (or start spectating) until its LoadComplete has initialised the participant IDs.
+            matchInfo.OnLoadComplete += _ => initialiseMatch();
+        }
+
+        private bool matchInfoReady;
+
+        private void initialiseMatch()
+        {
+            matchInfoReady = true;
             Scheduler.AddDelayed(() => ornament.Show(), VsSequence.INTRO_LENGTH);
 
-            int localUserId = api.LocalUser.Value.OnlineID;
+            int localUserId = spectatedPlayerId ?? api.LocalUser.Value.OnlineID;
             int opponentUserId = ((RankedPlayRoomState)client.Room!.MatchState!).Users.Keys.Single(it => it != localUserId);
 
             localUser = users.GetUserAsync(localUserId).GetResultSafely() ?? api.LocalUser.Value;
@@ -236,7 +267,14 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
             ornamentOverlayRegistration = overlayManager.RegisterBlockingOverlay(ornament);
 
-            stage.BindValueChanged(e => onStageChanged(e.NewValue));
+            // The server can advance (or end) the match before this screen finishes loading.
+            // Participants need the current snapshot just as spectators do.
+            stage.BindValueChanged(e => onStageChanged(e.NewValue), true);
+            if (IsSpectating)
+            {
+                prepareSpectatorBeatmap();
+                tryStartSpectating();
+            }
         }
 
         public void ShowScreen(RankedPlaySubScreen screen)
@@ -286,23 +324,116 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             };
         }
 
+        [Resolved]
+        private BeatmapManager beatmaps { get; set; } = null!;
+
+        [Resolved]
+        private RulesetStore rulesets { get; set; } = null!;
+
+        private long? spectatingItem;
+        private CancellationTokenSource? spectatorBeatmapCancellation;
+        private double nextSpectatorRetry;
+
+        private bool prepareSpectatorBeatmap()
+        {
+            if (!IsSpectating || client.Room == null)
+                return false;
+            var item = client.Room.CurrentPlaylistItem;
+            // Ranked play can replace the selected card's beatmap in the same playlist slot.
+            // Always resolve its current revision rather than caching only the slot ID.
+            var beatmap = beatmaps.QueryOnlineBeatmapId(item.BeatmapID, item.BeatmapChecksum);
+            if (beatmap == null)
+                return false;
+            Beatmap.Value = beatmaps.GetWorkingBeatmap(beatmap);
+            Ruleset.Value = rulesets.GetRuleset(item.RulesetID)!;
+            Mods.Value = item.RequiredMods.Select(mod => mod.ToMod(Ruleset.Value.CreateInstance())).ToArray();
+            return true;
+        }
+
+        private void onSpectatorBeatmapAvailabilityChanged(MultiplayerRoomUser user, BeatmapAvailability availability)
+        {
+            if (user.Equals(client.LocalUser))
+            {
+                prepareSpectatorBeatmap();
+                tryStartSpectating();
+            }
+        }
+
+        private void tryStartSpectating()
+        {
+            if (!IsSpectating || !matchInfoReady || client.Room?.MatchState is not RankedPlayRoomState { Stage: RankedPlayStage.Gameplay } state)
+                return;
+
+            var item = client.Room.CurrentPlaylistItem;
+            if (!this.IsCurrentScreen() || spectatingItem == item.ID || Clock.CurrentTime < nextSpectatorRetry
+                || !state.Users.Keys.Any(id => client.CurrentMatchPlayingUserIds.Contains(id)))
+                return;
+
+            nextSpectatorRetry = Clock.CurrentTime + 500;
+            if (beatmaps.QueryOnlineBeatmapId(item.BeatmapID, item.BeatmapChecksum) == null)
+                return;
+
+            spectatingItem = item.ID;
+            spectatorBeatmapCancellation?.Cancel();
+            var cancellation = spectatorBeatmapCancellation = new CancellationTokenSource();
+            try
+            {
+                Schedule(() =>
+                {
+                    if (cancellation.IsCancellationRequested || client.Room?.CurrentPlaylistItem.ID != item.ID
+                        || (client.Room.MatchState as RankedPlayRoomState)?.Stage != RankedPlayStage.Gameplay)
+                        return;
+
+                    var beatmap = beatmaps.QueryOnlineBeatmapId(item.BeatmapID, item.BeatmapChecksum);
+                    if (beatmap == null)
+                    {
+                        spectatingItem = null;
+                        return;
+                    }
+
+                    prepareSpectatorBeatmap();
+                    this.MakeCurrent();
+                    this.Push(new MultiSpectatorScreen(new Room(room), new[] { matchInfo.PlayerId, matchInfo.OpponentId }
+                        .Select(id => client.Room.Users.Single(u => u.UserID == id)).ToArray()));
+                });
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception e)
+            {
+                Logger.Error(e, "Unable to prepare ranked spectator beatmap.");
+                Schedule(() => spectatingItem = null);
+            }
+        }
+
         private void onRoomUpdated()
         {
-            if (this.IsCurrentScreen() && client.Room == null)
+            if (exitStarted)
+                return;
+
+            if ((IsSpectating || this.IsCurrentScreen()) && client.Room == null)
             {
                 Logger.Log($"{this} exiting due to loss of room or connection");
                 exitConfirmed = true;
-                this.Exit();
+                spectatorBeatmapCancellation?.Cancel();
+                // A spectator may still have gameplay above this screen. Unwind it first,
+                // but never try to exit a screen which has already left the stack.
+                if (IsSpectating && this.GetChildScreen() != null)
+                    this.MakeCurrent();
+                if (this.IsCurrentScreen())
+                    this.Exit();
                 return;
             }
 
-            if (!this.IsCurrentScreen() || client.Room?.MatchState is not RankedPlayRoomState rankedPlayState)
+            if ((!IsSpectating && !this.IsCurrentScreen()) || client.Room?.MatchState is not RankedPlayRoomState rankedPlayState)
                 return;
 
             if (rankedPlayState.Stage == RankedPlayStage.Ended)
                 return;
 
-            if (client.Room.Users.Count < rankedPlayState.Users.Count)
+            if (IsSpectating)
+                tryStartSpectating();
+
+            if (rankedPlayState.Users.Keys.Any(id => client.Room.Users.All(u => u.UserID != id)))
                 presentEndedScreen();
         }
 
@@ -315,7 +446,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             {
                 ExitRequested = retry =>
                 {
-                    retryRequested = retry;
+                    retryRequested = retry && !IsSpectating;
                     exitConfirmed = true;
 
                     if (this.IsCurrentScreen())
@@ -326,6 +457,9 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
         private void onUserStateChanged(MultiplayerRoomUser user, MultiplayerUserState state)
         {
+            if (IsSpectating)
+                tryStartSpectating();
+
             if (user.Equals(client.LocalUser) && state == MultiplayerUserState.Idle)
                 this.MakeCurrent();
         }
@@ -344,7 +478,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                     break;
 
                 case GameplayAbortReason.HostAbortedTheMatch:
-                    Logger.Log("Gameplay aborted because the other player left the match.", LoggingTarget.Runtime, LogLevel.Important);
+                    Logger.Log("Ranked gameplay was aborted by the server (HostAbortedTheMatch).", LoggingTarget.Runtime, LogLevel.Important);
                     break;
             }
 
@@ -354,6 +488,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         private void onLoadRequested() => Scheduler.Add(() =>
         {
             serverAbortedGameplay = false;
+
+            if (IsSpectating)
+            {
+                tryStartSpectating();
+                return;
+            }
 
             if (Beatmap.IsDefault ||
                 Beatmap.Value.BeatmapInfo.OnlineID <= 0 ||
@@ -365,7 +505,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             }
 
             sampleStart?.Play();
-            this.Push(new MultiplayerPlayerLoader(() => new ScreenGameplay(new Room(room), new PlaylistItem(client.Room!.CurrentPlaylistItem), room.Users.ToArray())));
+            this.Push(new MultiplayerPlayerLoader(() => new ScreenGameplay(new Room(room), new PlaylistItem(client.Room!.CurrentPlaylistItem), room.Users.Where(user => user.Role != MultiplayerRoomUserRole.Spectator).ToArray(), localVisualMods)));
         });
 
         private void onStageChanged(RankedPlayStage stage)
@@ -375,10 +515,18 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             else
                 backgroundMusic.Play();
 
-            if (stage is RankedPlayStage.RoundWarmup && matchInfo.CurrentRound == 1)
-                chat.State.Value = Visibility.Hidden;
-            else
-                chat.State.Value = Visibility.Visible;
+            if (chat != null)
+                chat.State.Value = stage is RankedPlayStage.RoundWarmup && matchInfo.CurrentRound == 1 ? Visibility.Hidden : Visibility.Visible;
+
+            if (IsSpectating && stage != RankedPlayStage.Gameplay)
+            {
+                spectatingItem = null;
+                spectatorBeatmapCancellation?.Cancel();
+                this.MakeCurrent();
+            }
+
+            if (IsSpectating)
+                prepareSpectatorBeatmap();
 
             switch (stage)
             {
@@ -386,20 +534,28 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                     ShowScreen(new IntroScreen());
                     break;
 
+                case RankedPlayStage.ModBan:
+                    ShowScreen(new ModBanScreen(IsSpectating));
+                    break;
+
                 case RankedPlayStage.CardDiscard:
-                    ShowScreen(new DiscardScreen());
+                    ShowScreen(IsSpectating ? new RankedPlaySpectatorCardsScreen() : new DiscardScreen());
                     break;
 
                 case RankedPlayStage.FinishCardDiscard:
+                    if (IsSpectating && ActiveSubScreen == null)
+                        ShowScreen(new RankedPlaySpectatorCardsScreen());
                     (ActiveSubScreen as DiscardScreen)?.PresentRemainingCards();
                     break;
 
                 case RankedPlayStage.CardPlay:
-                    ShowScreen(matchInfo.IsOwnTurn ? new PickScreen() : new OpponentPickScreen());
+                    ShowScreen(IsSpectating ? new RankedPlaySpectatorCardsScreen() : matchInfo.IsOwnTurn ? new PickScreen() : new OpponentPickScreen());
                     break;
 
                 case RankedPlayStage.FinishCardPlay:
-                    Debug.Assert(ActiveSubScreen is PickScreen || ActiveSubScreen is OpponentPickScreen);
+                    if (IsSpectating && ActiveSubScreen == null)
+                        ShowScreen(new RankedPlaySpectatorCardsScreen());
+                    Debug.Assert(IsSpectating || ActiveSubScreen is PickScreen || ActiveSubScreen is OpponentPickScreen);
                     break;
 
                 case RankedPlayStage.GameplayWarmup:
@@ -408,6 +564,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
                 case RankedPlayStage.Gameplay:
                     ShowScreen(new GameplayScreen());
+                    tryStartSpectating();
                     break;
 
                 case RankedPlayStage.Results:
@@ -420,6 +577,15 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             }
         }
 
+        protected override void Update()
+        {
+            base.Update();
+            // The room snapshot may arrive before the screen is pushed onto the stack.
+            // Reconcile after entry as well as on events, and retry once missing maps finish importing.
+            if (IsSpectating && this.IsCurrentScreen())
+                tryStartSpectating();
+        }
+
         public override void OnSuspending(ScreenTransitionEvent e)
         {
             backgroundMusic.Stop();
@@ -429,11 +595,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         }
 
         private bool exitConfirmed;
+        private bool exitStarted;
         private bool retryRequested;
 
         public override bool OnExiting(ScreenExitEvent e)
         {
-            if (exitConfirmed || ActiveSubScreen is EndedScreen)
+            if (IsSpectating || exitConfirmed || ActiveSubScreen is EndedScreen)
             {
                 if (base.OnExiting(e))
                 {
@@ -441,6 +608,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                     return true;
                 }
 
+                exitStarted = true;
+                spectatorBeatmapCancellation?.Cancel();
                 ActiveSubScreen?.OnExiting(null);
                 backgroundMusic.Stop();
                 previewTrackManager.StopAnyPlaying(this);
@@ -475,7 +644,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         {
             base.OnResuming(e);
 
-            if (e.Last is not MultiplayerPlayerLoader playerLoader)
+            if (IsSpectating || e.Last is not MultiplayerPlayerLoader playerLoader)
                 return;
 
             if (client.Room == null || client.LocalUser == null)
@@ -520,6 +689,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             client.UserStateChanged -= onUserStateChanged;
             client.LoadRequested -= onLoadRequested;
             client.GameplayAborted -= onGameplayAborted;
+            client.BeatmapAvailabilityChanged -= onSpectatorBeatmapAvailabilityChanged;
+            spectatorBeatmapCancellation?.Cancel();
 
             ornamentOverlayRegistration?.Dispose();
             ornamentOverlayRegistration = null;

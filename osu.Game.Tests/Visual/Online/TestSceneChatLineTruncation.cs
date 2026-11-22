@@ -4,10 +4,12 @@
 #nullable disable
 
 using System;
+using System.Linq;
 using NUnit.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Testing;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Chat;
 using osu.Game.Overlays.Chat;
@@ -34,6 +36,25 @@ namespace osu.Game.Tests.Visual.Online
         private void load()
         {
             testFormatting();
+        }
+
+        [TestCase(false, null)]
+        [TestCase(false, "ff8a5b")]
+        [TestCase(true, null)]
+        [TestCase(true, "ff8a5b")]
+        public void TestSupporterUsernameHighlight(bool supporter, string colour)
+        {
+            ChatLine line = null;
+            clear();
+            AddStep("add sender", () => textContainer.Add(line = new ChatLine(new Message(1)
+            {
+                Content = "hello",
+                Sender = new APIUser { Id = 42, Username = "sender", Colour = colour, IsSupporter = supporter }
+            })));
+            AddUntilStep("line loaded", () => line.IsLoaded);
+            AddAssert("only supporter gets a badge", () => line.ChildrenOfType<DrawableChatUsername>().Single().Inverted == supporter);
+            if (colour != null)
+                AddAssert("profile colour retained", () => line.UsernameColour == (osuTK.Graphics.Color4)Colour4.FromHex(colour));
         }
 
         private void clear() => AddStep("clear messages", textContainer.Clear);

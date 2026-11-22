@@ -26,6 +26,9 @@ namespace osu.Game.Overlays
         private ScreenWelcome welcomeScreen = null!;
 
         private ScheduledDelegate? scheduledHide;
+        private BackdropBlurSurface background = null!;
+
+        protected override BackdropBlurSurface OpaqueBackground => background;
 
         public AccountCreationOverlay()
         {
@@ -57,7 +60,7 @@ namespace osu.Game.Overlays
                     CornerRadius = 10,
                     Children = new Drawable[]
                     {
-                        new BackdropBlurSurface
+                        background = new BackdropBlurSurface
                         {
                             RelativeSizeAxes = Axes.Both,
                             SurfaceColour = Color4.Black,

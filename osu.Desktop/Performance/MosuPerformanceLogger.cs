@@ -7,10 +7,12 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Configuration;
 using osu.Framework.Graphics;
+using DrawablePath = osu.Framework.Graphics.Lines.Path;
 using osu.Framework.Graphics.Rendering;
 using osu.Framework.Input;
 using osu.Framework.Logging;
@@ -19,10 +21,12 @@ using osu.Framework.Statistics;
 using osu.Game;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
+using osu.Game.Database;
 using osu.Game.Extensions;
 using osu.Game.IO;
 using osu.Game.Performance;
 using osu.Game.Performance.Diagnostics;
+using osu.Game.Performance.Debug;
 using osu.Game.Screens.Play;
 using osu.Game.Skinning;
 using SixLabors.ImageSharp;
@@ -32,7 +36,6 @@ namespace osu.Desktop.Performance
     internal partial class MosuPerformanceLogger : Component
     {
         private const double sample_interval_ms = 100;
-        private const double flush_interval_ms = 1000;
 
         private readonly BindableBool enabled = new BindableBool();
 
@@ -46,18 +49,22 @@ namespace osu.Desktop.Performance
         private Bindable<WindowMode> windowMode = null!;
         private SkinManager skinManager = null!;
 
-        private StreamWriter? writer;
+        private BoundedPerformanceFileSink? writer;
         private string? currentPath;
         private readonly List<SampleSummary> samples = new List<SampleSummary>();
+        private readonly OrderedPerformanceArtifactPublisher artifactPublisher = new OrderedPerformanceArtifactPublisher();
         private readonly HashSet<Guid> auditedSkinIds = new HashSet<Guid>();
+        private Task skinAuditTask = Task.CompletedTask;
+        private readonly HashSet<string> sidecarHeaders = new HashSet<string>();
         private readonly HashSet<string> auditedSceneKeys = new HashSet<string>();
         private bool trackPerfSources;
+        private long lastReportedDropped;
+        private bool reportedFailure;
+        private bool reportedSamplerFailure;
 
         private readonly Stopwatch stopwatch = new Stopwatch();
-        private TimeSpan lastCpuTime;
-        private double lastCpuSampleMs;
+        private ProcessHeapSampler? processHeapSampler;
         private double nextSampleMs;
-        private double nextFlushMs;
         private double maxDrawMs;
         private double maxUpdateMs;
         private double maxInputMs;
@@ -108,10 +115,30 @@ namespace osu.Desktop.Performance
             if (writer == null)
                 return;
 
+            if (writer.Dropped > lastReportedDropped)
+            {
+                lastReportedDropped = writer.Dropped;
+                Logger.Log($"MOSU_PERFORMANCE_LOGGER_DROPPED path={currentPath} rows={lastReportedDropped}", LoggingTarget.Performance, LogLevel.Important);
+            }
+
+            if (!reportedFailure && writer.Failure != null)
+            {
+                reportedFailure = true;
+                Logger.Error(writer.Failure, $"mosu performance logging failed: {currentPath}");
+            }
+
+            if (!reportedSamplerFailure && processHeapSampler?.Failure is { } samplingFailure)
+            {
+                reportedSamplerFailure = true;
+                Logger.Error(samplingFailure, "mosu performance process/heap sampling failed");
+            }
+
             maxDrawMs = Math.Max(maxDrawMs, host.DrawThread.Clock.ElapsedFrameTime);
             maxUpdateMs = Math.Max(maxUpdateMs, host.UpdateThread.Clock.ElapsedFrameTime);
             maxInputMs = Math.Max(maxInputMs, host.InputThread.Clock.ElapsedFrameTime);
-            // Standalone public build note: ThreadFramePerformanceSnapshot is an optional Mosu framework extension.
+            maxDrawBreakdown.Add(host.DrawThread.PerformanceSnapshot);
+            maxUpdateBreakdown.Add(host.UpdateThread.PerformanceSnapshot);
+            maxInputBreakdown.Add(host.InputThread.PerformanceSnapshot);
 
             double elapsedMs = stopwatch.Elapsed.TotalMilliseconds;
 
@@ -123,13 +150,7 @@ namespace osu.Desktop.Performance
                     nextSampleMs += sample_interval_ms;
             }
 
-            if (elapsedMs >= nextFlushMs)
-            {
-                writer.Flush();
 
-                while (nextFlushMs <= elapsedMs)
-                    nextFlushMs += flush_interval_ms;
-            }
         }
 
         private void setEnabled(bool isEnabled)
@@ -148,9 +169,18 @@ namespace osu.Desktop.Performance
             string directory = storage.GetFullPath("performance", true);
             Directory.CreateDirectory(directory);
 
-            currentPath = Path.Combine(directory, $"mosu-performance-{DateTime.Now:yyyyMMdd-HHmmss}.csv");
-            writer = new StreamWriter(currentPath);
+            currentPath = Path.Combine(directory, $"mosu-performance-{DateTime.Now:yyyyMMdd-HHmmss-fffffff}.csv");
+            writer = new BoundedPerformanceFileSink(path => new StreamWriter(path, append: true));
+            PerformancePhaseLogger.Enabled = true;
+            Bindable<WorkingBeatmap>.TraceSlowValueChanges = true;
+            DrawablePath.TraceSlowRendering = true;
+            host.SetUpdateTreeDiagnostics(true);
             samples.Clear();
+            lastReportedDropped = 0;
+            reportedFailure = false;
+            reportedSamplerFailure = false;
+            sidecarHeaders.Clear();
+            skinAuditTask = Task.CompletedTask;
             auditedSkinIds.Clear();
             auditedSceneKeys.Clear();
             gameplayStartElapsedMs = double.NaN;
@@ -158,29 +188,23 @@ namespace osu.Desktop.Performance
 
             if (trackPerfSources)
             {
-                // Standalone public build note: Source tracking is an optional Mosu framework extension.
+                host.SetChildLifeSourceTracking(true);
+                host.SetInvalidationSourceTracking(true);
             }
 
             stopwatch.Restart();
             nextSampleMs = 0;
-            nextFlushMs = flush_interval_ms;
             maxDrawMs = maxUpdateMs = maxInputMs = 0;
             maxDrawBreakdown = maxUpdateBreakdown = maxInputBreakdown = default;
 
-            using (var process = Process.GetCurrentProcess())
-            {
-                lastCpuTime = process.TotalProcessorTime;
-            }
-
-            lastCpuSampleMs = 0;
+            processHeapSampler = new ProcessHeapSampler();
             lastAllocatedBytes = GC.GetTotalAllocatedBytes(false);
             lastGen0Collections = GC.CollectionCount(0);
             lastGen1Collections = GC.CollectionCount(1);
             lastGen2Collections = GC.CollectionCount(2);
             initialiseFlushSourceStatistics();
-            // Standalone public build note: InputLatencyTelemetry is an optional Mosu framework extension.
 
-            writer.WriteLine("local_time,elapsed_ms,playing_state,is_active,beatmap_id,beatmap_set_id,beatmap,skin_id,skin_name,score_combo,score_max_combo,score_miss_count,last_judgement,last_judgement_time_ms,health,draw_fps,draw_ms,draw_ms_max,draw_scheduler_ms_max,draw_work_ms_max,draw_sleep_ms_max,draw_gc_ms_max,draw_vbuf_binds_max,draw_vbuf_overflow_max,draw_texture_binds_max,draw_fbo_redraw_max,draw_calls_max,draw_shader_binds_max,draw_vertices_draw_max,draw_vertices_upl_max,draw_uniform_upl_max,draw_pixels_max,draw_batch_flushes_max,draw_pipeline_binds_max,draw_resource_set_binds_max,draw_resource_set_creates_max,draw_texture_upload_flushes_max,draw_texture_uploads_max,draw_deferred_event_process_us_max,draw_deferred_vertex_write_us_max,draw_deferred_vertex_commit_us_max,draw_deferred_vertex_draw_us_max,draw_deferred_vertex_map_count_max,draw_deferred_vertex_unmap_count_max,draw_deferred_vertex_bytes_max,draw_veldrid_swap_buffers_us_max,draw_veldrid_texture_upload_us_max,draw_pipeline_creates_max,draw_veldrid_vertex_set_us_max,draw_veldrid_vertex_update_us_max,draw_veldrid_vertex_draw_us_max,draw_veldrid_vertex_bytes_max,draw_flush_top1_source,draw_flush_top1_count,draw_flush_top2_source,draw_flush_top2_count,draw_flush_top3_source,draw_flush_top3_count,update_fps,update_ms,update_ms_max,update_scheduler_ms_max,update_work_ms_max,update_sleep_ms_max,update_gc_ms_max,update_invalidations_max,update_refreshes_max,update_draw_node_ctor_max,update_draw_node_appl_max,update_schedule_invk_max,update_input_queue_max,update_positional_iq_max,update_ccl_max,update_ccl_top1_source,update_ccl_top1_count,update_ccl_top2_source,update_ccl_top2_count,update_ccl_top3_source,update_ccl_top3_count,update_inval_top1_source,update_inval_top1_count,update_inval_top2_source,update_inval_top2_count,update_inval_top3_source,update_inval_top3_count,input_fps,input_ms,input_ms_max,input_scheduler_ms_max,input_work_ms_max,input_sleep_ms_max,input_gc_ms_max,input_events_collected,input_events_applied,input_frames_swapped,input_enqueue_to_collect_ms_max,input_collect_to_apply_ms_max,input_enqueue_to_apply_ms_max,input_apply_to_publish_ms_max,input_publish_to_swap_ms_max,input_enqueue_to_swap_ms_max,cpu_percent,working_set_mb,gc_heap_mb,gc_allocated_mb_delta,gc_total_allocated_mb,gc_gen0_delta,gc_gen1_delta,gc_gen2_delta,priority,windows_ultra_performance_mode,skin_performance_mode,uncapped_frame_rate,frame_sync,execution_mode,renderer_setting,resolved_renderer,window_mode,benchmark_id,benchmark_mode,benchmark_run,benchmark_warmup,benchmark_replay_hash,benchmark_gameplay_active");
+            writer.TryWrite(currentPath, "local_time,elapsed_ms,screen,playing_state,is_active,beatmap_id,beatmap_set_id,beatmap,skin_id,skin_name,score_combo,score_max_combo,score_miss_count,last_judgement,last_judgement_time_ms,health,draw_fps,draw_ms,draw_ms_max,draw_scheduler_ms_max,draw_work_ms_max,draw_sleep_ms_max,draw_gc_ms_max,draw_vbuf_binds_max,draw_vbuf_overflow_max,draw_texture_binds_max,draw_fbo_redraw_max,draw_calls_max,draw_shader_binds_max,draw_vertices_draw_max,draw_vertices_upl_max,draw_uniform_upl_max,draw_pixels_max,draw_batch_flushes_max,draw_pipeline_binds_max,draw_resource_set_binds_max,draw_resource_set_creates_max,draw_texture_upload_flushes_max,draw_texture_uploads_max,draw_deferred_event_process_us_max,draw_deferred_vertex_write_us_max,draw_deferred_vertex_commit_us_max,draw_deferred_vertex_draw_us_max,draw_deferred_vertex_map_count_max,draw_deferred_vertex_unmap_count_max,draw_deferred_vertex_bytes_max,draw_veldrid_swap_buffers_us_max,draw_veldrid_texture_upload_us_max,draw_pipeline_creates_max,draw_veldrid_vertex_set_us_max,draw_veldrid_vertex_update_us_max,draw_veldrid_vertex_draw_us_max,draw_veldrid_vertex_bytes_max,draw_flush_top1_source,draw_flush_top1_count,draw_flush_top2_source,draw_flush_top2_count,draw_flush_top3_source,draw_flush_top3_count,update_fps,update_ms,update_ms_max,update_scheduler_ms_max,update_work_ms_max,update_sleep_ms_max,update_gc_ms_max,update_invalidations_max,update_refreshes_max,update_draw_node_ctor_max,update_draw_node_appl_max,update_schedule_invk_max,update_input_queue_max,update_positional_iq_max,update_ccl_max,update_ccl_top1_source,update_ccl_top1_count,update_ccl_top2_source,update_ccl_top2_count,update_ccl_top3_source,update_ccl_top3_count,update_inval_top1_source,update_inval_top1_count,update_inval_top2_source,update_inval_top2_count,update_inval_top3_source,update_inval_top3_count,input_fps,input_ms,input_ms_max,input_scheduler_ms_max,input_work_ms_max,input_sleep_ms_max,input_gc_ms_max,cpu_percent,working_set_mb,gc_heap_mb,gc_allocated_mb_delta,gc_total_allocated_mb,gc_gen0_delta,gc_gen1_delta,gc_gen2_delta,priority,windows_ultra_performance_mode,skin_performance_mode,uncapped_frame_rate,frame_sync,execution_mode,renderer_setting,resolved_renderer,window_mode,benchmark_id,benchmark_mode,benchmark_run,benchmark_warmup,benchmark_replay_hash,benchmark_gameplay_active,process_heap_age_ms" + Environment.NewLine);
             writeCurrentSkinAudit();
             Logger.Log($"mosu performance logging started: {currentPath}", LoggingTarget.Runtime, LogLevel.Verbose);
 
@@ -198,28 +222,47 @@ namespace osu.Desktop.Performance
 
             string? finishedPath = currentPath;
 
-            try
-            {
-                writer.Flush();
-                writer.Dispose();
-                writeSummary(finishedPath);
-            }
-            catch (Exception e)
-            {
-                Logger.Error(e, "mosu performance logging could not finish cleanly.");
-            }
-            finally
-            {
-                // Standalone public build note: InputLatencyTelemetry and source tracking are optional Mosu framework extensions.
-                if (trackPerfSources)
+            var sessionSink = writer;
+            SampleSummary[] sessionSamples = samples.ToArray();
+            Task sessionAudit = skinAuditTask;
+            string sessionPath = finishedPath!;
+            // The sink drains independently. Only shared artifact publication waits in stop order.
+            if (!artifactPublisher.Enqueue(sessionSink.Completion, () =>
                 {
-                    trackPerfSources = false;
-                }
+                    if (sessionSink.Failure == null)
+                    {
+                        writeSummary(sessionPath, sessionSamples);
+                        Logger.Log($"mosu performance artifacts published: {sessionPath}", LoggingTarget.Runtime, LogLevel.Verbose);
+                    }
+                }))
+                Logger.Log($"MOSU_PERFORMANCE_ARTIFACTS_SKIPPED path={sessionPath} reason=publication_queue_full; raw capture still drains",
+                    LoggingTarget.Performance, LogLevel.Important);
+            processHeapSampler?.Dispose();
+            processHeapSampler = null;
+            sessionSink.Stop();
+            PerformanceDrainObserver.Observe(sessionSink.Completion, () =>
+            {
+                if (sessionSink.Failure != null)
+                    Logger.Error(sessionSink.Failure, $"mosu performance logging failed: {sessionPath}");
+                if (sessionSink.Dropped > 0)
+                    Logger.Log($"MOSU_PERFORMANCE_LOGGER_DROPPED path={sessionPath} rows={sessionSink.Dropped}", LoggingTarget.Performance, LogLevel.Important);
+                Logger.Log($"mosu performance raw capture drain finished (summary publication separate): {sessionPath}", LoggingTarget.Runtime, LogLevel.Verbose);
+            }, sessionAudit, error => Logger.Error(error, $"mosu skin audit failed: {sessionPath}"));
+            host.SetUpdateTreeDiagnostics(false);
+            PerformancePhaseLogger.Enabled = false;
+            Bindable<WorkingBeatmap>.TraceSlowValueChanges = false;
+            DrawablePath.TraceSlowRendering = false;
 
-                writer = null;
-                currentPath = null;
-                stopwatch.Reset();
+            if (trackPerfSources)
+            {
+                host.SetChildLifeSourceTracking(false);
+                host.SetInvalidationSourceTracking(false);
+                trackPerfSources = false;
             }
+
+            writer = null;
+            currentPath = null;
+            stopwatch.Reset();
 
             if (finishedPath != null)
                 Logger.Log($"mosu performance logging stopped: {finishedPath}", LoggingTarget.Runtime, LogLevel.Verbose);
@@ -230,17 +273,16 @@ namespace osu.Desktop.Performance
             if (writer == null)
                 return;
 
-            using var process = Process.GetCurrentProcess();
-
-            process.Refresh();
-
-            double cpuSampleMs = stopwatch.Elapsed.TotalMilliseconds;
-            double intervalSeconds = Math.Max(0.001, (cpuSampleMs - lastCpuSampleMs) / 1000);
-            TimeSpan cpuTime = process.TotalProcessorTime;
-            double cpuPercent = (cpuTime - lastCpuTime).TotalSeconds / intervalSeconds / Environment.ProcessorCount * 100;
-
-            lastCpuTime = cpuTime;
-            lastCpuSampleMs = cpuSampleMs;
+            long started = Stopwatch.GetTimestamp();
+            ProcessHeapSampler.Snapshot? processSnapshot = processHeapSampler?.Latest;
+            double processAgeMs = processSnapshot == null ? double.NaN : Stopwatch.GetElapsedTime(processSnapshot.Timestamp).TotalMilliseconds;
+            if (processAgeMs > 1500)
+                processSnapshot = null;
+            double cpuPercent = processSnapshot?.CpuPercent ?? double.NaN;
+            double workingSetMb = processSnapshot?.WorkingSetMb ?? double.NaN;
+            double gcHeapMb = processSnapshot?.GcHeapMb ?? double.NaN;
+            long refreshed = Stopwatch.GetTimestamp();
+            long cpuDone = refreshed;
 
             var currentBeatmap = beatmap.Value.BeatmapInfo;
             DateTimeOffset localTime = DateTimeOffset.Now;
@@ -253,10 +295,8 @@ namespace osu.Desktop.Performance
             var drawBreakdown = maxDrawBreakdown;
             var updateBreakdown = maxUpdateBreakdown;
             var inputBreakdown = maxInputBreakdown;
-            InputLatencySnapshot inputLatency = default;
             var drawFlushSources = sampleFlushSources();
-            double workingSetMb = process.WorkingSet64 / 1024d / 1024d;
-            double gcHeapMb = GC.GetTotalMemory(false) / 1024d / 1024d;
+            long metricsDone = Stopwatch.GetTimestamp();
             long allocatedBytes = GC.GetTotalAllocatedBytes(false);
             long allocatedBytesDelta = Math.Max(0, allocatedBytes - lastAllocatedBytes);
             double allocatedMbDelta = allocatedBytesDelta / 1024d / 1024d;
@@ -267,6 +307,7 @@ namespace osu.Desktop.Performance
             int gen0Delta = gen0Collections - lastGen0Collections;
             int gen1Delta = gen1Collections - lastGen1Collections;
             int gen2Delta = gen2Collections - lastGen2Collections;
+            long gcDone = Stopwatch.GetTimestamp();
             Guid skinId = skinManager.CurrentSkinInfo.Value.ID;
             string skinName = skinManager.CurrentSkin.Value.Name;
             string beatmapName = currentBeatmap.ToString();
@@ -275,142 +316,143 @@ namespace osu.Desktop.Performance
             lastGen0Collections = gen0Collections;
             lastGen1Collections = gen1Collections;
             lastGen2Collections = gen2Collections;
+            long prepared = Stopwatch.GetTimestamp();
             writeCurrentSkinAudit();
             writeCurrentSceneAudit(elapsedMs);
             writePixelSourceSample(elapsedMs);
+            long audited = Stopwatch.GetTimestamp();
 
-            writer.Write(localTime.ToString("O", CultureInfo.InvariantCulture));
-            writer.Write(',');
-            writer.Write(format(elapsedMs));
-            writer.Write(',');
-            writer.Write(localUserPlaying.Value);
-            writer.Write(',');
-            writer.Write(host.IsActive.Value);
-            writer.Write(',');
-            writer.Write(currentBeatmap.OnlineID);
-            writer.Write(',');
-            writer.Write(currentBeatmap.BeatmapSet?.OnlineID ?? 0);
-            writer.Write(',');
-            writer.Write(escape(beatmapName));
-            writer.Write(',');
-            writer.Write(skinId);
-            writer.Write(',');
-            writer.Write(escape(skinName));
-            writer.Write(',');
-            writer.Write(GameplayPerformanceSnapshot.Combo);
-            writer.Write(',');
-            writer.Write(GameplayPerformanceSnapshot.MaxCombo);
-            writer.Write(',');
-            writer.Write(GameplayPerformanceSnapshot.MissCount);
-            writer.Write(',');
-            writer.Write(escape(GameplayPerformanceSnapshot.LastJudgement));
-            writer.Write(',');
-            writer.Write(format(GameplayPerformanceSnapshot.LastJudgementTime));
-            writer.Write(',');
-            writer.Write(format(GameplayPerformanceSnapshot.Health));
-            writer.Write(',');
-            writer.Write(format(drawFps));
-            writer.Write(',');
-            writer.Write(format(drawMs));
-            writer.Write(',');
-            writer.Write(format(maxDrawMs));
-            writer.Write(',');
-            writeBreakdown(writer, drawBreakdown);
-            writer.Write(',');
-            writeDrawCounters(writer, drawBreakdown);
-            writer.Write(',');
-            writeFlushSources(writer, drawFlushSources);
-            writer.Write(',');
-            writer.Write(format(updateFps));
-            writer.Write(',');
-            writer.Write(format(updateMs));
-            writer.Write(',');
-            writer.Write(format(maxUpdateMs));
-            writer.Write(',');
-            writeBreakdown(writer, updateBreakdown);
-            writer.Write(',');
-            writeUpdateCounters(writer, updateBreakdown);
-            writer.Write(',');
-            writeCclSources(writer, updateBreakdown);
-            writer.Write(',');
-            writeInvalSources(writer, updateBreakdown);
-            writer.Write(',');
-            writer.Write(format(inputFps));
-            writer.Write(',');
-            writer.Write(format(inputMs));
-            writer.Write(',');
-            writer.Write(format(maxInputMs));
-            writer.Write(',');
-            writeBreakdown(writer, inputBreakdown);
-            writer.Write(',');
-            writer.Write(inputLatency.CollectedEventCount);
-            writer.Write(',');
-            writer.Write(inputLatency.AppliedEventCount);
-            writer.Write(',');
-            writer.Write(inputLatency.SwappedInputFrameCount);
-            writer.Write(',');
-            writer.Write(format(inputLatency.EnqueueToCollectMillisecondsMax));
-            writer.Write(',');
-            writer.Write(format(inputLatency.CollectToApplyMillisecondsMax));
-            writer.Write(',');
-            writer.Write(format(inputLatency.EnqueueToApplyMillisecondsMax));
-            writer.Write(',');
-            writer.Write(format(inputLatency.ApplyToPublishMillisecondsMax));
-            writer.Write(',');
-            writer.Write(format(inputLatency.PublishToSwapMillisecondsMax));
-            writer.Write(',');
-            writer.Write(format(inputLatency.EnqueueToSwapMillisecondsMax));
-            writer.Write(',');
-            writer.Write(format(cpuPercent));
-            writer.Write(',');
-            writer.Write(format(workingSetMb));
-            writer.Write(',');
-            writer.Write(format(gcHeapMb));
-            writer.Write(',');
-            writer.Write(format(allocatedMbDelta));
-            writer.Write(',');
-            writer.Write(format(totalAllocatedMb));
-            writer.Write(',');
-            writer.Write(gen0Delta);
-            writer.Write(',');
-            writer.Write(gen1Delta);
-            writer.Write(',');
-            writer.Write(gen2Delta);
-            writer.Write(',');
-            writer.Write(process.PriorityClass);
-            writer.Write(',');
-            writer.Write(windowsUltraPerformanceMode.Value);
-            writer.Write(',');
-            writer.Write(SkinPerformanceMode.Enabled);
-            writer.Write(',');
-            writer.Write(uncappedFrameRate.Value);
-            writer.Write(',');
-            writer.Write(frameSync.Value);
-            writer.Write(',');
-            writer.Write(executionMode.Value);
-            writer.Write(',');
-            writer.Write(renderer.Value);
-            writer.Write(',');
-            writer.Write(host.ResolvedRenderer);
-            writer.Write(',');
-            writer.Write(windowMode.Value);
-            writer.Write(',');
-            writer.Write(escape(GameplayPerformanceSnapshot.BenchmarkId));
-            writer.Write(',');
-            writer.Write(escape(GameplayPerformanceSnapshot.BenchmarkMode));
-            writer.Write(',');
-            writer.Write(GameplayPerformanceSnapshot.BenchmarkRun);
-            writer.Write(',');
-            writer.Write(GameplayPerformanceSnapshot.BenchmarkWarmup);
-            writer.Write(',');
-            writer.Write(escape(GameplayPerformanceSnapshot.BenchmarkReplayHash));
-            writer.Write(',');
-            writer.Write(GameplayPerformanceSnapshot.BenchmarkGameplayActive);
-            writer.WriteLine();
+            using var row = new StringWriter(CultureInfo.InvariantCulture);
+            row.Write(localTime.ToString("O", CultureInfo.InvariantCulture));
+            row.Write(',');
+            row.Write(format(elapsedMs));
+            row.Write(',');
+            row.Write(game.ScreenStack?.CurrentScreen?.GetType().Name ?? string.Empty);
+            row.Write(',');
+            row.Write(localUserPlaying.Value);
+            row.Write(',');
+            row.Write(host.IsActive.Value);
+            row.Write(',');
+            row.Write(currentBeatmap.OnlineID);
+            row.Write(',');
+            row.Write(currentBeatmap.BeatmapSet?.OnlineID ?? 0);
+            row.Write(',');
+            row.Write(escape(beatmapName));
+            row.Write(',');
+            row.Write(skinId);
+            row.Write(',');
+            row.Write(escape(skinName));
+            row.Write(',');
+            row.Write(GameplayPerformanceSnapshot.Combo);
+            row.Write(',');
+            row.Write(GameplayPerformanceSnapshot.MaxCombo);
+            row.Write(',');
+            row.Write(GameplayPerformanceSnapshot.MissCount);
+            row.Write(',');
+            row.Write(escape(GameplayPerformanceSnapshot.LastJudgement));
+            row.Write(',');
+            row.Write(format(GameplayPerformanceSnapshot.LastJudgementTime));
+            row.Write(',');
+            row.Write(format(GameplayPerformanceSnapshot.Health));
+            row.Write(',');
+            row.Write(format(drawFps));
+            row.Write(',');
+            row.Write(format(drawMs));
+            row.Write(',');
+            row.Write(format(maxDrawMs));
+            row.Write(',');
+            writeBreakdown(row, drawBreakdown);
+            row.Write(',');
+            writeDrawCounters(row, drawBreakdown);
+            row.Write(',');
+            writeFlushSources(row, drawFlushSources);
+            row.Write(',');
+            row.Write(format(updateFps));
+            row.Write(',');
+            row.Write(format(updateMs));
+            row.Write(',');
+            row.Write(format(maxUpdateMs));
+            row.Write(',');
+            writeBreakdown(row, updateBreakdown);
+            row.Write(',');
+            writeUpdateCounters(row, updateBreakdown);
+            row.Write(',');
+            writeCclSources(row, updateBreakdown);
+            row.Write(',');
+            writeInvalSources(row, updateBreakdown);
+            row.Write(',');
+            row.Write(format(inputFps));
+            row.Write(',');
+            row.Write(format(inputMs));
+            row.Write(',');
+            row.Write(format(maxInputMs));
+            row.Write(',');
+            writeBreakdown(row, inputBreakdown);
+            row.Write(',');
+            row.Write(',');
+            row.Write(',');
+            row.Write(',');
+            row.Write(',');
+            row.Write(',');
+            row.Write(',');
+            row.Write(',');
+            row.Write(',');
+            row.Write(',');
+            row.Write(double.IsNaN(cpuPercent) ? string.Empty : format(cpuPercent));
+            row.Write(',');
+            row.Write(double.IsNaN(workingSetMb) ? string.Empty : format(workingSetMb));
+            row.Write(',');
+            row.Write(double.IsNaN(gcHeapMb) ? string.Empty : format(gcHeapMb));
+            row.Write(',');
+            row.Write(format(allocatedMbDelta));
+            row.Write(',');
+            row.Write(format(totalAllocatedMb));
+            row.Write(',');
+            row.Write(gen0Delta);
+            row.Write(',');
+            row.Write(gen1Delta);
+            row.Write(',');
+            row.Write(gen2Delta);
+            row.Write(',');
+            row.Write(processSnapshot?.Priority ?? "missing");
+            row.Write(',');
+            row.Write(windowsUltraPerformanceMode.Value);
+            row.Write(',');
+            row.Write(SkinPerformanceMode.Enabled);
+            row.Write(',');
+            row.Write(uncappedFrameRate.Value);
+            row.Write(',');
+            row.Write(frameSync.Value);
+            row.Write(',');
+            row.Write(executionMode.Value);
+            row.Write(',');
+            row.Write(renderer.Value);
+            row.Write(',');
+            row.Write(host.ResolvedRenderer);
+            row.Write(',');
+            row.Write(windowMode.Value);
+            row.Write(',');
+            row.Write(escape(GameplayPerformanceSnapshot.BenchmarkId));
+            row.Write(',');
+            row.Write(escape(GameplayPerformanceSnapshot.BenchmarkMode));
+            row.Write(',');
+            row.Write(GameplayPerformanceSnapshot.BenchmarkRun);
+            row.Write(',');
+            row.Write(GameplayPerformanceSnapshot.BenchmarkWarmup);
+            row.Write(',');
+            row.Write(escape(GameplayPerformanceSnapshot.BenchmarkReplayHash));
+            row.Write(',');
+            row.Write(GameplayPerformanceSnapshot.BenchmarkGameplayActive);
+            row.Write(',');
+            row.Write(double.IsNaN(processAgeMs) ? string.Empty : format(processAgeMs));
+            row.WriteLine();
+            bool rowQueued = writer.TryWrite(currentPath!, row.ToString());
+            long rowWritten = Stopwatch.GetTimestamp();
 
             recordDiagnosticsStutter(localTime, elapsedMs, maxDrawMs, maxUpdateMs, maxDrawBreakdown, maxUpdateBreakdown);
 
-            samples.Add(new SampleSummary(
+            if (rowQueued)
+                samples.Add(new SampleSummary(
                 localTime,
                 elapsedMs,
                 localUserPlaying.Value,
@@ -491,15 +533,6 @@ namespace osu.Desktop.Performance
                 inputBreakdown.WorkMs,
                 inputBreakdown.SleepMs,
                 inputBreakdown.GcMs,
-                inputLatency.CollectedEventCount,
-                inputLatency.AppliedEventCount,
-                inputLatency.SwappedInputFrameCount,
-                inputLatency.EnqueueToCollectMillisecondsMax,
-                inputLatency.CollectToApplyMillisecondsMax,
-                inputLatency.EnqueueToApplyMillisecondsMax,
-                inputLatency.ApplyToPublishMillisecondsMax,
-                inputLatency.PublishToSwapMillisecondsMax,
-                inputLatency.EnqueueToSwapMillisecondsMax,
                 cpuPercent,
                 workingSetMb,
                 gcHeapMb,
@@ -510,14 +543,29 @@ namespace osu.Desktop.Performance
 
             maxDrawMs = maxUpdateMs = maxInputMs = 0;
             maxDrawBreakdown = maxUpdateBreakdown = maxInputBreakdown = default;
+
+            long finished = Stopwatch.GetTimestamp();
+            double totalMs = Stopwatch.GetElapsedTime(started, finished).TotalMilliseconds;
+            if (totalMs >= 12)
+            {
+                Logger.Log($"MOSU_SLOW_PERFORMANCE_LOGGER step=sample local_time={DateTimeOffset.Now:O} elapsed_ms={totalMs:F2} "
+                           + $"process_snapshot_read_ms={Stopwatch.GetElapsedTime(started, refreshed).TotalMilliseconds:F2} "
+                           + $"cpu_ms={Stopwatch.GetElapsedTime(refreshed, cpuDone).TotalMilliseconds:F2} "
+                           + $"metrics_ms={Stopwatch.GetElapsedTime(cpuDone, metricsDone).TotalMilliseconds:F2} "
+                           + $"gc_ms={Stopwatch.GetElapsedTime(metricsDone, gcDone).TotalMilliseconds:F2} "
+                           + $"names_ms={Stopwatch.GetElapsedTime(gcDone, prepared).TotalMilliseconds:F2} "
+                           + $"audits_ms={Stopwatch.GetElapsedTime(prepared, audited).TotalMilliseconds:F2} "
+                           + $"csv_ms={Stopwatch.GetElapsedTime(audited, rowWritten).TotalMilliseconds:F2} "
+                           + $"summary_ms={Stopwatch.GetElapsedTime(rowWritten, finished).TotalMilliseconds:F2}", LoggingTarget.Performance);
+            }
         }
 
-        private void writeSummary(string? finishedPath)
+        private static void writeSummary(string? finishedPath, SampleSummary[] samples)
         {
-            if (finishedPath == null || samples.Count == 0)
+            if (finishedPath == null || samples.Length == 0)
                 return;
 
-            string summaryPath = getBenchmarkArtifactPath(finishedPath, ".summary.csv");
+            string summaryPath = getBenchmarkArtifactPath(finishedPath!, ".summary.csv", samples);
 
             using var summary = new StreamWriter(summaryPath);
             summary.WriteLine("scope,metric,value");
@@ -533,26 +581,26 @@ namespace osu.Desktop.Performance
             foreach (var skinModeSamples in gameplaySamples.GroupBy(s => new { s.SkinId, s.SkinName, s.SkinPerformanceMode, s.WindowsUltraPerformanceMode }).OrderBy(g => g.Key.SkinName))
                 writeSummaryScope(summary, $"gameplay_skin_mode:{skinModeSamples.Key.SkinId}:{skinModeSamples.Key.SkinName}:skin_perf={skinModeSamples.Key.SkinPerformanceMode}:win_ultra={skinModeSamples.Key.WindowsUltraPerformanceMode}", skinModeSamples.ToArray());
 
-            writeSegmentSummary(finishedPath);
+            writeSegmentSummary(finishedPath, samples);
         }
 
-        private string getBenchmarkArtifactPath(string finishedPath, string extension)
+        private static string getBenchmarkArtifactPath(string finishedPath, string extension, SampleSummary[] samples)
         {
             string? benchmarkId = samples.Select(s => s.BenchmarkId).FirstOrDefault(id => !string.IsNullOrEmpty(id));
 
             if (string.IsNullOrEmpty(benchmarkId))
                 return Path.ChangeExtension(finishedPath, extension);
 
-            string directory = Path.GetDirectoryName(finishedPath) ?? storage.GetFullPath("performance", true);
+            string directory = Path.GetDirectoryName(finishedPath)!;
             return Path.Combine(directory, $"mosu-performance-{benchmarkId}{extension}");
         }
 
-        private void writeSegmentSummary(string finishedPath)
+        private static void writeSegmentSummary(string finishedPath, SampleSummary[] samples)
         {
-            string segmentPath = getBenchmarkArtifactPath(finishedPath, ".segments.csv");
+            string segmentPath = getBenchmarkArtifactPath(finishedPath, ".segments.csv", samples);
 
             using var segmentWriter = new StreamWriter(segmentPath);
-            segmentWriter.WriteLine("segment,benchmark_id,benchmark_mode,benchmark_run,benchmark_warmup,benchmark_replay_hash,start_local,end_local,duration_s,beatmap_id,beatmap_set_id,beatmap,skin_id,skin_name,windows_ultra_performance_mode,skin_performance_mode,uncapped_frame_rate,frame_sync,renderer_setting,resolved_renderer,window_mode,samples,active_ratio,misses,miss_counter_end,health_min,health_end,draw_fps_avg,draw_fps_p1,draw_fps_p5,draw_fps_median,draw_fps_min,draw_ms_max_avg,draw_ms_max_p95,draw_ms_max_p99,draw_ms_max_median,draw_ms_max_worst,draw_scheduler_ms_max_p99,draw_work_ms_max_p99,draw_sleep_ms_max_p99,draw_gc_ms_max_p99,draw_vbuf_binds_max_p99,draw_vbuf_overflow_max_p99,draw_texture_binds_max_p99,draw_fbo_redraw_max_p99,draw_calls_max_p99,draw_shader_binds_max_p99,draw_vertices_draw_max_p99,draw_vertices_upl_max_p99,draw_uniform_upl_max_p99,draw_pixels_max_p99,draw_batch_flushes_max_p99,draw_pipeline_binds_max_p99,draw_resource_set_binds_max_p99,draw_resource_set_creates_max_p99,draw_texture_upload_flushes_max_p99,draw_texture_uploads_max_p99,update_ms_max_avg,update_ms_max_p95,update_ms_max_p99,update_ms_max_median,update_ms_max_worst,update_scheduler_ms_max_p99,update_work_ms_max_p99,update_sleep_ms_max_p99,update_gc_ms_max_p99,update_invalidations_max_p99,update_refreshes_max_p99,update_draw_node_ctor_max_p99,update_draw_node_appl_max_p99,update_schedule_invk_max_p99,update_input_queue_max_p99,update_positional_iq_max_p99,update_ccl_max_p99,input_ms_max_p99,input_thread_frame_ms_max_p99,input_events_collected_avg,input_events_applied_avg,input_frames_swapped_avg,input_enqueue_to_collect_ms_max_p99,input_collect_to_apply_ms_max_p99,input_enqueue_to_apply_ms_max_p99,input_apply_to_publish_ms_max_p99,input_publish_to_swap_ms_max_p99,input_enqueue_to_swap_ms_max_p99,cpu_percent_avg,gc_allocated_mb_delta_avg");
+            segmentWriter.WriteLine("segment,benchmark_id,benchmark_mode,benchmark_run,benchmark_warmup,benchmark_replay_hash,start_local,end_local,duration_s,beatmap_id,beatmap_set_id,beatmap,skin_id,skin_name,windows_ultra_performance_mode,skin_performance_mode,uncapped_frame_rate,frame_sync,renderer_setting,resolved_renderer,window_mode,samples,active_ratio,misses,miss_counter_end,health_min,health_end,draw_fps_avg,draw_fps_p1,draw_fps_p5,draw_fps_median,draw_fps_min,draw_ms_max_avg,draw_ms_max_p95,draw_ms_max_p99,draw_ms_max_median,draw_ms_max_worst,draw_scheduler_ms_max_p99,draw_work_ms_max_p99,draw_sleep_ms_max_p99,draw_gc_ms_max_p99,draw_vbuf_binds_max_p99,draw_vbuf_overflow_max_p99,draw_texture_binds_max_p99,draw_fbo_redraw_max_p99,draw_calls_max_p99,draw_shader_binds_max_p99,draw_vertices_draw_max_p99,draw_vertices_upl_max_p99,draw_uniform_upl_max_p99,draw_pixels_max_p99,draw_batch_flushes_max_p99,draw_pipeline_binds_max_p99,draw_resource_set_binds_max_p99,draw_resource_set_creates_max_p99,draw_texture_upload_flushes_max_p99,draw_texture_uploads_max_p99,update_ms_max_avg,update_ms_max_p95,update_ms_max_p99,update_ms_max_median,update_ms_max_worst,update_scheduler_ms_max_p99,update_work_ms_max_p99,update_sleep_ms_max_p99,update_gc_ms_max_p99,update_invalidations_max_p99,update_refreshes_max_p99,update_draw_node_ctor_max_p99,update_draw_node_appl_max_p99,update_schedule_invk_max_p99,update_input_queue_max_p99,update_positional_iq_max_p99,update_ccl_max_p99,input_ms_max_p99,input_thread_frame_ms_max_p99,cpu_percent_avg,gc_allocated_mb_delta_avg");
 
             var currentSegment = new List<SampleSummary>();
             int segmentIndex = 0;
@@ -731,25 +779,9 @@ namespace osu.Desktop.Performance
             writer.Write(',');
             writer.Write(format(percentile(segment.Select(s => s.InputMsMax).OrderBy(v => v).ToArray(), 0.99)));
             writer.Write(',');
-            writer.Write(format(segment.Average(s => s.InputEventsCollected)));
-            writer.Write(',');
-            writer.Write(format(segment.Average(s => s.InputEventsApplied)));
-            writer.Write(',');
-            writer.Write(format(segment.Average(s => s.InputFramesSwapped)));
-            writer.Write(',');
-            writer.Write(format(percentile(segment.Select(s => s.InputEnqueueToCollectMsMax).OrderBy(v => v).ToArray(), 0.99)));
-            writer.Write(',');
-            writer.Write(format(percentile(segment.Select(s => s.InputCollectToApplyMsMax).OrderBy(v => v).ToArray(), 0.99)));
-            writer.Write(',');
-            writer.Write(format(percentile(segment.Select(s => s.InputEnqueueToApplyMsMax).OrderBy(v => v).ToArray(), 0.99)));
-            writer.Write(',');
-            writer.Write(format(percentile(segment.Select(s => s.InputApplyToPublishMsMax).OrderBy(v => v).ToArray(), 0.99)));
-            writer.Write(',');
-            writer.Write(format(percentile(segment.Select(s => s.InputPublishToSwapMsMax).OrderBy(v => v).ToArray(), 0.99)));
-            writer.Write(',');
-            writer.Write(format(percentile(segment.Select(s => s.InputEnqueueToSwapMsMax).OrderBy(v => v).ToArray(), 0.99)));
-            writer.Write(',');
-            writer.Write(format(segment.Average(s => s.CpuPercent)));
+            double[] cpuSamples = segment.Where(s => !double.IsNaN(s.CpuPercent)).Select(s => s.CpuPercent).ToArray();
+            if (cpuSamples.Length > 0)
+                writer.Write(format(cpuSamples.Average()));
             writer.Write(',');
             writer.Write(format(segment.Average(s => s.GcAllocatedMbDelta)));
             writer.WriteLine();
@@ -876,15 +908,6 @@ namespace osu.Desktop.Performance
             appendSummary(summary, scope, "input_work_ms_max", scopeSamples.Select(s => s.InputWorkMsMax));
             appendSummary(summary, scope, "input_sleep_ms_max", scopeSamples.Select(s => s.InputSleepMsMax));
             appendSummary(summary, scope, "input_gc_ms_max", scopeSamples.Select(s => s.InputGcMsMax));
-            appendSummary(summary, scope, "input_events_collected", scopeSamples.Select(s => (double)s.InputEventsCollected));
-            appendSummary(summary, scope, "input_events_applied", scopeSamples.Select(s => (double)s.InputEventsApplied));
-            appendSummary(summary, scope, "input_frames_swapped", scopeSamples.Select(s => (double)s.InputFramesSwapped));
-            appendSummary(summary, scope, "input_enqueue_to_collect_ms_max", scopeSamples.Select(s => s.InputEnqueueToCollectMsMax));
-            appendSummary(summary, scope, "input_collect_to_apply_ms_max", scopeSamples.Select(s => s.InputCollectToApplyMsMax));
-            appendSummary(summary, scope, "input_enqueue_to_apply_ms_max", scopeSamples.Select(s => s.InputEnqueueToApplyMsMax));
-            appendSummary(summary, scope, "input_apply_to_publish_ms_max", scopeSamples.Select(s => s.InputApplyToPublishMsMax));
-            appendSummary(summary, scope, "input_publish_to_swap_ms_max", scopeSamples.Select(s => s.InputPublishToSwapMsMax));
-            appendSummary(summary, scope, "input_enqueue_to_swap_ms_max", scopeSamples.Select(s => s.InputEnqueueToSwapMsMax));
             appendSummary(summary, scope, "cpu_percent", scopeSamples.Select(s => s.CpuPercent));
             appendSummary(summary, scope, "working_set_mb", scopeSamples.Select(s => s.WorkingSetMb));
             appendSummary(summary, scope, "gc_heap_mb", scopeSamples.Select(s => s.GcHeapMb));
@@ -899,18 +922,36 @@ namespace osu.Desktop.Performance
             if (currentPath == null)
                 return;
 
-            Guid skinId = skinManager.CurrentSkinInfo.Value.ID;
+            // A Live<SkinInfo> can be read from a background thread via PerformRead(), which
+            // resolves its own Realm instance there. Only capture the reference and immutable
+            // run/skin identity on Update; even enumerating file names can stall startup.
+            Live<SkinInfo> skinInfo = skinManager.CurrentSkinInfo.Value;
+            Guid skinId = skinInfo.ID;
 
             if (!auditedSkinIds.Add(skinId))
                 return;
 
-            writeSkinAudit(currentPath, skinId, skinManager.CurrentSkin.Value.Name);
+            string path = currentPath;
+            string skinName = skinManager.CurrentSkin.Value.Name;
+            skinAuditTask = PerformanceSkinAuditWorker.Schedule(skinAuditTask, storage, fileStorage =>
+            {
+                long start = Stopwatch.GetTimestamp();
+                List<SkinFileAuditEntry> files = getSkinFiles(skinInfo);
+                double elapsedMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+
+                if (elapsedMs > 5)
+                {
+                    Logger.Log($"MOSU_SKIN_AUDIT_INITIAL_ENUMERATION elapsed_ms={elapsedMs:F2} files={files.Count}",
+                        LoggingTarget.Performance);
+                }
+
+                writeSkinAudit(fileStorage, path, skinId, skinName, files);
+            });
         }
 
-        private void writeSkinAudit(string performancePath, Guid skinId, string skinName)
+        private static void writeSkinAudit(Storage fileStorage, string performancePath, Guid skinId, string skinName, List<SkinFileAuditEntry> files)
         {
             string auditPath = Path.ChangeExtension(performancePath, ".skin.csv");
-            var fileStorage = storage.GetStorageForDirectory("files");
             bool writeHeader = !File.Exists(auditPath) || new System.IO.FileInfo(auditPath).Length == 0;
 
             using var audit = new StreamWriter(auditPath, append: true);
@@ -920,7 +961,7 @@ namespace osu.Desktop.Performance
 
             bool wroteImage = false;
 
-            foreach (var file in getCurrentSkinFiles())
+            foreach (var file in files)
             {
                 string extension = Path.GetExtension(file.Filename).ToLowerInvariant();
 
@@ -965,8 +1006,8 @@ namespace osu.Desktop.Performance
                 writeSkinAuditRow(audit, skinId, skinName, "<built-in or no imported image files>", string.Empty, 0, 0, 0, string.Empty, string.Empty);
         }
 
-        private List<SkinFileAuditEntry> getCurrentSkinFiles()
-            => skinManager.CurrentSkinInfo.Value.PerformRead(s => s.Files.Select(f => new SkinFileAuditEntry(f.Filename, f.File.GetStoragePath())).ToList());
+        private static List<SkinFileAuditEntry> getSkinFiles(Live<SkinInfo> skinInfo)
+            => skinInfo.PerformRead(s => s.Files.Select(f => new SkinFileAuditEntry(f.Filename, f.File.GetStoragePath())).ToList());
 
         private static bool isImageExtension(string extension)
             => extension is ".png" or ".jpg" or ".jpeg";
@@ -995,7 +1036,7 @@ namespace osu.Desktop.Performance
             audit.WriteLine();
         }
 
-        private static void writeBreakdown(StreamWriter writer, PerformanceBreakdownMax breakdown)
+        private static void writeBreakdown(TextWriter writer, PerformanceBreakdownMax breakdown)
         {
             writer.Write(format(breakdown.SchedulerMs));
             writer.Write(',');
@@ -1006,7 +1047,7 @@ namespace osu.Desktop.Performance
             writer.Write(format(breakdown.GcMs));
         }
 
-        private static void writeDrawCounters(StreamWriter writer, PerformanceBreakdownMax breakdown)
+        private static void writeDrawCounters(TextWriter writer, PerformanceBreakdownMax breakdown)
         {
             writer.Write(breakdown.VBufBinds);
             writer.Write(',');
@@ -1069,7 +1110,7 @@ namespace osu.Desktop.Performance
             writer.Write(breakdown.VeldridVertexBytes);
         }
 
-        private static void writeFlushSources(StreamWriter writer, FlushSourceSample flushSources)
+        private static void writeFlushSources(TextWriter writer, FlushSourceSample flushSources)
         {
             writer.Write(escape(flushSources.Top1Source));
             writer.Write(',');
@@ -1152,7 +1193,7 @@ namespace osu.Desktop.Performance
             return new FlushSourceSample(top1Source, top1Count, top2Source, top2Count, top3Source, top3Count);
         }
 
-        private static void writeUpdateCounters(StreamWriter writer, PerformanceBreakdownMax breakdown)
+        private static void writeUpdateCounters(TextWriter writer, PerformanceBreakdownMax breakdown)
         {
             writer.Write(breakdown.Invalidations);
             writer.Write(',');
@@ -1171,7 +1212,7 @@ namespace osu.Desktop.Performance
             writer.Write(breakdown.CCL);
         }
 
-        private static void writeCclSources(StreamWriter writer, PerformanceBreakdownMax breakdown)
+        private static void writeCclSources(TextWriter writer, PerformanceBreakdownMax breakdown)
         {
             writer.Write(escape(breakdown.CclTop1Source ?? string.Empty));
             writer.Write(',');
@@ -1186,7 +1227,7 @@ namespace osu.Desktop.Performance
             writer.Write(breakdown.CclTop3Count);
         }
 
-        private static void writeInvalSources(StreamWriter writer, PerformanceBreakdownMax breakdown)
+        private static void writeInvalSources(TextWriter writer, PerformanceBreakdownMax breakdown)
         {
             writer.Write(escape(breakdown.InvalTop1Source ?? string.Empty));
             writer.Write(',');
@@ -1263,21 +1304,59 @@ namespace osu.Desktop.Performance
         /// <summary>
         /// Appends the per-type pixel attribution accumulated since the previous sample to a
         /// <c>.pixels.csv</c> sidecar. Answers "which drawable types consume the fill-rate budget" — the binding
-        /// constraint on bandwidth-bound iGPUs (worklog R11). Kept out of the main CSV to preserve its format.
+        /// constraint on bandwidth-bound iGPUs. Kept out of the main CSV to preserve its format.
         /// </summary>
         private void writePixelSourceSample(double elapsedMs)
         {
-            // Standalone public build note: PixelSourceStatistics is an optional Mosu framework extension.
+            if (currentPath == null || !trackPerfSources || !PixelSourceStatistics.Active)
+                return;
+
+            var snapshot = PixelSourceStatistics.TakeSnapshot();
+
+            if (snapshot.Count == 0)
+                return;
+
+            bool gameplayActive = localUserPlaying.Value == LocalUserPlayingState.Playing
+                                  || (!string.IsNullOrEmpty(GameplayPerformanceSnapshot.BenchmarkId) && GameplayPerformanceSnapshot.BenchmarkGameplayActive);
+
+            if (!gameplayActive)
+                return;
+
+            string pixelsPath = Path.ChangeExtension(currentPath, ".pixels.csv");
+            using var pixels = new StringWriter(CultureInfo.InvariantCulture);
+            bool pixelHeader = !sidecarHeaders.Contains(pixelsPath);
+            if (pixelHeader)
+                pixels.WriteLine("elapsed_ms,rank,source,pixels_in_sample");
+
+            int rank = 1;
+
+                foreach (var entry in snapshot)
+                {
+                    // 20, not 10: low-volume diagnostic labels (e.g. the Path "[FB]" prepass counter,
+                    // which only accumulates on FBO redraw frames) never surfaced in a top-10.
+                    if (rank > 20)
+                        break;
+
+                    pixels.Write(format(elapsedMs));
+                    pixels.Write(',');
+                    pixels.Write(rank++);
+                    pixels.Write(',');
+                    pixels.Write(escape(entry.Key));
+                    pixels.Write(',');
+                    pixels.Write(entry.Value);
+                    pixels.WriteLine();
+                }
+            if (writer?.TryWrite(pixelsPath, pixels.ToString()) == true && pixelHeader)
+                sidecarHeaders.Add(pixelsPath);
         }
 
         private void writeSceneAudit(string performancePath, double elapsedMs, string sceneKey)
         {
             string auditPath = Path.ChangeExtension(performancePath, ".scene.csv");
-            bool writeHeader = !File.Exists(auditPath) || new System.IO.FileInfo(auditPath).Length == 0;
+            using var audit = new StringWriter(CultureInfo.InvariantCulture);
 
-            using var audit = new StreamWriter(auditPath, append: true);
-
-            if (writeHeader)
+            bool sceneHeader = !sidecarHeaders.Contains(auditPath);
+            if (sceneHeader)
                 audit.WriteLine($"benchmark_id,benchmark_mode,benchmark_run,benchmark_warmup,benchmark_replay_hash,elapsed_ms,beatmap_id,skin_id,skin_name,{GameplaySceneAudit.CSV_COLUMNS}");
 
             var currentBeatmap = beatmap.Value.BeatmapInfo;
@@ -1324,6 +1403,9 @@ namespace osu.Desktop.Performance
             {
                 Logger.Error(e, $"mosu performance logging could not audit scene graph for {sceneKey}.");
             }
+
+            if (writer?.TryWrite(auditPath, audit.ToString()) == true && sceneHeader)
+                sidecarHeaders.Add(auditPath);
         }
 
         private static void appendSummary(StreamWriter summary, string scope, string name, IEnumerable<double> values)
@@ -1379,7 +1461,6 @@ namespace osu.Desktop.Performance
             base.Dispose(isDisposing);
         }
 
-#pragma warning disable CS0649
         private struct PerformanceBreakdownMax
         {
             public double SchedulerMs;
@@ -1437,20 +1518,72 @@ namespace osu.Desktop.Performance
             public string? InvalTop3Source;
             public long InvalTop3Count;
 
-            // Standalone public build note: ThreadFramePerformanceSnapshot is an optional Mosu framework extension.
-        }
-#pragma warning restore CS0649
+            public void Add(ThreadFramePerformanceSnapshot snapshot)
+            {
+                SchedulerMs = Math.Max(SchedulerMs, snapshot.SchedulerMs);
+                WorkMs = Math.Max(WorkMs, snapshot.WorkMs);
+                SleepMs = Math.Max(SleepMs, snapshot.SleepMs);
+                GcMs = Math.Max(GcMs, snapshot.GcMs);
+                Invalidations = Math.Max(Invalidations, snapshot.Invalidations);
+                Refreshes = Math.Max(Refreshes, snapshot.Refreshes);
+                DrawNodeCtor = Math.Max(DrawNodeCtor, snapshot.DrawNodeCtor);
+                DrawNodeAppl = Math.Max(DrawNodeAppl, snapshot.DrawNodeAppl);
+                ScheduleInvk = Math.Max(ScheduleInvk, snapshot.ScheduleInvk);
+                InputQueue = Math.Max(InputQueue, snapshot.InputQueue);
+                PositionalIQ = Math.Max(PositionalIQ, snapshot.PositionalIQ);
+                CCL = Math.Max(CCL, snapshot.CCL);
+                VBufBinds = Math.Max(VBufBinds, snapshot.VBufBinds);
+                VBufOverflow = Math.Max(VBufOverflow, snapshot.VBufOverflow);
+                TextureBinds = Math.Max(TextureBinds, snapshot.TextureBinds);
+                FBORedraw = Math.Max(FBORedraw, snapshot.FBORedraw);
+                DrawCalls = Math.Max(DrawCalls, snapshot.DrawCalls);
+                ShaderBinds = Math.Max(ShaderBinds, snapshot.ShaderBinds);
+                VerticesDraw = Math.Max(VerticesDraw, snapshot.VerticesDraw);
+                VerticesUpl = Math.Max(VerticesUpl, snapshot.VerticesUpl);
+                UniformUpl = Math.Max(UniformUpl, snapshot.UniformUpl);
+                Pixels = Math.Max(Pixels, snapshot.Pixels);
+                BatchFlushes = Math.Max(BatchFlushes, snapshot.BatchFlushes);
+                PipelineBinds = Math.Max(PipelineBinds, snapshot.PipelineBinds);
+                ResourceSetBinds = Math.Max(ResourceSetBinds, snapshot.ResourceSetBinds);
+                ResourceSetCreates = Math.Max(ResourceSetCreates, snapshot.ResourceSetCreates);
+                TextureUploadFlushes = Math.Max(TextureUploadFlushes, snapshot.TextureUploadFlushes);
+                TextureUploads = Math.Max(TextureUploads, snapshot.TextureUploads);
+                DeferredEventProcessUs = Math.Max(DeferredEventProcessUs, snapshot.DeferredEventProcessUs);
+                DeferredVertexWriteUs = Math.Max(DeferredVertexWriteUs, snapshot.DeferredVertexWriteUs);
+                DeferredVertexCommitUs = Math.Max(DeferredVertexCommitUs, snapshot.DeferredVertexCommitUs);
+                DeferredVertexDrawUs = Math.Max(DeferredVertexDrawUs, snapshot.DeferredVertexDrawUs);
+                DeferredVertexMapCount = Math.Max(DeferredVertexMapCount, snapshot.DeferredVertexMapCount);
+                DeferredVertexUnmapCount = Math.Max(DeferredVertexUnmapCount, snapshot.DeferredVertexUnmapCount);
+                DeferredVertexBytes = Math.Max(DeferredVertexBytes, snapshot.DeferredVertexBytes);
+                VeldridSwapBuffersUs = Math.Max(VeldridSwapBuffersUs, snapshot.VeldridSwapBuffersUs);
+                VeldridTextureUploadUs = Math.Max(VeldridTextureUploadUs, snapshot.VeldridTextureUploadUs);
+                PipelineCreates = Math.Max(PipelineCreates, snapshot.PipelineCreates);
+                VeldridVertexSetUs = Math.Max(VeldridVertexSetUs, snapshot.VeldridVertexSetUs);
+                VeldridVertexUpdateUs = Math.Max(VeldridVertexUpdateUs, snapshot.VeldridVertexUpdateUs);
+                VeldridVertexDrawUs = Math.Max(VeldridVertexDrawUs, snapshot.VeldridVertexDrawUs);
+                VeldridVertexBytes = Math.Max(VeldridVertexBytes, snapshot.VeldridVertexBytes);
 
-        private readonly record struct InputLatencySnapshot(
-            long CollectedEventCount = 0,
-            long AppliedEventCount = 0,
-            long SwappedInputFrameCount = 0,
-            double EnqueueToCollectMillisecondsMax = 0,
-            double CollectToApplyMillisecondsMax = 0,
-            double EnqueueToApplyMillisecondsMax = 0,
-            double ApplyToPublishMillisecondsMax = 0,
-            double PublishToSwapMillisecondsMax = 0,
-            double EnqueueToSwapMillisecondsMax = 0);
+                if (snapshot.CclTop1Count > CclTop1Count)
+                {
+                    CclTop1Source = snapshot.CclTop1Source;
+                    CclTop1Count = snapshot.CclTop1Count;
+                    CclTop2Source = snapshot.CclTop2Source;
+                    CclTop2Count = snapshot.CclTop2Count;
+                    CclTop3Source = snapshot.CclTop3Source;
+                    CclTop3Count = snapshot.CclTop3Count;
+                }
+
+                if (snapshot.InvalTop1Count > InvalTop1Count)
+                {
+                    InvalTop1Source = snapshot.InvalTop1Source;
+                    InvalTop1Count = snapshot.InvalTop1Count;
+                    InvalTop2Source = snapshot.InvalTop2Source;
+                    InvalTop2Count = snapshot.InvalTop2Count;
+                    InvalTop3Source = snapshot.InvalTop3Source;
+                    InvalTop3Count = snapshot.InvalTop3Count;
+                }
+            }
+        }
 
         private readonly record struct SampleSummary(
             DateTimeOffset LocalTime,
@@ -1533,15 +1666,6 @@ namespace osu.Desktop.Performance
             double InputWorkMsMax,
             double InputSleepMsMax,
             double InputGcMsMax,
-            long InputEventsCollected,
-            long InputEventsApplied,
-            long InputFramesSwapped,
-            double InputEnqueueToCollectMsMax,
-            double InputCollectToApplyMsMax,
-            double InputEnqueueToApplyMsMax,
-            double InputApplyToPublishMsMax,
-            double InputPublishToSwapMsMax,
-            double InputEnqueueToSwapMsMax,
             double CpuPercent,
             double WorkingSetMb,
             double GcHeapMb,

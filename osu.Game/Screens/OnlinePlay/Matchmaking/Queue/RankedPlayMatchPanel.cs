@@ -31,7 +31,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 {
     public partial class RankedPlayMatchPanel : CompositeDrawable, IHasTooltip
     {
-        public LocalisableString TooltipText => "View match details";
+        public LocalisableString TooltipText => global::osu.Game.Localisation.ClientTranslationStrings.J4840;
 
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
@@ -157,7 +157,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                 {
                                     Anchor = Anchor.Centre,
                                     Origin = Anchor.Centre,
-                                    Text = "vs",
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4841,
                                     Font = OsuFont.GetFont(size: 50, weight: FontWeight.Bold),
                                     UseFullGlyphHeight = false,
                                     Colour = colourProvider.Light3,
@@ -273,7 +273,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                         Size = new Vector2(12),
                                                         Icon = FontAwesome.Solid.Heart,
                                                         Colour = Color4.Red,
-                                                        TooltipText = "Remaining Life"
+                                                        TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J4843
                                                     },
                                                     leftLifeText = new OsuSpriteText
                                                     {
@@ -308,7 +308,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                         Size = new Vector2(10),
                                                         Colour = colourProvider.Foreground1,
                                                         Icon = FontAwesome.Solid.Trophy,
-                                                        TooltipText = "Rounds Won",
+                                                        TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J4844,
                                                     },
                                                     new OsuSpriteText
                                                     {
@@ -357,7 +357,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                             Origin = Anchor.Centre,
                                             Margin = new MarginPadding { Horizontal = 8, Vertical = 5 },
                                             Colour = colourProvider.Background5,
-                                            Text = "Completed",
+                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4845,
                                             Font = OsuFont.GetFont(size: 12, weight: FontWeight.SemiBold),
                                             UseFullGlyphHeight = false,
                                         }

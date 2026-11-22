@@ -25,6 +25,7 @@ using osu.Game.Graphics.UserInterface;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Input.Bindings;
 using osu.Game.Localisation;
+using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays;
@@ -59,6 +60,8 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
 
         [Resolved]
         private IAPIProvider api { get; set; } = null!;
+
+        internal Action<LoungeRoomPanel>? PinnedChanged { get; init; }
 
         private readonly BindableWithCurrent<Room?> selectedRoom = new BindableWithCurrent<Room?>();
         private Sample? sampleSelect;
@@ -119,6 +122,8 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
         {
             if (e.PropertyName == nameof(Room.CurrentPlaylistItem))
                 updateSelectedItem();
+            else if (e.PropertyName == nameof(Room.Pinned))
+                PinnedChanged?.Invoke(this);
         }
 
         private void updateSelectedItem()
@@ -168,6 +173,15 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
                 items.Add(new OsuMenuItemSpacer());
                 items.Add(new OsuMenuItem(CommonStrings.CreateCopy, MenuItemType.Standard, () => lounge?.OpenCopy(Room)));
 
+                if (lounge is PlaylistsLoungeSubScreen playlists && Room.RoomID != null && Room.Type == MatchType.Playlists
+                    && Room.Category != RoomCategory.DailyChallenge && api.IsLoggedIn && api.LocalUser.Value.IsAdmin
+                    && MosuServerEnvironment.IsMosuServerUrl(api.Endpoints.APIUrl))
+                {
+                    bool pinned = !Room.Pinned;
+                    items.Add(new OsuMenuItem(pinned ? PlaylistPinStrings.Pin : PlaylistPinStrings.Unpin,
+                        MenuItemType.Standard, () => playlists.SetPinned(Room, pinned)));
+                }
+
                 if (Room.Type == MatchType.Playlists && Room.Host?.Id == api.LocalUser.Value.Id && Room.StartDate?.AddMinutes(5) >= DateTimeOffset.Now && !Room.HasEnded)
                 {
                     items.Add(new OsuMenuItem(OnlinePlayStrings.ClosePlaylist, MenuItemType.Destructive, () =>
@@ -178,7 +192,7 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
 
                 if (Room.Host?.Id == api.LocalUser.Value.Id)
                 {
-                    items.Add(new OsuMenuItem("Delete playlist", MenuItemType.Destructive, () =>
+                    items.Add(new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J4793, MenuItemType.Destructive, () =>
                     {
                         dialogOverlay?.Push(new Playlists.DeletePlaylistDialog(Room, () => lounge?.Delete(Room)));
                     }));
@@ -282,12 +296,12 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
                                 passwordTextBox = new OsuPasswordTextBox
                                 {
                                     Width = 200,
-                                    PlaceholderText = "password",
+                                    PlaceholderText = global::osu.Game.Localisation.ClientTranslationStrings.J4794,
                                 },
                                 joinButton = new RoundedButton
                                 {
                                     Width = 80,
-                                    Text = "Join Room",
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4795,
                                 }
                             }
                         },

@@ -2,11 +2,11 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Sprites;
 using osu.Game.Beatmaps;
 using osu.Game.Database;
 using osu.Game.Online.API;
@@ -14,27 +14,46 @@ using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Rulesets;
 using osu.Game.Scoring;
+using osu.Game.Skinning;
 using osuTK;
-using Realms;
 
 namespace osu.Game.Screens.Select
 {
     public partial class PanelLocalRankDisplay : CompositeDrawable
     {
         private BeatmapInfo? beatmap;
+        private string? beatmapHash;
+        private bool active = true;
+        private RankSnapshotCoordinator? coordinator;
+        private int generation;
+
+        public bool Active
+        {
+            get => active;
+            set
+            {
+                if (active == value)
+                    return;
+
+                active = value;
+                if (IsLoaded)
+                    updateSnapshot();
+            }
+        }
 
         public BeatmapInfo? Beatmap
         {
             get => beatmap;
             set
             {
-                if (beatmap?.Equals(value) == true)
+                string? hash = value?.Hash;
+                beatmap = value;
+                if (beatmapHash == hash)
                     return;
 
-                beatmap = value;
-
+                beatmapHash = hash;
                 if (IsLoaded)
-                    updateSubscription();
+                    updateSnapshot();
             }
         }
 
@@ -45,83 +64,141 @@ namespace osu.Game.Screens.Select
         private RealmAccess realm { get; set; } = null!;
 
         private readonly IBindable<APIUser> localUser = new Bindable<APIUser>();
+        private readonly CarouselRank updateable;
 
-        private IDisposable? scoreSubscription;
-
-        private readonly UpdateableRank updateable;
+        public bool UseLegacyStyle
+        {
+            get => updateable.UseLegacyStyle;
+            set => updateable.UseLegacyStyle = value;
+        }
 
         public bool HasRank => updateable.Rank != null;
+        internal ScoreRank? CurrentRank => updateable.Rank;
+        internal string? ActiveHash => active && !IsDisposed ? beatmapHash : null;
+        internal string RulesetName => ruleset.Value.ShortName;
+        internal int UserId => localUser.Value.Id;
+        internal int Generation => generation;
 
         public PanelLocalRankDisplay(BeatmapInfo? beatmap = null)
         {
             AutoSizeAxes = Axes.Both;
-
-            InternalChild = updateable = new UpdateableRank(animate: false)
+            InternalChild = updateable = new CarouselRank()
             {
                 Size = new Vector2(40, 20),
                 Alpha = 0,
             };
-
             Beatmap = beatmap;
         }
 
         [BackgroundDependencyLoader]
-        private void load(IAPIProvider api)
-        {
-            localUser.BindTo(api.LocalUser);
-        }
+        private void load(IAPIProvider api) => localUser.BindTo(api.LocalUser);
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
-
-            ruleset.BindValueChanged(_ => updateSubscription());
-            localUser.BindValueChanged(_ => updateSubscription(), true);
+            ruleset.BindValueChanged(_ => updateSnapshot());
+            localUser.BindValueChanged(_ => updateSnapshot(), true);
         }
 
-        private osu.Framework.Threading.ScheduledDelegate? debounceSubscription;
-
-        private void updateSubscription()
+        private void updateSnapshot()
         {
-            debounceSubscription?.Cancel();
-            scoreSubscription?.Dispose();
-            setRankFromScore(null);
+            generation++;
+            updateable.Rank = null;
+            updateable.Alpha = 0;
 
-            if (beatmap == null)
-                return;
-
-            debounceSubscription = Scheduler.AddDelayed(() =>
+            if (ActiveHash == null)
             {
-                scoreSubscription = realm.RegisterForNotifications(r => r.All<ScoreInfo>().Where(s => s.BeatmapHash == beatmap.Hash && !s.DeletePending), localScoresChanged);
-            }, 50);
+                coordinator?.Remove(this);
+                coordinator = null;
+                return;
+            }
+
+            coordinator ??= RankSnapshotCoordinator.For(realm);
+            coordinator.AddOrUpdate(this);
         }
 
-        private void localScoresChanged(IRealmCollection<ScoreInfo> sender, ChangeSet? changes)
+        internal void ApplySnapshot(ScoreRank? rank, int requestedGeneration)
         {
-            // This subscription may fire from changes to linked beatmaps, which we don't care about.
-            // It's currently not possible for a score to be modified after insertion, so we can safely ignore callbacks with only modifications.
-            if (changes?.HasCollectionChanges() == false)
+            if (IsDisposed || !active || generation != requestedGeneration || updateable.Rank == rank)
                 return;
 
-            ScoreInfo? topScore = sender
-                                  // doing these post realm filter is most efficient.
-                                  .Where(s => s.UserID == localUser.Value.Id || s.UserID <= 1)
-                                  .Where(s => ruleset.Value.Equals(s.Ruleset))
-                                  .MaxBy(info => (info.TotalScore, -info.Date.UtcDateTime.Ticks));
-
-            setRankFromScore(topScore);
+            updateable.Rank = rank;
+            updateable.Alpha = rank != null ? 1 : 0;
         }
 
-        private void setRankFromScore(ScoreInfo? topScore)
+        internal void ScheduleSnapshotDelayed(Action action, double remainingMs) => Scheduler.AddDelayed(action, remainingMs);
+
+        private partial class CarouselRank : UpdateableRank
         {
-            updateable.Rank = topScore?.Rank;
-            updateable.Alpha = topScore != null ? 1 : 0;
+            private bool useLegacyStyle;
+
+            public bool UseLegacyStyle
+            {
+                get => useLegacyStyle;
+                set
+                {
+                    if (useLegacyStyle == value)
+                        return;
+
+                    useLegacyStyle = value;
+                    // Recreate the presentation even when the score rank itself is unchanged.
+                    var rank = Rank;
+                    Rank = null;
+                    Rank = rank;
+                }
+            }
+
+            public CarouselRank()
+                : base(animate: false)
+            {
+            }
+
+            protected override Drawable? CreateDrawable(ScoreRank? rank)
+            {
+                if (!useLegacyStyle || !rank.HasValue)
+                    return base.CreateDrawable(rank);
+
+                return new LegacyCarouselRank(rank.Value);
+            }
+        }
+
+        internal partial class LegacyCarouselRank : SkinReloadableDrawable
+        {
+            internal string TextureName { get; }
+            internal Sprite Sprite { get; }
+
+            [Resolved]
+            private SkinManager skinManager { get; set; } = null!;
+
+            public LegacyCarouselRank(ScoreRank rank)
+            {
+                TextureName = $"ranking-{rank}-small";
+                RelativeSizeAxes = Axes.Both;
+                Anchor = Anchor.Centre;
+                Origin = Anchor.Centre;
+                InternalChild = Sprite = new Sprite
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    FillMode = FillMode.Fit,
+                    Anchor = Anchor.Centre,
+                    Origin = Anchor.Centre,
+                };
+            }
+
+            protected override void SkinChanged(ISkinSource skin)
+            {
+                base.SkinChanged(skin);
+                // Modern built-in skins do not supply stable's grade textures.
+                Sprite.Texture = skin.GetTexture(TextureName) ?? skinManager.DefaultClassicSkin.GetTexture(TextureName);
+            }
         }
 
         protected override void Dispose(bool isDisposing)
         {
+            generation++;
+            coordinator?.Remove(this);
+            coordinator = null;
             base.Dispose(isDisposing);
-            scoreSubscription?.Dispose();
         }
     }
 }

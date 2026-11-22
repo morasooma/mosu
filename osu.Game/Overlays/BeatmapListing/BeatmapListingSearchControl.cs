@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
@@ -69,6 +70,10 @@ namespace osu.Game.Overlays.BeatmapListing
             }
         }
 
+        internal bool FiltersReady => filterRows.Completed;
+        internal Action? FiltersLoaded;
+
+        private readonly StagedFilterRows filterRows;
         private readonly BeatmapSearchTextBox textBox;
         private readonly BeatmapSearchGeneralFilterRow generalFilter;
         private readonly BeatmapSearchRulesetFilterRow modeFilter;
@@ -137,25 +142,24 @@ namespace osu.Game.Overlays.BeatmapListing
                                     serverExclusiveButton = new ServerExclusiveTabItem(),
                                 }
                             },
-                            new ReverseChildIDFillFlowContainer<Drawable>
+                            filterRows = new StagedFilterRows(new Drawable[]
+                            {
+                                generalFilter = new BeatmapSearchGeneralFilterRow(),
+                                modeFilter = new BeatmapSearchRulesetFilterRow(),
+                                categoryFilter = new BeatmapSearchFilterRow<SearchCategory>(BeatmapsStrings.ListingSearchFiltersStatus),
+                                genreFilter = new BeatmapSearchFilterRow<SearchGenre>(BeatmapsStrings.ListingSearchFiltersGenre),
+                                languageFilter = new BeatmapSearchFilterRow<SearchLanguage>(BeatmapsStrings.ListingSearchFiltersLanguage),
+                                extraFilter = new BeatmapSearchMultipleSelectionFilterRow<SearchExtra>(BeatmapsStrings.ListingSearchFiltersExtra),
+                                ranksFilter = new BeatmapSearchScoreFilterRow(),
+                                playedFilter = new BeatmapSearchFilterRow<SearchPlayed>(BeatmapsStrings.ListingSearchFiltersPlayed),
+                                explicitContentFilter = new BeatmapSearchFilterRow<SearchExplicit>(BeatmapsStrings.ListingSearchFiltersNsfw),
+                            })
                             {
                                 AutoSizeAxes = Axes.Y,
                                 RelativeSizeAxes = Axes.X,
                                 Direction = FillDirection.Vertical,
                                 Padding = new MarginPadding { Horizontal = 10 },
                                 Spacing = new Vector2(5),
-                                Children = new Drawable[]
-                                {
-                                    generalFilter = new BeatmapSearchGeneralFilterRow(),
-                                    modeFilter = new BeatmapSearchRulesetFilterRow(),
-                                    categoryFilter = new BeatmapSearchFilterRow<SearchCategory>(BeatmapsStrings.ListingSearchFiltersStatus),
-                                    genreFilter = new BeatmapSearchFilterRow<SearchGenre>(BeatmapsStrings.ListingSearchFiltersGenre),
-                                    languageFilter = new BeatmapSearchFilterRow<SearchLanguage>(BeatmapsStrings.ListingSearchFiltersLanguage),
-                                    extraFilter = new BeatmapSearchMultipleSelectionFilterRow<SearchExtra>(BeatmapsStrings.ListingSearchFiltersExtra),
-                                    ranksFilter = new BeatmapSearchScoreFilterRow(),
-                                    playedFilter = new BeatmapSearchFilterRow<SearchPlayed>(BeatmapsStrings.ListingSearchFiltersPlayed),
-                                    explicitContentFilter = new BeatmapSearchFilterRow<SearchExplicit>(BeatmapsStrings.ListingSearchFiltersNsfw),
-                                }
                             }
                         }
                     }
@@ -163,6 +167,73 @@ namespace osu.Game.Overlays.BeatmapListing
             });
 
             categoryFilter.Current.Value = SearchCategory.Leaderboard;
+            filterRows.Loaded = () => FiltersLoaded?.Invoke();
+        }
+
+        // Dependency loading alone does not prepare LoadComplete, first layout or their
+        // cold JIT paths. Admit one loaded row per Update rather than the entire header.
+        private partial class StagedFilterRows : ReverseChildIDFillFlowContainer<Drawable>
+        {
+            private readonly Container<Drawable> batch;
+            private readonly Queue<Drawable> pending;
+            private bool ready;
+            private bool deferAdmission = true;
+            public bool Completed { get; private set; }
+            public Action? Loaded;
+
+            public StagedFilterRows(Drawable[] rows)
+            {
+                batch = new Container<Drawable> { Children = rows };
+                pending = new Queue<Drawable>(rows);
+            }
+
+            [BackgroundDependencyLoader]
+            private void load()
+            {
+                // We are already in the parent's dependency-loading context. Keep
+                // defaults/config binding ordered before search starts, but retain
+                // the rows outside the visible tree until their admission frame.
+                LoadComponent(batch);
+                ready = true;
+            }
+
+            protected override void Update()
+            {
+                base.Update();
+
+                if (!ready)
+                    return;
+
+                // The last row's LoadComplete runs after this Update. Only enable
+                // requests on the following frame, when its bindings are initialised.
+                if (pending.Count == 0)
+                {
+                    ready = false;
+                    batch.Dispose();
+                    Completed = true;
+                    Loaded?.Invoke();
+                    return;
+                }
+
+                // Leave a frame for the surrounding header's first layout, and
+                // between rows so Draw can receive a new tree during cold JIT work.
+                deferAdmission = !deferAdmission;
+                if (!deferAdmission)
+                    return;
+
+                if (pending.TryDequeue(out var row))
+                {
+                    batch.Remove(row, false);
+                    Add(row);
+                }
+            }
+
+            protected override void Dispose(bool isDisposing)
+            {
+                pending.Clear();
+                batch.Dispose();
+                base.Dispose(isDisposing);
+            }
         }
 
         private IBindable<bool> allowExplicitContent = null!;
@@ -212,7 +283,8 @@ namespace osu.Game.Overlays.BeatmapListing
                 if (dodgeSelected)
                 {
                     serverExclusiveBeforeDodge ??= serverExclusiveButton.Active.Value;
-                    serverExclusiveButton.Active.Value = true;
+                    if (!serverExclusiveButton.Active.Disabled)
+                        serverExclusiveButton.Active.Value = true;
                     serverExclusiveButton.Active.Disabled = true;
                     return;
                 }
@@ -346,7 +418,10 @@ namespace osu.Game.Overlays.BeatmapListing
 
             protected override bool OnClick(ClickEvent e)
             {
-                base.OnClick(e);
+                if (!Enabled.Value || Active.Disabled)
+                    return true;
+
+                // This is a toggle, not the one-way selection of a regular tab.
                 Active.Toggle();
                 SelectSample.Play();
                 return true;

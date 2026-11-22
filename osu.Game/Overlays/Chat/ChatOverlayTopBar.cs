@@ -11,7 +11,11 @@ using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Input.Events;
 using osu.Game.Graphics;
+using osu.Game.Configuration;
+using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Overlays.CustomTheme;
+using osuTK.Graphics;
 using osu.Game.Resources.Localisation.Web;
 using osuTK;
 
@@ -24,10 +28,21 @@ namespace osu.Game.Overlays.Chat
         private OsuSpriteText title = null!;
         private SpriteIcon icon = null!;
         private IBindable<Colour4> themeColour = null!;
+        private readonly Bindable<bool> translatorEnabled = new Bindable<bool>();
+        private TranslatorToggleButton translatorButton = null!;
+        private Container translatorSurface = null!;
+        private Box translatorBackground = null!;
+        private Circle translatorStatus = null!;
+        private SpriteIcon translatorIcon = null!;
+        private OsuSpriteText translatorLabel = null!;
+        private IBindable<float> buttonRadius = null!;
+        private readonly OsuColour osuColour = new OsuColour();
+        private OverlayColourProvider colourProvider = null!;
 
         [BackgroundDependencyLoader]
-        private void load(OverlayColourProvider colourProvider, TextureStore textures)
+        private void load(OverlayColourProvider colourProvider, TextureStore textures, OsuConfigManager config)
         {
+            this.colourProvider = colourProvider;
             Children = new[]
             {
                 background = new Box
@@ -42,6 +57,7 @@ namespace osu.Game.Overlays.Chat
                     {
                         new Dimension(GridSizeMode.Absolute, 50),
                         new Dimension(),
+                        new Dimension(GridSizeMode.Absolute, 138),
                     },
                     Content = new[]
                     {
@@ -63,6 +79,59 @@ namespace osu.Game.Overlays.Chat
                                 Font = OsuFont.Torus.With(size: 16, weight: FontWeight.SemiBold),
                                 Margin = new MarginPadding { Bottom = 2f },
                             },
+                            translatorButton = new TranslatorToggleButton
+                            {
+                                Anchor = Anchor.Centre,
+                                Origin = Anchor.Centre,
+                                Size = new Vector2(126, 28),
+                                Action = () => translatorEnabled.Value = !translatorEnabled.Value,
+                                Child = translatorSurface = new Container
+                                {
+                                    RelativeSizeAxes = Axes.Both,
+                                    Masking = true,
+                                    Children = new Drawable[]
+                                    {
+                                        translatorBackground = new Box { RelativeSizeAxes = Axes.Both },
+                                        new GridContainer
+                                        {
+                                            RelativeSizeAxes = Axes.Both,
+                                            Padding = new MarginPadding { Horizontal = 9 },
+                                            ColumnDimensions = new[]
+                                            {
+                                                new Dimension(GridSizeMode.Absolute, 17),
+                                                new Dimension(),
+                                                new Dimension(GridSizeMode.Absolute, 9),
+                                            },
+                                            Content = new[]
+                                            {
+                                                new Drawable[]
+                                                {
+                                                    translatorIcon = new SpriteIcon
+                                                    {
+                                                        Icon = FontAwesome.Solid.Globe,
+                                                        Size = new Vector2(13),
+                                                        Anchor = Anchor.CentreLeft,
+                                                        Origin = Anchor.CentreLeft,
+                                                    },
+                                                    translatorLabel = new OsuSpriteText
+                                                    {
+                                                        Text = osu.Game.Localisation.ForkSettingsStrings.ChatTranslator,
+                                                        Font = OsuFont.Torus.With(size: 12, weight: FontWeight.SemiBold),
+                                                        Anchor = Anchor.CentreLeft,
+                                                        Origin = Anchor.CentreLeft,
+                                                    },
+                                                    translatorStatus = new Circle
+                                                    {
+                                                        Size = new Vector2(7),
+                                                        Anchor = Anchor.Centre,
+                                                        Origin = Anchor.Centre,
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
                         },
                     },
                 },
@@ -75,13 +144,30 @@ namespace osu.Game.Overlays.Chat
                 }
             };
 
+            translatorButton.HoverChanged = updateTranslatorButton;
+            config.BindWith(OsuSetting.ForkChatTranslatorEnabled, translatorEnabled);
+            translatorEnabled.BindValueChanged(_ => updateTranslatorButton(), true);
+            buttonRadius = colourProvider.GetRadiusBindable(GeometryRole.Button);
+            buttonRadius.BindValueChanged(radius => translatorSurface.CornerRadius = radius.NewValue, true);
+
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ =>
             {
                 background.Colour = colourProvider.Background3;
                 title.Colour = icon.Colour = colourProvider.Content1;
                 DragBar.Colour = colourProvider.Background4;
+                updateTranslatorButton();
             }, true);
+        }
+
+        private void updateTranslatorButton()
+        {
+            translatorBackground.Colour = translatorEnabled.Value
+                ? (translatorButton.IsHovered ? colourProvider.Colour1 : colourProvider.Colour0)
+                : (translatorButton.IsHovered ? colourProvider.Background2 : colourProvider.Background4);
+            translatorLabel.Colour = translatorIcon.Colour = translatorEnabled.Value ? colourProvider.Background6 : colourProvider.Content1;
+            translatorStatus.Colour = translatorEnabled.Value ? osuColour.Green2 : colourProvider.Content2;
+            translatorButton.TooltipText = translatorEnabled.Value ? osu.Game.Localisation.ForkSettingsStrings.ChatTranslatorDisable : osu.Game.Localisation.ForkSettingsStrings.ChatTranslatorEnable;
         }
 
         protected override bool OnHover(HoverEvent e)
@@ -96,6 +182,23 @@ namespace osu.Game.Overlays.Chat
             if (!RuntimeInfo.IsMobile)
                 DragBar.FadeOut(100);
             base.OnHoverLost(e);
+        }
+
+        private partial class TranslatorToggleButton : OsuClickableContainer
+        {
+            public System.Action? HoverChanged;
+
+            protected override bool OnHover(HoverEvent e)
+            {
+                HoverChanged?.Invoke();
+                return base.OnHover(e);
+            }
+
+            protected override void OnHoverLost(HoverLostEvent e)
+            {
+                base.OnHoverLost(e);
+                HoverChanged?.Invoke();
+            }
         }
 
         private partial class DragArea : CompositeDrawable

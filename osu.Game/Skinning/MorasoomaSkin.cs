@@ -6,6 +6,11 @@ using osu.Game.IO;
 
 namespace osu.Game.Skinning
 {
+    /// <summary>
+    /// Built-in P1 White derivative. User and beatmap skins remain ahead of this fallback.
+    /// Graphics and configuration come only from the reviewed generated bank; audio is
+    /// the accepted Morasooma Legacy bank, never P1's third-party release recordings.
+    /// </summary>
     public class MorasoomaSkin : LegacySkin
     {
         public static SkinInfo CreateInfo() => new SkinInfo
@@ -14,7 +19,7 @@ namespace osu.Game.Skinning
             Name = "Morasooma",
             Creator = "pax / Morasooma (P1 White, MIT)",
             Protected = true,
-            InstantiationInfo = typeof(MorasoomaSkin).GetInvariantInstantiationInfo(),
+            InstantiationInfo = typeof(MorasoomaSkin).GetInvariantInstantiationInfo()
         };
 
         public MorasoomaSkin(IStorageResourceProvider resources)
@@ -24,16 +29,20 @@ namespace osu.Game.Skinning
 
         [UsedImplicitly(ImplicitUseKindFlags.InstantiatedWithFixedConstructorSignature)]
         public MorasoomaSkin(SkinInfo skin, IStorageResourceProvider resources)
-            : base(skin, resources, CreateResourceStore())
+            : base(skin, resources, CreateResourceStore(resources.Resources))
         {
         }
 
-        internal static IResourceStore<byte[]> CreateResourceStore()
+        internal static IResourceStore<byte[]> CreateResourceStore(IResourceStore<byte[]>? gameResources = null)
         {
-            var assembly = typeof(ResourceAssembly).Assembly;
             var store = new ResourceStore<byte[]>();
-            store.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(assembly), "Skins/Morasooma"));
-            store.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(assembly), "SoundOverrides/Skins/Legacy"));
+            if (gameResources != null)
+            {
+                store.AddStore(new NamespacedResourceStore<byte[]>(osu.Game.IO.GameResourcePackStore.Borrow(gameResources), "Skins/Morasooma"));
+                store.AddStore(new NamespacedResourceStore<byte[]>(osu.Game.IO.GameResourcePackStore.Borrow(gameResources), "Skins/Legacy"));
+            }
+            store.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(ResourceAssembly).Assembly), "Skins/Morasooma"));
+            store.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(ResourceAssembly).Assembly), "SoundOverrides/Skins/Legacy"));
             return store;
         }
     }

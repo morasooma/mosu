@@ -8,6 +8,7 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Cursor;
+using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Testing;
@@ -21,6 +22,7 @@ using osu.Game.Overlays;
 using osu.Game.Overlays.Chat;
 using osu.Game.Overlays.Settings;
 using osu.Game.Beatmaps;
+using osu.Game.Rulesets.Edit;
 using osu.Game.Rulesets.Edit.Checks;
 using osu.Game.Rulesets.Edit.Checks.Components;
 using osu.Game.Rulesets.Osu;
@@ -29,7 +31,9 @@ using osu.Game.Screens.Edit.Components;
 using osu.Game.Screens.Edit.Components.RadioButtons;
 using osu.Game.Screens.Edit.Components.TernaryButtons;
 using osu.Game.Screens.Edit.Compose.Components.Timeline;
+using osu.Game.Screens.Edit.Components.Menus;
 using osu.Game.Screens.Edit.Verify;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Screens.Footer;
 using osu.Game.Screens.Select;
 using osuTK;
@@ -708,6 +712,51 @@ namespace osu.Game.Tests.Visual.UserInterface
             AddUntilStep("time info track timer restored to default Content1", () => timeInfo.TrackTimerColour == colourProvider.Content1);
         }
 
+        [TestCase(true, TestName = "TestEditorToolRecolourKeepsOpenPopover")]
+        [TestCase(false, TestName = "TestDetachedEditorToolRecolour")]
+        public void TestEditorToolRecolourDoesNotChangePopover(bool keepAttached)
+        {
+            EditorToolButton button = null!;
+            PopoverContainer popoverContainer = null!;
+            Popover? openPopover = null;
+
+            AddStep("reset theme to default", () => OverlayColourProvider.CurrentTheme.Value = ThemeMode.Default);
+            AddStep("create an editor tool", () =>
+            {
+                Child = popoverContainer = new PopoverContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Child = button = new EditorToolButton("Tool", () => new SpriteIcon { Icon = FontAwesome.Solid.PencilAlt },
+                        () => new OsuPopover { Child = new Box { Size = new Vector2(40) } }),
+                };
+            });
+            AddUntilStep("wait for tool to load", () => button.IsLoaded);
+
+            if (keepAttached)
+            {
+                AddStep("open the tool popover", () =>
+                {
+                    button.Selected.Value = true;
+                    openPopover = popoverContainer.CurrentPopover;
+                });
+                AddAssert("tool popover is open", () => openPopover != null && popoverContainer.CurrentTarget == button);
+            }
+            else
+                AddStep("detach the loaded tool", () => popoverContainer.Remove(button, false));
+
+            AddStep("switch to light theme", () => OverlayColourProvider.CurrentTheme.Value = ThemeMode.Light);
+            AddAssert("tool colours update", () => button.DefaultIconColour == colourProvider.Light4);
+
+            if (keepAttached)
+            {
+                AddAssert("same popover stays open", () => popoverContainer.CurrentPopover == openPopover && popoverContainer.CurrentTarget == button);
+                AddStep("deselect the tool", () => button.Selected.Value = false);
+                AddAssert("popover closes on deselection", () => popoverContainer.CurrentTarget == null);
+            }
+            else
+                AddStep("dispose the detached tool", () => button.Dispose());
+        }
+
         [Test]
         public void TestIssueTableAndDrawableIssueLiveThemeReactivity()
         {
@@ -767,6 +816,64 @@ namespace osu.Game.Tests.Visual.UserInterface
             });
 
             // Restore Default Theme
+            AddStep("restore default theme", () => OverlayColourProvider.CurrentTheme.Value = ThemeMode.Default);
+        }
+
+        [Test]
+        public void TestEditorScreenSwitcherAndTimelineAreaLiveThemeReactivity()
+        {
+            EditorScreenSwitcherControl switcher = null!;
+            TimelineArea timelineArea = null!;
+
+            AddStep("reset theme to default", () => OverlayColourProvider.CurrentTheme.Value = ThemeMode.Default);
+            AddStep("create switcher and timeline in editor context", () =>
+            {
+                var editorBeatmap = new EditorBeatmap(new Beatmap { BeatmapInfo = new BeatmapInfo { Ruleset = new OsuRuleset().RulesetInfo } });
+
+                Child = new DependencyProvidingContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    CachedDependencies = new (Type, object)[]
+                    {
+                        (typeof(EditorClock), new EditorClock()),
+                        (typeof(EditorBeatmap), editorBeatmap),
+                        (typeof(IBeatSnapProvider), editorBeatmap),
+                        (typeof(BindableBeatDivisor), new BindableBeatDivisor()),
+                        (typeof(OverlayColourProvider), new OverlayColourProvider(OverlayColourScheme.Blue, ThemeSurfaceContext.Editor)),
+                    },
+                    Child = new FillFlowContainer
+                    {
+                        RelativeSizeAxes = Axes.Both,
+                        Direction = FillDirection.Vertical,
+                        Children = new Drawable[]
+                        {
+                            switcher = new EditorScreenSwitcherControl(),
+                            timelineArea = new TimelineArea(),
+                        }
+                    }
+                };
+            });
+
+            AddUntilStep("wait for switcher and timeline to load", () => switcher.IsLoaded && timelineArea.IsLoaded);
+
+            AddStep("enable custom theme with Editor Accent and Elevated", () =>
+            {
+                OverlayColourProvider.CurrentTheme.Value = ThemeMode.Custom;
+                var theme = new CustomThemeDefinition();
+                theme.SetContextOverride(ThemeSurfaceContext.Editor, SurfaceColourRole.Accent, Colour4.FromHex("#FF55AA"));
+                theme.SetContextOverride(ThemeSurfaceContext.Editor, SurfaceColourRole.SurfaceElevated, Colour4.FromHex("#1A2A3A"));
+                OverlayColourProvider.CustomTheme.Value = theme;
+            });
+
+            AddAssert("switcher AccentColour updated to custom accent", () =>
+                ((Colour4)switcher.AccentColour) == Colour4.FromHex("#FF55AA"));
+
+            AddAssert("timelineArea right box colour updated to custom SurfaceElevated", () =>
+            {
+                var boxes = timelineArea.ChildrenOfType<Box>();
+                return boxes.Any(b => ((Colour4)b.Colour) == Colour4.FromHex("#1A2A3A"));
+            });
+
             AddStep("restore default theme", () => OverlayColourProvider.CurrentTheme.Value = ThemeMode.Default);
         }
     }

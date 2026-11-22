@@ -13,6 +13,7 @@ using osu.Game.Beatmaps;
 using osu.Game.Collections;
 using osu.Game.Database;
 using osu.Game.Graphics.UserInterface;
+using osu.Game.Localisation;
 using osu.Game.Overlays.Dialog;
 using osuTK;
 using Realms;
@@ -25,8 +26,8 @@ namespace osu.Game.Overlays.Settings.Sections.Maintenance
 
         public CollectionExportConfirmDialog(List<BeatmapCollection> collections, RealmAccess realm, Action<BeatmapCollection> onConfirm)
         {
-            HeaderText = "Экспорт карт из коллекции";
-            BodyText = "Выберите коллекцию для экспорта.";
+            HeaderText = ForkSettingsStrings.CollectionExportDialogHeader;
+            BodyText = ForkSettingsStrings.CollectionExportDialogPrompt;
             Icon = FontAwesome.Solid.FileArchive;
 
             var dropdownContainer = new Container
@@ -95,7 +96,7 @@ namespace osu.Game.Overlays.Settings.Sections.Maintenance
                         return matchingSets.Count;
                     });
 
-                    BodyText = $"Коллекция: {c.NewValue.Name}\nБудет экспортировано {beatmapCount} сетов карт.";
+                    BodyText = ForkSettingsStrings.CollectionExportDialogBody(c.NewValue.Name, beatmapCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 }
             }, true);
 
@@ -103,7 +104,7 @@ namespace osu.Game.Overlays.Settings.Sections.Maintenance
             {
                 new PopupDialogOkButton
                 {
-                    Text = "Экспортировать",
+                    Text = ForkSettingsStrings.CollectionExportDialogExport,
                     Action = () =>
                     {
                         if (dropdown.Current.Value != null)
@@ -112,7 +113,7 @@ namespace osu.Game.Overlays.Settings.Sections.Maintenance
                 },
                 new PopupDialogCancelButton
                 {
-                    Text = "Отмена"
+                    Text = ForkSettingsStrings.CollectionExportDialogCancel
                 }
             };
         }

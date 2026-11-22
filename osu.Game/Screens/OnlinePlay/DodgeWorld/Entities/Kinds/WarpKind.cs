@@ -44,7 +44,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities.Kinds
 
         protected override IEnumerable<EntityField> DescribeFields()
         {
-            yield return Field("Цена открытия", "монет один раз, чтобы игрок открыл этот варп; 0 — бесплатно",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4710, global::osu.Game.Localisation.ClientTranslationStrings.J4711,
                 warp => EditorValue.Format(warp.UnlockCost),
                 (warp, text) =>
                 {
@@ -52,7 +52,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities.Kinds
                     warp.PricesChanged();
                 });
 
-            yield return Field("Цена перехода", "монет за каждый переход сюда; 0 — бесплатно",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4712, global::osu.Game.Localisation.ClientTranslationStrings.J4713,
                 warp => EditorValue.Format(warp.TravelCost),
                 (warp, text) =>
                 {

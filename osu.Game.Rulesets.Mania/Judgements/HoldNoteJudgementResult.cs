@@ -38,6 +38,17 @@ namespace osu.Game.Rulesets.Mania.Judgements
             return false;
         }
 
+        public bool DroppedHoldBetween(double startTime, double endTime)
+        {
+            foreach (var state in holdingState)
+            {
+                if (state.time >= startTime && state.time < endTime && !state.holding)
+                    return true;
+            }
+
+            return false;
+        }
+
         public void ReportHoldState(double currentTime, bool holding)
         {
             var lastReport = getLastReport(currentTime);

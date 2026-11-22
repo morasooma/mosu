@@ -20,8 +20,8 @@ namespace osu.Game.Screens.Footer
     public partial class ScreenStackFooter : CompositeDrawable
     {
         /// <summary>
-        /// Called when logo tracking begins. The legacy footer keeps the logo behind its skinned chrome,
-        /// while the regular footer keeps the existing frontmost behaviour.
+        /// Controls whether the logo is in front of the footer. Only a footer texture supplied
+        /// by the current skin should cover the logo; fallback chrome must not.
         /// </summary>
         public Action<bool>? RequestLogoInFront { private get; init; }
 
@@ -78,7 +78,7 @@ namespace osu.Game.Screens.Footer
                 },
                 Footer = new ScreenFooter(backReceptor)
                 {
-                    RequestLogoInFront = v => RequestLogoInFront?.Invoke(v && !isLegacyFooterActive),
+                    RequestLogoInFront = v => RequestLogoInFront?.Invoke(v && !Footer.HasActiveOverlay && !(isLegacyFooterActive && hasSkinnedFooterArtwork())),
                     BackButtonPressed = () => BackButtonPressed?.Invoke()
                 }
             };
@@ -99,6 +99,14 @@ namespace osu.Game.Screens.Footer
             songSelectStyle.BindValueChanged(_ => rebuildLegacyFooter());
 
             Footer.OverlayStateChanged += updateLegacyFooter;
+            Footer.TriggerLegacyOptions = () =>
+            {
+                if (!isLegacyFooterActive || legacyFooter == null)
+                    return false;
+
+                legacyFooter.ShowOptions();
+                return true;
+            };
         }
 
         private void rebuildLegacyFooter()
@@ -125,7 +133,19 @@ namespace osu.Game.Screens.Footer
 
             legacyFooterContainer?.FadeTo(active ? 1 : 0, 120, Easing.OutQuint);
             Footer.SetDefaultChromeVisible(!active);
-            RequestLogoInFront?.Invoke(!active);
+            // Footer overlays must cover the menu logo, including its mouse input.
+            RequestLogoInFront?.Invoke(!Footer.HasActiveOverlay && (!active || !hasSkinnedFooterArtwork()));
+        }
+
+        private bool hasSkinnedFooterArtwork()
+        {
+            // Look up the user's skin directly, not SkinManager's fallback texture: a default
+            // classic songselect-bottom is not evidence that this skin supplied a footer.
+            if (currentSkin.Value.GetTexture(@"songselect-bottom") != null)
+                return true;
+
+            var mode = currentSkin.Value.GetTexture(@"selection-mode");
+            return mode != null && Math.Max(mode.DisplayWidth, mode.DisplayHeight) > 90;
         }
 
         private bool isLegacyFooterActive
@@ -146,7 +166,6 @@ namespace osu.Game.Screens.Footer
                 Anchor = Anchor.BottomLeft,
                 Origin = Anchor.BottomLeft,
                 RelativeSizeAxes = Axes.X,
-                Y = 4,
                 BackAction = () => BackButtonPressed?.Invoke(),
                 ModsAction = () => Footer.TriggerFooterButton(0),
                 RandomAction = () => Footer.TriggerFooterButton(1),
@@ -189,7 +208,16 @@ namespace osu.Game.Screens.Footer
             if (beatmapInfo == null)
                 return Array.Empty<osu.Framework.Graphics.UserInterface.MenuItem>();
 
-            return songSelect.GetForwardActions(beatmapInfo).Cast<osu.Framework.Graphics.UserInterface.MenuItem>().ToArray();
+            var items = songSelect.GetForwardActions(beatmapInfo).Cast<osu.Framework.Graphics.UserInterface.MenuItem>().ToList();
+
+            if (beatmapInfo.BeatmapSet != null)
+            {
+                var beatmapSet = beatmapInfo.BeatmapSet;
+                items.Add(new OsuMenuItem(osu.Game.Localisation.CommonStrings.DeleteWithConfirmation,
+                    MenuItemType.Destructive, () => songSelect.Delete(beatmapSet)));
+            }
+
+            return items.ToArray();
         }
 
         private void onScreenChanged(IScreen lastScreen, IScreen newScreen)
@@ -216,6 +244,7 @@ namespace osu.Game.Screens.Footer
 
         private void bindScreen(IScreen screen)
         {
+            Footer.SongSelectActive = screen is Select.ISongSelect or SelectLegacy.SongSelect;
             if (screen is not OsuScreen osuScreen)
             {
                 ((BindableBool)backButtonVisibility).Value = true;

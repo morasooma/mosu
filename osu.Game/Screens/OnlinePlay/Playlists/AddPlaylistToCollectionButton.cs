@@ -50,7 +50,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                 int countBefore = 0;
                 int countAfter = 0;
 
-                Text = "Updating collection...";
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J5005;
                 Enabled.Value = false;
 
                 realm.WriteAsync(r =>
@@ -110,11 +110,11 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             int countToAdd = getCountToBeAdded();
 
             if (collection == null)
-                Text = $"Create new collection with {countToAdd} beatmaps";
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5006(countToAdd);
             else if (hasAllItemsInCollection)
-                Text = "Collection complete!";
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J5007;
             else
-                Text = $"Add {countToAdd} beatmaps to collection";
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5008(countToAdd);
 
             Enabled.Value = countToAdd > 0;
         }
@@ -181,9 +181,9 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                     return string.Empty;
 
                 if (hasAllItemsInCollection)
-                    return "All beatmaps have been added!";
+                    return global::osu.Game.Localisation.ClientTranslationStrings.J5009;
 
-                return "Download some beatmaps first.";
+                return global::osu.Game.Localisation.ClientTranslationStrings.J5010;
             }
         }
     }

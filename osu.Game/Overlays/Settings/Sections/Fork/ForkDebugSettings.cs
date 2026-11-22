@@ -12,6 +12,9 @@ using osu.Framework.Graphics;
 using osu.Framework.Localisation;
 using osu.Framework.Logging;
 using osu.Framework.Platform;
+using osu.Framework.Screens;
+using osu.Game.Screens;
+using osu.Game.Screens.Select.Hinamizawa;
 using osu.Game.Configuration;
 using osu.Game.Database;
 using osu.Game.Graphics.UserInterfaceV2;
@@ -19,6 +22,7 @@ using osu.Game.Localisation;
 using osu.Game.Overlays.Dialog;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Overlays.Settings;
+using osu.Game.Scoring;
 using osu.Game.Performance.Debug;
 using osu.Game.Performance.Diagnostics;
 
@@ -35,31 +39,34 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
         [Resolved(canBeNull: true)]
         private IDialogOverlay? dialogOverlay { get; set; }
 
-        [Resolved]
-        private RealmAccess realm { get; set; } = null!;
-
         [Resolved(canBeNull: true)]
         private PerformanceDebugService? performanceDebugService { get; set; }
 
         [Resolved(canBeNull: true)]
         private IPerformanceDiagnosticsManager? diagnosticsManager { get; set; }
 
-        private SettingsButtonV2 forceDatabaseConversionButton = null!;
         private int memoryDumpCaptureInProgress;
+        private bool logExportInProgress;
 
         protected override LocalisableString Header => ForkSettingsStrings.DebugHeader;
 
         [BackgroundDependencyLoader]
-        private void load(OsuConfigManager config)
+        private void load(OsuConfigManager config, IPerformFromScreenRunner? performer, OsuGame game)
         {
             var children = new List<Drawable>
             {
-                (forceDatabaseConversionButton = new DangerousSettingsButtonV2
+                new SettingsButtonV2
                 {
-                    Text = "Принудительно конвертировать newer-version БД",
-                    TooltipText = "Находит последний client*_newer_version.realm, конвертирует его и принудительно устанавливает после перезапуска. Текущая client.realm останется в backup.",
-                    Action = () => _ = forceDatabaseConversionAsync()
-                }),
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4040,
+                    TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J4041,
+                    Action = () => performer?.PerformFromScreen(screen => screen.Push(new HinamizawaSongSelect())),
+                },
+                new SettingsButtonV2
+                {
+                    Text = ForkSettingsStrings.ForkDebugBenchmarkDifficultyCaption,
+                    TooltipText = ForkSettingsStrings.ForkDebugBenchmarkDifficultyHint,
+                    Action = BackgroundDataStoreProcessor.QueueTestRecalculation,
+                },
                 new DangerousSettingsButtonV2
                 {
                     Text = ForkSettingsStrings.QuickExportLogsBtn,
@@ -68,72 +75,109 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.PerfLoggingCaption,
-                    HintText = ForkSettingsStrings.PerfLoggingHint,
+                    HintText = diagnosticsManager != null
+                        ? global::osu.Game.Localisation.ClientTranslationStrings.J4042
+                        : ForkSettingsStrings.PerfLoggingHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkPerformanceLogging)
                 })
                 {
+                    FavouriteId = "OsuSetting.ForkPerformanceLogging",
                     Keywords = new[] { @"performance", @"logging", @"fps", @"frametime", @"cpu", @"metrics" },
                 },
                 new SettingsItemV2(new FormEnumDropdown<DebugHudMode>
                 {
-                    Caption = "Диагностический HUD",
-                    HintText = "Показывает frametime потоков, память, GC и вероятную причину фризов. Подробный режим выводит дополнительные счётчики GC.",
+                    Caption = ForkSettingsStrings.ForkDebugHudCaption,
+                    HintText = ForkSettingsStrings.ForkDebugHudHint,
                     Current = config.GetBindable<DebugHudMode>(OsuSetting.ForkDebugHudMode)
                 })
                 {
+                    FavouriteId = "OsuSetting.ForkDebugHudMode",
                     Keywords = new[] { @"debug", @"hud", @"freeze", @"stutter", @"ram", @"gc" },
                 },
                 new SettingsItemV2(new FormCheckBox
                 {
-                    Caption = "Показывать память в верхней панели",
-                    HintText = "Добавляет компактный индикатор RAM и размера .NET GC heap в toolbar.",
+                    Caption = ForkSettingsStrings.ForkDebugToolbarMemoryCaption,
+                    HintText = ForkSettingsStrings.ForkDebugToolbarMemoryHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkShowMemoryInToolbar)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkShowMemoryInToolbar",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
-                    Caption = "Показывать уведомления о фризах",
-                    HintText = "На несколько секунд показывает длительность и вероятную причину кадра дольше 20 мс.",
+                    Caption = ForkSettingsStrings.ForkDebugFreezeNotificationsCaption,
+                    HintText = ForkSettingsStrings.ForkDebugFreezeNotificationsHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkDebugFreezeAlerts)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkDebugFreezeAlerts",
+                },
                 new SettingsItemV2(new FormEnumDropdown<ReplayRenderQualityPreset>
                 {
                     Caption = ForkSettingsStrings.ReplayQualityPresetCaption,
                     HintText = ForkSettingsStrings.ReplayQualityPresetHint,
                     Current = config.GetBindable<ReplayRenderQualityPreset>(OsuSetting.ForkReplayRenderQualityPreset)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkReplayRenderQualityPreset",
+                },
                 new SettingsItemV2(new FormEnumDropdown<ReplayRenderDebugTraceMode>
                 {
                     Caption = ForkSettingsStrings.ReplayTraceModeCaption,
                     HintText = ForkSettingsStrings.ReplayTraceModeHint,
                     Current = config.GetBindable<ReplayRenderDebugTraceMode>(OsuSetting.ForkReplayRenderDebugTraceMode)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkReplayRenderDebugTraceMode",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.ExportClicksOnlyCaption,
                     HintText = ForkSettingsStrings.ExportClicksOnlyHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkExportReplayOnlyClicks)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkExportReplayOnlyClicks",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.ShowBeatmapsWithMissingAudioCaption,
                     HintText = ForkSettingsStrings.ShowBeatmapsWithMissingAudioHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkShowBeatmapsWithMissingAudio)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkShowBeatmapsWithMissingAudio",
+                },
             };
 
+            children.Insert(0, new DangerousSettingsButtonV2
+            {
+                Text = CrashReportStrings.TriggerCrash,
+                TooltipText = CrashReportStrings.TriggerCrashHint,
+                Action = () => dialogOverlay?.Push(new ConfirmDialog(CrashReportStrings.ConfirmCrash, () =>
+                {
+                    game.TriggerCrashReportTest();
+                })),
+            });
+            children.Insert(0, new SettingsButtonV2
+            {
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4043,
+                TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J4044,
+                Action = verifyPpCalculation,
+            });
             if (diagnosticsManager != null)
             {
                 children.InsertRange(2, new Drawable[]
                 {
                     new DangerousSettingsButtonV2
                     {
-                        Text = "Создать дамп памяти",
-                        TooltipText = "Дамп может содержать токены, личные данные и другие секреты из памяти. Никому не отправляйте его целиком без доверия к получателю.",
+                        Text = ForkSettingsStrings.ForkDebugCreateMemoryDumpCaption,
+                        TooltipText = ForkSettingsStrings.ForkDebugCreateMemoryDumpHint,
                         Action = confirmMemoryDumpCapture,
                     },
                     new SettingsButtonV2
                     {
-                        Text = "Открыть папку дампов памяти",
+                        Text = ForkSettingsStrings.ForkDebugOpenMemoryDumpsFolderCaption,
                         Action = diagnosticsManager.OpenMemoryDumpFolder,
                     },
                 });
@@ -142,10 +186,105 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
             Children = children;
         }
 
+        [Resolved]
+        private osu.Framework.Bindables.IBindable<osu.Game.Beatmaps.WorkingBeatmap> selectedBeatmap { get; set; } = null!;
+
+        [Resolved]
+        private GameHost gameHost { get; set; } = null!;
+
+        private int ppVerificationInProgress;
+
+        private void verifyPpCalculation()
+        {
+            if (Interlocked.Exchange(ref ppVerificationInProgress, 1) != 0)
+                return;
+
+            // Capture the selected map now, not after a background selection change.
+            var working = selectedBeatmap.Value;
+            osu.Game.Rulesets.IPpCalculationVerification? verifier;
+            try
+            {
+                verifier = working.BeatmapInfo.Ruleset.CreateInstance() as osu.Game.Rulesets.IPpCalculationVerification;
+                if (verifier == null)
+                    throw new InvalidOperationException("Выбери Standard-карту перед проверкой ПП.");
+            }
+            catch (Exception e)
+            {
+                Interlocked.Exchange(ref ppVerificationInProgress, 0);
+                notificationOverlay?.Post(new SimpleErrorNotification { Text = e.Message });
+                return;
+            }
+
+            var notification = new ProgressNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.J4043, State = ProgressNotificationState.Active };
+            notificationOverlay?.Post(notification);
+            Task.Run(() =>
+            {
+                string stage = "запуск";
+                using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                try
+                {
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(notification.CancellationToken, timeout.Token);
+                    string result = verifier.VerifyPpCalculation(working, (text, progress) =>
+                    {
+                        stage = text;
+                        gameHost.UpdateThread.Scheduler.Add(() =>
+                        {
+                            notification.Text = "Проверка ПП: " + text;
+                            notification.Progress = progress;
+                        });
+                    }, linked.Token);
+                    Logger.Log(result);
+                    gameHost.UpdateThread.Scheduler.Add(() =>
+                    {
+                        notification.CompletionText = global::osu.Game.Localisation.ClientTranslationStrings.J4046;
+                        notification.State = ProgressNotificationState.Completed;
+                        dialogOverlay?.Push(new PpVerificationResultDialog(result));
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                    string reason = timeout.IsCancellationRequested ? "Превышен лимит 5 минут" : "Отменено пользователем";
+                    Logger.Log($"Проверка ПП: {reason}; этап: {stage}");
+                    gameHost.UpdateThread.Scheduler.Add(() =>
+                    {
+                        notification.State = ProgressNotificationState.Cancelled;
+                        notificationOverlay?.Post(new SimpleNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4047(reason, stage) });
+                    });
+                }
+                catch (Exception e)
+                {
+                    Logger.Error(e, "PP calculation verification failed at " + stage);
+                    gameHost.UpdateThread.Scheduler.Add(() =>
+                    {
+                        notification.State = ProgressNotificationState.Cancelled;
+                        notificationOverlay?.Post(new SimpleErrorNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4048(stage, e.Message) });
+                    });
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref ppVerificationInProgress, 0);
+                }
+            });
+        }
+
+        private partial class PpVerificationResultDialog : PopupDialog
+        {
+            public override float PreferredWidth => 760;
+
+            public PpVerificationResultDialog(string result)
+            {
+                HeaderText = global::osu.Game.Localisation.ClientTranslationStrings.J4043;
+                BodyText = "Старый / новый, медианы трёх проходов. Все числовые атрибуты и ПП совпали.\n\n"
+                           + string.Join("\n", System.Linq.Enumerable.Where(result.Split('\n'), line => line.Contains("объектов;")))
+                           + "\n\nПолный результат — в runtime.log. Проверяется агрегация обычного standard, не RX.";
+                Buttons = new PopupDialogButton[] { new PopupDialogOkButton { Text = global::osu.Game.Localisation.ClientTranslationStrings.J4052 } };
+            }
+        }
+
         private void confirmMemoryDumpCapture()
         {
             dialogOverlay?.Push(new ConfirmDialog(
-                "Дамп памяти может занимать несколько гигабайт и содержать токены авторизации, личные данные, сообщения, пути к файлам и другие секреты из памяти процесса. Не публикуйте и не отправляйте файл недоверенным людям. Продолжить?",
+                ForkSettingsStrings.ForkDebugMemoryDumpConfirm,
                 captureMemoryDump));
         }
 
@@ -157,7 +296,7 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
             var notification = new ProgressNotification
             {
                 State = ProgressNotificationState.Active,
-                Text = "Создаётся дамп памяти. Клиент может временно зависнуть…",
+                Text = ForkSettingsStrings.ForkDebugMemoryDumpCreating,
             };
 
             notificationOverlay?.Post(notification);
@@ -167,7 +306,7 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 try
                 {
                     string path = await diagnosticsManager.CaptureMemoryDumpAsync(notification.CancellationToken).ConfigureAwait(false);
-                    notification.CompletionText = $"Дамп памяти сохранён: {Path.GetFileName(Path.GetDirectoryName(path))}";
+                    notification.CompletionText = ForkSettingsStrings.ForkDebugMemoryDumpSaved(Path.GetFileName(Path.GetDirectoryName(path)) ?? string.Empty);
                     notification.CompletionClickAction = () =>
                     {
                         diagnosticsManager.OpenMemoryDumpFolder();
@@ -185,7 +324,7 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     notification.State = ProgressNotificationState.Cancelled;
                     notificationOverlay?.Post(new SimpleErrorNotification
                     {
-                        Text = $"Не удалось создать дамп памяти: {e.Message}",
+                        Text = ForkSettingsStrings.ForkDebugMemoryDumpError(e.Message),
                     });
                 }
                 finally
@@ -195,36 +334,56 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
             });
         }
 
-        private async Task forceDatabaseConversionAsync()
+        private async void exportQuickLogs()
         {
-            forceDatabaseConversionButton.Enabled.Value = false;
+            if (logExportInProgress)
+                return;
+            logExportInProgress = true;
+            string? traceArchive = null;
+            string? traceError = null;
+            try
+            {
+                if (diagnosticsManager != null)
+                    traceArchive = await diagnosticsManager.FinishPerformanceRecordingAsync();
+            }
+            catch (Exception e)
+            {
+                traceError = e.Message;
+                Logger.Error(e, "Performance trace could not be finalised for log export");
+            }
 
             try
             {
-                bool succeeded = await Task.Run(realm.TryForceConvertNewerVersionedDatabase).ConfigureAwait(true);
-
-                notificationOverlay?.Post(new SimpleNotification
+                string? freezeReport = performanceDebugService?.CreateCsvReport();
+                string? zipPath = await Task.Run(() => createQuickLogsArchive(traceArchive, traceError, freezeReport));
+                Schedule(() =>
                 {
-                    Text = succeeded
-                        ? "База успешно сконвертирована. Перезапустите клиент для принудительной установки; текущая client.realm будет сохранена в backup."
-                        : "Подходящий newer-version backup не найден или конвертация завершилась ошибкой. Оригинальные файлы не изменены."
+                    if (zipPath == null)
+                    {
+                        notificationOverlay?.Post(new SimpleNotification { Text = ForkSettingsStrings.ForkDebugNoRecentLogs });
+                        return;
+                    }
+                    var exports = storage.GetStorageForDirectory("exports");
+                    string name = Path.GetFileName(zipPath);
+                    notificationOverlay?.Post(new SimpleNotification
+                    {
+                        Text = ForkSettingsStrings.QuickExportLogsSuccess(name),
+                        Activated = () => exports.PresentFileExternally(name),
+                    });
+                    exports.PresentFileExternally(name);
                 });
             }
             catch (Exception e)
             {
-                Logger.Error(e, "Forced newer-version database conversion failed.");
-                notificationOverlay?.Post(new SimpleErrorNotification
-                {
-                    Text = "Принудительная конвертация базы завершилась ошибкой. Оригинальные файлы не изменены."
-                });
+                Schedule(() => notificationOverlay?.Post(new SimpleErrorNotification { Text = ForkSettingsStrings.QuickExportLogsFailed(e.Message) }));
             }
             finally
             {
-                forceDatabaseConversionButton.Enabled.Value = true;
+                Schedule(() => logExportInProgress = false);
             }
         }
 
-        private void exportQuickLogs()
+        private string? createQuickLogsArchive(string? traceArchive, string? traceError, string? freezeReport)
         {
             var now = DateTimeOffset.UtcNow;
             var tenMinutesAgo = now.AddMinutes(-10);
@@ -273,28 +432,31 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 }
             }
 
-            if (filesToExport.Count == 0 && (performanceDebugService == null || performanceDebugService.FreezeEvents.Count == 0))
-            {
-                notificationOverlay?.Post(new SimpleNotification
-                {
-                    Text = "Не найдено логов или рендеров за последние 10 минут."
-                });
-                return;
-            }
+            if (traceArchive != null && File.Exists(traceArchive))
+                filesToExport.Add(traceArchive);
+
+            if (filesToExport.Count == 0 && traceError == null && string.IsNullOrEmpty(freezeReport))
+                return null;
 
             var exportStorage = storage.GetStorageForDirectory("exports");
-            string zipFileName = $"logs_export_{DateTime.Now:yyyyMMdd_HHmmss}.zip";
+            string zipFileName = $"logs_export_{DateTime.Now:yyyyMMdd_HHmmss_fff}.zip";
 
             try
             {
                 using (var zipStream = exportStorage.GetStream(zipFileName, FileAccess.Write, FileMode.Create))
                 using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
                 {
-                    if (performanceDebugService != null)
+                    if (traceError != null)
+                    {
+                        using var failure = new StreamWriter(archive.CreateEntry("performance/trace-error.txt").Open());
+                        failure.Write(traceError);
+                    }
+
+                    if (freezeReport != null)
                     {
                         var freezeEntry = archive.CreateEntry("performance/freeze-events.csv");
                         using var freezeWriter = new StreamWriter(freezeEntry.Open());
-                        freezeWriter.Write(performanceDebugService.CreateCsvReport());
+                        freezeWriter.Write(freezeReport);
                     }
 
                     foreach (var filePath in filesToExport)
@@ -304,7 +466,7 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                             string entryName = Path.GetFileName(filePath);
                             string? parentDir = Path.GetFileName(Path.GetDirectoryName(filePath));
                             if (!string.IsNullOrEmpty(parentDir))
-                                entryName = Path.Combine(parentDir, entryName);
+                                entryName = parentDir + "/" + entryName;
 
                             var entry = archive.CreateEntry(entryName);
                             using (var entryStream = entry.Open())
@@ -315,28 +477,20 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                         }
                         catch (Exception ex)
                         {
+                            // The trace is the point of this export: never silently report success without it.
+                            if (filePath == traceArchive)
+                                throw;
                             osu.Framework.Logging.Logger.Log($"Failed to add file {filePath} to quick export zip: {ex.Message}");
                         }
                     }
                 }
 
-                notificationOverlay?.Post(new SimpleNotification
-                {
-                    Text = $"Логи успешно экспортированы в {zipFileName}!",
-                    Activated = () =>
-                    {
-                        return exportStorage.PresentFileExternally(zipFileName);
-                    }
-                });
-
-                exportStorage.PresentFileExternally(zipFileName);
+                return exportStorage.GetFullPath(zipFileName);
             }
-            catch (Exception ex)
+            catch
             {
-                notificationOverlay?.Post(new SimpleNotification
-                {
-                    Text = $"Ошибка при экспорте логов: {ex.Message}"
-                });
+                exportStorage.Delete(zipFileName);
+                throw;
             }
         }
     }

@@ -66,7 +66,10 @@ namespace osu.Game.Graphics.UserInterface
 
         private float minRange = 0.1f;
 
+        private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<float>? radiusBindable;
+        private Container labelContainer = null!;
         private Box labelBackgroundBox = null!;
         private OsuSpriteText labelText = null!;
 
@@ -108,7 +111,7 @@ namespace osu.Game.Graphics.UserInterface
                 {
                     new[]
                     {
-                        new Container
+                        labelContainer = new Container
                         {
                             AutoSizeAxes = Axes.X,
                             RelativeSizeAxes = Axes.Y,
@@ -164,6 +167,18 @@ namespace osu.Game.Graphics.UserInterface
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ => updateThemeColours(colourProvider), true);
+
+            disableShear.BindValueChanged(_ => updateCornerRadius(), true);
+
+            radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Input, 5f);
+            radiusBindable.BindValueChanged(_ => updateCornerRadius(), true);
+        }
+
+        private void updateCornerRadius()
+        {
+            float target = radiusBindable?.Value ?? 5f;
+            float maxSafe = !disableShear.Value ? 12f : 15f;
+            labelContainer.CornerRadius = Math.Min(target, maxSafe);
         }
 
         private void updateThemeColours(OverlayColourProvider colourProvider)

@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using osu.Framework.Audio;
 using osu.Framework.Bindables;
+using osu.Framework.Graphics.Sprites;
+using osu.Game.Graphics;
 using osu.Framework.Localisation;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
@@ -30,6 +32,7 @@ namespace osu.Game.Rulesets.Mods
 
         public override string Name => "Target Difficulty";
         public override string Acronym => "TS";
+        public override IconUsage? Icon => OsuIcon.ModMosuTargetDifficulty;
         public override ModType Type => ModType.Mosu;
         public override LocalisableString Description => MosuModsStrings.ModTargetDifficultyDescription;
         public override bool Ranked => true;

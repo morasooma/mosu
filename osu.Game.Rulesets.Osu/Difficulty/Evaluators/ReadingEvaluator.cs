@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Collections.Generic;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Utils;
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
@@ -144,8 +143,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
         {
             double pastObjectDifficultyInfluence = 0;
 
-            foreach (var loopObj in retrievePastVisibleObjects(currObj))
+            for (int i = 0; i < currObj.Index; i++)
             {
+                var loopObj = (OsuDifficultyHitObject)currObj.Previous(i);
+                if (loopObj == null ||
+                    currObj.StartTime - loopObj.StartTime > reading_window_size ||
+                    loopObj.StartTime < currObj.StartTime - currObj.Preempt)
+                    break;
+
                 double loopDifficulty = currObj.OpacityAt(loopObj.BaseObject.StartTime, false);
 
                 // When aiming an object small distances mean previous objects may be cheesed, so it doesn't matter whether they were arranged confusingly.
@@ -160,22 +165,6 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
             }
 
             return pastObjectDifficultyInfluence;
-        }
-
-        // Returns a list of objects that are visible on screen at the point in time the current object becomes visible.
-        private static IEnumerable<OsuDifficultyHitObject> retrievePastVisibleObjects(OsuDifficultyHitObject current)
-        {
-            for (int i = 0; i < current.Index; i++)
-            {
-                OsuDifficultyHitObject hitObject = (OsuDifficultyHitObject)current.Previous(i);
-
-                if (hitObject == null ||
-                    current.StartTime - hitObject.StartTime > reading_window_size ||
-                    hitObject.StartTime < current.StartTime - current.Preempt) // Current object not visible at the time object needs to be clicked
-                    break;
-
-                yield return hitObject;
-            }
         }
 
         // Returns the density of objects visible at the point in time the current object needs to be clicked capped by the reading window.

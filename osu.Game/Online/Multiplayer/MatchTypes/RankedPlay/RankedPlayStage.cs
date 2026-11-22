@@ -53,6 +53,11 @@ namespace osu.Game.Online.Multiplayer.MatchTypes.RankedPlay
         /// <summary>
         /// The match has concluded.
         /// </summary>
-        Ended
+        Ended,
+
+        /// <summary>
+        /// Each player may ban one random mod for the entire match.
+        /// </summary>
+        ModBan
     }
 }

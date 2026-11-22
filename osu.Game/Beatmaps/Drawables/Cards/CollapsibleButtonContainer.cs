@@ -12,6 +12,7 @@ using osu.Game.Graphics;
 using osu.Game.Online;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 
 namespace osu.Game.Beatmaps.Drawables.Cards
 {
@@ -21,6 +22,22 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         public Bindable<BeatmapSetFavouriteState> FavouriteState = new Bindable<BeatmapSetFavouriteState>();
 
         private readonly BeatmapDownloadTracker downloadTracker;
+        private readonly BeatmapCardContentBackground coverBackground;
+
+        internal void ChangeBeatmapSet(APIBeatmapSet set)
+        {
+            ShowDetails.Value = false;
+            coverBackground.ChangeBeatmapSet(set);
+            foreach (var button in buttons)
+            {
+                switch (button)
+                {
+                    case FavouriteButton favourite: favourite.ChangeBeatmapSet(set); break;
+                    case DownloadButton download: download.ChangeBeatmapSet(set); break;
+                    case GoToBeatmapButton navigate: navigate.ChangeBeatmapSet(set); break;
+                }
+            }
+        }
         private IBindable<Colour4> themeColour = null!;
 
         private float buttonsExpandedWidth;
@@ -67,9 +84,14 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
 
-        public CollapsibleButtonContainer(APIBeatmapSet beatmapSet, bool allowNavigationToBeatmap = true, bool keepBackgroundLoaded = false)
+        private IBindable<float>? cardRadius;
+
+        public CollapsibleButtonContainer(APIBeatmapSet beatmapSet, bool allowNavigationToBeatmap = true, bool keepBackgroundLoaded = false,
+                                          BeatmapDownloadTracker? sharedDownloadTracker = null)
         {
-            downloadTracker = new BeatmapDownloadTracker(beatmapSet);
+            // A card already owns a tracker. Share its state instead of registering
+            // a second identical Realm notification and downloader subscription.
+            downloadTracker = sharedDownloadTracker ?? new BeatmapDownloadTracker(beatmapSet);
 
             RelativeSizeAxes = Axes.Y;
             Masking = true;
@@ -77,7 +99,6 @@ namespace osu.Game.Beatmaps.Drawables.Cards
 
             InternalChildren = new Drawable[]
             {
-                downloadTracker,
                 background = new Container
                 {
                     RelativeSizeAxes = Axes.Y,
@@ -123,11 +144,11 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                 {
                     Name = @"Main content",
                     RelativeSizeAxes = Axes.Y,
-                    CornerRadius = BeatmapCard.CORNER_RADIUS,
-                    Masking = true,
+                    CornerRadius = 0,
+                    Masking = false,
                     Children = new Drawable[]
                     {
-                        new BeatmapCardContentBackground(beatmapSet, keepBackgroundLoaded)
+                        coverBackground = new BeatmapCardContentBackground(beatmapSet, keepBackgroundLoaded)
                         {
                             RelativeSizeAxes = Axes.Both,
                             Dimmed = { BindTarget = ShowDetails }
@@ -144,6 +165,9 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                     }
                 }
             };
+
+            if (sharedDownloadTracker == null)
+                AddInternal(downloadTracker);
 
             buttons.Add(new GoToBeatmapButton(beatmapSet, allowNavigationToBeatmap)
             {
@@ -162,10 +186,24 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background3);
             themeColour.BindValueChanged(_ => updateState());
 
-            downloadTracker.State.BindValueChanged(_ => updateState());
+            cardRadius = colourProvider.GetRadiusBindable(GeometryRole.Card, BeatmapCard.CORNER_RADIUS);
+            cardRadius.BindValueChanged(r =>
+            {
+                CornerRadius = r.NewValue;
+            }, true);
+
+            downloadTracker.State.BindValueChanged(onDownloadStateChanged);
             ShowDetails.BindValueChanged(_ => updateState(), true);
             FinishTransforms(true);
         }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            downloadTracker.State.ValueChanged -= onDownloadStateChanged;
+            base.Dispose(isDisposing);
+        }
+
+        private void onDownloadStateChanged(ValueChangedEvent<DownloadState> _) => updateState();
 
         private void updateState()
         {
@@ -177,7 +215,8 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             mainArea.ResizeWidthTo(mainAreaWidth, BeatmapCard.TRANSITION_DURATION, Easing.OutQuint);
 
             // By limiting the width we avoid this box showing up as an outline around the drawables that are on top of it.
-            background.ResizeWidthTo(buttonAreaWidth + BeatmapCard.CORNER_RADIUS, BeatmapCard.TRANSITION_DURATION, Easing.OutQuint);
+            float extraWidth = System.Math.Clamp(cardRadius?.Value ?? BeatmapCard.CORNER_RADIUS, 0f, 12f);
+            background.ResizeWidthTo(buttonAreaWidth + extraWidth, BeatmapCard.TRANSITION_DURATION, Easing.OutQuint);
             if (ButtonsCollapsedWidth == 0)
                 background.FadeTo(ShowDetails.Value ? 1 : 0, BeatmapCard.TRANSITION_DURATION, Easing.OutQuint);
 

@@ -112,28 +112,18 @@ namespace osu.Game.Configuration
             }
         }
 
-        private static IFilterBindable? tryCreateBindable<T>(ITabletHandler handler, string propertyName, IFormatProvider? formatProvider = null)
-            where T : struct, IEquatable<T>
-        {
-            var prop = handler.GetType().GetProperty(propertyName);
-            if (prop?.GetValue(handler) is Bindable<T> bindable)
-                return new FilterBindable<T>(propertyName, bindable, formatProvider);
-
-            return null;
-        }
-
         private IEnumerable<IFilterBindable> enumerateFilterBindables(ITabletHandler handler)
         {
-            if (tryCreateBindable<bool>(handler, "ChatterExterminatorEnabled") is { } chatterEnabled) yield return chatterEnabled;
-            if (tryCreateBindable<float>(handler, "ChatterExterminationStrength", CultureInfo.InvariantCulture) is { } chatterStrength) yield return chatterStrength;
-            if (tryCreateBindable<bool>(handler, "RadialFollowEnabled") is { } rfEnabled) yield return rfEnabled;
-            if (tryCreateBindable<float>(handler, "RadialFollowOuterRadius", CultureInfo.InvariantCulture) is { } rfOuter) yield return rfOuter;
-            if (tryCreateBindable<float>(handler, "RadialFollowInnerRadius", CultureInfo.InvariantCulture) is { } rfInner) yield return rfInner;
-            if (tryCreateBindable<float>(handler, "RadialFollowSmoothingCoefficient", CultureInfo.InvariantCulture) is { } rfSmooth) yield return rfSmooth;
-            if (tryCreateBindable<float>(handler, "RadialFollowSoftKneeScale", CultureInfo.InvariantCulture) is { } rfKnee) yield return rfKnee;
-            if (tryCreateBindable<float>(handler, "RadialFollowSmoothingLeakCoefficient", CultureInfo.InvariantCulture) is { } rfLeak) yield return rfLeak;
-            if (tryCreateBindable<bool>(handler, "BezierInterpolatorEnabled") is { } bezierEnabled) yield return bezierEnabled;
-            if (tryCreateBindable<float>(handler, "BezierSmoothingFactor", CultureInfo.InvariantCulture) is { } bezierFactor) yield return bezierFactor;
+            yield return new FilterBindable<bool>(nameof(handler.ChatterExterminatorEnabled), handler.ChatterExterminatorEnabled);
+            yield return new FilterBindable<float>(nameof(handler.ChatterExterminationStrength), handler.ChatterExterminationStrength, CultureInfo.InvariantCulture);
+            yield return new FilterBindable<bool>(nameof(handler.RadialFollowEnabled), handler.RadialFollowEnabled);
+            yield return new FilterBindable<float>(nameof(handler.RadialFollowOuterRadius), handler.RadialFollowOuterRadius, CultureInfo.InvariantCulture);
+            yield return new FilterBindable<float>(nameof(handler.RadialFollowInnerRadius), handler.RadialFollowInnerRadius, CultureInfo.InvariantCulture);
+            yield return new FilterBindable<float>(nameof(handler.RadialFollowSmoothingCoefficient), handler.RadialFollowSmoothingCoefficient, CultureInfo.InvariantCulture);
+            yield return new FilterBindable<float>(nameof(handler.RadialFollowSoftKneeScale), handler.RadialFollowSoftKneeScale, CultureInfo.InvariantCulture);
+            yield return new FilterBindable<float>(nameof(handler.RadialFollowSmoothingLeakCoefficient), handler.RadialFollowSmoothingLeakCoefficient, CultureInfo.InvariantCulture);
+            yield return new FilterBindable<bool>(nameof(handler.BezierInterpolatorEnabled), handler.BezierInterpolatorEnabled);
+            yield return new FilterBindable<float>(nameof(handler.BezierSmoothingFactor), handler.BezierSmoothingFactor, CultureInfo.InvariantCulture);
         }
 
         private interface IFilterBindable

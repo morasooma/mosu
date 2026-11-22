@@ -7,10 +7,14 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Localisation;
+using osu.Game.Beatmaps;
+using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.Rooms;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Scoring;
+using osu.Game.Rulesets.Scoring.Legacy;
 
 namespace osu.Game.Utils
 {
@@ -41,7 +45,64 @@ namespace osu.Game.Utils
         /// <param name="combination">The <see cref="Mod"/> combination to check.</param>
         /// <returns>Whether all <see cref="Mod"/>s in the combination are compatible with each-other.</returns>
         public static bool CheckCompatibleSet(IEnumerable<Mod> combination)
-            => CheckCompatibleSet(combination, out _);
+        {
+            var mods = combination as IReadOnlyList<Mod> ?? combination.ToArray();
+            if (containsMultiMod(mods))
+                mods = FlattenMods(mods).ToArray();
+
+            return checkCompatible(mods);
+        }
+
+        /// <summary>
+        /// Checks an existing selection plus a candidate without constructing a new
+        /// enumerable, flattened array or diagnostic list for each mod panel.
+        /// </summary>
+        internal static bool CheckCompatibleSet(IReadOnlyList<Mod> selection, Mod candidate)
+        {
+            if (candidate is MultiMod || containsMultiMod(selection))
+                return CheckCompatibleSet(selection.Append(candidate));
+
+            return checkCompatible(selection, candidate);
+        }
+
+        private static bool containsMultiMod(IReadOnlyList<Mod> mods)
+        {
+            for (int i = 0; i < mods.Count; i++)
+            {
+                if (mods[i] is MultiMod)
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool checkCompatible(IReadOnlyList<Mod> mods, Mod? additional = null)
+        {
+            int count = mods.Count + (additional == null ? 0 : 1);
+            for (int i = 0; i < count; i++)
+            {
+                var mod = i < mods.Count ? mods[i] : additional!;
+                var modType = mod.GetType();
+                for (int j = i + 1; j < count; j++)
+                {
+                    var other = j < mods.Count ? mods[j] : additional!;
+                    if (modType == other.GetType())
+                        return false;
+                }
+
+                // IncompatibleMods can depend on settings. Do not cache it by type.
+                foreach (var type in mod.IncompatibleMods)
+                {
+                    for (int j = 0; j < count; j++)
+                    {
+                        var other = j < mods.Count ? mods[j] : additional!;
+                        if (!ReferenceEquals(mod, other) && type.IsInstanceOfType(other))
+                            return false;
+                    }
+                }
+            }
+
+            return true;
+        }
 
         /// <summary>
         /// Checks that all <see cref="Mod"/>s in a combination are compatible with each-other.
@@ -75,9 +136,9 @@ namespace osu.Game.Utils
             {
                 foreach (var type in mod.IncompatibleMods)
                 {
-                    foreach (var invalid in mods.Where(m => type.IsInstanceOfType(m)))
+                    foreach (var invalid in mods)
                     {
-                        if (invalid == mod)
+                        if (invalid == mod || !type.IsInstanceOfType(invalid))
                             continue;
 
                         invalidMods ??= new List<Mod>();
@@ -262,6 +323,20 @@ namespace osu.Game.Utils
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Calculates the displayed mod multiplier using the active server's scoring rules.
+        /// Stable ScoreV1 has no Classic penalty and uses different multipliers from lazer.
+        /// Keep this UI policy separate from stored lazer score conversion and migration.
+        /// </summary>
+        public static double CalculateScoreMultiplierForDisplay(Ruleset ruleset, IBeatmapInfo beatmapInfo, IReadOnlyList<Mod> mods)
+        {
+            if (MosuServerEnvironment.UsesStableProtocol && ruleset is ILegacyRuleset legacyRuleset)
+                return legacyRuleset.CreateLegacyScoreSimulator().GetLegacyScoreMultiplier(
+                    mods.DistinctBy(mod => mod.GetType()).ToArray(), LegacyBeatmapConversionDifficultyInfo.FromBeatmapInfo(beatmapInfo));
+
+            return ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(beatmapInfo.Difficulty)).CalculateFor(mods);
         }
 
         /// <summary>

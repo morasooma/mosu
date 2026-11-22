@@ -44,6 +44,19 @@ namespace osu.Game.Tests.Visual.UserInterface
         }
 
         [Test]
+        public void TestGlassDoesNotHideModeButtons()
+        {
+            ToolbarRulesetSelector selector = null!;
+            AddStep("create selector", () => Child = selector = new ToolbarRulesetSelector());
+            AddAssert("opaque background by default", () => selector.BackgroundAlpha == 1);
+            AddStep("enable glass", () => selector.TransparentBackground = true);
+            AddUntilStep("opaque plate removed", () => selector.BackgroundAlpha == 0);
+            AddAssert("mode buttons remain present", () => selector.IsPresent && selector.Alpha == 1 && selector.Items.Any());
+            AddStep("disable glass", () => selector.TransparentBackground = false);
+            AddUntilStep("opaque plate restored", () => selector.BackgroundAlpha == 1);
+        }
+
+        [Test]
         public void TestNonFirstRulesetInitialState()
         {
             TestSelector selector = null;

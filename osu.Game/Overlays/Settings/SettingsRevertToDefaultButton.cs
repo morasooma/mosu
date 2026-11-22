@@ -23,6 +23,7 @@ namespace osu.Game.Overlays.Settings
         private Box background = null!;
         private SpriteIcon spriteIcon = null!;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<float>? cornerRadiusBindable;
 
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
@@ -62,6 +63,9 @@ namespace osu.Game.Overlays.Settings
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background3);
             themeColour.BindValueChanged(_ => updateDisplay(), true);
+
+            cornerRadiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Button, 5f);
+            cornerRadiusBindable.BindValueChanged(r => CornerRadius = r.NewValue, true);
         }
 
         protected override void LoadComplete()

@@ -115,15 +115,15 @@ namespace osu.Game.Database
             if (items.Count == 0)
             {
                 if (!silent)
-                    PostNotification?.Invoke(new ProgressCompletionNotification { Text = $"No {HumanisedModelName}s found to delete!" });
+                    PostNotification?.Invoke(new ProgressCompletionNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3265(HumanisedModelName) });
                 return;
             }
 
             var notification = new ProgressNotification
             {
                 Progress = 0,
-                Text = $"Preparing to delete all {HumanisedModelName}s...",
-                CompletionText = $"Deleted all {HumanisedModelName}s!",
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3266(HumanisedModelName),
+                CompletionText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3267(HumanisedModelName),
                 State = ProgressNotificationState.Active,
             };
 
@@ -138,7 +138,7 @@ namespace osu.Game.Database
                     // user requested abort
                     return;
 
-                notification.Text = $"Deleting {HumanisedModelName}s ({++i} of {items.Count})";
+                notification.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3268(HumanisedModelName, ++i, items.Count);
 
                 Delete(b);
 
@@ -157,13 +157,13 @@ namespace osu.Game.Database
             if (!items.Any())
             {
                 if (!silent)
-                    PostNotification?.Invoke(new ProgressCompletionNotification { Text = $"No {HumanisedModelName}s found to restore!" });
+                    PostNotification?.Invoke(new ProgressCompletionNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3269(HumanisedModelName) });
                 return;
             }
 
             var notification = new ProgressNotification
             {
-                CompletionText = "Restored all deleted items!",
+                CompletionText = global::osu.Game.Localisation.ClientTranslationStrings.J3270,
                 Progress = 0,
                 State = ProgressNotificationState.Active,
             };
@@ -179,7 +179,7 @@ namespace osu.Game.Database
                     // user requested abort
                     return;
 
-                notification.Text = $"Restoring ({++i} of {items.Count})";
+                notification.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3271(++i, items.Count);
 
                 Undelete(item);
 
@@ -189,7 +189,10 @@ namespace osu.Game.Database
             notification.State = ProgressNotificationState.Completed;
         }
 
-        public bool Delete(TModel item)
+        public bool Delete(TModel item) => DeleteIf(item, _ => true);
+
+        /// <summary>Revalidates a detached selection atomically before using the normal soft-delete path.</summary>
+        public bool DeleteIf(TModel item, Func<TModel, bool> predicate)
         {
             // Importantly, begin the realm write *before* re-fetching, else the update realm may not be in a consistent state
             // (ie. if an async import finished very recently).
@@ -199,7 +202,7 @@ namespace osu.Game.Database
                 if (!processableItem.IsManaged)
                     processableItem = realm.Find<TModel>(item.ID);
 
-                if (processableItem?.DeletePending != false)
+                if (processableItem?.DeletePending != false || !predicate(processableItem))
                     return false;
 
                 processableItem.DeletePending = true;

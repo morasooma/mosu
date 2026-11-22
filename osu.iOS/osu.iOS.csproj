@@ -3,6 +3,7 @@
     <TargetFramework>net10.0-ios</TargetFramework>
     <SupportedOSPlatformVersion>13.4</SupportedOSPlatformVersion>
     <OutputType>Exe</OutputType>
+    <AppIcon>AppIcon</AppIcon>
     <Version>0.1.0</Version>
 
     <!-- Incoming version string will be e.g. 2025.723.0-tachyon -->
@@ -22,10 +23,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Essentials" Version="8.0.3" />
   </ItemGroup>
+  <!-- Compile the Mora source catalog with actool. Remove the SDK's default
+       items first so each source is included once. Never copy the historical
+       Assets.car or loose app icons over the generated catalog / plist. -->
   <ItemGroup>
-    <BundleResource Include="Assets.car" />
-    <BundleResource Include="AppIcon60x60@2x.png" />
-    <BundleResource Include="AppIcon76x76@2x~ipad.png" />
+    <ImageAsset Remove="Assets.xcassets/**/*" />
+    <ImageAsset Include="Assets.xcassets/**/*" />
   </ItemGroup>
   <!-- https://github.com/dotnet/macios/blob/eabcdee2ac43a0cc8324396a1bf75f8797d71810/msbuild/Xamarin.Shared/Xamarin.Shared.targets#L1328 -->
   <Target Name="AddOsuVersionToBundle" AfterTargets="_CreateAppBundle">

@@ -33,6 +33,41 @@ namespace osu.Game.Tests.Database
     public class BeatmapImporterTests : RealmTest
     {
         [Test]
+        public void TestThemePreviewImportsGeneratedSilentExamplesWithoutIntroResources()
+        {
+            RunTestWithRealmAsync(async (realm, storage) =>
+            {
+                var importer = new BeatmapImporter(storage, realm);
+                using (new RealmRulesetStore(realm, storage))
+                {
+                    for (int i = 0; i < 4; i++)
+                    {
+                        using var archive = osu.Game.Overlays.CustomTheme.ThemePreviewGame.CreatePreviewBeatmapArchive(i);
+                        using (var zip = new System.IO.Compression.ZipArchive(archive, System.IO.Compression.ZipArchiveMode.Read, leaveOpen: true))
+                        using (var reader = new osu.Game.IO.LineBufferedReader(zip.GetEntry("preview.osu")!.Open()))
+                        {
+                            var decoded = osu.Game.Beatmaps.Formats.Decoder.GetDecoder<Beatmap>(reader).Decode(reader);
+                            Assert.That(decoded.HitObjects.Count, Is.EqualTo(2));
+                            Assert.That(decoded.HitObjects[1].StartTime, Is.EqualTo(90000 + i * 15000));
+                        }
+                        archive.Position = 0;
+                        var imported = await importer.Import(new ImportTask(archive, $"preview-{i}.osz"));
+                        Assert.That(imported, Is.Not.Null);
+                        imported!.PerformRead(set =>
+                        {
+                            Assert.That(set.Beatmaps.Count, Is.EqualTo(1));
+                            Assert.That(set.Metadata.Title, Is.EqualTo($"Morasooma Preview {i + 1}"));
+                            Assert.That(set.Metadata.AudioFile, Is.Null.Or.Empty);
+                            Assert.That(set.Files.Select(f => f.Filename), Is.EquivalentTo(new[] { "preview.osu" }));
+                            // Derived length/stars are filled later by BeatmapUpdater, not by this raw importer.
+                        });
+                    }
+                    Assert.That(realm.Run(r => r.All<BeatmapSetInfo>().Count()), Is.EqualTo(4));
+                }
+            });
+        }
+
+        [Test]
         public void TestDetachBeatmapSet()
         {
             RunTestWithRealmAsync(async (realm, storage) =>

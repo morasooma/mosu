@@ -22,19 +22,19 @@ namespace osu.Game.Rulesets.Osu.Mods
     {
         public override Type[] IncompatibleMods => base.IncompatibleMods.Append(typeof(OsuModStrictTracking)).ToArray();
 
-        [SettingSource("No slider head accuracy requirement", "Scores sliders proportionally to the number of ticks hit.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3672), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3673))]
         public Bindable<bool> NoSliderHeadAccuracy { get; } = new BindableBool(true);
 
-        [SettingSource("Apply classic note lock", "Applies note lock to the full hit window.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3674), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3675))]
         public Bindable<bool> ClassicNoteLock { get; } = new BindableBool(true);
 
-        [SettingSource("Always play a slider's tail sample", "Always plays a slider's tail sample regardless of whether it was hit or not.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3676), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3677))]
         public Bindable<bool> AlwaysPlayTailSample { get; } = new BindableBool(true);
 
-        [SettingSource("Fade out hit circles earlier", "Make hit circles fade out into a miss, rather than after it.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3678), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3679))]
         public Bindable<bool> FadeHitCircleEarly { get; } = new Bindable<bool>(true);
 
-        [SettingSource("Classic health", "More closely resembles the original HP drain mechanics.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3680), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3681))]
         public Bindable<bool> ClassicHealth { get; } = new Bindable<bool>(true);
 
         private bool usingHiddenFading;
@@ -95,7 +95,9 @@ namespace osu.Game.Rulesets.Osu.Mods
         /// </summary>
         private static void blockInputToObjectsUnderSliderHead(DrawableSliderHead slider)
         {
-            slider.HitArea.CanBeHit = () => !slider.DrawableSlider.AllJudged;
+            slider.HitArea.CanBeHit = () => osu.Game.Online.MosuServerEnvironment.UsesStableProtocol
+                ? !slider.DrawableSlider.Judged && slider.Time.Current <= slider.HitObject.StartTime + slider.HitObject.HitWindows.WindowFor(HitResult.Meh)
+                : !slider.DrawableSlider.AllJudged;
         }
 
         private void applyEarlyFading(DrawableHitCircle circle)

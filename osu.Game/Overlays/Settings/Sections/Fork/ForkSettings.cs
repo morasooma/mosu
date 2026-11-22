@@ -1,7 +1,10 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using osu.Framework;
 using osu.Framework.Allocation;
+using osu.Framework.Platform;
+using osu.Game.Overlays.Settings.Sections.General;
 using osu.Framework.Graphics;
 using osu.Framework.Localisation;
 using osu.Game.Localisation;
@@ -48,8 +51,20 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
         protected override LocalisableString Header => ForkSettingsStrings.ForkSettingsHeader;
 
         [BackgroundDependencyLoader]
-        private void load(OsuConfigManager config)
+        private void load(OsuConfigManager config, Storage storage)
         {
+            var endTagEnabled = config.GetBindable<bool>(OsuSetting.ForkMorasoomaEndTag);
+            var endTagText = new SettingsItemV2(new FormTextBox
+            {
+                Caption = SmokeTagStrings.TextCaption,
+                HintText = SmokeTagStrings.TextHint,
+                Current = config.GetBindable<string>(OsuSetting.ForkMorasoomaEndTagText),
+                LengthLimit = 16,
+            })
+            {
+                FavouriteId = "OsuSetting.ForkMorasoomaEndTagText",
+                CanBeShown = { BindTarget = endTagEnabled },
+            };
             var useStable = config.GetBindable<bool>(OsuSetting.ForkUseStableDirectoryDirectly);
             var stablePath = config.GetBindable<string>(OsuSetting.ForkStableDirectoryPath);
             var useOfficialBeatmapService = config.GetBindable<bool>(OsuSetting.ForkUseOfficialBeatmapService);
@@ -80,10 +95,43 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
 
             Children = new Drawable[]
             {
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = PracticeStrings.SettingCaption,
+                    HintText = PracticeStrings.SettingHint,
+                    Current = config.GetBindable<bool>(OsuSetting.ForkPracticeMode),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkPracticeMode",
+                },
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = ManiaEditorStrings.AutoSeekOnPlacementCaption,
+                    HintText = ManiaEditorStrings.AutoSeekOnPlacementHint,
+                    Current = config.GetEditorAutoSeekOnPlacement("mania"),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkManiaEditorAutoSeekOnPlacement",
+                    Keywords = new[] { "mania", "mapping", "editor", "autoscroll", "мания", "редактор", "прокрутка" },
+                },
                 new SettingsButtonV2
                 {
                     Text = ForkSettingsStrings.AboutMorasoomaButton,
                     Action = () => dialogOverlay?.Push(new AboutMorasoomaDialog())
+                },
+                new SettingsButtonV2
+                {
+                    Text = FavouriteSettingsStrings.Title,
+                    Keywords = new[] { "favourite", "favorite", "pinned", "quick", "избранные", "закреплённые" },
+                    Action = () => settingsOverlay?.ShowFavouriteSettings(),
+                },
+                new CheckForUpdatesButton(),
+                new SettingsButtonV2
+                {
+                    Text = GeneralSettingsStrings.OpenOsuFolder,
+                    Keywords = new[] { @"logs", @"files", @"access", @"directory" },
+                    Action = () => storage.PresentExternally(),
+                    Enabled = { Value = RuntimeInfo.IsDesktop },
                 },
                 new SettingsButtonV2
                 {
@@ -95,12 +143,18 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Caption = ForkSettingsStrings.ReduceVolumeOutsideGameplayCaption,
                     HintText = ForkSettingsStrings.ReduceVolumeOutsideGameplayHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkReduceVolumeOutsideGameplay)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkReduceVolumeOutsideGameplay",
+                },
                 new SettingsItemV2(new FormEnumDropdown<osu.Game.Online.API.DownloadMirror>
                 {
                     Caption = ForkSettingsStrings.DownloadMirrorCaption,
                     Current = config.GetBindable<osu.Game.Online.API.DownloadMirror>(OsuSetting.BeatmapDownloadMirror)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.BeatmapDownloadMirror",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.UseOfficialOsuBeatmapServiceCaption,
@@ -108,6 +162,7 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Current = useOfficialBeatmapService
                 })
                 {
+                    FavouriteId = "ui:ForkSettingsStrings.UseOfficialOsuBeatmapServiceCaption",
                     Note = { BindTarget = officialBeatmapServiceWarning }
                 },
                 new OfficialOsuAccountStatusButton(beatmapApi),
@@ -116,59 +171,88 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     Caption = ForkSettingsStrings.UseStableDirectoryCaption,
                     HintText = ForkSettingsStrings.UseStableDirectoryHint,
                     Current = useStable
-                }),
-                new SettingsItemV2(stablePathTextBox),
+                })
+                {
+                    FavouriteId = "ui:ForkSettingsStrings.UseStableDirectoryCaption",
+                },
+                new SettingsItemV2(stablePathTextBox)
+                {
+                    FavouriteId = "ui:ForkSettings:stablePathTextBox",
+                },
                 new SettingsItemV2(new FormEnumDropdown<ForkRelaxPpSystem>
                 {
                     Caption = ForkSettingsStrings.RelaxPpSystemCaption,
                     HintText = ForkSettingsStrings.RelaxPpSystemHint,
                     Current = config.GetBindable<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkRelaxPpSystem",
+                },
                 new SettingsItemV2(new FormTextBox
                 {
                     Caption = ForkSettingsStrings.CustomUsernameCaption,
                     HintText = ForkSettingsStrings.CustomUsernameHint,
                     PlaceholderText = ForkSettingsStrings.CustomUsernamePlaceholder,
                     Current = config.GetBindable<string>(OsuSetting.ForkCustomUsername)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkCustomUsername",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.MorasoomaEndTagCaption,
-                    HintText = ForkSettingsStrings.MorasoomaEndTagHint,
-                    Current = config.GetBindable<bool>(OsuSetting.ForkMorasoomaEndTag)
+                    HintText = SmokeTagStrings.Hint,
+                    Current = endTagEnabled
                 })
                 {
+                    FavouriteId = "OsuSetting.ForkMorasoomaEndTag",
                     Keywords = new[] { @"morasooma", @"tag", @"smoke", @"replay", @"signature" },
                 },
+                endTagText,
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.OverrideRecDiffCaption,
                     HintText = ForkSettingsStrings.OverrideRecDiffHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkCustomRecommendedDifficultyEnabled)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkCustomRecommendedDifficultyEnabled",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = ForkSettingsStrings.CustomRecDiffCaption,
                     Current = config.GetBindable<double>(OsuSetting.ForkCustomRecommendedDifficulty),
                     KeyboardStep = 0.1f,
                     LabelFormat = value => $"{value:0.0}*"
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkCustomRecommendedDifficulty",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.ForkDisableBeatmapStatusOverwriteCaption,
                     HintText = ForkSettingsStrings.ForkDisableBeatmapStatusOverwriteHint,
                     Current = config.GetBindable<bool>(OsuSetting.ForkDisableBeatmapStatusOverwrite)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkDisableBeatmapStatusOverwrite",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.ForkClassicModDefaultCaption,
                     Current = config.GetBindable<bool>(OsuSetting.ForkClassicModDefault)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkClassicModDefault",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = ForkSettingsStrings.ForkHideVisualSliderMissesCaption,
                     Current = config.GetBindable<bool>(OsuSetting.ForkHideVisualSliderMisses)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkHideVisualSliderMisses",
+                },
                 new SettingsButtonV2
                 {
                     Text = ForkSettingsStrings.ExportAllBeatmapsBtn,

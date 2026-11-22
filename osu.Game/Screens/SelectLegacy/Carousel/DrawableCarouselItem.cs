@@ -31,6 +31,10 @@ namespace osu.Game.Screens.SelectLegacy.Carousel
 
         protected readonly Container MovementContainer;
 
+        // Fade only this card, not Content: a set's difficulties may still be on-screen
+        // when its header has scrolled beyond the carousel's visible bounds.
+        public void SetMultiplicativeAlpha(float alpha) => Header.Alpha = alpha;
+
         public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) =>
             Header.ReceivePositionalInputAt(screenSpacePos);
 

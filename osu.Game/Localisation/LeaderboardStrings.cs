@@ -30,59 +30,59 @@ namespace osu.Game.Localisation
         public static LocalisableString LeaderboardsAreNotAvailableForThisBeatmap => new TranslatableString(getKey(@"leaderboards_are_not_available_for_this_beatmap"), @"Leaderboards are not available for this beatmap!");
 
         /// <summary>
-        /// "Обновить данные карты"
+        /// "Refresh beatmap data"
         /// </summary>
-        public static LocalisableString ReloadBeatmapData => new TranslatableString(getKey(@"reload_beatmap_data"), @"Обновить данные карты");
+        public static LocalisableString ReloadBeatmapData => new TranslatableString(getKey(@"reload_beatmap_data"), @"Refresh beatmap data");
 
         /// <summary>
-        /// "Не удалось обновить данные карты."
+        /// "Couldn't refresh beatmap data."
         /// </summary>
-        public static LocalisableString CouldntReloadBeatmapData => new TranslatableString(getKey(@"couldnt_reload_beatmap_data"), @"Не удалось обновить данные карты.");
+        public static LocalisableString CouldntReloadBeatmapData => new TranslatableString(getKey(@"couldnt_reload_beatmap_data"), @"Couldn't refresh beatmap data.");
 
         /// <summary>
-        /// "Этот набор карт всё ещё существует в сети. Пользовательские сложности не могут быть загружены на сервер."
+        /// "This beatmap set still exists online. Custom difficulties cannot be uploaded to the server."
         /// </summary>
-        public static LocalisableString CannotUploadCustomDifficultyToServer => new TranslatableString(getKey(@"cannot_upload_custom_difficulty_to_server"), @"Этот набор карт всё ещё существует в сети. Пользовательские сложности не могут быть загружены на сервер.");
+        public static LocalisableString CannotUploadCustomDifficultyToServer => new TranslatableString(getKey(@"cannot_upload_custom_difficulty_to_server"), @"This beatmap set still exists online. Custom difficulties cannot be uploaded to the server.");
 
         /// <summary>
-        /// "Загрузить на сервер"
+        /// "Upload to server"
         /// </summary>
-        public static LocalisableString UploadBeatmapToServer => new TranslatableString(getKey(@"upload_beatmap_to_server"), @"Загрузить на сервер");
+        public static LocalisableString UploadBeatmapToServer => new TranslatableString(getKey(@"upload_beatmap_to_server"), @"Upload to server");
 
         /// <summary>
-        /// "Помощь"
+        /// "Help"
         /// </summary>
-        public static LocalisableString BeatmapUploadHelp => new TranslatableString(getKey(@"beatmap_upload_help"), @"Помощь");
+        public static LocalisableString BeatmapUploadHelp => new TranslatableString(getKey(@"beatmap_upload_help"), @"Help");
 
         /// <summary>
-        /// "Что мне делать?"
+        /// "What should I do?"
         /// </summary>
-        public static LocalisableString BeatmapUploadHelpHeader => new TranslatableString(getKey(@"beatmap_upload_help_header"), @"Что мне делать?");
+        public static LocalisableString BeatmapUploadHelpHeader => new TranslatableString(getKey(@"beatmap_upload_help_header"), @"What should I do?");
 
         /// <summary>
-        /// "Если эта карта уже существует на сервере, нажмите кнопку обновления данных карты. Если её ещё нет на сервере, нажмите кнопку загрузки, чтобы помочь сообществу."
+        /// "If this beatmap already exists on the server, refresh its data using the refresh button. If it isn't on the server yet, use the upload button to help the community."
         /// </summary>
-        public static LocalisableString BeatmapUploadHelpBody => new TranslatableString(getKey(@"beatmap_upload_help_body"), @"Если эта карта уже существует на сервере, нажмите кнопку обновления данных карты. Если её ещё нет на сервере, нажмите кнопку загрузки, чтобы помочь сообществу.");
+        public static LocalisableString BeatmapUploadHelpBody => new TranslatableString(getKey(@"beatmap_upload_help_body"), @"If this beatmap already exists on the server, refresh its data using the refresh button. If it isn't on the server yet, use the upload button to help the community.");
 
         /// <summary>
-        /// "Подготовка пакета карты..."
+        /// "Preparing beatmap package..."
         /// </summary>
-        public static LocalisableString PreparingBeatmapUpload => new TranslatableString(getKey(@"preparing_beatmap_upload"), @"Подготовка пакета карты...");
+        public static LocalisableString PreparingBeatmapUpload => new TranslatableString(getKey(@"preparing_beatmap_upload"), @"Preparing beatmap package...");
 
         /// <summary>
-        /// "Загрузка карты на сервер..."
+        /// "Uploading beatmap to server..."
         /// </summary>
-        public static LocalisableString UploadingBeatmapToServer => new TranslatableString(getKey(@"uploading_beatmap_to_server"), @"Загрузка карты на сервер...");
+        public static LocalisableString UploadingBeatmapToServer => new TranslatableString(getKey(@"uploading_beatmap_to_server"), @"Uploading beatmap to server...");
 
         /// <summary>
-        /// "Карта загружена на сервер."
+        /// "Beatmap uploaded to server."
         /// </summary>
-        public static LocalisableString BeatmapUploadedToServer => new TranslatableString(getKey(@"beatmap_uploaded_to_server"), @"Карта загружена на сервер.");
+        public static LocalisableString BeatmapUploadedToServer => new TranslatableString(getKey(@"beatmap_uploaded_to_server"), @"Beatmap uploaded to server.");
 
         /// <summary>
-        /// "Не удалось загрузить карту на сервер."
+        /// "Couldn't upload beatmap to server."
         /// </summary>
-        public static LocalisableString CouldntUploadBeatmapToServer => new TranslatableString(getKey(@"couldnt_upload_beatmap_to_server"), @"Не удалось загрузить карту на сервер.");
+        public static LocalisableString CouldntUploadBeatmapToServer => new TranslatableString(getKey(@"couldnt_upload_beatmap_to_server"), @"Couldn't upload beatmap to server.");
 
         /// <summary>
         /// "No records yet!"

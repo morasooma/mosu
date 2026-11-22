@@ -34,6 +34,8 @@ namespace osu.Game.Rulesets.Osu.Skinning.Default
 
         private RotationRecord lastRecord;
 
+        public void SetStableSpinsPerMinute(double value) => result.Value = value;
+
         public void SetRotation(float currentRotation)
         {
             // If we've gone back in time, it's fine to work with a fresh set of records for now

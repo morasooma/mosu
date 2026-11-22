@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -23,13 +23,17 @@ namespace osu.Game.Overlays.Settings.Sections.Online
                 {
                     Caption = OnlineSettingsStrings.ExternalLinkWarning,
                     Current = config.GetBindable<bool>(OsuSetting.ExternalLinkWarning)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ExternalLinkWarning",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = OnlineSettingsStrings.PreferNoVideo,
                     Current = config.GetBindable<bool>(OsuSetting.PreferNoVideo)
                 })
                 {
+                    FavouriteId = "OsuSetting.PreferNoVideo",
                     Keywords = new[] { "no-video" },
                 },
                 new SettingsItemV2(new FormCheckBox
@@ -38,6 +42,7 @@ namespace osu.Game.Overlays.Settings.Sections.Online
                     Current = config.GetBindable<bool>(OsuSetting.AutomaticallyDownloadMissingBeatmaps),
                 })
                 {
+                    FavouriteId = "OsuSetting.AutomaticallyDownloadMissingBeatmaps",
                     Keywords = new[] { "spectator", "replay" },
                 },
                 new SettingsItemV2(new FormCheckBox
@@ -46,13 +51,17 @@ namespace osu.Game.Overlays.Settings.Sections.Online
                     Current = config.GetBindable<bool>(OsuSetting.ShowOnlineExplicitContent),
                 })
                 {
+                    FavouriteId = "OsuSetting.ShowOnlineExplicitContent",
                     Keywords = new[] { "nsfw", "18+", "offensive" },
                 },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = OnlineSettingsStrings.HideCountryFlags,
                     Current = config.GetBindable<bool>(OsuSetting.HideCountryFlags)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.HideCountryFlags",
+                },
             };
         }
     }

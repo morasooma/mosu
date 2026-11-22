@@ -21,12 +21,15 @@ namespace osu.Game.Rulesets.Mods
             "AS",
             "MRX",
             "FP",
+            "GL",
+            "FN",
+            "FNI",
         };
 
         public static bool ModsAwardPerformancePoints(IBeatmapInfo? beatmapInfo, IReadOnlyCollection<Mod> mods)
-            => MosuServerEnvironment.UsesStableProtocol
+            => !hasUnrankedAimAssist(mods) && (MosuServerEnvironment.UsesStableProtocol
                 ? mods.All(StableModCompatibility.IsSupported)
-                : mods.All(mod => ModAwardsPerformancePoints(beatmapInfo, mods, mod));
+                : mods.All(mod => ModAwardsPerformancePoints(beatmapInfo, mods, mod)));
 
         public static bool BeatmapAwardsPerformancePoints(IRulesetInfo ruleset, IBeatmapInfo? beatmapInfo) =>
             ruleset.ShortName != RulesetInfo.DODGE_MODE_SHORTNAME ||
@@ -34,6 +37,9 @@ namespace osu.Game.Rulesets.Mods
 
         public static bool ModAwardsPerformancePoints(IBeatmapInfo? beatmapInfo, IReadOnlyCollection<Mod> mods, Mod mod)
         {
+            if (hasUnrankedAimAssist(mods))
+                return false;
+
             if (!mod.UserPlayable || !mod.HasImplementation)
                 return false;
 
@@ -60,6 +66,23 @@ namespace osu.Game.Rulesets.Mods
 
             return true;
         }
+
+        /// <summary>
+        /// Mirrors Mosu's ranked PP limits using the calculated difficulty with the selected mods.
+        /// Third-party servers own their difficulty policy and must not inherit these limits.
+        /// </summary>
+        public static bool IsWithinRankedStarLimit(IRulesetInfo? ruleset, IReadOnlyCollection<Mod> mods, double starRating)
+        {
+            if (!MosuServerEnvironment.IsMosuServerUrl(MosuServerEnvironment.ActiveApiUrl) || MosuServerEnvironment.UsesStableProtocol)
+                return true;
+
+            bool relax = ruleset?.OnlineID is 0 or 1 or 2 && mods.Any(mod => mod.Acronym == "RX");
+            return double.IsFinite(starRating) && starRating >= 0 && starRating <= (relax ? 16 : 12);
+        }
+
+        private static bool hasUnrankedAimAssist(IReadOnlyCollection<Mod> mods)
+            => mods.Any(mod => mod.Acronym == "AA" && !mod.Ranked)
+               || mods.Any(mod => mod.Acronym == "AA") && mods.Any(mod => mod.Acronym is "RX" or "MRX");
 
         private static bool isDifficultyAdjustRanked(IBeatmapInfo? beatmapInfo, IReadOnlyCollection<Mod> mods)
         {

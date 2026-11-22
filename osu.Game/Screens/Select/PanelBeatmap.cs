@@ -43,6 +43,8 @@ namespace osu.Game.Screens.Select
         public const float CLASSIC_HEIGHT = CarouselItem.DEFAULT_HEIGHT * 1.3f;
 
         private StarCounter starCounter = null!;
+        private StableStarCounter legacyStarCounter = null!;
+        private FillFlowContainer modernDifficultyFlow = null!;
         private ConstrainedIconContainer difficultyIcon = null!;
         private OsuSpriteText additionalStatsText = null!;
         private OsuSpriteText variantText = null!;
@@ -53,6 +55,7 @@ namespace osu.Game.Screens.Select
         private FillFlowContainer mainFill = null!;
 
         private IBindable<StarDifficulty>? starDifficultyBindable;
+        internal IBindable<StarDifficulty>? TrackedDifficulty => starDifficultyBindable;
         private CancellationTokenSource? starDifficultyCancellationSource;
 
         private Box backgroundBorder = null!;
@@ -60,9 +63,11 @@ namespace osu.Game.Screens.Select
         private Box backgroundDifficultyTint = null!;
         private LegacyMenuButtonBackground legacyMenuButtonBackground = null!;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<Colour4> themeContentColour = null!;
         private OverlayColourProvider colourProvider = null!;
 
         private readonly BindableBool useSkinnedLegacyCarousel = new BindableBool();
+        private readonly Bindable<ForkSongSelectStyle> songSelectStyle = new Bindable<ForkSongSelectStyle>();
 
         private TrianglesV2 triangles = null!;
 
@@ -95,7 +100,8 @@ namespace osu.Game.Screens.Select
         private void load(OverlayColourProvider colourProvider, OsuConfigManager config)
         {
             this.colourProvider = colourProvider;
-            ForkSongSelectStyleBinding.BindSkinnedLegacyCarousel(config, useSkinnedLegacyCarousel, () => songSelect is SoloSongSelect);
+            config.BindWith(OsuSetting.ForkSongSelectStyle, songSelectStyle);
+            songSelectStyle.BindValueChanged(style => useSkinnedLegacyCarousel.Value = style.NewValue.UsesStableStyleOn(songSelect is SoloSongSelect), true);
 
             Height = HEIGHT;
 
@@ -106,9 +112,18 @@ namespace osu.Game.Screens.Select
                 Colour = colourProvider.Background5,
             };
 
-            Background = backgroundBorder = new Box
+            Background = new Container
             {
                 RelativeSizeAxes = Axes.Both,
+                Children = new Drawable[]
+                {
+                    new SongSelectBackdropSurface
+                    {
+                        IsActive = () => !useSkinnedLegacyCarousel.Value,
+                        GetCornerRadius = () => TopLevelContent.CornerRadius,
+                    },
+                    backgroundBorder = new Box { RelativeSizeAxes = Axes.Both },
+                },
             };
 
             Content.Children = new Drawable[]
@@ -192,7 +207,11 @@ namespace osu.Game.Screens.Select
                                     Alpha = 0,
                                     Margin = new MarginPadding { Top = -2f, Bottom = 1f },
                                 },
-                                new FillFlowContainer
+                                legacyStarCounter = new StableStarCounter
+                                {
+                                    Alpha = 0,
+                                },
+                                modernDifficultyFlow = new FillFlowContainer
                                 {
                                     Anchor = Anchor.TopLeft,
                                     Origin = Anchor.TopLeft,
@@ -232,8 +251,9 @@ namespace osu.Game.Screens.Select
                 backgroundDifficultyTint.Alpha = legacy.NewValue ? 0 : 1;
                 triangles.Alpha = legacy.NewValue ? 0 : 1;
                 localRank.Alpha = 1;
-                starRatingDisplay.Alpha = 1;
-                starCounter.Alpha = 1;
+                localRank.UseLegacyStyle = legacy.NewValue;
+                modernDifficultyFlow.Alpha = starRatingDisplay.Alpha = starCounter.Alpha = legacy.NewValue ? 0 : 1;
+                legacyStarCounter.Alpha = legacy.NewValue ? 1 : 0;
 
                 if (legacy.NewValue)
                 {
@@ -252,8 +272,10 @@ namespace osu.Game.Screens.Select
                     updateAdditionalInfoText(starDifficultyBindable.Value);
             }, true);
 
-            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-            themeColour.BindValueChanged(_ => updateThemeColours(), true);
+            themeColour = colourProvider.GetColourBindable(OverlayColour.Background3);
+            themeColour.BindValueChanged(_ => updateThemeColours());
+            themeContentColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+            themeContentColour.BindValueChanged(_ => updateThemeColours(), true);
         }
 
         private void updateThemeColours()
@@ -293,11 +315,12 @@ namespace osu.Game.Screens.Select
 
             difficultyIcon.Icon = getRulesetIcon(beatmap.Ruleset);
 
+            localRank.Active = true;
             localRank.Beatmap = beatmap;
             
             if (osu.Game.Database.StablePathManager.IsStableBeatmap(beatmap.ID))
             {
-                variantText.Text = "импорт ";
+                variantText.AsyncText = "импорт ";
                 variantText.Colour = osu.Framework.Graphics.Colour4.LimeGreen;
                 variantText.Alpha = 1;
             }
@@ -306,8 +329,8 @@ namespace osu.Game.Screens.Select
                 variantText.Alpha = 0;
             }
 
-            difficultyText.Text = beatmap.DifficultyName;
-            authorText.Text = BeatmapsetsStrings.ShowDetailsMappedBy(beatmap.Metadata.Author.Username);
+            difficultyText.AsyncText = beatmap.DifficultyName;
+            authorText.AsyncText = BeatmapsetsStrings.ShowDetailsMappedBy(beatmap.Metadata.Author.Username);
 
             updateThemeColours();
             computeStarRating();
@@ -329,14 +352,33 @@ namespace osu.Game.Screens.Select
         {
             base.FreeAfterUse();
 
-            localRank.Beatmap = null;
-            starDifficultyBindable = null;
-
             starDifficultyCancellationSource?.Cancel();
+            starDifficultyCancellationSource = null;
+            starDifficultyBindable = null;
+            difficultyText.AsyncText = authorText.AsyncText = variantText.AsyncText = additionalStatsText.AsyncText = string.Empty;
+            starRatingDisplay.Current.Value = default;
+            starCounter.Current = 0;
+            legacyStarCounter.Current = 0;
+            additionalStatsText.Alpha = 0;
+            localRank.Beatmap = null;
+            localRank.Active = false;
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            // Parent teardown does not necessarily return this panel to its pool.
+            // Cancel before base disposal destroys the text and difficulty displays.
+            starDifficultyCancellationSource?.Cancel();
+            starDifficultyCancellationSource = null;
+            starDifficultyBindable = null;
+            base.Dispose(isDisposing);
         }
 
         private void computeStarRating()
         {
+            if (IsDisposed)
+                return;
+
             starDifficultyCancellationSource?.Cancel();
             starDifficultyCancellationSource = new CancellationTokenSource();
 
@@ -344,11 +386,17 @@ namespace osu.Game.Screens.Select
                 return;
 
             starDifficultyBindable = difficultyCache.GetBindableDifficulty(beatmap, starDifficultyCancellationSource.Token,
-                SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE, calculatePerformance: Selected.Value, usePersistedAdditionalInfo: true);
-            starDifficultyBindable.BindValueChanged(starDifficulty =>
+                Selected.Value ? SongSelect.PERFORMANCE_CALCULATION_DEBOUNCE : SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE,
+                calculatePerformance: Selected.Value, usePersistedAdditionalInfo: true);
+            var requestedBindable = starDifficultyBindable;
+            var requestedSource = starDifficultyCancellationSource;
+            requestedBindable.BindValueChanged(starDifficulty =>
             {
+                if (IsDisposed || !ReferenceEquals(starDifficultyBindable, requestedBindable) || requestedSource.IsCancellationRequested)
+                    return;
+
                 starRatingDisplay.Current.Value = starDifficulty.NewValue;
-                starCounter.Current = (float)starDifficulty.NewValue.Stars;
+                starCounter.Current = legacyStarCounter.Current = (float)starDifficulty.NewValue.Stars;
                 updateAdditionalInfoText(starDifficulty.NewValue);
             }, true);
         }
@@ -364,14 +412,28 @@ namespace osu.Game.Screens.Select
                 authorText.Colour = textColour;
                 additionalStatsText.Hide();
                 localRank.Show();
-                starRatingDisplay.Show();
-                starCounter.Show();
+                legacyStarCounter.Colour = textColour;
             }
+
+            if (!useSkinnedLegacyCarousel.Value)
+            {
+                // Keep the difficulty-coloured backing behind the icon and text.
+                backgroundBorder.Alpha = OverlayTransparency.SongSelectActive ? 0.25f : 1f;
+                modernBackground.Alpha = OverlayTransparency.SongSelectActive ? 0.15f : 1f;
+            }
+
+            localRank.Active = Item?.IsVisible == true;
 
             if (Item?.IsVisible != true)
             {
                 starDifficultyCancellationSource?.Cancel();
                 starDifficultyCancellationSource = null;
+            }
+            else if (starDifficultyCancellationSource == null)
+            {
+                // A refilter/collapse can hide an item without recycling its panel.
+                // Its cancelled preview must be restarted when the same item becomes visible again.
+                computeStarRating();
             }
 
             Height = Item?.DrawHeight ?? HEIGHT;
@@ -416,7 +478,7 @@ namespace osu.Game.Screens.Select
                 var variantName = rulesetInstance.GetVariantName(variant);
 
                 variantText.Alpha = 1;
-                variantText.Text = LocalisableString.Interpolate($"[{variantName}] ");
+                variantText.AsyncText = LocalisableString.Interpolate($"[{variantName}] ");
             }
             else
                 variantText.Alpha = 0;
@@ -435,7 +497,7 @@ namespace osu.Game.Screens.Select
                 return;
             }
 
-            additionalStatsText.Text = BeatmapAdditionalInfoFormatter.Format(starDiff);
+            additionalStatsText.AsyncText = BeatmapAdditionalInfoFormatter.Format(starDiff);
             additionalStatsText.Alpha = 1;
         }
 

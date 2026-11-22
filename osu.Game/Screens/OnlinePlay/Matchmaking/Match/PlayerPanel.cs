@@ -190,7 +190,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match
                                     {
                                         Anchor = Anchor.Centre,
                                         Origin = Anchor.Centre,
-                                        Text = "QUIT",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4805,
                                         Font = OsuFont.Default.With(weight: "Bold", size: 70),
                                         Rotation = -22.5f,
                                         Colour = OsuColour.Gray(0.3f),
@@ -252,7 +252,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match
                                         Anchor = Anchor.BottomCentre,
                                         Origin = Anchor.BottomCentre,
                                         Font = OsuFont.Style.Heading2,
-                                        Text = "0 pts"
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4806
                                     }
                                 }
                             },
@@ -461,7 +461,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match
 
             rankText.Text = userScore.Placement.Value.Ordinalize(CultureInfo.CurrentCulture);
             rankText.FadeColour(SubScreenResults.ColourForPlacement(userScore.Placement.Value));
-            scoreText.Text = $"{userScore.Points} pts";
+            scoreText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4807(userScore.Points);
         });
 
         private int consecutiveJumps;
@@ -609,7 +609,9 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match
                     items.Add(new OsuMenuItem(ContextMenuStrings.SpectatePlayer, MenuItemType.Standard, () =>
                     {
                         if (isUserOnline())
-                            performer?.PerformFromScreen(s => s.Push(new SoloSpectatorScreen(User)));
+                            performer?.PerformFromScreen(s => s.Push(metadataClient != null
+                                ? osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.RankedPlaySpectatorLoader.Create(User, metadataClient)
+                                : new SoloSpectatorScreen(User)));
                     }));
 
                     if (canInviteUser())

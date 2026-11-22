@@ -9,7 +9,7 @@ namespace osu.Game.Online
     public abstract partial class DownloadTracker<T> : Component
         where T : class
     {
-        public readonly T TrackedItem;
+        public T TrackedItem { get; protected set; }
 
         /// <summary>
         /// Holds the current download state of the download - whether is has already been downloaded, is in progress, or is not downloaded.

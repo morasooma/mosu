@@ -105,7 +105,7 @@ namespace osu.Game.Overlays.BeatmapSet.Scores
                                 {
                                     new OsuSpriteText
                                     {
-                                        Text = "achieved ",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J3903,
                                         Font = OsuFont.GetFont(size: 10, weight: FontWeight.Bold)
                                     },
                                     achievedOn = new DrawableDate(DateTimeOffset.MinValue)

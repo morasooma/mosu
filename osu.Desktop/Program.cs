@@ -10,6 +10,9 @@ using System.Runtime.Versioning;
 using osu.Desktop.LegacyIpc;
 using osu.Desktop.Performance;
 using osu.Desktop.Windows;
+using osu.Desktop.Updater;
+using osu.Game.Database;
+using osu.Game.IO;
 using osu.Framework;
 using osu.Framework.Development;
 using osu.Framework.Logging;
@@ -38,17 +41,96 @@ namespace osu.Desktop
 
         private static bool isFirstRun;
 
+        private static Storage getDefaultStorage(GameHost host, string gameName)
+        {
+            foreach (string path in host.UserStoragePaths)
+            {
+                var storage = host.GetStorage(path);
+                if (storage.ExistsDirectory(gameName))
+                    return storage.GetStorageForDirectory(gameName);
+            }
+
+            foreach (string path in host.UserStoragePaths)
+            {
+                try
+                {
+                    return host.GetStorage(path).GetStorageForDirectory(gameName);
+                }
+                catch
+                {
+                    // Match GameHost's fallback to the next writable user storage path.
+                }
+            }
+
+            throw new InvalidOperationException("No valid user storage path could be resolved.");
+        }
+
         [STAThread]
         public static void Main(string[] args)
         {
 #if DEBUG
             Environment.SetEnvironmentVariable("OSU_INSECURE_REQUESTS", "1");
 #endif
+            bool groupDeletionCapture = false;
+            bool interfaceSoundCapture = false;
+            bool fontCapture = false;
+            bool soundPackCapture = false;
+            bool iconCapture = false;
+#if DEBUG
+            groupDeletionCapture = args.Length == 2 && args[0] is "--capture-group-deletion" or "--capture-group-deletion-confirmation";
+            interfaceSoundCapture = args.Length == 2 && args[0] == "--capture-interface-sounds";
+            fontCapture = args.Length == 2 && args[0] == "--capture-fonts";
+            soundPackCapture = args.Length == 2 && args[0] == "--capture-sound-packs";
+            iconCapture = args.Length == 2 && args[0] == "--capture-icons";
+#endif
+            if (args.Length == 2 && (args[0] == osu.Game.Overlays.CustomTheme.ThemePreviewRenderer.ARGUMENT || groupDeletionCapture || interfaceSoundCapture || fontCapture || soundPackCapture || iconCapture))
+            {
+                string previewName = "mosu-theme-preview-" + Guid.NewGuid().ToString("N");
+                string? cacheProfile = null;
+                try
+                {
+                    using var previewHost = Host.GetSuitableDesktopHost(previewName, new HostOptions { IPCPipeName = null, BypassCompositor = false });
+                    previewHost.DisableFrameworkConfigSaving = true;
+                    using var preview = new osu.Game.Overlays.CustomTheme.ThemePreviewGame(args[1])
+                    {
+#if DEBUG
+                        CaptureFonts = fontCapture,
+                        CaptureSoundPacks = soundPackCapture,
+                        CaptureIcons = iconCapture,
+                        CaptureInterfaceSounds = interfaceSoundCapture,
+                        CaptureGroupDeletion = groupDeletionCapture,
+                        CaptureGroupDeletionConfirmation = args[0] == "--capture-group-deletion-confirmation",
+#endif
+                    };
+                    try { previewHost.Run(preview); }
+                    finally { cacheProfile = previewHost.CacheStorage == null ? null : Path.GetDirectoryName(previewHost.CacheStorage.GetFullPath(string.Empty).TrimEnd(Path.DirectorySeparatorChar)); }
+                    if (!preview.CaptureCompleted || preview.CaptureError != null) Environment.ExitCode = 1;
+                }
+                finally
+                {
+                    // Game storage is under the caller's disposable directory. The framework also creates a
+                    // separate shader cache beside normal profiles; remove only this uniquely named capture's cache.
+                    if (cacheProfile != null && Path.GetFileName(cacheProfile) == previewName && Directory.Exists(cacheProfile))
+                        Directory.Delete(cacheProfile, recursive: true);
+                }
+                return;
+            }
+
             AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
             {
-                string logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), getCompatibleGameName(), "logs", "crash_startup.log");
-                Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-                File.AppendAllText(logPath, $"[CRITICAL ERROR] {DateTime.UtcNow}\n{e.ExceptionObject}\n\n");
+                if (e.ExceptionObject is Exception exception)
+                    osu.Game.Utils.CrashReportStore.Current?.Capture(exception, typeof(OsuGameBase).Assembly.GetName().Version?.ToString() ?? "unknown");
+
+                try
+                {
+                    string logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), getCompatibleGameName(), "logs", "crash_startup.log");
+                    Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+                    File.AppendAllText(logPath, $"[CRITICAL ERROR] {DateTime.UtcNow}\n{e.ExceptionObject}\n\n");
+                }
+                catch
+                {
+                    // Never throw from the last-resort exception handler.
+                }
             };
 
             // IMPORTANT DON'T IGNORE: For general sanity, velopack's setup needs to run before anything else.
@@ -96,6 +178,7 @@ namespace osu.Desktop
 
             // This is a safe default. Localised usages should specify lower values as required.
             AppDomain.CurrentDomain.SetData("REGEX_DEFAULT_MATCH_TIMEOUT", TimeSpan.FromMilliseconds(1000));
+
 
             // Back up the cwd before DesktopGameHost changes it
             string cwd = Environment.CurrentDirectory;
@@ -179,15 +262,27 @@ namespace osu.Desktop
             }
 
             bool renderReplay = args.Any(a => a.StartsWith("--render-replay", StringComparison.Ordinal));
+            bool quickGameplay = args.Contains("--mosu-replay-benchmark-mode=quick-gameplay");
+            if (quickGameplay)
+            {
+                if (!OperatingSystem.IsLinux() || Environment.GetEnvironmentVariable("SDL_VIDEODRIVER") != "offscreen"
+                    || Environment.GetEnvironmentVariable("MOSU_QUICK_EXPECT_SKIN") == null)
+                    throw new InvalidOperationException("Quick gameplay benchmarks require an isolated Linux offscreen session and an expected skin.");
+                gameName = "mosu-quick-gameplay";
+            }
 
             var hostOptions = new HostOptions
             {
-                IPCPipeName = !tournamentClient && !renderReplay ? OsuGame.IPC_PIPE_NAME : null,
+                IPCPipeName = !tournamentClient && !renderReplay && !quickGameplay ? OsuGame.IPC_PIPE_NAME : null,
                 FriendlyGameName = OsuGameBase.GAME_NAME,
             };
 
             GameHost host;
             host = Host.GetSuitableDesktopHost(gameName, hostOptions);
+            if (renderReplay)
+                host.DisableFrameworkConfigSaving = true;
+
+            OsuGameDesktop? desktopGame = null;
 
             using (host)
             {
@@ -204,7 +299,34 @@ namespace osu.Desktop
                     }
                 }
 
-                if (host.IsPrimaryInstance && !renderReplay)
+                // Check the same default/custom data location as OsuGameBase before constructing
+                // any game services. The recovery game loads no Realm-backed dependencies.
+                DatabaseCompatibilityException? databaseFailure = null;
+                var storage = new OsuStorage(host, getDefaultStorage(host, gameName));
+                osu.Game.Utils.CrashReportStore.Current = new osu.Game.Utils.CrashReportStore(storage.GetFullPath(string.Empty));
+                try
+                {
+                    RealmAccess.CheckStartupDatabaseCompatibility(storage, OsuGameBase.CLIENT_DATABASE_FILENAME);
+                }
+                catch (DatabaseCompatibilityException e)
+                {
+                    databaseFailure = e;
+                }
+
+#if DEBUG
+                // UI-only simulation; no database file or schema is changed.
+                if (args.Contains("--debug-newer-database-screen"))
+                    databaseFailure = new DatabaseCompatibilityException(52,
+                        new InvalidOperationException("Debug simulation: database schema 53 is newer than supported schema 52."));
+#endif
+
+                if (databaseFailure != null)
+                {
+                    host.Run(new DatabaseUpdateGame(databaseFailure, storage));
+                    return;
+                }
+
+                if (host.IsPrimaryInstance && !renderReplay && !quickGameplay)
                 {
                     try
                     {
@@ -234,12 +356,48 @@ namespace osu.Desktop
                     host.Run(new TournamentGame());
                 else
                 {
-                    host.Run(new OsuGameDesktop(args)
+#if DEBUG
+                    if (args.Contains("--debug-crash-report"))
+                        osu.Game.Utils.CrashReportStore.Current?.Capture(
+                            new InvalidOperationException("Debug preview of the crash report dialog.",
+                                new ArgumentException("Example inner exception; no real crash occurred.")), "Debug preview");
+
+                    if (args.Contains("--debug-storage-selection-screen"))
+                    {
+                        using var config = new osu.Game.Configuration.OsuConfigManager(storage);
+                        config.SetValue(osu.Game.Configuration.OsuSetting.ShowFirstRunSetup, true);
+                        config.SetValue(osu.Game.Configuration.OsuSetting.ForkLibraryLocationChosen, false);
+                        config.Save();
+                    }
+#endif
+                    desktopGame = new OsuGameDesktop(args)
                     {
                         IsFirstRun = isFirstRun,
                         EnableWebSocketServer = Environment.GetEnvironmentVariable("OSU_WEBSOCKET_SERVER") == "1",
-                        ApplyPendingConfigurationRestore = host.IsPrimaryInstance,
-                    });
+                        ApplyPendingConfigurationRestore = host.IsPrimaryInstance && !quickGameplay,
+                    };
+                    try
+                    {
+                        host.Run(desktopGame);
+                    }
+                    catch (Exception exception)
+                    {
+                        osu.Game.Utils.CrashReportStore.Current?.Capture(exception, desktopGame.Version);
+                        throw;
+                    }
+                    finally
+                    {
+                        // The game threads have stopped. Drain rundown and save provenance before
+                        // host disposal/process exit, not from an Update-thread Dispose callback.
+                        try
+                        {
+                            desktopGame.StopPerformanceRecordingOnExitAsync().WaitAsync(TimeSpan.FromSeconds(30)).GetAwaiter().GetResult();
+                        }
+                        catch (Exception e)
+                        {
+                            Logger.Error(e, "Performance recording did not finish during shutdown; partial capture and initial metadata are retained");
+                        }
+                    }
                 }
             }
 
@@ -252,6 +410,8 @@ namespace osu.Desktop
 
             Logger.Log("Desktop entry point completed after host disposal.", LoggingTarget.Runtime, LogLevel.Verbose);
             Logger.Flush();
+
+            desktopGame?.CompleteRestartOnExit();
         }
 
         private static string getCompatibleGameName()
@@ -265,7 +425,15 @@ namespace osu.Desktop
                     return legacy_game_name;
             }
 
-            return base_game_name;
+            // Keep users who already played Morasooma in the shared lazer profile there.
+            // Plain lazer installations are not evidence of a Morasooma setup.
+            foreach (string storagePath in getUserStoragePaths())
+            {
+                if (File.Exists(Path.Combine(storagePath, base_game_name, "mosu.ini")))
+                    return base_game_name;
+            }
+
+            return legacy_game_name;
 #endif
         }
 
@@ -382,9 +550,9 @@ namespace osu.Desktop
                 return;
             }
 
-            if (OsuGameDesktop.IsPackageManaged)
+            if (OsuGameDesktop.IsPackageManaged || OsuGameDesktop.IsManualMacOSBundle)
             {
-                Logger.Log("Updates are being managed by an external provider. Skipping Velopack setup.");
+                Logger.Log("Updates are managed externally or manually. Skipping Velopack setup.");
                 return;
             }
 

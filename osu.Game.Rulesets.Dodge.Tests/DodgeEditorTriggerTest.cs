@@ -11,6 +11,26 @@ namespace osu.Game.Rulesets.Dodge.Tests
     public class DodgeEditorTriggerTest
     {
         [Test]
+        public void TestContinuedProjectileTimelineUsesAuthoredDuration()
+        {
+            var composer = new DodgeHitObjectComposer(new DodgeRuleset());
+            var bullet = new DodgeBullet { StartTime = 1000, Duration = 400, ContinueUntilExit = true };
+            var emitter = new DodgeEmitter { StartTime = 1000, Duration = 400, BurstCount = 3, BurstInterval = 200, ContinueUntilExit = true };
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(composer.GetTimelineDisplayEndTime(bullet), Is.EqualTo(1400));
+                Assert.That(composer.GetTimelineDisplayEndTime(emitter), Is.EqualTo(1800));
+            });
+            bullet.ContinueUntilExit = emitter.ContinueUntilExit = false;
+            Assert.Multiple(() =>
+            {
+                Assert.That(composer.GetTimelineDisplayEndTime(bullet), Is.EqualTo(1400));
+                Assert.That(composer.GetTimelineDisplayEndTime(emitter), Is.EqualTo(1800));
+            });
+        }
+
+        [Test]
         public void TestTriggerHasDedicatedTimelineLane()
         {
             var composer = new DodgeHitObjectComposer(new DodgeRuleset());

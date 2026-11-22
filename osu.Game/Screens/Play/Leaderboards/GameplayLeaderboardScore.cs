@@ -2,9 +2,14 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Game.Online.Rooms;
+using osu.Game.Online.API;
+using osu.Game.Rulesets;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Online.Spectator;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
@@ -45,6 +50,22 @@ namespace osu.Game.Screens.Play.Leaderboards
         /// Can be either highest combo or current combo, depending on constructor parameters.
         /// </summary>
         public BindableInt Combo { get; } = new BindableInt();
+
+        public Func<int?> GetMisses { get; private set; } = () => null;
+        public Func<double?> GetPerformance { get; private set; } = () => null;
+        private Func<IReadOnlyList<Mod>> getMods = () => Array.Empty<Mod>();
+        private APIMod[]? apiMods;
+        private int? modsRulesetId;
+        private IReadOnlyList<Mod>? resolvedApiMods;
+        public string Mods => string.Join(" ", apiMods?.Select(m => m.Acronym) ?? getMods().Select(m => m.Acronym));
+
+        public IReadOnlyList<Mod> GetDisplayMods(RulesetStore? rulesets)
+        {
+            if (apiMods == null) return getMods();
+            if (resolvedApiMods != null) return resolvedApiMods;
+            var ruleset = modsRulesetId.HasValue ? rulesets?.GetRuleset(modsRulesetId.Value)?.CreateInstance() : null;
+            return resolvedApiMods = apiMods.Select(m => ruleset == null ? new UnknownMod(m.Acronym) : m.ToMod(ruleset)).ToArray();
+        }
 
         /// <summary>
         /// Whether the user playing has quit.
@@ -94,6 +115,9 @@ namespace osu.Game.Screens.Play.Leaderboards
             User = gameplayState.Score.ScoreInfo.User;
             Tracked = tracked;
 
+            GetMisses = () => gameplayState.ScoreProcessor.Statistics.GetValueOrDefault(HitResult.Miss);
+            GetPerformance = () => gameplayState.LivePerformance.Value;
+            getMods = () => gameplayState.Mods;
             var scoreProcessor = gameplayState.ScoreProcessor;
             TotalScore.BindTarget = scoreProcessor.TotalScore;
             Accuracy.BindTarget = scoreProcessor.Accuracy;
@@ -105,6 +129,8 @@ namespace osu.Game.Screens.Play.Leaderboards
         {
             User = user;
             Tracked = tracked;
+            GetMisses = () => scoreProcessor.Misses.Value;
+            getMods = () => scoreProcessor.Mods;
             TotalScore.BindTarget = scoreProcessor.TotalScore;
             Accuracy.BindTarget = scoreProcessor.Accuracy;
             Combo.BindTarget = comboMode == ComboDisplayMode.Current ? scoreProcessor.Combo : scoreProcessor.HighestCombo;
@@ -115,6 +141,9 @@ namespace osu.Game.Screens.Play.Leaderboards
         {
             User = scoreInfo.User;
             Tracked = tracked;
+            GetMisses = () => scoreInfo.Statistics.Count > 0 ? scoreInfo.Statistics.GetValueOrDefault(HitResult.Miss) : null;
+            GetPerformance = () => scoreInfo.PP;
+            getMods = () => scoreInfo.Mods;
             TotalScore.Value = scoreInfo.GetDisplayScore(ScoringMode.Standardised);
             Accuracy.Value = scoreInfo.Accuracy;
             Combo.Value = comboMode == ComboDisplayMode.Current ? scoreInfo.Combo : scoreInfo.MaxCombo;
@@ -127,6 +156,10 @@ namespace osu.Game.Screens.Play.Leaderboards
         {
             User = score.User;
             Tracked = tracked;
+            GetMisses = () => score.Statistics.Count > 0 ? score.Statistics.GetValueOrDefault(HitResult.Miss) : null;
+            GetPerformance = () => score.PP;
+            apiMods = score.Mods ?? Array.Empty<APIMod>();
+            modsRulesetId = score.RulesetId;
             TotalScore.Value = score.TotalScore;
             Accuracy.Value = score.Accuracy;
             Combo.Value = comboMode == ComboDisplayMode.Highest ? score.MaxCombo : throw new NotSupportedException($"{comboMode} {nameof(comboMode)} is not supported.");

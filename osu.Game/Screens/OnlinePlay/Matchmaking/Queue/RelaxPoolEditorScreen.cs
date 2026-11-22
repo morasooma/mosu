@@ -4,12 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
+using osu.Framework.Localisation;
+using osu.Game.Localisation;
 using osu.Framework.Screens;
 using osu.Game.Beatmaps;
 using osu.Game.Graphics;
@@ -39,7 +42,34 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
     /// </summary>
     public partial class RelaxPoolEditorScreen : OsuScreen
     {
-        public override string Title => "Relax pool";
+        public override string Title => $"{modeName} pool";
+        private readonly string modeName;
+        private readonly int rulesetId;
+        private long revision;
+        private readonly Dictionary<int, string> contributors;
+        private readonly Dictionary<int, DateTimeOffset> addedAt;
+
+        public enum PoolSortOrder
+        {
+            [LocalisableDescription(typeof(RankedPlayLobbyStrings), nameof(RankedPlayLobbyStrings.PoolStarsAscending))]
+            StarsAscending,
+            [LocalisableDescription(typeof(RankedPlayLobbyStrings), nameof(RankedPlayLobbyStrings.PoolStarsDescending))]
+            StarsDescending,
+            [LocalisableDescription(typeof(RankedPlayLobbyStrings), nameof(RankedPlayLobbyStrings.PoolNewestFirst))]
+            NewestFirst,
+            [LocalisableDescription(typeof(RankedPlayLobbyStrings), nameof(RankedPlayLobbyStrings.PoolOldestFirst))]
+            OldestFirst,
+            [LocalisableDescription(typeof(RankedPlayLobbyStrings), nameof(RankedPlayLobbyStrings.PoolTitle))]
+            Title,
+            [LocalisableDescription(typeof(RankedPlayLobbyStrings), nameof(RankedPlayLobbyStrings.PoolArtist))]
+            Artist,
+        }
+
+        private partial class PoolPlaylist(Dictionary<int, string> contributors) : DrawableRoomPlaylist
+        {
+            protected override DrawableRoomPlaylistItem CreateDrawablePlaylistItem(PlaylistItem item)
+                => new DrawableRoomPlaylistItem(item) { PoolContributor = contributors.GetValueOrDefault(item.Beatmap.OnlineID, "you (unsaved)") };
+        }
         public override bool ShowFooter => true;
 
         [Cached]
@@ -48,6 +78,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         private readonly Room room = new Room { Name = "Relax pool", Type = MatchType.Playlists };
         private DrawableRoomPlaylist playlist = null!;
         private BasicSearchTextBox searchTextBox = null!;
+        private FormDropdown<PoolSortOrder> sortDropdown = null!;
+        private FormCheckBox onlyMineCheckBox = null!;
         private FillFlowContainer starBands = null!;
         private OsuSpriteText mapCount = null!;
         private bool saving;
@@ -63,8 +95,13 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         [Resolved(CanBeNull = true)]
         private IDialogOverlay? dialogOverlay { get; set; }
 
-        public RelaxPoolEditorScreen(RelaxRankedPoolResponse pool)
+        public RelaxPoolEditorScreen(RelaxRankedPoolResponse pool, string modeName = "Relax")
         {
+            this.modeName = modeName;
+            rulesetId = pool.RulesetId;
+            revision = pool.Revision;
+            contributors = pool.Beatmaps.ToDictionary(map => map.BeatmapId, map => map.AddedByUsername ?? "unknown");
+            addedAt = pool.Beatmaps.ToDictionary(map => map.BeatmapId, map => map.AddedAt);
             savedBeatmapIds = pool.Beatmaps.Select(beatmap => beatmap.BeatmapId).ToHashSet();
             room.Playlist = pool.Beatmaps.Select(createPlaylistItem)
                                 .OrderBy(item => item.Beatmap.StarRating)
@@ -108,7 +145,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                 {
                                     new OsuSpriteText
                                     {
-                                        Text = "Relax pool",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4855(modeName),
                                         Font = OsuFont.TorusAlternate.With(size: 32, weight: FontWeight.SemiBold),
                                     },
                                     mapCount = new OsuSpriteText
@@ -204,6 +241,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                 AutoSizeAxes = Axes.Y,
                                 Direction = FillDirection.Vertical,
                                 Spacing = new Vector2(0, 8),
+                                Depth = -1,
                                 Children = new Drawable[]
                                 {
                                     new GridContainer
@@ -223,15 +261,15 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                 {
                                                     Anchor = Anchor.CentreLeft,
                                                     Origin = Anchor.CentreLeft,
-                                                    Text = "Beatmaps",
+                                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4856,
                                                     Font = OsuFont.TorusAlternate.With(size: 22, weight: FontWeight.SemiBold),
                                                 },
                                                 new PurpleRoundedButton
                                                 {
                                                     RelativeSizeAxes = Axes.X,
                                                     Height = 42,
-                                                    Text = "+ Add beatmaps",
-                                                    Action = () => this.Push(new RelaxPoolSongSelect(room)),
+                                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4857,
+                                                    Action = () => this.Push(new RelaxPoolSongSelect(room, rulesetId, modeName)),
                                                 }
                                             }
                                         }
@@ -240,17 +278,48 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                     {
                                         RelativeSizeAxes = Axes.X,
                                         Height = 38,
-                                        PlaceholderText = "Search by artist, title, or difficulty",
+                                        PlaceholderText = global::osu.Game.Localisation.ClientTranslationStrings.J4858,
+                                    },
+                                    new GridContainer
+                                    {
+                                        RelativeSizeAxes = Axes.X,
+                                        Height = 60,
+                                        ColumnDimensions = new[] { new Dimension(), new Dimension() },
+                                        Content = new[]
+                                        {
+                                            new Drawable[]
+                                            {
+                                                sortDropdown = new FormDropdown<PoolSortOrder>
+                                                {
+                                                    RelativeSizeAxes = Axes.X,
+                                                    Caption = RankedPlayLobbyStrings.PoolSort,
+                                                    Items = Enum.GetValues<PoolSortOrder>(),
+                                                    Current = { Value = PoolSortOrder.StarsAscending },
+                                                },
+                                                new Container
+                                                {
+                                                    RelativeSizeAxes = Axes.Both,
+                                                    Padding = new MarginPadding { Left = 8 },
+                                                    Child = onlyMineCheckBox = new FormCheckBox
+                                                    {
+                                                        Caption = RankedPlayLobbyStrings.PoolOnlyMine,
+                                                        HintText = RankedPlayLobbyStrings.PoolOnlyMineHint,
+                                                        ExtendedHeight = true,
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         },
                         new Drawable[]
                         {
-                            playlist = new DrawableRoomPlaylist
+                            playlist = new PoolPlaylist(contributors)
                             {
                                 RelativeSizeAxes = Axes.Both,
                                 AllowDeletion = true,
+                                ShowItemOwners = true,
                                 RequestDeletion = removeItem,
                             }
                         }
@@ -264,13 +333,19 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             base.LoadComplete();
             room.PropertyChanged += onRoomPropertyChanged;
             searchTextBox.Current.BindValueChanged(_ => refreshPlaylist());
+            sortDropdown.Current.BindValueChanged(_ => refreshPlaylist());
+            onlyMineCheckBox.Current.BindValueChanged(_ => refreshPlaylist());
             refresh();
         }
 
         private void onRoomPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(Room.Playlist))
+            {
+                foreach (var item in room.Playlist)
+                    addedAt.TryAdd(item.Beatmap.OnlineID, DateTimeOffset.UtcNow);
                 Scheduler.AddOnce(refresh);
+            }
         }
 
         private void removeItem(PlaylistItem item)
@@ -281,12 +356,11 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         private void refresh()
         {
             refreshPlaylist();
-            mapCount.Text = $"{room.Playlist.Count} {(room.Playlist.Count == 1 ? "beatmap" : "beatmaps")} \u2022 sorted by star rating";
 
             starBands.Clear();
             starBands.Add(new OsuSpriteText
             {
-                Text = "Star rating",
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4859,
                 Font = OsuFont.TorusAlternate.With(size: 22, weight: FontWeight.SemiBold),
                 Margin = new MarginPadding { Bottom = 6 },
             });
@@ -307,7 +381,21 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             if (query.Length > 0)
                 items = items.Where(item => matchesSearch(item, query));
 
-            playlist.Items.ReplaceRange(0, playlist.Items.Count, items);
+            if (onlyMineCheckBox.Current.Value)
+                items = items.Where(item => item.OwnerID == api.LocalUser.Value.Id);
+
+            IOrderedEnumerable<PlaylistItem> sorted = sortDropdown.Current.Value switch
+            {
+                PoolSortOrder.StarsDescending => items.OrderByDescending(item => item.Beatmap.StarRating),
+                PoolSortOrder.NewestFirst => items.OrderByDescending(item => addedAt.GetValueOrDefault(item.Beatmap.OnlineID)),
+                PoolSortOrder.OldestFirst => items.OrderBy(item => addedAt.GetValueOrDefault(item.Beatmap.OnlineID)),
+                PoolSortOrder.Title => items.OrderBy(item => item.Beatmap.Metadata.Title, StringComparer.OrdinalIgnoreCase),
+                PoolSortOrder.Artist => items.OrderBy(item => item.Beatmap.Metadata.Artist, StringComparer.OrdinalIgnoreCase),
+                _ => items.OrderBy(item => item.Beatmap.StarRating),
+            };
+            var visible = sorted.ThenBy(item => item.Beatmap.OnlineID).ToArray();
+            playlist.Items.ReplaceRange(0, playlist.Items.Count, visible);
+            mapCount.Text = RankedPlayLobbyStrings.PoolShowing(visible.Length, room.Playlist.Count);
         }
 
         private static bool matchesSearch(PlaylistItem item, string query)
@@ -327,19 +415,23 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         private bool hasUnsavedChanges => !savedBeatmapIds.SetEquals(
             room.Playlist.Select(item => item.Beatmap.OnlineID));
 
-        private void save(bool exitAfterSave = false)
+        private void save(bool exitAfterSave = false, int conflictRetries = 0)
         {
             if (saving)
                 return;
 
             saving = true;
+            var submittedIds = room.Playlist.Select(item => item.Beatmap.OnlineID).ToHashSet();
             var request = new ReplaceRelaxRankedPoolRequest
             {
-                BeatmapIds = room.Playlist.Select(item => item.Beatmap.OnlineID).Distinct().ToArray()
+                RulesetId = rulesetId,
+                Revision = revision,
+                BeatmapIds = submittedIds.ToArray()
             };
             request.Success += response =>
             {
                 saving = false;
+                revision++;
 
                 if (response.RejectedBeatmapIds.Length > 0)
                 {
@@ -347,20 +439,69 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                     room.Playlist = room.Playlist.Where(item => !rejectedIds.Contains(item.Beatmap.OnlineID)).ToArray();
                 }
 
-                savedBeatmapIds = room.Playlist.Select(item => item.Beatmap.OnlineID).ToHashSet();
+                // Only the submitted snapshot was saved. Edits made while the request was in flight stay dirty.
+                savedBeatmapIds = submittedIds.Except(response.RejectedBeatmapIds).ToHashSet();
                 notifications.Post(new SimpleNotification
                 {
                     Text = response.Rejected == 0
-                        ? $"Relax pool saved: {response.Accepted} maps."
-                        : $"Saved {response.Accepted}; rejected {response.Rejected} invalid maps.",
+                        ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4860(modeName, response.Accepted)
+                        : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4861(response.Accepted, response.Rejected),
                     IsImportant = response.Rejected > 0,
                 });
 
-                if (exitAfterSave)
+                if (exitAfterSave && !hasUnsavedChanges)
                 {
                     exitConfirmed = true;
                     this.Exit();
                 }
+                else
+                    reload(mergeEdits: true);
+            };
+            request.Failure += error =>
+            {
+                saving = false;
+                if (request.HasRevisionConflict || error is APIException { StatusCode: HttpStatusCode.Conflict })
+                {
+                    // Rebase only our additions/removals onto the latest snapshot; never replace someone else's edits.
+                    reload(mergeEdits: true, afterReload: conflictRetries < 3 ? () => save(exitAfterSave, conflictRetries + 1) : null);
+                    if (conflictRetries >= 3)
+                        notifications.Post(new SimpleNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.J4862, IsImportant = true });
+                    return;
+                }
+                notifications.Post(new SimpleNotification { Text = error.Message, IsImportant = true });
+            };
+            api.Queue(request);
+        }
+
+        private void reload() => reload(mergeEdits: false);
+
+        private void reload(bool mergeEdits, Action? afterReload = null)
+        {
+            if (saving) return;
+            saving = true;
+            var request = new GetRelaxRankedPoolRequest { RulesetId = rulesetId };
+            request.Success += pool =>
+            {
+                saving = false;
+                revision = pool.Revision;
+                contributors.Clear();
+                addedAt.Clear();
+                foreach (var map in pool.Beatmaps)
+                {
+                    contributors[map.BeatmapId] = map.AddedByUsername ?? "unknown";
+                    addedAt[map.BeatmapId] = map.AddedAt;
+                }
+                var localAdditions = room.Playlist.Where(item => !savedBeatmapIds.Contains(item.Beatmap.OnlineID)).ToArray();
+                var localRemovals = savedBeatmapIds.Except(room.Playlist.Select(item => item.Beatmap.OnlineID)).ToHashSet();
+                var remoteItems = pool.Beatmaps.Select(createPlaylistItem);
+                room.Playlist = (mergeEdits
+                        ? remoteItems.Where(item => !localRemovals.Contains(item.Beatmap.OnlineID))
+                                     .Concat(localAdditions).DistinctBy(item => item.Beatmap.OnlineID)
+                        : remoteItems)
+                    .OrderBy(item => item.Beatmap.StarRating).ToArray();
+                savedBeatmapIds = pool.Beatmaps.Select(map => map.BeatmapId).ToHashSet();
+                refresh();
+                afterReload?.Invoke();
             };
             request.Failure += error =>
             {
@@ -374,7 +515,24 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         [
             new ScreenFooterButton
             {
-                Text = "Save pool",
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4863,
+                Icon = FontAwesome.Solid.Sync,
+                Action = () =>
+                {
+                    if (saving)
+                        return;
+                    if (hasUnsavedChanges)
+                    {
+                        dialogOverlay?.Push(new osu.Game.Overlays.Dialog.ConfirmDialog(
+                            global::osu.Game.Localisation.ClientTranslationStrings.J4864, reload));
+                        return;
+                    }
+                    reload();
+                },
+            },
+            new ScreenFooterButton
+            {
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4865,
                 Icon = FontAwesome.Solid.Save,
                 Action = () => save(),
             }
@@ -382,14 +540,14 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
         public override bool OnExiting(ScreenExitEvent e)
         {
-            if (exitConfirmed || !hasUnsavedChanges)
-                return base.OnExiting(e);
-
             if (saving)
             {
-                notifications.Post(new SimpleNotification { Text = "Wait for the Relax pool to finish saving." });
+                notifications.Post(new SimpleNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.J4866 });
                 return true;
             }
+
+            if (exitConfirmed || !hasUnsavedChanges)
+                return base.OnExiting(e);
 
             if (dialogOverlay == null)
                 return true;
@@ -418,13 +576,14 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             base.Dispose(isDisposing);
         }
 
-        private static PlaylistItem createPlaylistItem(RelaxRankedPoolBeatmap beatmap)
+        private PlaylistItem createPlaylistItem(RelaxRankedPoolBeatmap beatmap)
         {
+            int mapRulesetId = rulesetId switch { 4 or 5 => 0, 6 => 1, 7 => 2, _ => rulesetId };
             var apiBeatmap = new APIBeatmap
             {
                 OnlineID = beatmap.BeatmapId,
                 OnlineBeatmapSetID = beatmap.BeatmapsetId,
-                RulesetID = 0,
+                RulesetID = mapRulesetId,
                 StarRating = beatmap.StarRating,
                 DifficultyName = beatmap.Version,
                 Length = beatmap.TotalLength * 1000,
@@ -441,7 +600,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             return new PlaylistItem(apiBeatmap)
             {
                 ID = beatmap.BeatmapId,
-                RulesetID = 0,
+                OwnerID = beatmap.AddedBy ?? 0,
+                RulesetID = mapRulesetId,
                 RequiredMods = Array.Empty<APIMod>(),
                 AllowedMods = Array.Empty<APIMod>(),
                 Freestyle = false,

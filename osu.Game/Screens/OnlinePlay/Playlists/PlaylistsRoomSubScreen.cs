@@ -298,7 +298,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                                                                                 Alpha = 0,
                                                                                 Children = new Drawable[]
                                                                                 {
-                                                                                    new SectionHeader("Extra mods"),
+                                                                                    new SectionHeader(global::osu.Game.Localisation.ClientTranslationStrings.J5042),
                                                                                     new FillFlowContainer
                                                                                     {
                                                                                         AutoSizeAxes = Axes.Both,
@@ -312,7 +312,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                                                                                                 Origin = Anchor.CentreLeft,
                                                                                                 Width = 90,
                                                                                                 Height = 30,
-                                                                                                Text = "Select",
+                                                                                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J5043,
                                                                                                 Action = showUserModSelect,
                                                                                             },
                                                                                             new ModDisplay
@@ -436,6 +436,11 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                                     Child = new PlaylistsRoomFooter(room)
                                     {
                                         OnStart = startPlay,
+                                        OnAddBeatmaps = () =>
+                                        {
+                                            if (room.Host?.Id == api.LocalUser.Value.Id && !room.HasEnded && room.RoomID != null)
+                                                this.Push(new PlaylistsSongSelect(room, addToExisting: true));
+                                        },
                                     }
                                 }
                             }

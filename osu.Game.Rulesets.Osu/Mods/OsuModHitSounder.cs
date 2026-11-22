@@ -34,7 +34,7 @@ namespace osu.Game.Rulesets.Osu.Mods
     {
         public override string Name => "Hit Sounder";
         public override string Acronym => "HS";
-        public override LocalisableString Description => "Hitsounds follow your fingers, not the notes. Mash freely.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3696;
         public override ModType Type => ModType.Fun;
         public override IconUsage? Icon => OsuIcon.Metronome;
         public override bool Ranked => true;
@@ -45,10 +45,10 @@ namespace osu.Game.Rulesets.Osu.Mods
             typeof(OsuModCinema),
         };
 
-        [SettingSource("Sample set", "Which bank to use when there is no note nearby.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3697), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3698))]
         public Bindable<HitSounderBank> Bank { get; } = new Bindable<HitSounderBank>(HitSounderBank.Auto);
 
-        [SettingSource("Keep note hitsounds", "When disabled, every press uses the current sample bank and ignores mapped hitsounds.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3699), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3700))]
         public BindableBool UseNoteSamples { get; } = new BindableBool(true);
 
         private const double borrow_window_ms = 200;
@@ -200,7 +200,7 @@ namespace osu.Game.Rulesets.Osu.Mods
 
     public enum HitSounderBank
     {
-        [System.ComponentModel.Description("Follow the map")]
+        [System.ComponentModel.Description("Follow the map"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3701))]
         Auto,
 
         Normal,

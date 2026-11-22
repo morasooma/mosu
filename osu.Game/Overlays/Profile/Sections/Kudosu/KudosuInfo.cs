@@ -41,9 +41,9 @@ namespace osu.Game.Overlays.Profile.Sections.Kudosu
             public CountTotal()
                 : base(UsersStrings.ShowExtraKudosuTotal)
             {
-                DescriptionText.AddText("Based on how much of a contribution the user has made to beatmap moderation. See ");
-                DescriptionText.AddLink("this page", LinkAction.OpenWiki, @"Modding/Kudosu");
-                DescriptionText.AddText(" for more information.");
+                DescriptionText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3994);
+                DescriptionText.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J3995, LinkAction.OpenWiki, @"Modding/Kudosu");
+                DescriptionText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3996);
             }
         }
 

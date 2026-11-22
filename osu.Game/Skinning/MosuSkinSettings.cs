@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using osu.Framework.Bindables;
 
@@ -17,6 +18,11 @@ namespace osu.Game.Skinning
         public const int LATEST_VERSION = 1;
 
         public int Version { get; set; } = LATEST_VERSION;
+
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public List<SkinComponentGeometryOverride> ComponentGeometry { get; set; } = new List<SkinComponentGeometryOverride>();
+
+        public List<SkinComponentSettingsOverride> ComponentSettings { get; set; } = new List<SkinComponentSettingsOverride>();
 
         /// <summary>
         /// The visual scale of the mania notefield, in percent.

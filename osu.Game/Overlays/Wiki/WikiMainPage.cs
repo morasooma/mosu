@@ -4,7 +4,6 @@
 #nullable disable
 
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -12,6 +11,8 @@ using HtmlAgilityPack;
 using osu.Framework.Allocation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
+using osu.Game.Online.API;
+using osu.Game.Overlays.Wiki.Markdown;
 
 namespace osu.Game.Overlays.Wiki
 {
@@ -26,12 +27,29 @@ namespace osu.Game.Overlays.Wiki
         }
 
         [BackgroundDependencyLoader]
-        private void load()
+        private void load(IAPIProvider api)
         {
             var html = new HtmlDocument();
-            html.LoadHtml(Markdown);
+            html.LoadHtml(Markdown ?? string.Empty);
 
-            var panels = createPanels(html).ToArray();
+            // Mosu's main page may be ordinary Markdown rather than the legacy
+            // osu!web HTML template. Render that content instead of assuming panels.
+            var panelNodes = html.DocumentNode.SelectNodes("//div[contains(concat(' ', normalize-space(@class), ' '), ' wiki-main-page-panel ')]");
+            if (panelNodes == null || panelNodes.Count == 0)
+            {
+                Child = new WikiMarkdownContainer
+                {
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                    CurrentPath = $@"{api.Endpoints.WebsiteUrl}/wiki/",
+                    Text = Markdown ?? string.Empty,
+                    DocumentMargin = new MarginPadding(0),
+                    DocumentPadding = new MarginPadding(0),
+                };
+                return;
+            }
+
+            var panels = createPanels(panelNodes.ToArray()).ToArray();
 
             Children = new Drawable[]
             {
@@ -62,18 +80,14 @@ namespace osu.Game.Overlays.Wiki
                 {
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y,
-                    Text = blurbNode!.InnerText,
+                    Text = blurbNode?.InnerText ?? string.Empty,
                     TextAnchor = Anchor.TopCentre,
                 }
             };
         }
 
-        private IEnumerable<Drawable[]> createPanels(HtmlDocument html)
+        private IEnumerable<Drawable[]> createPanels(HtmlNode[] panelsNode)
         {
-            var panelsNode = html.DocumentNode.SelectNodes("//div[contains(@class, 'wiki-main-page-panel')]")!.ToArray();
-
-            Debug.Assert(panelsNode.Length > 1);
-
             int i = 0;
 
             while (i < panelsNode.Length)

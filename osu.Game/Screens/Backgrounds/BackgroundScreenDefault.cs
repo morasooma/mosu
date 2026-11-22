@@ -7,6 +7,7 @@ using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Sprites;
 using osu.Framework.Logging;
 using osu.Framework.Platform;
 using osu.Framework.Screens;
@@ -21,8 +22,10 @@ using osu.Game.Skinning;
 
 namespace osu.Game.Screens.Backgrounds
 {
-    public partial class BackgroundScreenDefault : BackgroundScreen
+    public partial class BackgroundScreenDefault : BackgroundScreen, IBackgroundSceneSource
     {
+        public Sprite BackgroundSprite => background?.Sprite;
+
         private Background background;
 
         private int currentDisplay;
@@ -97,6 +100,8 @@ namespace osu.Game.Screens.Backgrounds
 
         private ScheduledDelegate nextTask;
         private CancellationTokenSource cancellationTokenSource;
+        private Background pendingBackground;
+        private ScheduledDelegate pendingDisplay;
 
         /// <summary>
         /// Request loading the next background.
@@ -108,10 +113,23 @@ namespace osu.Game.Screens.Backgrounds
 
             // in the case that the background hasn't changed, we want to avoid cancelling any tasks that could still be loading.
             if (nextBackground == background)
+            {
+                // Returning to the displayed selection also invalidates a not-yet-published image.
+                cancelPendingBackground();
+                cancellationTokenSource?.Cancel();
+                nextTask?.Cancel();
                 return false;
+            }
+
+            if (pendingBackground != null && nextBackground.Equals(pendingBackground))
+            {
+                nextBackground.Dispose();
+                return false;
+            }
 
             Logger.Log(@"🌅 Global background change queued");
 
+            cancelPendingBackground();
             cancellationTokenSource?.Cancel();
             cancellationTokenSource = new CancellationTokenSource();
 
@@ -127,11 +145,55 @@ namespace osu.Game.Screens.Backgrounds
 
         private void displayNext(Background newBackground)
         {
+            if (IsDisposed)
+            {
+                newBackground.Dispose();
+                return;
+            }
+
+            if (newBackground is BeatmapBackground { TextureUploadComplete: false })
+            {
+                if (pendingBackground != newBackground)
+                {
+                    cancelPendingBackground();
+                    pendingBackground = newBackground;
+                }
+                pendingDisplay = Scheduler.Add(() => displayNext(newBackground));
+                return;
+            }
+
+            pendingBackground = null;
+            pendingDisplay = null;
+
+            if (newBackground is BeatmapBackground beatmapBackground)
+            {
+                _ = beatmapBackground.PrepareSafety();
+                beatmapBackground.ApplySafety();
+            }
             background?.FadeOut(800, Easing.OutQuint);
             background?.Expire();
 
             AddInternal(background = newBackground);
             currentDisplay++;
+        }
+
+        private void cancelPendingBackground()
+        {
+            pendingDisplay?.Cancel();
+            pendingDisplay = null;
+            pendingBackground?.Dispose();
+            pendingBackground = null;
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            nextTask?.Cancel();
+            storyboardUnloadDelegate?.Cancel();
+            cancellationTokenSource?.Cancel();
+            cancellationTokenSource?.Dispose();
+            cancellationTokenSource = null;
+            cancelPendingBackground();
+            base.Dispose(isDisposing);
         }
 
         private Background createBackground()
@@ -161,8 +223,8 @@ namespace osu.Game.Screens.Backgrounds
                         {
                             case TrianglesSkin:
                             case ArgonSkin:
+                            case MorasoomaSkin:
                             case DefaultLegacySkin:
-                            case RetroSkin:
                                 // default skins should use the default background rotation, which won't be the case if a SkinBackground is created for them.
                                 break;
 

@@ -12,6 +12,7 @@ using osu.Framework.Graphics.Shapes;
 using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK.Graphics;
 
 namespace osu.Game.Screens.Ranking.Statistics
@@ -22,10 +23,16 @@ namespace osu.Game.Screens.Ranking.Statistics
     internal partial class StatisticItemContainer : CompositeDrawable
     {
         private readonly Box background;
-        private IBindable<Colour4> themeColour = null!;
+        private IBindable<Colour4>? themeColour;
+        private IBindable<Colour4>? accentColourBindable;
+        private IBindable<ThemeMode>? themeModeBindable;
+        private IBindable<CustomThemeDefinition>? customThemeBindable;
+        private readonly Container mainContainer;
+        private readonly Container edgeEffectContainer;
+        private IBindable<float>? radiusBindable;
 
-        [Resolved]
-        private OverlayColourProvider colourProvider { get; set; } = null!;
+        [Resolved(canBeNull: true)]
+        private OverlayColourProvider? colourProvider { get; set; }
         /// <summary>
         /// Creates a new <see cref="StatisticItemContainer"/>.
         /// </summary>
@@ -38,7 +45,7 @@ namespace osu.Game.Screens.Ranking.Statistics
             Padding = new MarginPadding(5);
             Width = item.FullWidth ? 1 : 0.5f;
 
-            InternalChild = new Container
+            InternalChild = mainContainer = new Container
             {
                 RelativeSizeAxes = Axes.X,
                 AutoSizeAxes = Axes.Y,
@@ -71,33 +78,6 @@ namespace osu.Game.Screens.Ranking.Statistics
                             },
                         }
                     },
-                    new Container
-                    {
-                        RelativeSizeAxes = Axes.Both,
-                        Children = new Drawable[]
-                        {
-                            new Box
-                            {
-                                Colour = ColourInfo.GradientVertical(
-                                    OsuColour.Gray(0.25f),
-                                    OsuColour.Gray(0.25f).Opacity(0)
-                                ),
-                                RelativeSizeAxes = Axes.X,
-                                Height = 30,
-                            },
-                            new Box
-                            {
-                                Anchor = Anchor.BottomLeft,
-                                Origin = Anchor.BottomLeft,
-                                Colour = ColourInfo.GradientVertical(
-                                    OsuColour.Gray(0.18f).Opacity(0),
-                                    OsuColour.Gray(0.18f)
-                                ),
-                                RelativeSizeAxes = Axes.X,
-                                Height = 20,
-                            },
-                        }
-                    },
                     LocalisableString.IsNullOrEmpty(item.Name)
                         ? Empty()
                         : new StatisticItemHeader
@@ -107,7 +87,7 @@ namespace osu.Game.Screens.Ranking.Statistics
                 }
             };
 
-            AddInternal(new Container
+            AddInternal(edgeEffectContainer = new Container
             {
                 RelativeSizeAxes = Axes.Both,
                 Masking = true,
@@ -134,12 +114,46 @@ namespace osu.Game.Screens.Ranking.Statistics
         [BackgroundDependencyLoader]
         private void load()
         {
-            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-            themeColour.BindValueChanged(_ => updateThemeColours(), true);
+            themeModeBindable = OverlayColourProvider.CurrentTheme.GetBoundCopy();
+            themeModeBindable.BindValueChanged(_ => updateThemeColours());
+
+            customThemeBindable = OverlayColourProvider.CustomTheme.GetBoundCopy();
+            customThemeBindable.BindValueChanged(_ => updateThemeColours());
+
+            if (colourProvider != null)
+            {
+                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
+                themeColour.BindValueChanged(_ => updateThemeColours());
+
+                accentColourBindable = colourProvider.GetColourBindable(OverlayColour.Highlight1);
+                accentColourBindable.BindValueChanged(_ => updateThemeColours());
+
+                radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Card, 20f);
+                radiusBindable.BindValueChanged(r =>
+                {
+                    mainContainer.CornerRadius = r.NewValue;
+                    edgeEffectContainer.CornerRadius = r.NewValue;
+                }, true);
+            }
+
+            updateThemeColours();
         }
 
         private void updateThemeColours()
         {
+            if (OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom && colourProvider != null)
+            {
+                mainContainer.BorderThickness = 1.5f;
+                mainContainer.BorderColour = colourProvider.Highlight1;
+
+                background.Colour = ColourInfo.GradientVertical(
+                    colourProvider.Background4.Opacity(0.85f),
+                    colourProvider.Background5.Opacity(0.95f));
+                return;
+            }
+
+            mainContainer.BorderThickness = 0;
+
             float topGray = OverlayColourProvider.IsDarkTheme ? 0.08f : OverlayColourProvider.IsLightTheme ? 0.90f : 0.25f;
             float bottomGray = OverlayColourProvider.IsDarkTheme ? 0.05f : OverlayColourProvider.IsLightTheme ? 0.94f : 0.18f;
             background.Colour = ColourInfo.GradientVertical(

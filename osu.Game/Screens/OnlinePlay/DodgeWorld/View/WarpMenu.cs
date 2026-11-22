@@ -71,7 +71,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                             {
                                 new OsuSpriteText
                                 {
-                                    Text = "СЕТЬ ВАРПОВ",
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4754,
                                     Font = OsuFont.Default.With(size: 22, weight: FontWeight.Bold),
                                     Colour = colours.Blue0,
                                 },
@@ -81,7 +81,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                                     Colour = colours.YellowLight,
                                 },
                                 empty = WrappedText.Paragraph(
-                                    "Открытых варпов пока нет. Найди их в мире и открой на месте.", colours.GrayA, 13),
+                                    global::osu.Game.Localisation.ClientTranslationStrings.J4755, colours.GrayA, 13),
                                 rows = new FillFlowContainer
                                 {
                                     RelativeSizeAxes = Axes.X,
@@ -91,7 +91,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                                 },
                                 new OsuSpriteText
                                 {
-                                    Text = "E или Esc — закрыть",
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4756,
                                     Font = OsuFont.Default.With(size: 11),
                                     Colour = colours.GrayA,
                                 },
@@ -119,8 +119,8 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                                    .ToArray();
 
             balance.Text = coins == null
-                ? "Баланс недоступен"
-                : $"Монет: {coins.Value.ToString("N0", CultureInfo.CurrentCulture)}";
+                ? global::osu.Game.Localisation.ClientTranslationStrings.J4757
+                : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4758(coins.Value.ToString("N0", CultureInfo.CurrentCulture));
 
             empty.Alpha = available.Length == 0 ? 1 : 0;
 
@@ -158,7 +158,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                                 Anchor = Anchor.CentreRight,
                                 Origin = Anchor.CentreRight,
                                 X = -14,
-                                Text = point.TravelCost > 0 ? $"{point.TravelCost} монет" : "бесплатно",
+                                Text = point.TravelCost > 0 ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4759(point.TravelCost) : global::osu.Game.Localisation.ClientTranslationStrings.J4760,
                                 Font = OsuFont.Default.With(size: 13, weight: FontWeight.Bold),
                                 Colour = affordable ? colours.YellowLight : colours.Red1,
                             },

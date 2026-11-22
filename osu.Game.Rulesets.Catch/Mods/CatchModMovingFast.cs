@@ -21,7 +21,7 @@ namespace osu.Game.Rulesets.Catch.Mods
     {
         public override string Name => "Moving Fast";
         public override string Acronym => "MF";
-        public override LocalisableString Description => "Dashing by default, slow down!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3623;
         public override ModType Type => ModType.Fun;
         public override IconUsage? Icon => OsuIcon.ModMovingFast;
         public override Type[] IncompatibleMods => new[] { typeof(ModAutoplay), typeof(ModRelax) };

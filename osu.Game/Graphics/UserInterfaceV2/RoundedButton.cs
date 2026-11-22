@@ -65,7 +65,6 @@ namespace osu.Game.Graphics.UserInterfaceV2
         {
             base.LoadComplete();
 
-            Content.CornerRadius = 5;
             Content.CornerExponent = 2.5f;
 
             Add(Triangles = new TrianglesV2
@@ -94,13 +93,13 @@ namespace osu.Game.Graphics.UserInterfaceV2
         {
             Debug.Assert(triangleGradientSecondColour != null);
 
-            Background.FadeColour(triangleGradientSecondColour.Value, 300, Easing.OutQuint);
+            Background.FadeColour(triangleGradientSecondColour.Value, InterfaceAnimation.FadeDuration(300), Easing.OutQuint);
             return base.OnHover(e);
         }
 
         protected override void OnHoverLost(HoverLostEvent e)
         {
-            Background.FadeColour(BackgroundColour, 300, Easing.OutQuint);
+            Background.FadeColour(BackgroundColour, InterfaceAnimation.FadeDuration(300), Easing.OutQuint);
             base.OnHoverLost(e);
         }
 

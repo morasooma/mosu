@@ -8,6 +8,7 @@ using osu.Framework.Audio;
 using osu.Framework.Timing;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
+using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.Replays;
 using osu.Game.Rulesets.Osu.UI;
@@ -52,8 +53,12 @@ namespace osu.Game.Rulesets.Osu.Tests
             }
         };
 
+        private ManualClock referenceClock = null!;
+        private FramedClock framedReferenceClock = null!;
+
         protected override WorkingBeatmap CreateWorkingBeatmap(IBeatmap beatmap, Storyboard? storyboard = null) =>
-            new ClockBackedTestWorkingBeatmap(beatmap, storyboard, new FramedClock(new ManualClock { Rate = 1 }), audioManager);
+            new ClockBackedTestWorkingBeatmap(beatmap, storyboard,
+                framedReferenceClock = new FramedClock(referenceClock = new ManualClock { Rate = 1 }), audioManager);
 
         [Test]
         public void TestRecording()
@@ -132,29 +137,72 @@ namespace osu.Game.Rulesets.Osu.Tests
                 f.Position == OsuPlayfield.BASE_SIZE / 2));
         }
 
-        [Test]
-        public void TestMorasoomaEndTagIsRecordedIntoReplay()
+        [TestCase("MORASOOMA", null)]
+        [TestCase("ПРИВЕТ 123", null)]
+        [TestCase("MORASOOMA", MosuAimAssistAlgorithm.Mosu)]
+        [TestCase("MORASOOMA", MosuAimAssistAlgorithm.MapleV2)]
+        [TestCase("MORASOOMA", MosuAimAssistAlgorithm.MapleV3)]
+        public void TestMorasoomaEndTagIsRecordedIntoReplay(string tag, MosuAimAssistAlgorithm? algorithm)
         {
             OsuInputManager inputManager = null!;
             OsuPlayfield playfield = null!;
             Vector2 physicalScreenPosition = Vector2.Zero;
             Vector2 physicalGamefieldPosition = Vector2.Zero;
+            long adjustedFramesAtCompletion = 0;
 
-            AddStep("enable Morasooma end tag", () => LocalConfig.SetValue(OsuSetting.ForkMorasoomaEndTag, true));
-            seekTo(15000);
-            AddStep("move cursor to final circle", () => InputManager.MoveMouseTo(Player.DrawableRuleset.Playfield.HitObjectContainer.AliveObjects.Single()));
-            AddStep("press final circle", () => InputManager.PressKey(Key.Z));
-            seekTo(15015);
-            AddStep("release final circle", () => InputManager.ReleaseKey(Key.Z));
+            if (algorithm.HasValue)
+            {
+                AddStep("load player with aim assist", () => LoadPlayer(new[] { new OsuModMosuAimAssist { Algorithm = { Value = algorithm.Value } } }));
+                AddUntilStep("assisted player loaded", () => Player.IsLoaded && Player.Alpha == 1);
+            }
+
+            AddStep("enable Morasooma end tag", () =>
+            {
+                LocalConfig.SetValue(OsuSetting.ForkMorasoomaEndTagText, tag);
+                LocalConfig.SetValue(OsuSetting.ForkMorasoomaEndTag, true);
+            });
+            if (algorithm.HasValue)
+            {
+                seekTo(14800);
+                int frame = 0;
+                AddRepeatStep("move with assist before final circle", () =>
+                {
+                    var ruleset = (DrawableOsuRuleset)Player.DrawableRuleset;
+                    float x = algorithm == MosuAimAssistAlgorithm.Mosu ? 336 - frame++ * 4 : 276 + frame++ % 2 * 5;
+                    InputManager.MoveMouseTo(ruleset.Playfield.GamefieldToScreenSpace(new Vector2(x, 192)));
+                    referenceClock.CurrentTime += 10;
+                    framedReferenceClock.ProcessFrame();
+                }, 10);
+                AddAssert("declared assist is enabled before completion", () => ((DrawableOsuRuleset)Player.DrawableRuleset).Playfield.AimAssistController.IsEnabled);
+                if (algorithm != MosuAimAssistAlgorithm.Mosu)
+                    AddAssert("Maple drives cursor before completion", () => ((DrawableOsuRuleset)Player.DrawableRuleset).Playfield.AimAssistController.IsDrivingCursor);
+            }
+
+            if (algorithm.HasValue)
+            {
+                // Complete by missing with an existing offset and a stationary hand. This must
+                // hand off cleanly too, not only when clicking recentres the assisted cursor.
+                seekTo(15400);
+            }
+            else
+            {
+                seekTo(15000);
+                AddStep("move cursor to final circle", () => InputManager.MoveMouseTo(Player.DrawableRuleset.Playfield.HitObjectContainer.AliveObjects.Single()));
+                AddStep("press final circle", () => InputManager.PressKey(Key.Z));
+                seekTo(15015);
+                AddStep("release final circle", () => InputManager.ReleaseKey(Key.Z));
+            }
             AddUntilStep("wait for score completion", () => Player.ScoreProcessor.HasCompleted.Value);
             AddStep("move physical cursor while tag is drawing", () =>
             {
                 inputManager = ((DrawableOsuRuleset)Player.DrawableRuleset).KeyBindingInputManager;
                 playfield = (OsuPlayfield)Player.DrawableRuleset.Playfield;
+                adjustedFramesAtCompletion = playfield.AimAssistController.AdjustedFrameCount;
                 physicalScreenPosition = playfield.GamefieldToScreenSpace(Vector2.Zero);
                 physicalGamefieldPosition = playfield.ScreenSpaceToGamefield(physicalScreenPosition);
                 InputManager.MoveMouseTo(physicalScreenPosition);
             });
+            AddAssert("assist releases ownership for tag", () => !playfield.AimAssistController.IsDrivingCursor && playfield.AimAssistController.CurrentOffsetMagnitude == 0);
             AddAssert("physical position is preserved", () => inputManager.OriginalUserCursorPosition, () => Is.EqualTo(physicalScreenPosition));
             AddAssert("virtual cursor retains ownership", () => inputManager.CurrentState.Mouse.Position, () => Is.Not.EqualTo(physicalScreenPosition));
             AddAssert("physical movement is excluded from smoke", () => playfield.Smoke.LastMousePosition,
@@ -172,11 +220,37 @@ namespace osu.Game.Rulesets.Osu.Tests
                                                                        .Select(frame => frame.Position)
                                                                        .Distinct()
                                                                        .Count(), () => Is.GreaterThanOrEqualTo(5));
+            AddAssert("configured text determines recorded path", () => Player.Score.Replay.Frames
+                .OfType<OsuReplayFrame>()
+                .Where(frame => frame.Time > 15000 && frame.Actions.Contains(OsuAction.Smoke))
+                .Any(frame => Vector2.Distance(frame.Position, new MorasoomaEndTagPath(tag).GetPosition(0, 0)) < 0.1f));
+            AddRepeatStep("advance manual track clock for complete tag", () =>
+            {
+                referenceClock.CurrentTime += 50;
+                framedReferenceClock.ProcessFrame();
+            }, 20);
+            AddUntilStep("tag finishes and releases virtual cursor", () => !inputManager.IsVirtualCursorActive);
+            AddAssert("assist stays inactive throughout tag", () => playfield.AimAssistController.AdjustedFrameCount == adjustedFramesAtCompletion && !playfield.AimAssistController.IsDrivingCursor);
+            AddAssert("every smoke frame follows the configured tag", () =>
+            {
+                var path = new MorasoomaEndTagPath(tag);
+                Vector2[] samples = Enumerable.Range(0, path.StrokeCount)
+                                              .SelectMany(stroke => Enumerable.Range(0, 201).Select(sample => path.GetPosition(stroke, sample / 200f)))
+                                              .ToArray();
+                return Player.Score.Replay.Frames.OfType<OsuReplayFrame>()
+                             .Where(frame => frame.Time > 15000 && frame.Actions.Contains(OsuAction.Smoke))
+                             .All(frame => samples.Any(sample => Vector2.Distance(frame.Position, sample) < 2));
+            });
+            AddAssert("tag releases smoke", () => !Player.Score.Replay.Frames.OfType<OsuReplayFrame>().Last().Actions.Contains(OsuAction.Smoke));
             AddAssert("tag smoke survives legacy replay conversion", () => Player.Score.Replay.Frames
                                                                                        .OfType<OsuReplayFrame>()
                                                                                        .Where(frame => frame.Time > 15000 && frame.Actions.Contains(OsuAction.Smoke))
                                                                                        .Any(frame => frame.ToLegacy(Player.Beatmap.Value.Beatmap).Smoke));
-            AddStep("disable Morasooma end tag", () => LocalConfig.SetValue(OsuSetting.ForkMorasoomaEndTag, false));
+            AddStep("disable Morasooma end tag", () =>
+            {
+                LocalConfig.SetValue(OsuSetting.ForkMorasoomaEndTag, false);
+                LocalConfig.SetValue(OsuSetting.ForkMorasoomaEndTagText, "MORASOOMA");
+            });
         }
 
         private void seekTo(double time)

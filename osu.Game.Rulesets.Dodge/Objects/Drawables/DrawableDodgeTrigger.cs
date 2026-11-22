@@ -33,7 +33,7 @@ namespace osu.Game.Rulesets.Dodge.Objects.Drawables
         {
             // Triggers are non-threatening state transitions: judge them at StartTime
             // so gameplay does not stay alive until a timed effect finishes.
-            if (timeOffset >= 0)
+            if (Time.Current >= HitObject.StartTime)
                 ApplyMaxResult();
         }
     }

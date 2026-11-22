@@ -16,6 +16,7 @@ using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input.Events;
 using osu.Framework.IO.Stores;
 using osu.Game.Extensions;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Rulesets;
 using osuTK;
 using osuTK.Graphics;
@@ -30,6 +31,13 @@ namespace osu.Game.Overlays.Toolbar
         [Resolved]
         private MusicController musicController { get; set; }
 
+        [Resolved(canBeNull: true)]
+        private OverlayColourProvider? colourProvider { get; set; }
+
+        private IBindable<Colour4>? lineAccentBindable;
+        private IBindable<ThemeMode>? themeModeBindable;
+        private IBindable<CustomThemeDefinition>? customThemeBindable;
+
         private readonly Dictionary<string, Sample> rulesetSelectionSample = new Dictionary<string, Sample>();
         private readonly Dictionary<string, SampleChannel> rulesetSelectionChannel = new Dictionary<string, SampleChannel>();
         private Sample defaultSelectSample;
@@ -42,16 +50,32 @@ namespace osu.Game.Overlays.Toolbar
             AutoSizeAxes = Axes.X;
         }
 
+        private OpaqueBackground opaqueBackground = null!;
+        private readonly Box themedBackground = new Box { RelativeSizeAxes = Axes.Both, Alpha = 0, Depth = 0.5f };
+        private IBindable<Colour4>? backgroundBindable;
+        public bool TransparentBackground { get; set; }
+        internal float BackgroundAlpha => System.Math.Max(opaqueBackground.Alpha, themedBackground.Alpha);
+        internal Colour4 BackgroundColour => themedBackground.Colour;
+
+        protected override void Update()
+        {
+            base.Update();
+            bool custom = OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom && colourProvider != null;
+            opaqueBackground.Alpha = !TransparentBackground && !custom ? 1 : 0;
+            themedBackground.Alpha = !TransparentBackground && custom ? 1 : 0;
+        }
+
         [BackgroundDependencyLoader]
         private void load(AudioManager audio, OsuGameBase game)
         {
             AddRangeInternal(new[]
             {
-                new OpaqueBackground
+                opaqueBackground = new OpaqueBackground
                 {
                     Depth = 1,
                     Masking = true,
                 },
+                themedBackground,
                 ModeButtonLine = new Container
                 {
                     Size = new Vector2(Toolbar.HEIGHT, 3),
@@ -71,7 +95,7 @@ namespace osu.Game.Overlays.Toolbar
             });
 
             var store = new ResourceStore<byte[]>(game.Resources);
-            samples = audio.GetSampleStore(new NamespacedResourceStore<byte[]>(store, "Samples"), audio.SampleMixer);
+            samples = audio.GetSampleStore(new NamespacedResourceStore<byte[]>(store, "Samples"), audio.SampleMixer, useGlobalSampleTransform: true);
 
             foreach (var r in Rulesets.AvailableRulesets)
             {
@@ -95,6 +119,33 @@ namespace osu.Game.Overlays.Toolbar
             Current.BindValueChanged(_ => moveLineToCurrent());
             // Scheduled to allow the button flow layout to be computed before the line position is updated
             ScheduleAfterChildren(moveLineToCurrent);
+
+            if (colourProvider != null)
+            {
+                backgroundBindable = colourProvider.GetColourBindable(OverlayColour.Background5);
+                backgroundBindable.BindValueChanged(_ => updateLineColour());
+                lineAccentBindable = colourProvider.GetColourBindable(OverlayColour.Colour3);
+                lineAccentBindable.BindValueChanged(_ => updateLineColour());
+
+                themeModeBindable = OverlayColourProvider.CurrentTheme.GetBoundCopy();
+                themeModeBindable.BindValueChanged(_ => updateLineColour());
+
+                customThemeBindable = OverlayColourProvider.CustomTheme.GetBoundCopy();
+                customThemeBindable.BindValueChanged(_ => updateLineColour());
+
+                updateLineColour();
+            }
+        }
+
+        private void updateLineColour()
+        {
+            if (OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom && colourProvider != null)
+            {
+                ModeButtonLine.Colour = colourProvider.Colour3;
+                themedBackground.Colour = colourProvider.Background5;
+            }
+            else
+                ModeButtonLine.Colour = Color4.White;
         }
 
         private void currentDisabledChanged()

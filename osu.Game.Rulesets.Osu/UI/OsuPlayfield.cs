@@ -402,9 +402,6 @@ namespace osu.Game.Rulesets.Osu.UI
         {
             private bool directChildrenLifeStable;
 
-            // Standalone public build note: BufferingEnabled is an optional Mosu framework extension on BufferedContainer.
-            public bool BufferingEnabled { get; set; }
-
             public GameplayRenderBuffer()
             {
                 // Children are blended into a transparent target, leaving premultiplied RGB in the framebuffer.

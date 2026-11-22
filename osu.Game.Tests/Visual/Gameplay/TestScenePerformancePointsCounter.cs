@@ -74,6 +74,8 @@ namespace osu.Game.Tests.Visual.Gameplay
 
             AddUntilStep("counter non-zero", () => this.ChildrenOfType<PerformancePointsCounter>().All(c => c.Current.Value > 0));
             AddUntilStep("counter valid", () => this.ChildrenOfType<PerformancePointsCounter>().All(c => c.IsValid));
+            AddUntilStep("leaderboard shares latest pp", () => gameplayState.LivePerformance.Value,
+                () => Is.EqualTo(this.ChildrenOfType<PerformancePointsCounter>().First().Current.Value));
 
             AddStep("Revert judgement", () =>
             {

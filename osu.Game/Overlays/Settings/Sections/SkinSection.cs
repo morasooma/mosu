@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 #nullable disable
@@ -37,6 +37,12 @@ namespace osu.Game.Overlays.Settings.Sections
     public partial class SkinSection : SettingsSection
     {
         private SkinDropdown skinDropdown;
+        private readonly SkinVisibilitySettingsPanel visibilityPanel;
+
+        public SkinSection(SkinVisibilitySettingsPanel visibilityPanel = null)
+        {
+            this.visibilityPanel = visibilityPanel;
+        }
         private readonly BindableNumber<int> maniaNoteScale = new BindableNumber<int>(100)
         {
             MinValue = 20,
@@ -73,12 +79,15 @@ namespace osu.Game.Overlays.Settings.Sections
 
             var maniaNoteScaleItem = new SettingsItemV2(new FormSliderBar<int>
             {
-                Caption = "Mania playfield scale",
-                HintText = "Scales the mania notefield around the receptor line, including notes, receptors, judgements and column spacing.",
+                Caption = ForkSettingsStrings.SkinManiaPlayfieldScaleCaption,
+                HintText = ForkSettingsStrings.SkinManiaPlayfieldScaleHint,
                 Current = maniaNoteScale,
                 KeyboardStep = 1,
                 LabelFormat = value => $"{value}%",
-            });
+            })
+            {
+                FavouriteId = "ui:ForkSettingsStrings.SkinManiaPlayfieldScaleCaption",
+            };
 
             maniaNoteScaleItem.SettingChanged += saveManiaNoteScale;
 
@@ -99,6 +108,7 @@ namespace osu.Game.Overlays.Settings.Sections
 
                 return new SettingsItemV2(dropdown)
                 {
+                    FavouriteId = $"OsuSetting.{setting}",
                     CanBeShown = { BindTarget = separateSkinsPerRuleset },
                 };
             }
@@ -111,7 +121,10 @@ namespace osu.Game.Overlays.Settings.Sections
                     AllowNonContiguousMatching = true,
                     Caption = SkinSettingsStrings.CurrentSkin,
                     Current = skins.CurrentSkinInfo,
-                }),
+                })
+                {
+                    FavouriteId = "ui:SkinSettingsStrings.CurrentSkin",
+                },
                 new FillFlowContainer
                 {
                     RelativeSizeAxes = Axes.X,
@@ -150,6 +163,11 @@ namespace osu.Game.Overlays.Settings.Sections
                     Text = SkinSettingsStrings.SkinLayoutEditor,
                     Action = () => skinEditor?.ToggleVisibility(),
                 },
+                new SettingsButtonV2
+                {
+                    Text = SkinVisibilityStrings.Title,
+                    Action = () => visibilityPanel?.ToggleVisibility(),
+                },
                 new SkinPinButton(),
                 maniaNoteScaleItem,
                 new SettingsItemV2(new FormCheckBox
@@ -157,7 +175,10 @@ namespace osu.Game.Overlays.Settings.Sections
                     Caption = ForkSettingsStrings.SeparateSkinsPerRulesetCaption,
                     HintText = ForkSettingsStrings.SeparateSkinsPerRulesetHint,
                     Current = separateSkinsPerRuleset,
-                }),
+                })
+                {
+                    FavouriteId = "ui:ForkSettingsStrings.SeparateSkinsPerRulesetCaption",
+                },
                 createRulesetSkinItem(ForkSettingsStrings.OsuSkinCaption, OsuSetting.ForkOsuSkin),
                 createRulesetSkinItem(ForkSettingsStrings.TaikoSkinCaption, OsuSetting.ForkTaikoSkin),
                 createRulesetSkinItem(ForkSettingsStrings.CatchSkinCaption, OsuSetting.ForkCatchSkin),

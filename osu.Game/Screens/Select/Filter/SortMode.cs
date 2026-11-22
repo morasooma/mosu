@@ -44,5 +44,8 @@ namespace osu.Game.Screens.Select.Filter
 
         [LocalisableDescription(typeof(SongSelectStrings), nameof(SongSelectStrings.Title))]
         Title,
+
+        [System.ComponentModel.Description("PP"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5186))]
+        Performance,
     }
 }

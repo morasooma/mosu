@@ -38,6 +38,7 @@ namespace osu.Game.Rulesets.Osu.UI
             if (!ReferenceEquals(motionTarget, context.Drawable.HitObject))
             {
                 motionTarget = context.Drawable.HitObject;
+                lastIntentPassTime = double.NegativeInfinity;
                 motionTargetCaptured = false;
                 motionTargetExited = false;
                 closestMotionDistance = float.PositiveInfinity;
@@ -65,7 +66,7 @@ namespace osu.Game.Rulesets.Osu.UI
             // удерживать цель активной только потому, что виртуальный курсор ещё внутри.
             bool leaving = Vector2.Dot(rawDelta, rawPosition - centre) > 0
                            && Vector2.Dot(fastRawVelocity, rawPosition - centre) > radius * stationary_hold_speed_threshold;
-            if (leaving && distance > closestMotionDistance + radius * 0.18f
+            if (leaving && !canRecoverNearTarget(context, rawPosition) && distance > closestMotionDistance + radius * 0.18f
                         && (motionTargetCaptured || closestMotionDistance < getTargetGravityRadius(context)))
             {
                 motionTargetExited = true;
@@ -106,9 +107,14 @@ namespace osu.Game.Rulesets.Osu.UI
         {
             Vector2 toTarget = getDisplayCentre(context.Drawable) - rawPosition;
             float radius = getDrawableTargetRadius(context.Drawable, context.Drawable.HitObject);
+            if (canRecoverNearTarget(context, rawPosition))
+                return assistOffset + outsideDeadzone(toTarget - assistOffset, radius * 0.65f) * Math.Clamp(authority, 0, 1);
+
             float predictionHorizon = getPointAcquisitionPredictionHorizon(context);
             float predictedMissDistance = GetPredictedPointMissDistance(rawPosition, getDisplayCentre(context.Drawable), averagedVelocity, predictionHorizon);
-            bool movingTowardTarget = fastRawVelocity.Length <= stationary_hold_speed_threshold || Vector2.Dot(fastRawVelocity, toTarget) >= 0;
+            bool movingTowardTarget = fastRawVelocity.Length <= stationary_hold_speed_threshold
+                                      || IsPointDirectionAllowed(Vector2.Dot(normaliseOrZero(fastRawVelocity), normaliseOrZero(toTarget)),
+                                          context.ModeName == @"point" ? (float)getConfiguredIntentThreshold() : 0);
             if (!ShouldAttemptPointCorrection(toTarget.Length, predictedMissDistance, radius, getTargetGravityRadius(context), movingTowardTarget))
                 return assistOffset;
 
@@ -120,7 +126,8 @@ namespace osu.Game.Rulesets.Osu.UI
             if (distance <= radius)
                 return assistOffset;
 
-            Vector2 missCorrection = GetTrajectoryMissCorrection(rawPosition, getDisplayCentre(context.Drawable), radius, averagedVelocity, getPointAcquisitionPredictionHorizon(context));
+            Vector2 missCorrection = GetTrajectoryMissCorrection(rawPosition, getDisplayCentre(context.Drawable), radius, averagedVelocity,
+                getPointAcquisitionPredictionHorizon(context), context.ModeName == @"point" ? GetPointCaptureInset(radius, getStrengthFactor(context)) : 0);
 
             // Do not correct a trajectory which already intersects the real hitbox.
             if (missCorrection.LengthSquared <= 0.0001f)
@@ -143,7 +150,13 @@ namespace osu.Game.Rulesets.Osu.UI
             return predictedMissDistance <= Math.Max(hitboxRadius, assistanceRadius);
         }
 
-        internal static Vector2 GetTrajectoryMissCorrection(Vector2 position, Vector2 target, float radius, Vector2 velocity, float predictionHorizon)
+        // Aim inside the hitbox, not at its mathematical edge: smoothing and imperfect alignment
+        // otherwise leave even maximum-strength corrections just outside the circle.
+        internal static float GetPointCaptureInset(float radius, float strength)
+            => Math.Min(10, Math.Max(0, radius) * 0.3f) * Math.Clamp(strength, 0, 1);
+
+        internal static Vector2 GetTrajectoryMissCorrection(Vector2 position, Vector2 target, float radius, Vector2 velocity, float predictionHorizon,
+                                                           float captureInset = 0)
         {
             Vector2 toTarget = target - position;
             float velocitySquared = velocity.LengthSquared;
@@ -158,7 +171,7 @@ namespace osu.Game.Rulesets.Osu.UI
             Vector2 miss = target - closestPosition;
             float missDistance = miss.Length;
             return missDistance > radius && missDistance > 0
-                ? miss * ((missDistance - Math.Max(0, radius)) / missDistance)
+                ? miss * ((missDistance - Math.Max(0, radius - Math.Max(0, captureInset))) / missDistance)
                 : Vector2.Zero;
         }
 
@@ -206,7 +219,7 @@ namespace osu.Game.Rulesets.Osu.UI
         }
 
         private Vector2 updateAssistOffset(Vector2 targetOffset, bool engaged, Vector2 rawDelta, double elapsed, float engageAmount,
-                                           bool pointMode, bool shortRepeatSliderMode, bool streamMode, float strengthFactor)
+                                           bool pointMode, bool shortRepeatSliderMode, bool streamMode, float strengthFactor, bool recovery = false)
         {
             float dt = (float)(toRealTimeWindow(elapsed) / 1000);
             if (dt <= 0)
@@ -235,7 +248,13 @@ namespace osu.Game.Rulesets.Osu.UI
             float maxSpeed = (float)Interpolation.Lerp(450f, 1500f, strengthFactor) + speed * 0.8f;
             correction = clampLength(correction, maxSpeed * dt);
 
-            if (pointMode)
+            if (recovery)
+            {
+                correction = GetRecoveryAssistStep(correction, rawDelta, dt, strengthFactor);
+                previousPointAssistStep = Vector2.Zero;
+                previousSliderAssistStep = Vector2.Zero;
+            }
+            else if (pointMode)
             {
                 // targetOffset already contains activation authority. Applying it again here made
                 // moderate strengths effectively quadratic and therefore almost invisible.
@@ -269,6 +288,17 @@ namespace osu.Game.Rulesets.Osu.UI
 
             float maxOffset = Math.Max(24, getConfiguredFovRadius() * (float)Interpolation.Lerp(0.55f, 1.1f, strengthFactor));
             return clampLength(assistOffset + correction, maxOffset);
+        }
+
+        internal static Vector2 GetRecoveryAssistStep(Vector2 requestedCorrection, Vector2 rawDelta, float dt, float strength)
+        {
+            if (dt <= 0 || strength <= 0)
+                return Vector2.Zero;
+
+            // A short, acquired-target-only settling budget survives a stopped mouse and can
+            // oppose a small overshoot. It is time-based rather than a minimum per-frame step.
+            float budget = (420 * dt + rawDelta.Length * 0.8f) * Math.Clamp(strength, 0, 1);
+            return clampLength(requestedCorrection, budget);
         }
 
         internal static Vector2 GetPlayerLedAssistStep(Vector2 requestedCorrection, Vector2 rawDelta, float authority, Vector2 previousStep = default, bool allowForwardCorrection = false)
@@ -364,6 +394,12 @@ namespace osu.Game.Rulesets.Osu.UI
         private void applyOutput(Vector2 rawPosition)
         {
             bool shouldDrive = assistOffset.LengthSquared > 0.01f || PassedActivationFilters || IsAntiJitterActive;
+
+            if (mosuAntiAimAssistMod == null && IsAimAssistEnabled && assistOffset.LengthSquared > 0.01f)
+            {
+                AdjustedFrameCount++;
+                MaxAdjustmentMagnitude = Math.Max(MaxAdjustmentMagnitude, assistOffset.Length);
+            }
 
             if (shouldDrive)
             {

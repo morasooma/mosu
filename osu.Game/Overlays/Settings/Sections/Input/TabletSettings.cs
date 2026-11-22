@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 #nullable disable
@@ -28,7 +28,16 @@ namespace osu.Game.Overlays.Settings.Sections.Input
 {
     public partial class TabletSettings : InputSubsection
     {
-        public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[] { "area" });
+        public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[]
+        {
+            "area",
+            "reconstructor",
+            "chatter",
+            "radial follow",
+            "smoothing",
+            "bezier",
+            "spline",
+        });
 
         public TabletAreaSelection AreaSelection { get; private set; }
 
@@ -51,6 +60,9 @@ namespace osu.Game.Overlays.Settings.Sections.Input
         private readonly BindableNumber<float> rotation = new BindableNumber<float> { MinValue = 0, MaxValue = 360, Precision = 1 };
 
         private readonly BindableNumber<float> pressureThreshold = new BindableNumber<float> { MinValue = 0.0f, MaxValue = 1.0f, Precision = 0.005f };
+
+        private readonly BindableBool reconstructorEnabled = new BindableBool();
+        private readonly BindableNumber<float> reconstructorWeight = new BindableFloat(0.5f) { MinValue = 0.01f, MaxValue = 1.0f, Precision = 0.01f };
 
         private Bindable<ScalingMode> scalingMode = null!;
         private Bindable<float> scalingSizeX = null!;
@@ -144,19 +156,28 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                             TransferValueOnCommit = true,
                             Caption = TabletSettingsStrings.XOffset,
                             Current = offsetX,
-                        }),
+                        })
+                        {
+                            FavouriteId = "ui:TabletSettingsStrings.XOffset",
+                        },
                         new SettingsItemV2(new FormSliderBar<float>
                         {
                             TransferValueOnCommit = true,
                             Caption = TabletSettingsStrings.YOffset,
                             Current = offsetY,
-                        }),
+                        })
+                        {
+                            FavouriteId = "ui:TabletSettingsStrings.YOffset",
+                        },
                         new SettingsItemV2(new FormSliderBar<float>
                         {
                             TransferValueOnCommit = true,
                             Caption = TabletSettingsStrings.Rotation,
                             Current = rotation,
-                        }),
+                        })
+                        {
+                            FavouriteId = "ui:TabletSettingsStrings.Rotation",
+                        },
                         new RotationPresetButtons(tabletHandler)
                         {
                             Padding = SettingsPanel.CONTENT_PADDING,
@@ -166,31 +187,162 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                             TransferValueOnCommit = true,
                             Caption = TabletSettingsStrings.AspectRatio,
                             Current = aspectRatio,
-                        }),
+                        })
+                        {
+                            FavouriteId = "ui:TabletSettingsStrings.AspectRatio",
+                        },
                         new SettingsItemV2(new FormCheckBox
                         {
                             Caption = TabletSettingsStrings.LockAspectRatio,
                             Current = aspectLock,
-                        }),
+                        })
+                        {
+                            FavouriteId = "ui:TabletSettingsStrings.LockAspectRatio",
+                        },
                         new SettingsItemV2(new FormSliderBar<float>
                         {
                             TransferValueOnCommit = true,
                             Caption = CommonStrings.Width,
                             Current = sizeX,
-                        }),
+                        })
+                        {
+                            FavouriteId = "ui:CommonStrings.Width",
+                        },
                         new SettingsItemV2(new FormSliderBar<float>
                         {
                             TransferValueOnCommit = true,
                             Caption = CommonStrings.Height,
                             Current = sizeY,
-                        }),
+                        })
+                        {
+                            FavouriteId = "ui:CommonStrings.Height",
+                        },
                         new SettingsItemV2(new FormSliderBar<float>
                         {
                             TransferValueOnCommit = true,
                             Caption = TabletSettingsStrings.TipPressureForClick,
                             Current = pressureThreshold,
                             DisplayAsPercentage = true,
-                        }),
+                        })
+                        {
+                            FavouriteId = "ui:TabletSettingsStrings.TipPressureForClick",
+                        },
+                        new SettingsItemV2(new FormCheckBox
+                        {
+                            Caption = ForkSettingsStrings.TabletReconstructorCaption,
+                            Current = reconstructorEnabled,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletReconstructorCaption",
+                        },
+                        new SettingsItemV2(new FormSliderBar<float>
+                        {
+                            TransferValueOnCommit = true,
+                            Caption = ForkSettingsStrings.TabletReconstructorWeightCaption,
+                            Current = reconstructorWeight,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletReconstructorWeightCaption",
+                        },
+                        new SettingsItemV2(new FormCheckBox
+                        {
+                            Caption = ForkSettingsStrings.TabletChatterCaption,
+                            HintText = ForkSettingsStrings.TabletChatterHint,
+                            Current = tabletHandler.ChatterExterminatorEnabled,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletChatterCaption",
+                        },
+                        new SettingsItemV2(new FormSliderBar<float>
+                        {
+                            TransferValueOnCommit = true,
+                            Caption = ForkSettingsStrings.TabletChatterStrengthCaption,
+                            HintText = ForkSettingsStrings.TabletChatterStrengthHint,
+                            Current = tabletHandler.ChatterExterminationStrength,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletChatterStrengthCaption",
+                        },
+                        new SettingsItemV2(new FormCheckBox
+                        {
+                            Caption = ForkSettingsStrings.TabletRadialFollowCaption,
+                            HintText = ForkSettingsStrings.TabletRadialFollowHint,
+                            Current = tabletHandler.RadialFollowEnabled,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletRadialFollowCaption",
+                        },
+                        new SettingsItemV2(new FormSliderBar<float>
+                        {
+                            TransferValueOnCommit = true,
+                            Caption = ForkSettingsStrings.TabletRadialFollowOuterRadiusCaption,
+                            HintText = ForkSettingsStrings.TabletRadialFollowOuterRadiusHint,
+                            Current = tabletHandler.RadialFollowOuterRadius,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletRadialFollowOuterRadiusCaption",
+                        },
+                        new SettingsItemV2(new FormSliderBar<float>
+                        {
+                            TransferValueOnCommit = true,
+                            Caption = ForkSettingsStrings.TabletRadialFollowInnerRadiusCaption,
+                            HintText = ForkSettingsStrings.TabletRadialFollowInnerRadiusHint,
+                            Current = tabletHandler.RadialFollowInnerRadius,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletRadialFollowInnerRadiusCaption",
+                        },
+                        new SettingsItemV2(new FormSliderBar<float>
+                        {
+                            TransferValueOnCommit = true,
+                            Caption = ForkSettingsStrings.TabletRadialFollowSmoothingCaption,
+                            HintText = ForkSettingsStrings.TabletRadialFollowSmoothingHint,
+                            Current = tabletHandler.RadialFollowSmoothingCoefficient,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletRadialFollowSmoothingCaption",
+                        },
+                        new SettingsItemV2(new FormSliderBar<float>
+                        {
+                            TransferValueOnCommit = true,
+                            Caption = ForkSettingsStrings.TabletRadialFollowSoftKneeCaption,
+                            HintText = ForkSettingsStrings.TabletRadialFollowSoftKneeHint,
+                            Current = tabletHandler.RadialFollowSoftKneeScale,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletRadialFollowSoftKneeCaption",
+                        },
+                        new SettingsItemV2(new FormSliderBar<float>
+                        {
+                            TransferValueOnCommit = true,
+                            Caption = ForkSettingsStrings.TabletRadialFollowLeakCaption,
+                            HintText = ForkSettingsStrings.TabletRadialFollowLeakHint,
+                            Current = tabletHandler.RadialFollowSmoothingLeakCoefficient,
+                            DisplayAsPercentage = true,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletRadialFollowLeakCaption",
+                        },
+                        new SettingsItemV2(new FormCheckBox
+                        {
+                            Caption = ForkSettingsStrings.TabletBezierCaption,
+                            HintText = ForkSettingsStrings.TabletBezierHint,
+                            Current = tabletHandler.BezierInterpolatorEnabled,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletBezierCaption",
+                        },
+                        new SettingsItemV2(new FormSliderBar<float>
+                        {
+                            TransferValueOnCommit = true,
+                            Caption = ForkSettingsStrings.TabletBezierSmoothingCaption,
+                            HintText = ForkSettingsStrings.TabletBezierSmoothingHint,
+                            Current = tabletHandler.BezierSmoothingFactor,
+                            DisplayAsPercentage = true,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.TabletBezierSmoothingCaption",
+                        },
                     }
                 },
             });
@@ -249,6 +401,27 @@ namespace osu.Game.Overlays.Settings.Sections.Input
             });
 
             pressureThreshold.BindTo(tabletHandler.PressureThreshold);
+
+            if (tabletHandler.ReconstructorWeight.Value < 1.0f)
+            {
+                reconstructorEnabled.Value = true;
+                reconstructorWeight.Value = tabletHandler.ReconstructorWeight.Value;
+            }
+            else
+            {
+                reconstructorEnabled.Value = false;
+                reconstructorWeight.Value = 0.5f;
+            }
+
+            reconstructorEnabled.BindValueChanged(enabled =>
+            {
+                tabletHandler.ReconstructorWeight.Value = enabled.NewValue ? reconstructorWeight.Value : 1.0f;
+            });
+            reconstructorWeight.BindValueChanged(val =>
+            {
+                if (reconstructorEnabled.Value)
+                    tabletHandler.ReconstructorWeight.Value = val.NewValue;
+            });
 
             tablet.BindTo(tabletHandler.Tablet);
             tablet.BindValueChanged(val => Schedule(() =>

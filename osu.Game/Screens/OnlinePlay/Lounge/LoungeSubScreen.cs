@@ -263,7 +263,7 @@ namespace osu.Game.Screens.OnlinePlay.Lounge
 
         #region Filtering
 
-        protected virtual LocalisableString EmptyStateText => "No rooms match the selected filters.";
+        protected virtual LocalisableString EmptyStateText => global::osu.Game.Localisation.ClientTranslationStrings.J4800;
 
         public void UpdateFilter() => Scheduler.AddOnce(updateFilter);
 

@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.IO.Stores;
 using osu.Framework.Platform;
+using osu.Game.Configuration;
 using osu.Game.Database;
 using osu.Game.Online;
 
@@ -39,11 +40,26 @@ namespace osu.Game.Graphics
         private readonly RealmFileStore fileStore;
         private readonly LargeTextureStore largeTextureStore;
         private readonly SeasonalBackgroundResourceStore seasonalBackgroundStore = new SeasonalBackgroundResourceStore();
+        private LargeTextureStore? renderTextureStore;
+        private readonly GameHost host;
 
-        public OnlineAssetCachingStore(GameHost host, RealmAccess realmAccess)
+        internal void UseRenderSnapshot(IReadOnlyDictionary<string, byte[]> avatars)
         {
+            // The hidden renderer must not race live downloads or resolve avatar URLs using
+            // its unauthenticated API provider. Feed encoded images through the normal loader.
+            // Avatars are commonly reduced from 256+ pixels to small leaderboard slots.
+            // LargeTextureStore defaults to manual mipmaps, but these encoded images only
+            // provide level zero: bilinear minification alone aliases fine facial details.
+            renderTextureStore ??= new LargeTextureStore(host.Renderer, host.CreateTextureLoaderStore(seasonalBackgroundStore), manualMipmaps: false);
+            foreach (var (url, data) in avatars)
+                seasonalBackgroundStore.Add(url, data);
+        }
+
+        public OnlineAssetCachingStore(GameHost host, RealmAccess realmAccess, OsuConfigManager config)
+        {
+            this.host = host;
             this.realmAccess = realmAccess;
-            onlineStore = new TrustedDomainOnlineStore();
+            onlineStore = new TrustedDomainOnlineStore(config);
             fileStore = new RealmFileStore(realmAccess, host.Storage);
             // largeTextureStore = new LargeTextureStore(host.Renderer, host.CreateTextureLoaderStore(new StorageBackedResourceStore(fileStore.Storage)));
             largeTextureStore = new LargeTextureStore(host.Renderer, host.CreateTextureLoaderStore(onlineStore));
@@ -55,7 +71,7 @@ namespace osu.Game.Graphics
             if (string.IsNullOrWhiteSpace(url))
                 return null;
 
-            return largeTextureStore.Get(url);
+            return (renderTextureStore ?? largeTextureStore).Get(url);
 
             // TODO: logic below temporarily disabled as it causes unacceptable performance on devices with slow I/O due to realm abuse
             // see https://github.com/ppy/osu/issues/38651#issuecomment-5356443643 for details
@@ -134,6 +150,7 @@ namespace osu.Game.Graphics
         {
             onlineStore.Dispose();
             largeTextureStore.Dispose();
+            renderTextureStore?.Dispose();
         }
 
         private sealed class SeasonalBackgroundResourceStore : IResourceStore<byte[]>

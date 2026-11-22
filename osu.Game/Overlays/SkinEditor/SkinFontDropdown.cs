@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Game.Graphics.UserInterface;
@@ -14,7 +15,7 @@ namespace osu.Game.Overlays.SkinEditor
 {
     public partial class SkinFontDropdown : SettingsDropdown<string>
     {
-        public FontAdjustableSkinComponent FontComponent => (FontAdjustableSkinComponent)SettingSourceObject;
+        public bool IncludeOriginalFont { get; init; }
 
         protected override OsuDropdown<string> CreateDropdown() => new FontDropdownControl(this);
 
@@ -52,9 +53,12 @@ namespace osu.Game.Overlays.SkinEditor
                 return base.OnHover(e);
             }
 
+            protected override osu.Framework.Localisation.LocalisableString GenerateItemText(string item)
+                => string.IsNullOrEmpty(item) ? osu.Game.Localisation.FontSettingsStrings.Default : base.GenerateItemText(item);
+
             private void onSelectionChanged(ValueChangedEvent<string> selection)
             {
-                if (FontAdjustableSkinComponent.TryParseTypefaceFamily(selection.NewValue, out _))
+                if (string.IsNullOrEmpty(selection.NewValue) || FontAdjustableSkinComponent.TryParseTypefaceFamily(selection.NewValue, out _))
                     return;
 
                 if (selection.NewValue.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase)
@@ -62,7 +66,7 @@ namespace osu.Game.Overlays.SkinEditor
                 {
                     if (dialogOverlay != null)
                     {
-                        string revertValue = selection.OldValue ?? settingsDropdown.FontComponent.FontDisplay.Default;
+                        string revertValue = selection.OldValue ?? Current.Default;
                         Scheduler.Add(() =>
                         {
                             dialogOverlay.Push(new UnsupportedFontDialog(() => Current.Value = revertValue));
@@ -70,7 +74,7 @@ namespace osu.Game.Overlays.SkinEditor
                     }
                     else
                     {
-                        Current.Value = selection.OldValue ?? settingsDropdown.FontComponent.FontDisplay.Default;
+                        Current.Value = selection.OldValue ?? Current.Default;
                     }
                 }
             }
@@ -79,7 +83,10 @@ namespace osu.Game.Overlays.SkinEditor
             {
                 ClearItems();
 
-                foreach (var item in FontAdjustableSkinComponent.GetAvailableFontFamilies())
+                if (settingsDropdown.IncludeOriginalFont)
+                    AddDropdownItem(string.Empty);
+                foreach (var item in FontAdjustableSkinComponent.GetAvailableFontFamilies()
+                             .Where(f => !f.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase) && !f.EndsWith(".otf", StringComparison.OrdinalIgnoreCase)).Distinct())
                     AddDropdownItem(item);
             }
         }

@@ -52,6 +52,8 @@ namespace osu.Game.Tests.Visual.Gameplay
         private void load()
         {
             LocalConfig.SetValue(OsuSetting.UIHoldActivationDelay, 0.0);
+            // These tests cover the legacy pause/fail animation, not practice continuation.
+            LocalConfig.SetValue(OsuSetting.ForkPracticeMode, false);
         }
 
         [SetUpSteps]

@@ -1,8 +1,9 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using ManagedBass.Fx;
 using osu.Framework.Allocation;
@@ -15,6 +16,7 @@ using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Transforms;
 using osu.Framework.Input;
+using osu.Framework.Logging;
 using osu.Framework.Platform;
 using osu.Framework.Screens;
 using osu.Framework.Threading;
@@ -27,13 +29,16 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Input;
 using osu.Game.Localisation;
+using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Overlays.Volume;
 using osu.Game.Performance;
+using osu.Game.Performance.Debug;
 using osu.Game.Resources.Localisation.Web;
+using osu.Game.Rulesets;
 using osu.Game.Screens.Footer;
 using osu.Game.Screens.Menu;
 using osu.Game.Screens.Play.HUD;
@@ -131,7 +136,7 @@ namespace osu.Game.Screens.Play
 
                 backgroundBrightnessReduction = value;
 
-                ApplyToBackground(b => b.FadeColour(OsuColour.Gray(backgroundBrightnessReduction ? 0.8f : 1), 200));
+                ApplyToBackground(b => b.FadeColour(OsuColour.Gray(backgroundBrightnessReduction ? 0.8f : 1), InterfaceAnimation.FadeDuration(200)));
             }
         }
 
@@ -176,6 +181,7 @@ namespace osu.Game.Screens.Play
         protected bool QuickRestart { get; private set; }
 
         private IDisposable? highPerformanceSession;
+        private PerformancePhaseLogger.Phase? playerLoadPhase;
 
         [Resolved]
         private INotificationOverlay? notificationOverlay { get; set; }
@@ -338,13 +344,17 @@ namespace osu.Game.Screens.Play
             }
         }
 
+        private IBindable<InterfaceAnimationMode>? animationMode;
+
         protected override void LoadComplete()
         {
             base.LoadComplete();
+            // A preloaded Player can be a child here. Never recursively flush gameplay transforms.
+            animationMode = InterfaceAnimation.Observe(this);
 
             inputManager = GetContainingInputManager()!;
 
-            showStoryboards.BindValueChanged(val => epilepsyWarning?.FadeTo(val.NewValue ? 1 : 0, 250, Easing.OutQuint), true);
+            showStoryboards.BindValueChanged(val => epilepsyWarning?.FadeTo(val.NewValue ? 1 : 0, InterfaceAnimation.FadeDuration(250), Easing.OutQuint), true);
             epilepsyWarning?.FinishTransforms(true);
 
             // this re-fetch has two purposes:
@@ -358,17 +368,37 @@ namespace osu.Game.Screens.Play
 
         private void refetchLeaderboard(bool force)
         {
+            // Gameplay uses the base ruleset, but RX/MRX and AP have separate online leaderboards.
+            // Resolve from this play's mods rather than inheriting a potentially stale song-select mode.
+            var fetchRuleset = Ruleset.Value;
+            bool isRelax = Mods.Value.Any(m => m.Acronym == "RX" || m.Acronym == "MRX");
+            bool isAutopilot = Mods.Value.Any(m => m.Acronym == "AP");
+
+            if (isRelax)
+            {
+                if (fetchRuleset.ShortName == RulesetInfo.OSU_MODE_SHORTNAME)
+                    fetchRuleset = fetchRuleset.CreateSpecialRuleset(RulesetInfo.OSU_RELAX_MODE_SHORTNAME, RulesetInfo.OSU_RELAX_ONLINE_ID);
+                else if (!MosuServerEnvironment.OnlyOsuRelax)
+                {
+                    if (fetchRuleset.ShortName == RulesetInfo.TAIKO_MODE_SHORTNAME)
+                        fetchRuleset = fetchRuleset.CreateSpecialRuleset(RulesetInfo.TAIKO_RELAX_MODE_SHORTNAME, RulesetInfo.TAIKO_RELAX_ONLINE_ID);
+                    else if (fetchRuleset.ShortName == RulesetInfo.CATCH_MODE_SHORTNAME)
+                        fetchRuleset = fetchRuleset.CreateSpecialRuleset(RulesetInfo.CATCH_RELAX_MODE_SHORTNAME, RulesetInfo.CATCH_RELAX_ONLINE_ID);
+                }
+            }
+            else if (isAutopilot && !MosuServerEnvironment.OnlyOsuRelax && fetchRuleset.ShortName == RulesetInfo.OSU_MODE_SHORTNAME)
+                fetchRuleset = fetchRuleset.CreateSpecialRuleset(RulesetInfo.OSU_AUTOPILOT_MODE_SHORTNAME, RulesetInfo.OSU_AUTOPILOT_ONLINE_ID);
+
             leaderboardManager?.FetchWithCriteria(new LeaderboardCriteria(
                 Beatmap.Value.BeatmapInfo,
-                Ruleset.Value,
+                fetchRuleset,
                 leaderboardManager?.CurrentCriteria?.Scope ?? BeatmapLeaderboardScope.Global,
                 leaderboardManager?.CurrentCriteria?.ExactMods), force);
         }
 
         #region Screen handling
 
-        // Standalone public build note: FlushExclusiveQueueNow is an optional Mosu framework extension.
-        private void flushExclusiveAudioLatency() { }
+        private void flushExclusiveAudioLatency() => host.AudioThread?.FlushExclusiveQueueNow();
 
         public override void OnEntering(ScreenTransitionEvent e)
         {
@@ -389,7 +419,7 @@ namespace osu.Game.Screens.Play
 
             const double metadata_delay = 500;
 
-            MetadataInfo.Delay(metadata_delay).FadeIn(500, Easing.OutQuint);
+            MetadataInfo.Delay(InterfaceAnimation.MovementDuration(metadata_delay)).FadeIn(InterfaceAnimation.FadeDuration(500), Easing.OutQuint);
             contentIn(metadata_delay + 250);
 
             flushExclusiveAudioLatency();
@@ -426,7 +456,7 @@ namespace osu.Game.Screens.Play
         {
             base.OnSuspending(e);
 
-            quickRestartBlackLayer?.FadeOut(500, Easing.OutQuint).Expire();
+            quickRestartBlackLayer?.FadeOut(InterfaceAnimation.FadeDuration(500), Easing.OutQuint).Expire();
             quickRestartBlackLayer = null;
 
             BackgroundBrightnessReduction = false;
@@ -448,11 +478,11 @@ namespace osu.Game.Screens.Play
             cancelLoad();
             ContentOut();
 
-            quickRestartBlackLayer?.FadeOut(100, Easing.OutQuint).Expire();
+            quickRestartBlackLayer?.FadeOut(InterfaceAnimation.FadeDuration(100), Easing.OutQuint).Expire();
             quickRestartBlackLayer = null;
 
             // Ensure the screen doesn't expire until all the outwards fade operations have completed.
-            this.Delay(CONTENT_OUT_DURATION).FadeOut();
+            this.Delay(InterfaceAnimation.FadeDuration(CONTENT_OUT_DURATION)).FadeOut();
 
             ApplyToBackground(b => b.IgnoreUserSettings.Value = true);
 
@@ -478,17 +508,17 @@ namespace osu.Game.Screens.Play
 
             const double duration = 300;
 
-            if (!resuming) logo.MoveTo(new Vector2(0.5f), duration, Easing.OutQuint);
+            if (!resuming) logo.MoveTo(new Vector2(0.5f), InterfaceAnimation.MovementDuration(duration), Easing.OutQuint);
 
-            logo.ScaleTo(new Vector2(0.15f), duration, Easing.OutQuint);
+            logo.ScaleTo(new Vector2(0.15f), InterfaceAnimation.MovementDuration(duration), Easing.OutQuint);
 
             if (QuickRestart)
             {
                 logo.Delay(quick_restart_initial_delay)
-                    .FadeIn(350);
+                    .FadeIn(InterfaceAnimation.FadeDuration(350));
             }
             else
-                logo.FadeIn(350);
+                logo.FadeIn(InterfaceAnimation.FadeDuration(350));
 
             Scheduler.AddDelayed(() =>
             {
@@ -515,8 +545,8 @@ namespace osu.Game.Screens.Play
             logoTracking = null;
 
             logo
-                .FadeOut(CONTENT_OUT_DURATION / 2, Easing.OutQuint)
-                .ScaleTo(logo.Scale * 0.8f, CONTENT_OUT_DURATION * 2, Easing.OutQuint);
+                .FadeOut(InterfaceAnimation.FadeDuration(CONTENT_OUT_DURATION / 2), Easing.OutQuint)
+                .ScaleTo(logo.Scale * 0.8f, InterfaceAnimation.MovementDuration(CONTENT_OUT_DURATION * 2), Easing.OutQuint);
 
             osuLogo = null;
         }
@@ -574,11 +604,19 @@ namespace osu.Game.Screens.Play
 
             CurrentPlayer = createPlayer();
             CurrentPlayer.Configuration.AutomaticallySkipIntro |= QuickRestart;
+            CurrentPlayer.IsPracticeSession = practiceSession;
+            CurrentPlayer.PracticeStartTime = practiceStartTime;
             CurrentPlayer.RestartCount = restartCount++;
             CurrentPlayer.PrepareLoaderForRestart = prepareForRestart;
 
+            playerLoadPhase?.End("superseded");
+            playerLoadPhase = PerformancePhaseLogger.Begin("PlayerLoader.AsyncLoad", host,
+                $"beatmap_id={Beatmap.Value.BeatmapInfo.OnlineID} retry={CurrentPlayer.RestartCount}");
+
             LoadTask = LoadComponentAsync(CurrentPlayer, _ =>
             {
+                playerLoadPhase?.End($"load_state={CurrentPlayer?.LoadState}");
+                playerLoadPhase = null;
                 MetadataInfo.Loading = false;
                 OnPlayerLoaded();
             });
@@ -588,8 +626,13 @@ namespace osu.Game.Screens.Play
         {
         }
 
+        private bool practiceSession;
+        private double? practiceStartTime;
+
         private void prepareForRestart(bool quickRestartRequested)
         {
+            practiceSession = CurrentPlayer.IsPracticeSession;
+            practiceStartTime = CurrentPlayer.PracticeStartTime;
             QuickRestart = quickRestartRequested;
             hideOverlays = true;
             ValidForResume = true;
@@ -618,35 +661,35 @@ namespace osu.Game.Screens.Play
 
                 quickRestartBlackLayer
                     .Delay(50)
-                    .FadeOut(5000, Easing.OutQuint);
+                    .FadeOut(InterfaceAnimation.FadeDuration(5000), Easing.OutQuint);
 
                 prepareNewPlayer();
 
                 content
                     .Delay(quick_restart_initial_delay)
                     .ScaleTo(1)
-                    .FadeInFromZero(500, Easing.OutQuint);
+                    .FadeInFromZero(InterfaceAnimation.FadeDuration(500), Easing.OutQuint);
 
                 quickRestartBackButtonRestore?.Cancel();
                 quickRestartBackButtonRestore = Scheduler.AddDelayed(() => BackButtonVisibility.Value = true, quick_restart_initial_delay);
             }
             else
             {
-                content.FadeInFromZero(500, Easing.OutQuint);
+                content.FadeInFromZero(InterfaceAnimation.FadeDuration(500), Easing.OutQuint);
 
                 content
                     .ScaleTo(0.7f)
-                    .ScaleTo(1, 650, Easing.OutQuint)
+                    .ScaleTo(1, InterfaceAnimation.MovementDuration(650), Easing.OutQuint)
                     .Then()
                     .Schedule(prepareNewPlayer);
 
-                using (BeginDelayedSequence(delayBeforeSideDisplays))
+                using (BeginDelayedSequence(InterfaceAnimation.MovementDuration(delayBeforeSideDisplays)))
                 {
-                    sideContent.FadeInFromZero(500, Easing.Out)
-                               .MoveToX(0, 500, Easing.OutQuint);
+                    sideContent.FadeInFromZero(InterfaceAnimation.FadeDuration(500), Easing.Out)
+                               .MoveToX(0, InterfaceAnimation.MovementDuration(500), Easing.OutQuint);
 
-                    disclaimers.FadeInFromZero(500, Easing.Out)
-                               .MoveToX(0, 500, Easing.OutQuint);
+                    disclaimers.FadeInFromZero(InterfaceAnimation.FadeDuration(500), Easing.Out)
+                               .MoveToX(0, InterfaceAnimation.MovementDuration(500), Easing.OutQuint);
                 }
             }
 
@@ -659,7 +702,7 @@ namespace osu.Game.Screens.Play
             lowPassFilter.CutoffTo(1000, 650, Easing.OutQuint);
             highPassFilter.CutoffTo(300).Then().CutoffTo(0, 1250); // 1250 is to line up with the appearance of MetadataInfo (750 delay + 500 fade-in)
 
-            ApplyToBackground(b => b.FadeColour(Color4.White, 800, Easing.OutQuint));
+            ApplyToBackground(b => b.FadeColour(Color4.White, InterfaceAnimation.FadeDuration(800), Easing.OutQuint));
         }
 
         protected virtual void ContentOut()
@@ -668,8 +711,8 @@ namespace osu.Game.Screens.Play
             logoTracking?.Dispose();
             logoTracking = null;
 
-            content.ScaleTo(0.7f, CONTENT_OUT_DURATION * 2, Easing.OutQuint);
-            content.FadeOut(CONTENT_OUT_DURATION, Easing.OutQuint)
+            content.ScaleTo(0.7f, InterfaceAnimation.MovementDuration(CONTENT_OUT_DURATION * 2), Easing.OutQuint);
+            content.FadeOut(InterfaceAnimation.FadeDuration(CONTENT_OUT_DURATION), Easing.OutQuint)
                    // Safety for filter potentially getting stuck in applied state due to
                    // transforms on `this` causing children to no longer be updated.
                    .OnComplete(_ =>
@@ -681,10 +724,10 @@ namespace osu.Game.Screens.Play
                        lowPassFilter = null;
                    });
 
-            disclaimers.FadeOut(CONTENT_OUT_DURATION, Easing.Out)
-                       .MoveToX(-disclaimers.DrawWidth, CONTENT_OUT_DURATION * 2, Easing.OutQuint);
-            sideContent.FadeOut(CONTENT_OUT_DURATION, Easing.OutQuint)
-                       .MoveToX(sideContent.DrawWidth, CONTENT_OUT_DURATION * 2, Easing.OutQuint);
+            disclaimers.FadeOut(InterfaceAnimation.FadeDuration(CONTENT_OUT_DURATION), Easing.Out)
+                       .MoveToX(-disclaimers.DrawWidth, InterfaceAnimation.MovementDuration(CONTENT_OUT_DURATION * 2), Easing.OutQuint);
+            sideContent.FadeOut(InterfaceAnimation.FadeDuration(CONTENT_OUT_DURATION), Easing.OutQuint)
+                       .MoveToX(sideContent.DrawWidth, InterfaceAnimation.MovementDuration(CONTENT_OUT_DURATION * 2), Easing.OutQuint);
 
             lowPassFilter?.CutoffTo(AudioFilter.MAX_LOWPASS_CUTOFF, CONTENT_OUT_DURATION);
             highPassFilter?.CutoffTo(0, CONTENT_OUT_DURATION);
@@ -719,13 +762,17 @@ namespace osu.Game.Screens.Play
             // Now that everything's been loaded, we can safely switch to a higher performance session without incurring too much overhead.
             // Doing this prior to the game being pushed gives us a bit of time to stabilise into the high performance mode before gameplay starts.
             if (UseHighPerformanceSession)
+            {
+                using var phase = PerformancePhaseLogger.Begin("PlayerLoader.HighPerformanceSession", host);
                 highPerformanceSession ??= highPerformanceSessionManager?.BeginSession();
+            }
 
             scheduledPushPlayer = Scheduler.AddDelayed(() =>
                 {
                     // Loading can inflate the queue after the earlier reset. This final
                     // safe-point flush also covers fast retries immediately before gameplay.
-                    flushExclusiveAudioLatency();
+                    using (PerformancePhaseLogger.Begin("PlayerLoader.FinalAudioFlush", host))
+                        flushExclusiveAudioLatency();
 
                     // ensure that once we have reached this "point of no return", readyForPush will be false for all future checks (until a new player instance is prepared).
                     Player consumedPlayer = consumePlayer();
@@ -741,7 +788,14 @@ namespace osu.Game.Screens.Play
 
                     pushSequence.Schedule(() =>
                     {
-                        if (!this.IsCurrentScreen()) return;
+                        using var phase = PerformancePhaseLogger.Begin("PlayerLoader.ScreenPush", host,
+                            $"beatmap_id={Beatmap.Value.BeatmapInfo.OnlineID} retry={consumedPlayer.RestartCount}");
+
+                        if (!this.IsCurrentScreen())
+                        {
+                            phase.SetEndDetail("action=ignored not_current=true");
+                            return;
+                        }
 
                         LoadTask = null;
 
@@ -750,9 +804,15 @@ namespace osu.Game.Screens.Play
                         ValidForResume = false;
 
                         if (consumedPlayer.LoadedBeatmapSuccessfully)
+                        {
+                            phase.SetEndDetail("action=push");
                             this.Push(consumedPlayer);
+                        }
                         else
+                        {
+                            phase.SetEndDetail("action=exit load_failed=true");
                             this.Exit();
+                        }
                     });
                 },
                 // When a quick restart is activated, the metadata content will display some time later if it's taking too long.
@@ -778,6 +838,8 @@ namespace osu.Game.Screens.Play
 
         protected override void Dispose(bool isDisposing)
         {
+            playerLoadPhase?.End("disposed");
+            playerLoadPhase = null;
             base.Dispose(isDisposing);
 
             if (isDisposing)
@@ -855,18 +917,39 @@ namespace osu.Game.Screens.Play
         private const double low_battery_threshold = 0.25;
 
         private Bindable<bool> batteryWarningShownOnce = null!;
+        internal Task? BatteryCheckTask { get; private set; }
 
         private void showBatteryWarningIfNeeded()
         {
-            if (batteryInfo == null) return;
+            if (batteryInfo == null || batteryWarningShownOnce.Value)
+                return;
 
-            if (!batteryWarningShownOnce.Value)
+            // Do not await a native power query on Update. Only notification/bindable changes
+            // return to this drawable's scheduler, and a departed loader discards late results.
+            BatteryCheckTask = checkBatteryAsync(batteryInfo);
+        }
+
+        private async Task checkBatteryAsync(BatteryInfo info)
+        {
+            try
             {
-                if (batteryInfo.OnBattery && batteryInfo.ChargeLevel <= low_battery_threshold)
+                var status = await info.GetStatusAsync().ConfigureAwait(false);
+                Scheduler.Add(() =>
                 {
-                    notificationOverlay?.Post(new BatteryWarningNotification());
-                    batteryWarningShownOnce.Value = true;
-                }
+                    if (IsDisposed || !this.IsCurrentScreen() || batteryWarningShownOnce.Value)
+                        return;
+
+                    if (status.OnBattery && status.ChargeLevel <= low_battery_threshold)
+                    {
+                        notificationOverlay?.Post(new BatteryWarningNotification());
+                        batteryWarningShownOnce.Value = true;
+                    }
+                });
+            }
+            catch (Exception e)
+            {
+                // Power telemetry is optional and must not break player loading.
+                Logger.Error(e, "Failed to read battery status.");
             }
         }
 

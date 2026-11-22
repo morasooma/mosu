@@ -19,7 +19,7 @@ namespace osu.Game.Screens.Edit.Verify
             {
                 Anchor = Anchor.CentreLeft,
                 Origin = Anchor.CentreLeft,
-                TooltipText = "Affects checks that depend on difficulty level",
+                TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J4347,
                 Current = verify.InterpretedDifficulty.GetBoundCopy()
             });
         }

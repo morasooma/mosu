@@ -8,6 +8,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Game.Configuration;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Localisation;
 using osu.Game.Performance.Debug;
 using osuTK;
 
@@ -73,8 +74,8 @@ namespace osu.Game.Graphics.UserInterface
             {
                 PerformanceDebugSnapshot s = telemetry.Latest;
                 metricsText.Text = mode.Value == DebugHudMode.Detailed
-                    ? $"D {s.DrawFrameMs,5:0.0} ms   U {s.UpdateFrameMs,5:0.0} ms   I {s.InputFrameMs,5:0.0} ms\nRAM {s.WorkingSetMb:0} MB   GC {s.GcHeapMb:0} MB   alloc {s.AllocationRateMbPerSecond:0.0} MB/s\nGC mode {s.GcMode}   G0 {s.Gen0Collections}  G1 {s.Gen1Collections}  G2 {s.Gen2Collections}"
-                    : $"D {s.DrawFrameMs:0.0}  U {s.UpdateFrameMs:0.0}  I {s.InputFrameMs:0.0} ms\nRAM {s.WorkingSetMb:0}M  GC {s.GcHeapMb:0}M / {s.AllocationRateMbPerSecond:0.0}M/s";
+                    ? PerformanceDebugStrings.DetailedMetrics(s)
+                    : PerformanceDebugStrings.CompactMetrics(s);
                 lastMetricsUpdate = Time.Current;
             }
 
@@ -83,7 +84,7 @@ namespace osu.Game.Graphics.UserInterface
             if (showAlerts.Value && lastFreeze is { } freeze && freeze.Sequence != displayedFreezeSequence)
             {
                 displayedFreezeSequence = freeze.Sequence;
-                alertText.Text = $"ФРИЗ {freeze.Snapshot.WorstFrameMs:0.0} ms — вероятно: {describe(freeze.Cause)}";
+                alertText.Text = PerformanceDebugStrings.FreezeAlert(freeze);
                 alert.ClearTransforms();
                 alert.FadeIn(100).Delay(4000).FadeOut(300);
             }
@@ -116,19 +117,6 @@ namespace osu.Game.Graphics.UserInterface
         {
             Margin = new MarginPadding { Horizontal = 9, Vertical = 5 },
             Font = OsuFont.Default.With(size: size, fixedWidth: true, weight: FontWeight.SemiBold),
-        };
-
-        private static string describe(PerformanceFreezeCause cause) => cause switch
-        {
-            PerformanceFreezeCause.GarbageCollection => "GC pause",
-            PerformanceFreezeCause.GpuPipeline => "GPU pipeline",
-            PerformanceFreezeCause.TextureUpload => "загрузка текстур",
-            PerformanceFreezeCause.Presentation => "GPU / VSync",
-            PerformanceFreezeCause.UiChurn => "перестройка UI",
-            PerformanceFreezeCause.Input => "input thread",
-            PerformanceFreezeCause.DrawWork => "draw thread",
-            PerformanceFreezeCause.UpdateWork => "update thread",
-            _ => "неизвестно",
         };
 
         protected override void Dispose(bool isDisposing)

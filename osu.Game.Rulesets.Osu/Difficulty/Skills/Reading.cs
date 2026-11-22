@@ -17,9 +17,15 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 {
     public class Reading : HarmonicSkill
     {
-        private readonly List<DifficultyHitObject> objectList = new List<DifficultyHitObject>();
+        private int objectCount;
+        private int reducedNoteCount;
+        private double reducedEndTime;
+        private bool reducedPrefixComplete;
 
         private readonly bool hasHiddenMod;
+        private readonly bool isTouchDevice;
+        private readonly bool isAutopilot;
+        private readonly OsuModMagnetised? magnetised;
 
         public bool UseMosuRelaxProfile { get; }
 
@@ -27,8 +33,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             : base(mods)
         {
             UseMosuRelaxProfile = useMosuRelaxProfile;
+            isTouchDevice = mods.Any(m => m is OsuModTouchDevice);
+            isAutopilot = mods.Any(m => m is OsuModAutopilot);
+            magnetised = mods.OfType<OsuModMagnetised>().FirstOrDefault();
             hasHiddenMod = mods.OfType<OsuModHidden>().Any(m => !m.OnlyFadeApproachCircles.Value);
         }
+
+        private double localDifficulty;
+        public override double LocalDifficulty => localDifficulty;
 
         private double currentStrain;
 
@@ -38,12 +50,26 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         {
             const double skill_multiplier = 2.5;
 
-            objectList.Add(current);
+            if (objectCount == 0)
+                reducedEndTime = current.StartTime + 60 * 1000;
+
+            objectCount++;
+            if (!reducedPrefixComplete)
+            {
+                // Preserve the original prefix scan's first-stop rule, including
+                // callers which process objects out of chronological order.
+                if (current.StartTime > reducedEndTime)
+                    reducedPrefixComplete = true;
+                else
+                    reducedNoteCount++;
+            }
 
             double decay = strainDecay(current.DeltaTime);
 
             currentStrain *= decay;
-            currentStrain += calculateAdjustedDifficulty(current) * (1 - decay) * skill_multiplier;
+            double difficulty = calculateAdjustedDifficulty(current);
+            currentStrain += difficulty * (1 - decay) * skill_multiplier;
+            localDifficulty = difficulty * skill_multiplier;
 
             return currentStrain;
         }
@@ -55,16 +81,16 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             if (UseMosuRelaxProfile)
                 return difficulty;
 
-            if (Mods.Any(m => m is OsuModTouchDevice))
+            if (isTouchDevice)
                 difficulty = DiffUtils.Pow(difficulty, 0.89);
 
-            if (Mods.Any(m => m is OsuModMagnetised))
+            if (magnetised != null)
             {
-                float magnetisedStrength = Mods.OfType<OsuModMagnetised>().First().AttractionStrength.Value;
+                float magnetisedStrength = magnetised.AttractionStrength.Value;
                 difficulty *= 1.0 - magnetisedStrength;
             }
 
-            if (Mods.Any(m => m is OsuModAutopilot))
+            if (isAutopilot)
                 difficulty *= 0.1;
 
             difficulty *= 0.825 + DiffUtils.Pow(Math.Max(0, ((OsuDifficultyHitObject)current).OverallDifficulty), 2.2) / 1125.0;
@@ -72,9 +98,17 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             return difficulty;
         }
 
+        private readonly List<double> transformedDifficulties = new List<double>();
+
         protected override List<double> GetTransformedDifficulties(List<double> difficulties)
         {
-            difficulties = difficulties.Where(v => v > 0).ToList();
+            transformedDifficulties.Clear();
+            foreach (double value in difficulties)
+            {
+                if (value > 0)
+                    transformedDifficulties.Add(value);
+            }
+            difficulties = transformedDifficulties;
 
             const double reduced_difficulty_base_line = 0.0; // Assume the first seconds are completely memorised
 
@@ -89,32 +123,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             return difficulties;
         }
 
-        private int calculateReducedNoteCount()
-        {
-            const double reduced_difficulty_duration = 60 * 1000;
-
-            if (objectList.Count == 0)
-                return 0;
-
-            // The pinned Mosu implementation applies its progressive memorisation
-            // transformation over the full map rather than only the first minute.
-            if (UseMosuRelaxProfile)
-                return objectList.Count;
-
-            double reducedDuration = objectList.First().StartTime + reduced_difficulty_duration;
-
-            int reducedNoteCount = 0;
-
-            foreach (var hitObject in objectList)
-            {
-                if (hitObject.StartTime > reducedDuration)
-                    break;
-
-                reducedNoteCount++;
-            }
-
-            return reducedNoteCount;
-        }
+        // The pinned Mosu profile transforms the complete processed prefix; the
+        // ordinary profile stops at the first object beyond its initial minute.
+        private int calculateReducedNoteCount() => UseMosuRelaxProfile ? objectCount : reducedNoteCount;
 
         public override double CountTopWeightedObjectDifficulties(double difficultyValue)
         {

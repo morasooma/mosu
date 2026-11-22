@@ -22,6 +22,8 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Carousel;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Input.Bindings;
+using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 using osuTK.Graphics;
 using osuTK.Input;
@@ -51,8 +53,11 @@ namespace osu.Game.Screens.Select
         private readonly Dictionary<int, InfiniteGlassBeatmapCard> visibleCards = new Dictionary<int, InfiniteGlassBeatmapCard>();
         private readonly Stack<InfiniteGlassBeatmapCard> reusableCards = new Stack<InfiniteGlassBeatmapCard>();
 
+        [Cached]
+        private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Blue, ThemeSurfaceContext.InfiniteGlass);
+
         private IBindable<WorkingBeatmap> selectedBeatmap = null!;
-        private BeatmapManager beatmaps = null!;
+        private IWorkingBeatmapCache beatmaps = null!;
         private BeatmapDifficultyCache difficultyCache = null!;
         private OsuColour colours = null!;
         private IBindable<bool> showAdditionalInfo = null!;
@@ -85,7 +90,7 @@ namespace osu.Game.Screens.Select
         }
 
         [BackgroundDependencyLoader]
-        private void load(IBindable<WorkingBeatmap> selectedBeatmap, BeatmapManager beatmaps, BeatmapDifficultyCache difficultyCache,
+        private void load(IBindable<WorkingBeatmap> selectedBeatmap, IWorkingBeatmapCache beatmaps, BeatmapDifficultyCache difficultyCache,
                           OsuColour colours, OsuConfigManager config)
         {
             // Keep a local copy rather than the injected game-wide bindable itself. Drawable cleanup
@@ -490,10 +495,11 @@ namespace osu.Game.Screens.Select
             private const int background_preview_resolution = 75;
 
             private readonly Action<CarouselItem> activate;
-            private readonly BeatmapManager beatmaps;
+            private readonly IWorkingBeatmapCache beatmaps;
             private readonly BeatmapDifficultyCache difficultyCache;
             private readonly OsuColour colours;
             private readonly IBindable<bool> showAdditionalInfo;
+            private readonly Box cardBackground;
             private readonly Container backgroundContainer;
             private readonly Box accentBar;
             private readonly TruncatingSpriteText titleText;
@@ -502,6 +508,15 @@ namespace osu.Game.Screens.Select
             private readonly OsuSpriteText starText;
             private readonly Box hover;
             private readonly Box selection;
+
+            [Resolved(CanBeNull = true)]
+            private OverlayColourProvider? colourProvider { get; set; }
+
+            private IBindable<Colour4>? bgColourBindable;
+            private IBindable<Colour4>? textPrimaryBindable;
+            private IBindable<Colour4>? textSecondaryBindable;
+            private IBindable<Colour4>? accentHoverBindable;
+            private IBindable<float>? cardRadiusBindable;
 
             private CardEntry entry;
             private bool bound;
@@ -528,7 +543,7 @@ namespace osu.Game.Screens.Select
                 }
             }
 
-            public InfiniteGlassBeatmapCard(Action<CarouselItem> activate, BeatmapManager beatmaps, BeatmapDifficultyCache difficultyCache,
+            public InfiniteGlassBeatmapCard(Action<CarouselItem> activate, IWorkingBeatmapCache beatmaps, BeatmapDifficultyCache difficultyCache,
                                             OsuColour colours, IBindable<bool> showAdditionalInfo)
             {
                 this.activate = activate;
@@ -546,7 +561,7 @@ namespace osu.Game.Screens.Select
 
                 InternalChildren = new Drawable[]
                 {
-                    new Box
+                    cardBackground = new Box
                     {
                         RelativeSizeAxes = Axes.Both,
                         Colour = Color4.Black,
@@ -753,7 +768,39 @@ namespace osu.Game.Screens.Select
                 backgroundLoadCancellation?.Cancel();
                 difficultyCancellation?.Cancel();
                 showAdditionalInfo.UnbindAll();
+                bgColourBindable?.UnbindAll();
+                textPrimaryBindable?.UnbindAll();
+                textSecondaryBindable?.UnbindAll();
+                accentHoverBindable?.UnbindAll();
+                cardRadiusBindable?.UnbindAll();
                 base.Dispose(isDisposing);
+            }
+
+            [BackgroundDependencyLoader(true)]
+            private void load(OverlayColourProvider? parentColourProvider)
+            {
+                var provider = colourProvider ?? parentColourProvider;
+                if (provider != null)
+                {
+                    bgColourBindable = provider.GetSurfaceColourBindable(SurfaceColourRole.SurfaceBackground);
+                    bgColourBindable.BindValueChanged(c => cardBackground.Colour = c.NewValue, true);
+
+                    textPrimaryBindable = provider.GetSurfaceColourBindable(SurfaceColourRole.TextPrimary);
+                    textPrimaryBindable.BindValueChanged(c => titleText.Colour = c.NewValue, true);
+
+                    textSecondaryBindable = provider.GetSurfaceColourBindable(SurfaceColourRole.TextSecondary);
+                    textSecondaryBindable.BindValueChanged(c =>
+                    {
+                        difficultyText.Colour = c.NewValue.Opacity(0.75f);
+                        additionalStatsText.Colour = c.NewValue.Opacity(0.80f);
+                    }, true);
+
+                    accentHoverBindable = provider.GetSurfaceColourBindable(SurfaceColourRole.Accent);
+                    accentHoverBindable.BindValueChanged(c => hover.Colour = c.NewValue.Opacity(0.12f), true);
+
+                    cardRadiusBindable = provider.GetRadiusBindable(GeometryRole.Card, 14f);
+                    cardRadiusBindable.BindValueChanged(r => CornerRadius = r.NewValue, true);
+                }
             }
 
             private void resetBackground()
@@ -770,8 +817,7 @@ namespace osu.Game.Screens.Select
                 CarouselItem requestedItem = entry.Item;
                 var cancellation = difficultyCancellation = new CancellationTokenSource();
                 starDifficulty = difficultyCache.GetBindableDifficulty(entry.Beatmap, cancellation.Token,
-                    (int)Math.Max(SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE, delay), calculatePerformance: false,
-                    usePersistedAdditionalInfo: true);
+                    (int)Math.Max(SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE, delay), calculatePerformance: false, usePersistedAdditionalInfo: true);
                 starDifficulty.BindValueChanged(value =>
                 {
                     if (!bound || entry.Item != requestedItem || difficultyCancellation != cancellation || cancellation.IsCancellationRequested)

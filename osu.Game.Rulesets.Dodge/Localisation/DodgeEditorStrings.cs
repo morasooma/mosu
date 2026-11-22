@@ -9,6 +9,23 @@ namespace osu.Game.Rulesets.Dodge.Localisation
     {
         private const string prefix = @"osu.Game.Resources.Localisation.DodgeEditor";
 
+        public static LocalisableString ArenaWidth => get(@"arena_width", @"Arena width (from centre)");
+        public static LocalisableString ArenaHeight => get(@"arena_height", @"Arena height (from centre)");
+        public static LocalisableString ArenaCentreX => get(@"arena_centre_x", @"Arena centre X");
+        public static LocalisableString ArenaCentreY => get(@"arena_centre_y", @"Arena centre Y");
+        public static LocalisableString FitSelectedArena => get(@"fit_selected_arena", @"View selected arena");
+        public static LocalisableString NavigateEditorView => get(@"navigate_editor_view", @"Pan view mode");
+        public static LocalisableString EditorNavigationHint => get(@"editor_navigation_hint", @"Enable Pan view mode on the left: left-drag pans, unmodified wheel zooms. Disable it to edit. Existing shortcuts are unchanged.");
+        public static LocalisableString WorldArenaPlacementStart => get(@"world_arena_placement_start", @"Click the arena centre, then a corner to set its size. Width/height resize around the centre; centre X/Y moves it.");
+        public static LocalisableString WorldArenaPlacementEnd => get(@"world_arena_placement_end", @"Click a corner: the arena grows symmetrically around its centre. To navigate, finish placement and enable Pan view mode on the left.");
+
+        public static LocalisableString ArenaWorldSpace => get(@"arena_world_space", @"Large world arena (outside 512 × 384)");
+        public static LocalisableString CameraPlacementHint => get(@"camera_placement_hint", @"Follow/fixed: click once at the desired time. World scroll: click the start and end of the scroll vector. These are timeline events, not map-wide settings.");
+        public static LocalisableString CameraMode => get(@"camera_mode", @"Camera mode");
+        public static LocalisableString CameraScrollMode => get(@"camera_scroll_mode", @"World scroll (legacy)");
+        public static LocalisableString MoveFromCurrentPosition => get(@"move_from_current_position", @"Move from the player's current position");
+        public static LocalisableString FitWorld => get(@"fit_world", @"Fit world arena");
+        public static LocalisableString ResetView => get(@"reset_view", @"Reset editor view");
         public static LocalisableString Arena => get(@"arena", @"Arena");
         public static LocalisableString ArenaRotation => get(@"arena_rotation", @"Вращение арены");
         public static LocalisableString ArenaEasing => get(@"arena_easing", @"Movement curve");
@@ -26,6 +43,8 @@ namespace osu.Game.Rulesets.Dodge.Localisation
         public static LocalisableString TriggerDuration => get(@"trigger_duration", @"Effect duration (ms)");
         public static LocalisableString TriggerColour => get(@"trigger_colour", @"Effect colour");
         public static LocalisableString TriggerToolTip => get(@"trigger_tooltip", @"Place a time-based trigger that fires without player contact.");
+        public static LocalisableString TriggerPlacementHint => get(@"trigger_placement_hint", @"For player movement, click the destination; drag it later to change the target. Movement begins at the player's current position. Use Arena and Camera tools for world/camera events.");
+        public static LocalisableString TriggerSelectionHint => get(@"trigger_selection_hint", @"Drag the diamond to change the movement destination; drag its timeline marker to change time. Effect and movement durations follow the beat grid.");
         public static LocalisableString TriggerClearBullets => get(@"trigger_clear_bullets", @"Clear bullets");
         public static LocalisableString TriggerToggleHud => get(@"trigger_toggle_hud", @"Toggle HUD");
         public static LocalisableString TriggerHideHud => get(@"trigger_hide_hud", @"Hide HUD");
@@ -34,6 +53,19 @@ namespace osu.Game.Rulesets.Dodge.Localisation
         public static LocalisableString TriggerFlashEffect => get(@"trigger_flash_effect", @"Flash effect");
         public static LocalisableString TriggerTrailEnable => get(@"trigger_trail_enable", @"Enable player trail");
         public static LocalisableString TriggerTrailDisable => get(@"trigger_trail_disable", @"Disable player trail");
+        public static LocalisableString TriggerResizeArena => get(@"trigger_resize_arena", @"Resize / move world arena");
+        public static LocalisableString TriggerCameraFollow => get(@"trigger_camera_follow", @"Follow player camera");
+        public static LocalisableString TriggerCameraFixed => get(@"trigger_camera_fixed", @"Fixed camera (512 × 384)");
+        public static LocalisableString TriggerMovePlayer => get(@"trigger_move_player", @"Move player (scripted path)");
+        public static LocalisableString TriggerSourceX => get(@"trigger_source_x", @"Player path start X");
+        public static LocalisableString TriggerSourceY => get(@"trigger_source_y", @"Player path start Y");
+        public static LocalisableString TriggerTargetX => get(@"trigger_target_x", @"Target X (world coordinates)");
+        public static LocalisableString TriggerTargetY => get(@"trigger_target_y", @"Target Y (world coordinates)");
+        public static LocalisableString TriggerWidth => get(@"trigger_width", @"World arena width");
+        public static LocalisableString TriggerHeight => get(@"trigger_height", @"World arena height");
+        public static LocalisableString EditorZoom => get(@"editor_zoom", @"Editor zoom");
+        public static LocalisableString EditorCentreX => get(@"editor_centre_x", @"Editor view centre X");
+        public static LocalisableString EditorCentreY => get(@"editor_centre_y", @"Editor view centre Y");
         public static LocalisableString CameraContinuousScroll => get(@"camera_continuous_scroll", @"Continuous scroll");
         public static LocalisableString CameraContinuousScrollHint => get(@"camera_continuous_scroll_hint", @"When enabled, the camera follows the beatmap scroll position instead of being centred on the arena.");
         public static LocalisableString CameraEasing => get(@"camera_easing", @"Movement curve");
@@ -52,6 +84,8 @@ namespace osu.Game.Rulesets.Dodge.Localisation
         public static LocalisableString View => get(@"view", @"View");
         public static LocalisableString Mapping => get(@"mapping", @"Mapping");
         public static LocalisableString Timing => get(@"timing", @"Timing");
+        public static LocalisableString TimelineFilter => get(@"timeline_filter", @"Timeline");
+        public static LocalisableString TimelineFilterHint => get(@"timeline_filter_hint", @"Show or hide this type's timeline lane. Each enabled type keeps its own band with individual object layers.");
         public static LocalisableString StoryboardDesign => get(@"storyboard_design", @"Оформление Dodge");
         public static LocalisableString StoryboardCanvasHint => get(@"storyboard_canvas_hint", @"Сториборд занимает весь холст osu!. Голубая внутренняя рамка — игровая арена Dodge 512 × 384.");
         public static LocalisableString StoryboardEditMode => get(@"storyboard_edit_mode", @"Режим редактирования");
@@ -154,7 +188,7 @@ namespace osu.Game.Rulesets.Dodge.Localisation
         public static LocalisableString StoryboardMoveDown => get(@"storyboard_move_down", @"Опустить в слое");
         public static LocalisableString StoryboardDelete => get(@"storyboard_delete", @"Удалить");
 
-        public static LocalisableString ToolShortcuts => get(@"tool_shortcuts", @"1 Select  ·  2 Bullet  ·  3 Arena  ·  4 Emitter");
+        public static LocalisableString ToolShortcuts => get(@"tool_shortcuts", @"1 Select · 2 Bullet · 3 Arena · 4 Emitter · 5 Beam · 6 Camera · 7 Trigger · Ctrl+wheel: zoom");
         public static LocalisableString SelectMode => get(@"select_mode", @"Select");
         public static LocalisableString BulletMode => get(@"bullet_mode", @"Bullet placement");
         public static LocalisableString EmitterMode => get(@"emitter_mode", @"Emitter placement");
@@ -184,6 +218,9 @@ namespace osu.Game.Rulesets.Dodge.Localisation
         public static LocalisableString OutlineColour => get(@"outline_colour", @"Outline colour");
         public static LocalisableString Opacity => get(@"opacity", @"Opacity");
         public static LocalisableString OutlineThickness => get(@"outline_thickness", @"Outline thickness");
+        public static LocalisableString Appearance => get(@"appearance", @"Appearance");
+        public static LocalisableString CopyAppearance => get(@"copy_appearance", @"Copy appearance");
+        public static LocalisableString PasteAppearance => get(@"paste_appearance", @"Paste appearance");
         public static LocalisableString ShowAppearance => get(@"show_appearance", @"Appearance…");
         public static LocalisableString HideAppearance => get(@"hide_appearance", @"Hide appearance");
         public static LocalisableString ContinueUntilOutside => get(@"continue_until_outside", @"Continue until outside playfield");
@@ -196,6 +233,20 @@ namespace osu.Game.Rulesets.Dodge.Localisation
         public static LocalisableString MovementEasingInOut => get(@"movement_easing_in_out", @"Accelerate and decelerate");
         public static LocalisableString MovementLinear => get(@"movement_linear", @"Linear");
         public static LocalisableString MovementSine => get(@"movement_sine", @"Wave");
+        public static LocalisableString MovementPingPong => get(@"movement_ping_pong", @"Back and forth");
+        public static LocalisableString MovementOrbitClockwise => get(@"movement_orbit_clockwise", @"Circle clockwise");
+        public static LocalisableString MovementOrbitCounterclockwise => get(@"movement_orbit_counterclockwise", @"Circle counterclockwise");
+        public static LocalisableString LoopingMotion => get(@"looping_motion", @"Looping motion");
+        public static LocalisableString LoopScope => get(@"loop_scope", @"Apply motion to");
+        public static LocalisableString LoopIndividual => get(@"loop_individual", @"Each projectile");
+        public static LocalisableString LoopTranslatePattern => get(@"loop_translate_pattern", @"Whole pattern: translate");
+        public static LocalisableString LoopRotatePattern => get(@"loop_rotate_pattern", @"Whole pattern: rotate");
+        public static LocalisableString LoopPeriodBeats => get(@"loop_period_beats", @"Full cycle (beats)");
+        public static LocalisableString LoopRepetitions => get(@"loop_repetitions", @"Cycle count");
+        public static LocalisableString LoopOffsetX => get(@"loop_offset_x", @"Pattern travel X");
+        public static LocalisableString LoopOffsetY => get(@"loop_offset_y", @"Pattern travel Y");
+        public static LocalisableString ApplyLoop => get(@"apply_loop", @"Apply loop to selection");
+        public static LocalisableString LoopHint => get(@"loop_hint", @"Individual: start/end are the travel ends or a circle diameter. Whole pattern: translation uses X/Y, rotation uses the common centre. Emitters stay editable: their fan endpoints form the moving pattern, with rotation around the emitter source. Cycles end at the authored duration, not at the field edge. Changing duration stretches the cycles.");
         public static LocalisableString WaveAmplitude => get(@"wave_amplitude", @"Wave amplitude");
         public static LocalisableString WaveCycles => get(@"wave_cycles", @"Wave cycles");
         public static LocalisableString WavePhase => get(@"wave_phase", @"Wave phase");

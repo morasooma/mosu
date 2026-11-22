@@ -12,6 +12,7 @@ namespace osu.Game.Online
         public string Token { get; set; } = string.Empty;
         public string ClientVersion { get; set; } = string.Empty;
         public string VersionHash { get; set; } = string.Empty;
+        public bool AutoSelectClientBuild { get; set; } = true;
         public string ClientId { get; set; } = "5";
         public string ClientSecret { get; set; } = string.Empty;
         public bool UseStableProtocol { get; set; }

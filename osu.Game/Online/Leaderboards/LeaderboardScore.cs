@@ -287,7 +287,7 @@ namespace osu.Game.Online.Leaderboards
                                             AutoSizeAxes = Axes.Both,
                                             Spacing = new Vector2(-10, 0),
                                             Direction = FillDirection.Horizontal,
-                                            ChildrenEnumerable = Score.Mods.AsOrdered().Select(mod => new ModIcon(mod) { Scale = new Vector2(0.34f) })
+                                            ChildrenEnumerable = Score.Mods.AsVisible().AsOrdered().Select(mod => new ModIcon(mod) { Scale = new Vector2(0.34f) })
                                         },
                                     }
                                 },

@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.UserInterface;
@@ -25,16 +26,25 @@ namespace osu.Game.Screens.Edit.Components.Menus
             TabContainer.Spacing = Vector2.Zero;
         }
 
+        private Box internalBackground = null!;
+        private IBindable<Colour4>? accentColourBindable;
+        private IBindable<Colour4>? bgColourBindable;
+
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
-            AccentColour = colourProvider.Light3;
-
-            AddInternal(new Box
+            AddInternal(internalBackground = new Box
             {
                 RelativeSizeAxes = Axes.Both,
                 Colour = colourProvider.Background2,
             });
+
+            accentColourBindable = colourProvider.GetColourBindable(OverlayColour.Light3);
+            accentColourBindable.BindValueChanged(c => AccentColour = c.NewValue, true);
+
+            bgColourBindable = colourProvider.GetColourBindable(OverlayColour.Background2);
+            bgColourBindable.BindValueChanged(c => internalBackground.Colour = c.NewValue, true);
+            colourProvider.PaletteVersion.BindValueChanged(_ => internalBackground.Colour = colourProvider.Background2);
         }
 
         protected override Dropdown<EditorScreenMode> CreateDropdown() => null!;
@@ -46,6 +56,8 @@ namespace osu.Game.Screens.Edit.Components.Menus
             private readonly Box background;
             private Color4 backgroundIdleColour;
             private Color4 backgroundHoverColour;
+            private IBindable<Colour4>? idleColourBindable;
+            private IBindable<Colour4>? hoverColourBindable;
 
             public TabItem(EditorScreenMode value)
                 : base(value)
@@ -68,8 +80,28 @@ namespace osu.Game.Screens.Edit.Components.Menus
             [BackgroundDependencyLoader]
             private void load(OverlayColourProvider colourProvider)
             {
-                backgroundIdleColour = colourProvider.Background2;
-                backgroundHoverColour = colourProvider.Background1;
+                idleColourBindable = colourProvider.GetColourBindable(OverlayColour.Background2);
+                idleColourBindable.BindValueChanged(c =>
+                {
+                    backgroundIdleColour = c.NewValue;
+                    if (!IsHovered)
+                        background.Colour = c.NewValue;
+                }, true);
+
+                hoverColourBindable = colourProvider.GetColourBindable(OverlayColour.Background1);
+                hoverColourBindable.BindValueChanged(c =>
+                {
+                    backgroundHoverColour = c.NewValue;
+                    if (IsHovered)
+                        background.Colour = c.NewValue;
+                }, true);
+
+                colourProvider.PaletteVersion.BindValueChanged(_ =>
+                {
+                    backgroundIdleColour = colourProvider.Background2;
+                    backgroundHoverColour = colourProvider.Background1;
+                    background.Colour = IsHovered ? backgroundHoverColour : backgroundIdleColour;
+                });
             }
 
             protected override void LoadComplete()

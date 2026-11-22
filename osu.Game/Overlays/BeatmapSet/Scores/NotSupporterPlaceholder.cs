@@ -40,9 +40,9 @@ namespace osu.Game.Overlays.BeatmapSet.Scores
                 }
             };
 
-            text.AddText("Click ");
-            text.AddLink("here", "/home/support");
-            text.AddText(" to see all the fancy features that you can get!");
+            text.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3900);
+            text.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J3901, "/home/support");
+            text.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3902);
         }
     }
 }

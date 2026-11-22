@@ -293,17 +293,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Simulation
     /// <see cref="PhaseMilliseconds"/> alone. Nothing here reacts to a player: a course is a rhythm to
     /// read, not an enemy to fight.
     /// </remarks>
-    /// <param name="EntityId">Identifier of the hazard entity.</param>
-    /// <param name="Kind">The hazard kind.</param>
-    /// <param name="Origin">Origin location of the hazard.</param>
-    /// <param name="DirectionDegrees">Firing direction in degrees.</param>
     /// <param name="TurnDegrees">Added to the direction on every cycle, which is what makes a spinner.</param>
-    /// <param name="CycleMilliseconds">Total cycle duration in milliseconds.</param>
-    /// <param name="PhaseMilliseconds">Phase offset in milliseconds.</param>
-    /// <param name="ProjectileCount">Number of projectiles fired.</param>
-    /// <param name="SpreadDegrees">Angular spread in degrees.</param>
-    /// <param name="Damage">Damage dealt.</param>
-    /// <param name="ProjectileSpeed">Speed of projectiles.</param>
     /// <param name="Range">Projectile range for an emitter; the length of the line for a beam.</param>
     /// <param name="Width">Beam thickness. Unused by an emitter.</param>
     /// <param name="ActiveMilliseconds">How long a beam stays lethal within its cycle.</param>

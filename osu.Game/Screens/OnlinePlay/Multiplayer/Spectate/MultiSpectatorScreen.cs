@@ -13,6 +13,7 @@ using osu.Framework.Logging;
 using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
 using osu.Game.Online.Rooms;
 using osu.Game.Online.Spectator;
 using osu.Game.Screens.Play;
@@ -144,8 +145,14 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Spectate
                 }
             };
 
+            if (room.Type == MatchType.RankedPlay)
+                scoreDisplayContainer.Add(new RankedPlaySpectatorScoreDisplay(Users.ToArray(), leaderboardProvider));
+
             for (int i = 0; i < Users.Count; i++)
-                grid.Add(instances[i] = new PlayerArea(Users[i], syncManager.CreateManagedClock()));
+                grid.Add(instances[i] = new PlayerArea(Users[i], syncManager.CreateManagedClock())
+                {
+                    IsRankedPlay = room.Type == MatchType.RankedPlay
+                });
 
             LoadComponentAsync(leaderboardProvider, _ =>
             {
@@ -162,16 +169,15 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Spectate
                     }, scoreDisplayContainer.Add);
                 }
             });
-            leaderboardFlow.Insert(0, Leaderboard = new DrawableGameplayLeaderboard
+            // Ranked play already has participant headers; a second scoreboard wastes field width.
+            if (room.Type != MatchType.RankedPlay)
             {
-                CollapseDuringGameplay = { Value = false },
-                AlwaysShown = true,
-            });
-
-            LoadComponentAsync(new GameplayChatDisplay(room)
-            {
-                Expanded = { Value = true },
-            }, chat => leaderboardFlow.Insert(1, chat));
+                leaderboardFlow.Add(Leaderboard = new DrawableGameplayLeaderboard
+                {
+                    CollapseDuringGameplay = { Value = false },
+                    AlwaysShown = true,
+                });
+            }
         }
 
         protected override void LoadComplete()
@@ -315,7 +321,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Spectate
 
             // On a manual exit, set the player back to idle unless gameplay has finished.
             // Of note, this doesn't cover exiting using alt-f4 or menu home option.
-            if (multiplayerClient.Room.State != MultiplayerRoomState.Open)
+            if (multiplayerClient.LocalUser?.Role != MultiplayerRoomUserRole.Spectator && multiplayerClient.Room.State != MultiplayerRoomState.Open)
                 multiplayerClient.ChangeState(MultiplayerUserState.Idle).FireAndForget();
 
             return base.OnBackButton();

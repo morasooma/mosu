@@ -26,7 +26,7 @@ namespace osu.Game.Overlays.Profile.Header.Components
             InternalChild = info = new ProfileValueDisplay(minimumWidth: 140)
             {
                 Title = UsersStrings.ShowStatsPlayTime,
-                Content = { TooltipText = "0 hours", }
+                Content = { TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J3976, }
             };
 
             User.BindValueChanged(updateTime, true);

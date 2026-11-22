@@ -68,7 +68,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                                                 [
                                                     new OsuSpriteText
                                                     {
-                                                        Text = "Accuracy",
+                                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4928,
                                                         UseFullGlyphHeight = false,
                                                     },
                                                     new OsuSpriteText
@@ -86,7 +86,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                                                 [
                                                     new OsuSpriteText
                                                     {
-                                                        Text = "Combo",
+                                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4929,
                                                         UseFullGlyphHeight = false,
                                                     },
                                                     new OsuSpriteText

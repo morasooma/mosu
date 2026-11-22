@@ -12,11 +12,19 @@ using osu.Game.Graphics.UserInterfaceV2;
 
 namespace osu.Game.Overlays.Settings
 {
-    public sealed partial class SettingsItemV2 : CompositeDrawable, ISettingsItem, IConditionalFilterable
+    public sealed partial class SettingsItemV2 : CompositeDrawable, ISettingsItem, IConditionalFilterable, IFavouriteSettingsItem
     {
         public readonly IFormControl Control;
 
+        /// <summary>Stable identity for quick settings. Never derived from translated display text.</summary>
+        public string? FavouriteId { get; init; }
+        LocalisableString IFavouriteSettingsItem.FavouriteCaption => Control.FilterTerms.FirstOrDefault();
+        Container IFavouriteSettingsItem.FavouriteSelectionOverlay => SelectionOverlay;
+
+        internal readonly Container SelectionOverlay = new Container { RelativeSizeAxes = Axes.Both, Depth = -100 };
+
         private readonly SettingsRevertToDefaultButton revertButton;
+        private readonly SettingsRowAnimation rowAnimation;
 
         private readonly BindableBool controlDefault = new BindableBool(true);
         private readonly BindableBool controlEnabled = new BindableBool(true);
@@ -38,8 +46,10 @@ namespace osu.Game.Overlays.Settings
             RelativeSizeAxes = Axes.X;
             AutoSizeAxes = Axes.Y;
 
-            InternalChild = new FillFlowContainer
+            var visualContent = new FillFlowContainer
             {
+                Anchor = Anchor.TopCentre,
+                Origin = Anchor.TopCentre,
                 RelativeSizeAxes = Axes.X,
                 AutoSizeAxes = Axes.Y,
                 Padding = SettingsPanel.CONTENT_PADDING,
@@ -54,8 +64,8 @@ namespace osu.Game.Overlays.Settings
                         {
                             revertButton = new SettingsRevertToDefaultButton
                             {
-                                Anchor = Anchor.TopRight,
-                                Origin = Anchor.TopRight,
+                                Anchor = Anchor.CentreRight,
+                                Origin = Anchor.CentreRight,
                                 Action = ApplyDefault,
                             },
                             new Container
@@ -72,6 +82,13 @@ namespace osu.Game.Overlays.Settings
                         Current = { BindTarget = Note },
                     },
                 },
+            };
+
+            InternalChildren = new Drawable[]
+            {
+                visualContent,
+                SelectionOverlay,
+                rowAnimation = new SettingsRowAnimation(this, visualContent),
             };
         }
 
@@ -103,7 +120,7 @@ namespace osu.Game.Overlays.Settings
             controlDefault.Value = Control.IsDefault;
             controlEnabled.Value = !Control.IsDisabled;
 
-            revertButton.Height = Control.MainDrawHeight;
+            revertButton.Height = Math.Min(Control.MainDrawHeight, 36f);
         }
 
         #region ISettingsItem
@@ -160,6 +177,9 @@ namespace osu.Game.Overlays.Settings
             set
             {
                 bool wasPresent = IsPresent;
+
+                if (matchingFilter != value)
+                    rowAnimation.Reset();
 
                 matchingFilter = value;
 

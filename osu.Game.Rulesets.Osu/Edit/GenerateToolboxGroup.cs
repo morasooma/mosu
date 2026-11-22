@@ -26,7 +26,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                 Spacing = new Vector2(5),
                 Children = new Drawable[]
                 {
-                    polygonButton = new EditorToolButton("Polygon",
+                    polygonButton = new EditorToolButton(global::osu.Game.Localisation.ClientTranslationStrings.J3289,
                         () => new SpriteIcon { Icon = FontAwesome.Solid.Spinner },
                         () => new PolygonGenerationPopover()),
                 }

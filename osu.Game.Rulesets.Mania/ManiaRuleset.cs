@@ -46,7 +46,7 @@ using osuTK;
 
 namespace osu.Game.Rulesets.Mania
 {
-    public class ManiaRuleset : Ruleset, ILegacyRuleset
+    public class ManiaRuleset : Ruleset, ILegacyRuleset, IHasLegacyScoreV1Processor
     {
         /// <summary>
         /// The maximum number of supported keys in a single stage.
@@ -82,7 +82,6 @@ namespace osu.Game.Rulesets.Mania
                     return new ManiaArgonSkinTransformer(skin, beatmap);
 
                 case DefaultLegacySkin:
-                case RetroSkin:
                     return new ManiaClassicSkinTransformer(skin, beatmap);
 
                 case LegacySkin:
@@ -246,6 +245,8 @@ namespace osu.Game.Rulesets.Mania
                         new ManiaModMosuStaticBpm(),
                         new ManiaModMosuTargetDifficulty(),
                         new ManiaModAudioEffects(),
+                        new ManiaModGlitch(),
+                        new ManiaModFlatline(),
                     };
 
                 case ModType.DifficultyReduction:
@@ -321,7 +322,7 @@ namespace osu.Game.Rulesets.Mania
 
         public override ScoreMultiplierCalculator CreateScoreMultiplierCalculator(ScoreMultiplierContext context) => new ManiaScoreMultiplierCalculator(context);
 
-        public override string Description => "osu!mania";
+        public override string Description => "Mania";
 
         public override string ShortName => SHORT_NAME;
 
@@ -334,6 +335,9 @@ namespace osu.Game.Rulesets.Mania
         public int LegacyID => 3;
 
         public ILegacyScoreSimulator CreateLegacyScoreSimulator() => new ManiaLegacyScoreSimulator();
+
+        public ILegacyScoreV1Processor CreateLegacyScoreV1Processor(IWorkingBeatmap workingBeatmap, IBeatmap playableBeatmap, IReadOnlyList<Mod> mods)
+            => new ManiaLegacyScoreV1Processor(playableBeatmap, mods, LegacyBeatmapConversionDifficultyInfo.FromBeatmap(workingBeatmap.Beatmap));
 
         public override IConvertibleReplayFrame CreateConvertibleReplayFrame() => new ManiaReplayFrame();
 
@@ -430,12 +434,12 @@ namespace osu.Game.Rulesets.Mania
 
         public override StatisticItem[] CreateStatisticsForScore(ScoreInfo score, IBeatmap playableBeatmap) => new[]
         {
-            new StatisticItem("Performance Breakdown", () => new PerformanceBreakdownChart(score)
+            new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5690, () => new PerformanceBreakdownChart(score)
             {
                 RelativeSizeAxes = Axes.X,
                 AutoSizeAxes = Axes.Y
             }),
-            new StatisticItem("Timing Distribution", () => new FillFlowContainer
+            new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5691, () => new FillFlowContainer
             {
                 RelativeSizeAxes = Axes.X,
                 AutoSizeAxes = Axes.Y,

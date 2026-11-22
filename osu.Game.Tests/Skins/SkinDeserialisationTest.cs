@@ -13,6 +13,7 @@ using osu.Game.Audio;
 using osu.Game.IO;
 using osu.Game.IO.Archives;
 using osu.Game.Screens.Menu;
+using osu.Game.Screens.Play.HUD;
 using osu.Game.Screens.Play.HUD.HitErrorMeters;
 using osu.Game.Skinning;
 using osu.Game.Skinning.Components;
@@ -85,6 +86,11 @@ namespace osu.Game.Tests.Skins
             "Archives/modified-argon-20250308.osk",
             // Covers legacy bar hit error meter
             "Archives/modified-classic-20260806.osk",
+            // Covers the optional scrolling key counter.
+            "Archives/scrolling-key-counter.osk",
+            // Covers the optional blurred beatmap background panel.
+            "Archives/blurred-beatmap-background.osk",
+            "Archives/beatmap-difficulty-display.osk",
         };
 
         /// <summary>
@@ -113,6 +119,54 @@ namespace osu.Game.Tests.Skins
             var editableTypes = SerialisedDrawableInfo.GetAllAvailableDrawables().Where(t => (Activator.CreateInstance(t) as ISerialisableDrawable)?.IsEditable == true);
 
             Assert.That(instantiatedTypes, Is.EquivalentTo(editableTypes));
+        }
+
+        [Test]
+        public void TestDeserialiseScrollingKeyCounter()
+        {
+            using var stream = TestResources.OpenResource("Archives/scrolling-key-counter.osk");
+            using var storage = new ZipArchiveReader(stream);
+            var skin = new TestSkin(new SkinInfo(), null, storage);
+            var info = skin.LayoutInfos[GlobalSkinnableContainers.MainHUDComponents].AllDrawables.Single();
+
+            Assert.That(info.Type, Is.EqualTo(typeof(ScrollingKeyCounterDisplay)));
+            Assert.That(info.Settings, Is.Empty);
+            using var drawable = info.CreateInstance();
+            Assert.That(drawable, Is.TypeOf<ScrollingKeyCounterDisplay>());
+            Assert.That(drawable.X, Is.EqualTo(-24));
+            Assert.That(drawable.Y, Is.EqualTo(-80));
+        }
+
+        [Test]
+        public void TestDeserialiseBlurredBeatmapBackground()
+        {
+            using var stream = TestResources.OpenResource("Archives/blurred-beatmap-background.osk");
+            using var storage = new ZipArchiveReader(stream);
+            var skin = new TestSkin(new SkinInfo(), null, storage);
+            var info = skin.LayoutInfos[GlobalSkinnableContainers.MainHUDComponents].AllDrawables.Single();
+
+            Assert.That(info.Type, Is.EqualTo(typeof(BlurredBeatmapBackground)));
+            Assert.That(info.Settings, Is.Empty);
+            using var drawable = info.CreateInstance();
+            Assert.That(drawable, Is.TypeOf<BlurredBeatmapBackground>());
+            Assert.That(drawable.Width, Is.EqualTo(520));
+            Assert.That(drawable.Height, Is.EqualTo(130));
+        }
+
+        [Test]
+        public void TestDeserialiseBeatmapDifficultyDisplay()
+        {
+            using var stream = TestResources.OpenResource("Archives/beatmap-difficulty-display.osk");
+            using var storage = new ZipArchiveReader(stream);
+            var skin = new TestSkin(new SkinInfo(), null, storage);
+            var info = skin.LayoutInfos[GlobalSkinnableContainers.MainHUDComponents].AllDrawables.Single();
+
+            Assert.That(info.Type, Is.EqualTo(typeof(BeatmapDifficultyDisplay)));
+            using var drawable = info.CreateInstance();
+            Assert.That(drawable, Is.TypeOf<BeatmapDifficultyDisplay>());
+            Assert.That(drawable.X, Is.EqualTo(24));
+            Assert.That(drawable.Y, Is.EqualTo(80));
+            Assert.That(drawable.Scale.X, Is.EqualTo(1.5f));
         }
 
         [Test]

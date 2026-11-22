@@ -92,7 +92,14 @@ namespace osu.Game.Screens.OnlinePlay
 
         private void startTracking(APIBeatmap beatmap, string expectedChecksum)
         {
-            Debug.Assert(beatmap.BeatmapSet != null);
+            if (beatmap.BeatmapSet == null)
+            {
+                // Playlist placeholders contain only an ID/checksum. Failed metadata lookup
+                // must not turn that incomplete fallback into a crashing download tracker.
+                availability.Value = BeatmapAvailability.NotDownloaded();
+                Logger.Log($"Online play metadata unavailable for beatmap {beatmap.OnlineID}.", LoggingTarget.Runtime, LogLevel.Important);
+                return;
+            }
 
             if (string.IsNullOrEmpty(expectedChecksum))
                 expectedChecksum = beatmap.MD5Hash;
@@ -124,6 +131,15 @@ namespace osu.Game.Screens.OnlinePlay
             void updateAvailability()
             {
                 if (StablePathManager.IsAvailableLocally(beatmap.OnlineID, expectedChecksum))
+                {
+                    availability.Value = BeatmapAvailability.LocallyAvailable();
+                    return;
+                }
+
+                // Stable match metadata has no beatmap-set ID. Availability must
+                // still be resolved by the advertised checksum, independently of
+                // whether the lazer download tracker recognises that set.
+                if (MosuServerEnvironment.UsesStableProtocol && queryBeatmap().Any())
                 {
                     availability.Value = BeatmapAvailability.LocallyAvailable();
                     return;

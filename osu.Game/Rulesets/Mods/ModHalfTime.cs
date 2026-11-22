@@ -18,10 +18,10 @@ namespace osu.Game.Rulesets.Mods
         public override string Acronym => "HT";
         public override IconUsage? Icon => OsuIcon.ModHalfTime;
         public override ModType Type => ModType.DifficultyReduction;
-        public override LocalisableString Description => "Less zoom...";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4225;
         public override bool Ranked => SpeedChange.IsDefault;
 
-        [SettingSource("Speed decrease", "The actual decrease to apply", SettingControlType = typeof(MultiplierSettingsSlider))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4201), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4202), SettingControlType = typeof(MultiplierSettingsSlider))]
         public override BindableNumber<double> SpeedChange { get; } = new BindableDouble(0.75)
         {
             MinValue = 0.1,
@@ -29,7 +29,7 @@ namespace osu.Game.Rulesets.Mods
             Precision = 0.01,
         };
 
-        [SettingSource("Adjust pitch", "Should pitch be adjusted with speed")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4189), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4190))]
         public virtual BindableBool AdjustPitch { get; } = new BindableBool();
 
         public override IEnumerable<(LocalisableString setting, LocalisableString value)> SettingDescription
@@ -40,7 +40,7 @@ namespace osu.Game.Rulesets.Mods
                     yield return description;
 
                 if (!AdjustPitch.IsDefault)
-                    yield return ("Adjust pitch", AdjustPitch.Value ? "On" : "Off");
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4189, AdjustPitch.Value ? global::osu.Game.Localisation.ClientTranslationStrings.J4183 : global::osu.Game.Localisation.ClientTranslationStrings.J4214);
             }
         }
 

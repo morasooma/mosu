@@ -22,6 +22,23 @@ namespace osu.Game.Screens.Select
         public GroupMode Group;
         public SortMode Sort;
 
+        internal SongSelectRatingSnapshot? Ratings;
+        // Legacy sorting/grouping uses the saved NM rating, even when Relax is selected.
+        // Relax-specific values remain available to the existing search filters below.
+        internal double GetSortStars(BeatmapInfo beatmap) => Ratings?.Stars(beatmap) ?? beatmap.StarRating;
+        internal double GetStars(BeatmapInfo beatmap) => Ratings?.Stars(beatmap)
+            ?? (Mods?.Any(m => m is ModRelax || m.Acronym == "MRX") == true
+                ? ForkDataStore.Instance?.GetRelaxStarRating(beatmap.ID) ?? -1 : beatmap.StarRating);
+        internal double GetPp(BeatmapInfo beatmap) => Ratings?.Pp(beatmap)
+            ?? (Mods?.Any(m => m is ModRelax || m.Acronym == "MRX") == true
+                ? ForkDataStore.Instance?.GetRelaxPP(beatmap.ID) ?? -1 : ForkDataStore.Instance?.GetPP(beatmap.ID) ?? -1);
+        internal FilterCriteria WithRatings(SongSelectRatingSnapshot? ratings)
+        {
+            var copy = (FilterCriteria)MemberwiseClone();
+            copy.Ratings = ratings;
+            return copy;
+        }
+
         public BeatmapSetInfo? SelectedBeatmapSet;
 
         public OptionalRange<double> StarDifficulty;
@@ -59,6 +76,26 @@ namespace osu.Game.Screens.Select
         };
 
         public OptionalTextFilter[] SearchTerms = Array.Empty<OptionalTextFilter>();
+
+        /// <summary>Enable keyboard-layout alternatives after parsing, without changing query syntax.</summary>
+        public void EnableRussianLayoutSearch()
+        {
+            Creator.UseRussianLayout = true;
+            Artist.UseRussianLayout = true;
+            Title.UseRussianLayout = true;
+            DifficultyName.UseRussianLayout = true;
+            Source.UseRussianLayout = true;
+
+            for (int i = 0; i < SearchTerms.Length; i++)
+                SearchTerms[i].UseRussianLayout = true;
+
+            for (int i = 0; i < UserTags.Count; i++)
+            {
+                var filter = UserTags[i];
+                filter.UseRussianLayout = true;
+                UserTags[i] = filter;
+            }
+        }
 
         public RulesetInfo? Ruleset;
         public IReadOnlyList<Mod>? Mods;
@@ -244,12 +281,22 @@ namespace osu.Game.Screens.Select
                         break;
 
                     case MatchMode.IsolatedPhrase:
-                        result = Regex.IsMatch(value, $@"(^|\b){Regex.Escape(searchTerm)}($|\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                        result = isolatedPhraseRegex!.IsMatch(value);
                         break;
 
                     case MatchMode.FullPhrase:
                         result = CultureInfo.InvariantCulture.CompareInfo.Compare(value, searchTerm, CompareOptions.OrdinalIgnoreCase) == 0;
                         break;
+                }
+
+                if (!result && alternateSearchTerm != null)
+                {
+                    result = MatchMode switch
+                    {
+                        MatchMode.IsolatedPhrase => alternatePhraseRegex!.IsMatch(value),
+                        MatchMode.FullPhrase => string.Equals(value, alternateSearchTerm, StringComparison.OrdinalIgnoreCase),
+                        _ => value.Contains(alternateSearchTerm, StringComparison.OrdinalIgnoreCase)
+                    };
                 }
 
                 if (ExcludeTerm)
@@ -264,6 +311,30 @@ namespace osu.Game.Screens.Select
             public bool ExcludeTerm;
 
             private string searchTerm;
+            private Regex? isolatedPhraseRegex;
+            private string? alternateSearchTerm;
+            private Regex? alternatePhraseRegex;
+            private bool useRussianLayout;
+
+            public bool UseRussianLayout
+            {
+                get => useRussianLayout;
+                set
+                {
+                    useRussianLayout = value;
+                    prepareAlternate();
+                }
+            }
+
+            private void prepareAlternate()
+            {
+                alternateSearchTerm = useRussianLayout && !string.IsNullOrEmpty(searchTerm)
+                    ? RussianKeyboardLayoutSearch.Convert(searchTerm)
+                    : null;
+                alternatePhraseRegex = alternateSearchTerm != null && MatchMode == MatchMode.IsolatedPhrase
+                    ? new Regex($@"(^|\b){Regex.Escape(alternateSearchTerm)}($|\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+                    : null;
+            }
 
             public string SearchTerm
             {
@@ -271,6 +342,7 @@ namespace osu.Game.Screens.Select
                 set
                 {
                     searchTerm = value;
+                    isolatedPhraseRegex = null;
 
                     if (searchTerm.StartsWith('\"'))
                     {
@@ -284,14 +356,19 @@ namespace osu.Game.Screens.Select
                         {
                             searchTerm = searchTerm.Trim('\"');
                             MatchMode = MatchMode.IsolatedPhrase;
+                            // Build once per query, not once per metadata field of
+                            // every difficulty in the installed library.
+                            isolatedPhraseRegex = new Regex($@"(^|\b){Regex.Escape(searchTerm)}($|\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
                         }
                     }
                     else
                         MatchMode = MatchMode.Substring;
+
+                    prepareAlternate();
                 }
             }
 
-            public bool Equals(OptionalTextFilter other) => SearchTerm == other.SearchTerm;
+            public bool Equals(OptionalTextFilter other) => SearchTerm == other.SearchTerm && UseRussianLayout == other.UseRussianLayout;
         }
 
         /// <summary>
@@ -325,6 +402,7 @@ namespace osu.Game.Screens.Select
                 case SortMode.BPM:
                 case SortMode.Length:
                 case SortMode.Difficulty:
+                case SortMode.Performance:
                     return true;
 
                 default:

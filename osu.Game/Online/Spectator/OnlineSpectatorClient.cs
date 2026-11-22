@@ -2,13 +2,16 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR.Client;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Logging;
+using osu.Framework.Statistics;
 using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Performance;
 
 namespace osu.Game.Online.Spectator
 {
@@ -17,6 +20,7 @@ namespace osu.Game.Online.Spectator
         private readonly string endpoint;
 
         private IHubClientConnector? connector;
+        private readonly AsyncOperationQueue outgoing = new AsyncOperationQueue();
 
         public override IBindable<bool> IsConnected { get; } = new BindableBool();
 
@@ -76,18 +80,19 @@ namespace osu.Game.Online.Spectator
 
         protected override Task SendFramesInternal(FrameDataBundle bundle)
         {
-            // Frame streaming to spectator hubs is disabled in the public build.
             return Task.CompletedTask;
         }
 
         protected override Task EndPlayingInternal(SpectatorState state) => Task.CompletedTask;
 
-        protected override async Task WatchUserInternal(int userId)
+        protected override Task WatchUserInternal(int userId)
         {
             var conn = activeConnection;
-            if (conn == null)
-                return;
+            return conn == null ? Task.CompletedTask : outgoing.EnqueueInvocation(() => watchUser(conn, userId));
+        }
 
+        private async Task watchUser(HubConnection conn, int userId)
+        {
             try
             {
                 await conn.InvokeAsync(nameof(ISpectatorServer.StartWatchingUser), userId).ConfigureAwait(false);
@@ -98,12 +103,14 @@ namespace osu.Game.Online.Spectator
             }
         }
 
-        protected override async Task StopWatchingUserInternal(int userId)
+        protected override Task StopWatchingUserInternal(int userId)
         {
             var conn = activeConnection;
-            if (conn == null)
-                return;
+            return conn == null ? Task.CompletedTask : outgoing.EnqueueInvocation(() => stopWatchingUser(conn, userId));
+        }
 
+        private async Task stopWatchingUser(HubConnection conn, int userId)
+        {
             try
             {
                 await conn.InvokeAsync(nameof(ISpectatorServer.EndWatchingUser), userId).ConfigureAwait(false);

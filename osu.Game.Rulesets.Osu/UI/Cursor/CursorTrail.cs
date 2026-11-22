@@ -30,6 +30,8 @@ namespace osu.Game.Rulesets.Osu.UI.Cursor
     {
         private const int max_sprites = 2048;
 
+        private static readonly bool streamVertices = Environment.GetEnvironmentVariable("MOSU_CURSOR_TRAIL_STREAM") != "0";
+
         /// <summary>
         /// An exponentiating factor to ease the trail fade.
         /// </summary>
@@ -423,7 +425,9 @@ namespace osu.Game.Rulesets.Osu.UI.Cursor
             {
                 base.Draw(renderer);
 
-                vertexBatch ??= renderer.CreateQuadBatch<TexturedTrailVertex>(max_sprites, 1);
+                vertexBatch ??= streamVertices
+                    ? renderer.CreateStreamingQuadBatch<TexturedTrailVertex>(max_sprites)
+                    : renderer.CreateQuadBatch<TexturedTrailVertex>(max_sprites, 1);
 
                 cursorTrailParameters ??= renderer.CreateUniformBuffer<CursorTrailParameters>();
                 cursorTrailParameters.Data = cursorTrailParameters.Data with
@@ -507,9 +511,12 @@ namespace osu.Game.Rulesets.Osu.UI.Cursor
                     });
                 }
 
-                renderer.PopLocalMatrix();
+                using (osu.Framework.Statistics.StutterTraceEventSource.Log.Measure("CursorTrail.Submit", partCount))
+                {
+                    renderer.PopLocalMatrix();
+                    vertexBatch.Draw();
+                }
 
-                vertexBatch.Draw();
                 shader.Unbind();
             }
 

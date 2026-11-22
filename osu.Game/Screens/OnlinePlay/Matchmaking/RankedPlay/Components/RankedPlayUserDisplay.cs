@@ -137,7 +137,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Components
                                 {
                                     Anchor = lastStandAnchor,
                                     Origin = lastStandAnchor,
-                                    Text = "Last Stand!",
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4934,
                                     Font = OsuFont.GetFont(size: 12, weight: FontWeight.SemiBold),
                                     Alpha = 0,
                                 }
@@ -224,16 +224,16 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Components
             switch (availability.State)
             {
                 case DownloadState.NotDownloaded:
-                    beatmapState.Text = "Missing Beatmap";
+                    beatmapState.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4935;
                     break;
 
                 case DownloadState.Downloading:
                     double progress = Math.Clamp(availability.DownloadProgress ?? 0, 0, 1);
-                    beatmapState.Text = $"Downloading... ({progress:P0})";
+                    beatmapState.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4936(progress);
                     break;
 
                 case DownloadState.Importing:
-                    beatmapState.Text = "Importing...";
+                    beatmapState.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4937;
                     break;
             }
         }
@@ -247,7 +247,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Components
                 return;
 
             double totalMultiplier = roomState.DamageMultiplier + userInfo.DamageMultiplier;
-            damageMultiplierText.Text = $"{totalMultiplier.ToStandardFormattedString(maxDecimalDigits: 1)}x damage";
+            damageMultiplierText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4938(totalMultiplier.ToStandardFormattedString(maxDecimalDigits: 1));
         }
 
         protected override void Dispose(bool isDisposing)

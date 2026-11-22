@@ -27,6 +27,9 @@ namespace osu.Game.Rulesets.Dodge.Objects
             if (duration <= 0)
                 return startTime;
 
+            if (movementType.IsLooping())
+                return startTime + duration;
+
             return startTime + duration * CalculateExitProgress(
                 start,
                 controlEnd,
@@ -54,6 +57,9 @@ namespace osu.Game.Rulesets.Dodge.Objects
         {
             if (duration <= 0)
                 return startTime;
+
+            if (movementType.IsLooping())
+                return startTime + duration;
 
             if (cameraOffsetAt == null)
             {
@@ -275,6 +281,9 @@ namespace osu.Game.Rulesets.Dodge.Objects
             float wavePhase,
             DodgeMovementEasing movementEasing = DodgeMovementEasing.Linear)
         {
+            if (movementType.IsLooping())
+                return 1;
+
             if (!RayIntersectsPlayfield(start, controlEnd, bulletSize, waveAmplitude))
                 return 0;
 
@@ -337,6 +346,9 @@ namespace osu.Game.Rulesets.Dodge.Objects
             float wavePhase,
             DodgeMovementEasing movementEasing = DodgeMovementEasing.Linear)
         {
+            if (movementType.IsLooping())
+                return DodgeLoopMotion.Position(start, controlEnd, progress, movementType, waveCycles, wavePhase, movementEasing);
+
             progress = movementEasing.Apply(progress);
             Vector2 displacement = controlEnd - start;
             Vector2 position = start + displacement * progress;
@@ -365,6 +377,13 @@ namespace osu.Game.Rulesets.Dodge.Objects
             float wavePhase,
             DodgeMovementEasing movementEasing = DodgeMovementEasing.Linear)
         {
+            if (movementType.IsLooping())
+            {
+                float step = 0.0001f / Math.Max(1, waveCycles);
+                return PositionAtProgress(start, controlEnd, progress + step, movementType, waveAmplitude, waveCycles, wavePhase, movementEasing)
+                       - PositionAtProgress(start, controlEnd, progress, movementType, waveAmplitude, waveCycles, wavePhase, movementEasing);
+            }
+
             progress = movementEasing.Apply(progress);
             Vector2 displacement = controlEnd - start;
 
@@ -413,9 +432,11 @@ namespace osu.Game.Rulesets.Dodge.Objects
         {
             minimumProgress = Math.Max(0, minimumProgress);
             maximumProgress = Math.Max(minimumProgress, maximumProgress);
-            int segmentCount = movementType == DodgeMovementType.Sine
-                ? Math.Max(16, (int)Math.Ceiling((maximumProgress - minimumProgress) * Math.Max(1, Math.Abs(waveCycles)) * 24))
-                : 1;
+            int segmentCount = movementType.IsLooping()
+                ? Math.Clamp((int)Math.Ceiling((maximumProgress - minimumProgress) * Math.Max(1, Math.Abs(waveCycles)) * 48), 16, 8192)
+                : movementType == DodgeMovementType.Sine
+                    ? Math.Max(16, (int)Math.Ceiling((maximumProgress - minimumProgress) * Math.Max(1, Math.Abs(waveCycles)) * 24))
+                    : 1;
             var vertices = new Vector2[segmentCount + 1];
 
             for (int i = 0; i <= segmentCount; i++)
@@ -436,7 +457,7 @@ namespace osu.Game.Rulesets.Dodge.Objects
             int waveCycles,
             DodgeMovementEasing movementEasing = DodgeMovementEasing.Linear)
         {
-            if (movementType != DodgeMovementType.Sine || duration <= 0)
+            if (movementType == DodgeMovementType.Linear || duration <= 0)
                 return 1;
 
             double overlapStart = Math.Max(movementStartTime, startTime);

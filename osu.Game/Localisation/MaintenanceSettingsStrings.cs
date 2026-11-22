@@ -40,9 +40,9 @@ namespace osu.Game.Localisation
         public static LocalisableString SelectNewLocation => new TranslatableString(getKey(@"select_new_location"), @"Please select a new location");
 
         /// <summary>
-        /// "The target directory already seems to have an osu! install. Use that data instead? Morasooma will restart."
+        /// "This folder already contains a game library. Use its data instead? Morasooma will restart."
         /// </summary>
-        public static LocalisableString TargetDirectoryAlreadyInstalledOsu => new TranslatableString(getKey(@"target_directory_already_installed_osu"), @"The target directory already seems to have an osu! install. Use that data instead? Morasooma will restart.");
+        public static LocalisableString TargetDirectoryAlreadyInstalledOsu => ClientBrandingStrings.ExistingLibrary;
 
         /// <summary>
         /// "Delete ALL beatmaps"

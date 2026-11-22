@@ -9,13 +9,13 @@ namespace osu.Game.Online.Multiplayer
     {
         // used for osu-web deserialization so names shouldn't be changed.
 
-        [Description("Host only")]
+        [Description("Host only"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3850))]
         HostOnly,
 
-        [Description("All players")]
+        [Description("All players"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3851))]
         AllPlayers,
 
-        [Description("All players (round robin)")]
+        [Description("All players (round robin)"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3852))]
         AllPlayersRoundRobin
     }
 }

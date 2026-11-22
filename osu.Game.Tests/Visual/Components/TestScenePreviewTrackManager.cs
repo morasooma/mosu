@@ -176,6 +176,26 @@ namespace osu.Game.Tests.Visual.Components
         }
 
         [Test]
+        public void TestSurfaceSilencePersistsAcrossPreviewGapsAndIndependentOwners()
+        {
+            System.IDisposable first = null;
+            System.IDisposable second = null;
+            PreviewTrack track = null;
+            AddStep("silence entire surface", () => first = trackManager.SilenceMainTrack());
+            AddAssert("loading gap silent", () => gameTrackAudio.AggregateVolume.Value == 0);
+            AddStep("get preview", () => track = getOwnedTrack());
+            AddUntilStep("preview loaded", () => track.IsLoaded);
+            AddStep("play preview", () => track.Start());
+            AddStep("pause or skip preview", () => track.Stop());
+            AddAssert("gap remains silent", () => gameTrackAudio.AggregateVolume.Value == 0);
+            AddStep("second surface owner", () => second = trackManager.SilenceMainTrack());
+            AddStep("close first surface", () => first.Dispose());
+            AddAssert("second owner still silences music", () => gameTrackAudio.AggregateVolume.Value == 0);
+            AddStep("close last surface", () => second.Dispose());
+            AddAssert("music restored", () => gameTrackAudio.AggregateVolume.Value != 0);
+        }
+
+        [Test]
         public void TestOwnerNotRegistered()
         {
             PreviewTrack track = null;

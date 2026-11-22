@@ -50,6 +50,9 @@ namespace osu.Game.Online.Multiplayer
         /// <param name="password">Password to join the room.</param>
         Task Invited(int invitedBy, long roomID, string password);
 
+        Task ServerPlayInvited(ServerPlayInvitation invitation) => Task.CompletedTask;
+        Task ServerPlayInvitationRevoked(string id) => Task.CompletedTask;
+
         /// <summary>
         /// Signal that the host of the room has changed.
         /// </summary>

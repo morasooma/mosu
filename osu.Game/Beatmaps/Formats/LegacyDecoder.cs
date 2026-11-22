@@ -44,6 +44,7 @@ namespace osu.Game.Beatmaps.Formats
 
             while ((line = stream.ReadLine()) != null)
             {
+                BackgroundCalculationLimiter.Checkpoint();
                 lineNumber++;
 
                 if (ShouldSkipLine(line))

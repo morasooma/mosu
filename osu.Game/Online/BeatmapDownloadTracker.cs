@@ -37,11 +37,35 @@ namespace osu.Game.Online
             Downloader.DownloadBegan += downloadBegan;
             Downloader.DownloadFailed += downloadFailed;
 
+            subscribeToAvailability();
+        }
+
+        private int modelGeneration;
+
+        internal void ChangeTrackedItem(IBeatmapSetInfo item)
+        {
+            modelGeneration++;
+            realmSubscription?.Dispose();
+            realmSubscription = null;
+            if (stableAvailabilityChanged != null)
+                StablePathManager.AvailabilityChanged -= stableAvailabilityChanged;
+            stableAvailabilityChanged = null;
+            attachDownload(null);
+            TrackedItem = item;
+            UpdateProgress(0);
+            UpdateState(DownloadState.Unknown);
+            if (IsLoaded && Downloader != null && item.OnlineID > 0)
+                subscribeToAvailability();
+        }
+
+        private void subscribeToAvailability()
+        {
             // Used to interact with manager classes that don't support interface types. Will eventually be replaced.
             var beatmapSetInfo = new BeatmapSetInfo { OnlineID = TrackedItem.OnlineID };
 
             // Required local for iOS. Will cause runtime crash if inlined.
             int onlineId = TrackedItem.OnlineID;
+            int generation = modelGeneration;
 
             realmSubscription = realm.RegisterForNotifications(r => r.All<BeatmapSetInfo>().Where(s => s.OnlineID == onlineId && !s.DeletePending), (items, _) =>
             {
@@ -54,6 +78,7 @@ namespace osu.Game.Online
                 {
                     Schedule(() =>
                     {
+                        if (generation != modelGeneration) return;
                         UpdateState(DownloadState.LocallyAvailable);
                         attachDownload(null);
                     });
@@ -62,6 +87,7 @@ namespace osu.Game.Online
                 {
                     Schedule(() =>
                     {
+                        if (generation != modelGeneration) return;
                         UpdateState(DownloadState.NotDownloaded);
                         attachDownload(Downloader.GetExistingDownload(beatmapSetInfo));
                     });
@@ -70,6 +96,7 @@ namespace osu.Game.Online
 
             void stableAvailabilityChanged() => Schedule(() =>
             {
+                if (generation != modelGeneration) return;
                 bool availableInRealm = realm.Run(r => r.All<BeatmapSetInfo>().Any(s => s.OnlineID == onlineId && !s.DeletePending));
                 updateAvailability(availableInRealm);
             });
@@ -127,11 +154,23 @@ namespace osu.Game.Online
             }
         }
 
-        private void onRequestSuccess(string _) => Schedule(() => UpdateState(DownloadState.Importing));
+        private void onRequestSuccess(string _)
+        {
+            var request = attachedRequest;
+            Schedule(() => { if (ReferenceEquals(request, attachedRequest) && request != null) UpdateState(DownloadState.Importing); });
+        }
 
-        private void onRequestProgress(float progress) => Schedule(() => UpdateProgress(progress));
+        private void onRequestProgress(float progress)
+        {
+            var request = attachedRequest;
+            Schedule(() => { if (ReferenceEquals(request, attachedRequest) && request != null) UpdateProgress(progress); });
+        }
 
-        private void onRequestFailure(Exception e) => Schedule(() => attachDownload(null));
+        private void onRequestFailure(Exception e)
+        {
+            var request = attachedRequest;
+            Schedule(() => { if (ReferenceEquals(request, attachedRequest) && request != null) attachDownload(null); });
+        }
 
         private bool checkEquality(IBeatmapSetInfo x, IBeatmapSetInfo y) => x.OnlineID == y.OnlineID;
 

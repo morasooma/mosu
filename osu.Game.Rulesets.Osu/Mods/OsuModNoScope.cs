@@ -18,7 +18,7 @@ namespace osu.Game.Rulesets.Osu.Mods
 {
     public class OsuModNoScope : ModNoScope, IUpdatableByPlayfield, IApplicableToBeatmap
     {
-        public override LocalisableString Description => "Where's the cursor?";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3721;
 
         public override Type[] IncompatibleMods => new[] { typeof(OsuModBloom) };
 

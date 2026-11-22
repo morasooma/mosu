@@ -63,7 +63,23 @@ namespace osu.Game.Skinning
                 glyphStore.Get(fontPrefix, (char)('0' + i));
         }
 
-        protected override TextBuilder CreateTextBuilder(ITexturedGlyphLookupStore store) => base.CreateTextBuilder(glyphStore);
+        protected override float ComponentFontSize => glyphStore.Get(base.Font.Family, '0') is { Height: > 0 } glyph ? glyph.Height : 30;
+
+        protected override bool UsesSkinGlyphStore => true;
+        private Vector2 skinSpacing;
+
+        protected override void ComponentFontChanged(bool enabled)
+        {
+            if (enabled)
+            {
+                if (Spacing != Vector2.Zero) skinSpacing = Spacing;
+                Spacing = Vector2.Zero;
+            }
+            else Spacing = skinSpacing;
+            InvalidateTextBuilder();
+        }
+
+        protected override TextBuilder CreateTextBuilder(ITexturedGlyphLookupStore store) => base.CreateTextBuilder(HasSkinComponentFont ? store : glyphStore);
 
         private class LegacyGlyphStore : ITexturedGlyphLookupStore
         {

@@ -166,7 +166,7 @@ namespace osu.Game.Online.Legacy
             match.BeatmapId = item.BeatmapID;
             match.BeatmapChecksum = item.BeatmapChecksum;
             match.RulesetId = checked((byte)item.RulesetID);
-            match.BeatmapName = getStableBeatmapName(item.BeatmapID);
+            match.BeatmapName = getStableBeatmapName(item.BeatmapID, item.BeatmapChecksum);
 
             var ruleset = Rulesets.GetRuleset(item.RulesetID)?.CreateInstance();
             if (ruleset != null)
@@ -316,7 +316,7 @@ namespace osu.Game.Online.Legacy
                 HasPassword = !string.IsNullOrEmpty(room.Settings.Password),
                 BeatmapId = item.BeatmapID,
                 BeatmapChecksum = item.BeatmapChecksum,
-                BeatmapName = getStableBeatmapName(item.BeatmapID),
+                BeatmapName = getStableBeatmapName(item.BeatmapID, item.BeatmapChecksum),
                 HostUserId = localUserId,
                 RulesetId = checked((byte)item.RulesetID),
                 TeamType = room.Settings.MatchType == MatchType.TeamVersus ? (byte)2 : (byte)0,
@@ -347,9 +347,9 @@ namespace osu.Game.Online.Legacy
             }
         }
 
-        private string getStableBeatmapName(int beatmapId)
+        private string getStableBeatmapName(int beatmapId, string? checksum = null)
         {
-            BeatmapInfo? beatmap = beatmaps.QueryBeatmap(candidate => candidate.OnlineID == beatmapId);
+            BeatmapInfo? beatmap = beatmaps.QueryOnlineBeatmapId(beatmapId, checksum);
             if (beatmap == null)
                 return beatmapId > 0 ? $"Beatmap {beatmapId}" : string.Empty;
 

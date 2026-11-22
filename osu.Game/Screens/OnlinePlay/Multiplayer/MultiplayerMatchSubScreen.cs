@@ -288,7 +288,21 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                                                                     {
                                                                         new Drawable[]
                                                                         {
-                                                                            new SectionHeader(stableBanchoSession != null ? "Beatmap" : OnlinePlayStrings.MultiplayerBeatmapQueue)
+                                                                            new Container
+                                                                            {
+                                                                                RelativeSizeAxes = Axes.X,
+                                                                                Height = 36,
+                                                                                Children = new Drawable[]
+                                                                                {
+                                                                                    new SectionHeader(stableBanchoSession != null ? global::osu.Game.Localisation.ClientTranslationStrings.J4947 : OnlinePlayStrings.MultiplayerBeatmapQueue),
+                                                                                    new InviteServerButton
+                                                                                    {
+                                                                                        Anchor = Anchor.TopRight,
+                                                                                        Origin = Anchor.TopRight,
+                                                                                        Size = new Vector2(190, 28),
+                                                                                    },
+                                                                                },
+                                                                            }
                                                                         },
                                                                         new Drawable[]
                                                                         {
@@ -296,7 +310,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                                                                             {
                                                                                 RelativeSizeAxes = Axes.X,
                                                                                 Height = 30,
-                                                                                Text = stableBanchoSession != null ? "Change beatmap" : "Add item",
+                                                                                Text = stableBanchoSession != null ? global::osu.Game.Localisation.ClientTranslationStrings.J4948 : global::osu.Game.Localisation.ClientTranslationStrings.J4949,
                                                                                 Action = () => ShowSongSelect()
                                                                             },
                                                                         },
@@ -320,7 +334,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                                                                                 Alpha = 0,
                                                                                 Children = new Drawable[]
                                                                                 {
-                                                                                    new SectionHeader("Extra mods"),
+                                                                                    new SectionHeader(global::osu.Game.Localisation.ClientTranslationStrings.J4950),
                                                                                     new FillFlowContainer
                                                                                     {
                                                                                         AutoSizeAxes = Axes.Both,
@@ -334,7 +348,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                                                                                                 Origin = Anchor.CentreLeft,
                                                                                                 Width = 90,
                                                                                                 Height = 30,
-                                                                                                Text = "Select",
+                                                                                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4951,
                                                                                                 Action = showUserModSelect,
                                                                                             },
                                                                                             new MultiplayerUserModDisplay

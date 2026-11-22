@@ -18,6 +18,37 @@ namespace osu.Game.Rulesets.Osu.Tests.Scoring
     public class OsuLegacyScoreV1ProcessorTest
     {
         [Test]
+        public void StableSpinnerCountsPhysicsScoreOnceAndReverts()
+        {
+            bool previous = osu.Game.Online.MosuServerEnvironment.UsesStableProtocol;
+            try
+            {
+                osu.Game.Online.MosuServerEnvironment.UsesStableProtocol = true;
+                var processor = new OsuLegacyScoreV1Processor(createBeatmap(), Array.Empty<Mod>());
+                var state = new StableSpinnerState(2000, 5);
+                for (int i = 1; i < 2000; i++)
+                    state.Advance(i, 1, 0.05);
+                processor.ApplyResult(new JudgementResult(new SpinnerBonusTick(), new SpinnerBonusTick.OsuSpinnerBonusTickJudgement()) { Type = HitResult.LargeBonus });
+                Assert.That(processor.TotalScore, Is.Zero, "Lazer bonus ticks must not double-count stable spin score");
+                var result = new OsuSpinnerJudgementResult(new Spinner(), new OsuJudgement())
+                {
+                    Type = state.GetJudgement(),
+                    StableState = state,
+                };
+                processor.ApplyResult(result);
+                Assert.That(processor.TotalScore, Is.EqualTo(state.SpinScore + 300));
+                processor.RevertResult(result);
+                Assert.That(processor.TotalScore, Is.Zero);
+                processor.ApplyResult(result);
+                Assert.That(processor.TotalScore, Is.EqualTo(state.SpinScore + 300));
+            }
+            finally
+            {
+                osu.Game.Online.MosuServerEnvironment.UsesStableProtocol = previous;
+            }
+        }
+
+        [Test]
         public void TestCircleComboScoringAndRevert()
         {
             var beatmap = createBeatmap();

@@ -152,7 +152,7 @@ namespace osu.Game.Screens.Utility
                             Origin = Anchor.TopCentre,
                             RelativeSizeAxes = Axes.None,
                             Width = 400,
-                            LabelText = "bpm",
+                            LabelText = global::osu.Game.Localisation.ClientTranslationStrings.J5312,
                             Current = SampleBPM
                         },
                         new SettingsSlider<float>
@@ -161,7 +161,7 @@ namespace osu.Game.Screens.Utility
                             Origin = Anchor.TopCentre,
                             RelativeSizeAxes = Axes.None,
                             Width = 400,
-                            LabelText = "visual spacing",
+                            LabelText = global::osu.Game.Localisation.ClientTranslationStrings.J5313,
                             Current = SampleVisualSpacing
                         },
                         new SettingsSlider<double>
@@ -170,7 +170,7 @@ namespace osu.Game.Screens.Utility
                             Origin = Anchor.TopCentre,
                             RelativeSizeAxes = Axes.None,
                             Width = 400,
-                            LabelText = "approach rate",
+                            LabelText = global::osu.Game.Localisation.ClientTranslationStrings.J5314,
                             Current = SampleApproachRate
                         },
                     },
@@ -190,11 +190,11 @@ namespace osu.Game.Screens.Utility
                 },
             };
 
-            explanatoryText.AddParagraph(@"Welcome to the latency certifier!");
-            explanatoryText.AddParagraph(@"Do whatever you need to try and perceive the difference in latency, then choose your best side. Read more about the methodology ");
-            explanatoryText.AddLink("here", "https://github.com/ppy/osu/wiki/Latency-and-unlimited-frame-rates#methodology");
-            explanatoryText.AddParagraph(@"Use the arrow keys or Z/X/F/J to control the display.");
-            explanatoryText.AddParagraph(@"Tab key to change focus. Space to change display mode");
+            explanatoryText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J5315);
+            explanatoryText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J5316);
+            explanatoryText.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J5317, "https://github.com/ppy/osu/wiki/Latency-and-unlimited-frame-rates#methodology");
+            explanatoryText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J5318);
+            explanatoryText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J5319);
         }
 
         protected override bool OnMouseMove(MouseMoveEvent e)
@@ -265,8 +265,8 @@ namespace osu.Game.Screens.Utility
             float successRate = (float)correctAtCurrentDifficulty / attemptsAtCurrentDifficulty;
             bool isPass = successRate == 1;
 
-            statusText.AddParagraph($"You scored {correctAtCurrentDifficulty} out of {attemptsAtCurrentDifficulty} ({successRate:0%})!", cp => cp.Colour = isPass ? colours.Green : colours.Red);
-            statusText.AddParagraph($"Level {DifficultyLevel} ({mapDifficultyToTargetFrameRate(DifficultyLevel):N0} Hz)",
+            statusText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5320(correctAtCurrentDifficulty, attemptsAtCurrentDifficulty, successRate), cp => cp.Colour = isPass ? colours.Green : colours.Red);
+            statusText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5321(DifficultyLevel, mapDifficultyToTargetFrameRate(DifficultyLevel)),
                 cp => cp.Font = OsuFont.Default.With(size: 24));
 
             statusText.AddParagraph(string.Empty);
@@ -276,12 +276,12 @@ namespace osu.Game.Screens.Utility
 
             if (!isPass && DifficultyLevel > 1)
             {
-                statusText.AddParagraph("To complete certification, the difficulty level will now decrease until you can get 20 rounds correct in a row!",
+                statusText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J5322,
                     cp => cp.Font = OsuFont.Default.With(size: 24, weight: FontWeight.SemiBold));
                 statusText.AddParagraph(string.Empty);
             }
 
-            statusText.AddParagraph($"Polling: {pollingMax} Hz Monitor: {displayMode?.RefreshRate ?? 0:N0} Hz Exclusive: {exclusive}",
+            statusText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5323(pollingMax, displayMode?.RefreshRate ?? 0, exclusive),
                 cp => cp.Font = OsuFont.Default.With(size: 15, weight: FontWeight.SemiBold));
 
             statusText.AddParagraph($"Input: {host.InputThread.Clock.FramesPerSecond} Hz "
@@ -318,7 +318,7 @@ namespace osu.Game.Screens.Utility
             {
                 buttonFlow.Add(new ButtonWithKeyBind(Key.Enter)
                 {
-                    Text = "Continue to next level",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5327,
                     BackgroundColour = colours.Green,
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
@@ -333,8 +333,8 @@ namespace osu.Game.Screens.Utility
                 {
                     buttonFlow.Add(new ButtonWithKeyBind(Key.Enter)
                     {
-                        Text = "Retry",
-                        TooltipText = "Are you even trying..?",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J5328,
+                        TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5329,
                         BackgroundColour = colours.Pink2,
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre,
@@ -349,7 +349,7 @@ namespace osu.Game.Screens.Utility
                 {
                     buttonFlow.Add(new ButtonWithKeyBind(Key.Enter)
                     {
-                        Text = "Begin certification at last level",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J5330,
                         BackgroundColour = colours.Yellow,
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre,
@@ -359,8 +359,8 @@ namespace osu.Game.Screens.Utility
                             changeDifficulty(DifficultyLevel - 1);
                         },
                         TooltipText = isPass
-                            ? $"Chain {rounds_to_complete_certified} rounds to confirm your perception!"
-                            : "You've reached your limits. Go to the previous level to complete certification!",
+                            ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5331(rounds_to_complete_certified)
+                            : global::osu.Game.Localisation.ClientTranslationStrings.J5332,
                     });
                 }
             }
@@ -382,7 +382,7 @@ namespace osu.Game.Screens.Utility
                 {
                     Alpha = 0,
                     Font = OsuFont.TorusAlternate.With(size: 80, weight: FontWeight.Bold),
-                    Text = "Certified!",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5333,
                     Blending = BlendingParameters.Additive,
                 }).WithEffect(new GlowEffect
                 {
@@ -395,7 +395,7 @@ namespace osu.Game.Screens.Utility
                 }),
                 new OsuSpriteText
                 {
-                    Text = $"You should use a frame limiter with update rate of {mapDifficultyToTargetFrameRate(DifficultyLevel + 1)} Hz (or fps) for best results!",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5334(mapDifficultyToTargetFrameRate(DifficultyLevel + 1)),
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
                     Font = OsuFont.Torus.With(size: 24, weight: FontWeight.SemiBold),
@@ -436,7 +436,7 @@ namespace osu.Game.Screens.Utility
             settings.Show();
 
             attemptsAtCurrentDifficulty++;
-            statusText.Text = $"Level {DifficultyLevel}\nRound {attemptsAtCurrentDifficulty} of {totalRoundForNextResultsScreen}";
+            statusText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5335(DifficultyLevel, attemptsAtCurrentDifficulty, totalRoundForNextResultsScreen);
 
             mainArea.Clear();
 

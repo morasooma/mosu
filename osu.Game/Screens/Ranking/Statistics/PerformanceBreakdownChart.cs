@@ -119,7 +119,7 @@ namespace osu.Game.Screens.Ranking.Statistics
                                             Origin = Anchor.CentreLeft,
                                             Anchor = Anchor.CentreLeft,
                                             Font = OsuFont.GetFont(weight: FontWeight.Regular, size: StatisticItem.FONT_SIZE),
-                                            Text = "Achieved PP",
+                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5135,
                                         },
                                         achievedPerformance = new OsuSpriteText
                                         {
@@ -135,7 +135,7 @@ namespace osu.Game.Screens.Ranking.Statistics
                                             Origin = Anchor.CentreLeft,
                                             Anchor = Anchor.CentreLeft,
                                             Font = OsuFont.GetFont(weight: FontWeight.Regular, size: StatisticItem.FONT_SIZE),
-                                            Text = "Maximum",
+                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5136,
                                         },
                                         maximumPerformance = new OsuSpriteText
                                         {

@@ -73,6 +73,11 @@ namespace osu.Game.Scoring
         /// </summary>
         public long TotalScore { get; set; }
 
+        /// <summary>Mosu-only value, kept outside the original osu! Realm schema and replay.</summary>
+        [Ignored]
+        [JsonIgnore]
+        public long? MosuTotalScore { get; set; }
+
         /// <summary>
         /// The total number of points awarded for the score without including mod multipliers.
         /// </summary>
@@ -291,14 +296,49 @@ namespace osu.Game.Scoring
             }
         }
 
-        public ScoreInfo DeepClone()
+        public ScoreInfo DeepClone() => deepClone(retainHitObjectReferences: true);
+
+        /// <summary>
+        /// Copies current live score values using this private, detached calculation template.
+        /// Only the serial performance worker may read its shared map/mod configuration.
+        /// </summary>
+        internal ScoreInfo CreateLivePerformanceSnapshot(ScoreInfo source)
+        {
+            var result = (ScoreInfo)MemberwiseClone();
+            result.Combo = source.Combo;
+            result.MaxCombo = source.MaxCombo;
+            result.Accuracy = source.Accuracy;
+            result.Rank = source.Rank;
+            result.Statistics = new Dictionary<HitResult, int>(source.Statistics);
+            result.MaximumStatistics = new Dictionary<HitResult, int>(source.MaximumStatistics);
+            result.TotalScore = source.TotalScore;
+            result.TotalScoreWithoutMods = source.TotalScoreWithoutMods;
+            result.LegacyTotalScore = source.LegacyTotalScore;
+            result.IsLegacyScore = source.IsLegacyScore;
+            return result;
+        }
+
+        /// <summary>
+        /// Creates a clone for short-term session UI state. Timing data is retained, but references from
+        /// <see cref="HitEvent"/>s back to the complete gameplay beatmap are removed.
+        /// </summary>
+        public ScoreInfo DeepCloneForSessionState() => deepClone(retainHitObjectReferences: false);
+
+        private ScoreInfo deepClone(bool retainHitObjectReferences)
         {
             var clone = (ScoreInfo)this.Detach().MemberwiseClone();
 
             clone.Statistics = new Dictionary<HitResult, int>(clone.Statistics);
             clone.MaximumStatistics = new Dictionary<HitResult, int>(clone.MaximumStatistics);
-            clone.HitEvents = new List<HitEvent>(clone.HitEvents);
-            clone.TagCoopReplay = TagCoopReplay?.DeepClone();
+            clone.HitEvents = retainHitObjectReferences
+                ? new List<HitEvent>(clone.HitEvents)
+                : clone.HitEvents.Select(hitEvent => hitEvent.WithoutHitObjectReferences()).ToList();
+            clone.MosuTotalScore = MosuTotalScore;
+            // Cloning session/UI state must not call the persisting setter (which opens
+            // fork.realm and writes even an empty optional replay on Update).
+            clone.tagCoopReplay = TagCoopReplay?.DeepClone();
+            clone.tagCoopReplayResolved = true;
+            clone.tagCoopReplayJson = clone.tagCoopReplay == null ? string.Empty : JsonConvert.SerializeObject(clone.tagCoopReplay);
 
             // Ensure we have fresh mods to avoid any references (ie. after gameplay).
             clone.clearAllMods();

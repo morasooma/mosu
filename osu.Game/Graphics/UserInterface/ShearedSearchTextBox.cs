@@ -24,6 +24,7 @@ namespace osu.Game.Graphics.UserInterface
         private readonly SpriteIcon searchIcon;
         private IBindable<Colour4> themeColour = null!;
         private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
+        private IBindable<float>? radiusBindable;
         private OverlayColourProvider colourProvider = null!;
         protected readonly InnerSearchTextBox TextBox;
 
@@ -108,7 +109,17 @@ namespace osu.Game.Graphics.UserInterface
             {
                 Shear = OsuGame.SHEAR;
                 searchIcon.Shear = -Shear;
+                updateCornerRadius();
             }, true);
+
+            radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Input, corner_radius);
+            radiusBindable.BindValueChanged(_ => updateCornerRadius(), true);
+        }
+
+        private void updateCornerRadius()
+        {
+            float target = radiusBindable?.Value ?? corner_radius;
+            CornerRadius = !disableShear.Value ? System.Math.Min(target, 6f) : target;
         }
 
         public override bool HandleNonPositionalInput => TextBox.HandleNonPositionalInput;
@@ -120,6 +131,7 @@ namespace osu.Game.Graphics.UserInterface
             private OverlayColourProvider colourProvider = null!;
             private IBindable<Colour4> themeColour = null!;
             private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
+            private IBindable<float>? innerRadiusBindable;
             public InnerSearchTextBox()
             {
                 Anchor = Anchor.CentreLeft;
@@ -139,8 +151,20 @@ namespace osu.Game.Graphics.UserInterface
                 PlaceholderText = CommonStrings.InputSearch;
 
                 CornerRadius = corner_radius;
+                innerRadiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Input, corner_radius);
+                innerRadiusBindable.BindValueChanged(_ => updateCornerRadius(), true);
                 TextContainer.Shear = -OsuGame.SHEAR;
-                disableShear.BindValueChanged(_ => TextContainer.Shear = -OsuGame.SHEAR, true);
+                disableShear.BindValueChanged(_ =>
+                {
+                    TextContainer.Shear = -OsuGame.SHEAR;
+                    updateCornerRadius();
+                }, true);
+            }
+
+            private void updateCornerRadius()
+            {
+                float target = innerRadiusBindable?.Value ?? corner_radius;
+                CornerRadius = !disableShear.Value ? System.Math.Min(target, 6f) : target;
             }
 
             private void updateThemeColours()

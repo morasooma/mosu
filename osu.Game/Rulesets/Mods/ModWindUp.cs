@@ -14,7 +14,7 @@ namespace osu.Game.Rulesets.Mods
     {
         public override string Name => "Wind Up";
         public override string Acronym => "WU";
-        public override LocalisableString Description => "Can you keep up?";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4264;
         public override IconUsage? Icon => OsuIcon.ModWindUp;
 
         public override BindableNumber<double> InitialRate { get; } = new BindableDouble(1)

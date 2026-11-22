@@ -24,9 +24,24 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
     [Cached]
     public partial class Timeline : ZoomableScrollContainer
     {
-        private const float timeline_height = 80;
+        public float ObjectAreaHeight { get; }
 
         private readonly Drawable userContent;
+
+        public bool EnableHitSoundTracks { get; set; }
+
+        public bool HitSoundTracksExpanded { get; private set; }
+        private HitSoundTrackEditor? hitSoundTracks;
+
+        public void ToggleHitSoundTracks()
+        {
+            if (!EnableHitSoundTracks || hitSoundTracks == null)
+                return;
+
+            HitSoundTracksExpanded = !HitSoundTracksExpanded;
+            hitSoundTracks.Alpha = HitSoundTracksExpanded ? 1 : 0;
+            Height = ObjectAreaHeight + (HitSoundTracksExpanded ? HitSoundTrackEditor.TRACK_HEIGHT : 0);
+        }
 
         private bool alwaysShowControlPoints;
 
@@ -89,12 +104,13 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 
         private double trackLengthForZoom;
 
-        public Timeline(Drawable userContent)
+        public Timeline(Drawable userContent, float objectAreaHeight = 80)
         {
             this.userContent = userContent;
+            ObjectAreaHeight = objectAreaHeight;
 
             RelativeSizeAxes = Axes.X;
-            Height = timeline_height;
+            Height = ObjectAreaHeight;
 
             ZoomDuration = 200;
             ZoomEasing = Easing.OutQuint;
@@ -136,7 +152,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                 new Container
                 {
                     RelativeSizeAxes = Axes.X,
-                    Height = timeline_height,
+                    Height = ObjectAreaHeight,
                     Children = new[]
                     {
                         waveform = new WaveformGraph
@@ -153,6 +169,17 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                     }
                 },
             });
+
+            if (EnableHitSoundTracks)
+            {
+                Add(hitSoundTracks = new HitSoundTrackEditor
+                {
+                    RelativeSizeAxes = Axes.X,
+                    Height = HitSoundTrackEditor.TRACK_HEIGHT,
+                    Y = ObjectAreaHeight,
+                    Alpha = 0,
+                });
+            }
 
             waveformOpacity = config.GetBindable<float>(OsuSetting.EditorWaveformOpacity);
             controlPointsVisible = config.GetBindable<bool>(OsuSetting.EditorTimelineShowTimingChanges);
@@ -339,9 +366,12 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             return (float)(time / editorClock.TrackLength * Content.DrawWidth);
         }
 
+        public double TimeAtScreenSpacePosition(Vector2 screenSpacePosition)
+            => TimeAtPosition(Content.ToLocalSpace(screenSpacePosition).X);
+
         public SnapResult FindSnappedPositionAndTime(Vector2 screenSpacePosition)
         {
-            double time = TimeAtPosition(Content.ToLocalSpace(screenSpacePosition).X);
+            double time = TimeAtScreenSpacePosition(screenSpacePosition);
             return new SnapResult(screenSpacePosition, beatSnapProvider.SnapTime(time));
         }
 

@@ -24,7 +24,7 @@ namespace osu.Game.Rulesets.Osu.Mods
     public partial class OsuModBlinds : ModBlinds, IApplicableToDrawableRuleset<OsuHitObject>, IApplicableToHealthProcessor
     {
         public override string Name => "Blinds";
-        public override LocalisableString Description => "Play with blinds on your screen.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3665;
         public override string Acronym => "BL";
 
         public override IconUsage? Icon => OsuIcon.ModBlinds;

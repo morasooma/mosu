@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
@@ -30,6 +31,8 @@ namespace osu.Game.Overlays.Mods
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
 
+        private IBindable<float>? panelRadius;
+
         public readonly Bindable<ModCustomisationPanelState> ExpandedState = new Bindable<ModCustomisationPanelState>();
 
         private readonly ModCustomisationPanel panel;
@@ -45,6 +48,9 @@ namespace osu.Game.Overlays.Mods
         {
             CornerRadius = 10f;
             Masking = true;
+
+            panelRadius = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Panel, 10f);
+            panelRadius.BindValueChanged(r => CornerRadius = Math.Clamp(r.NewValue, 0f, 20f), true);
 
             Children = new Drawable[]
             {

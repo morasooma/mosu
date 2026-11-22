@@ -16,7 +16,9 @@ using osu.Framework.Platform;
 using osu.Framework.Testing;
 using osu.Framework.Utils;
 using osu.Game.Beatmaps;
+using osu.Game.Configuration;
 using osu.Game.Graphics.Cursor;
+using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Overlays;
@@ -24,14 +26,18 @@ using osu.Game.Rulesets;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
+using osu.Game.Screens.Play.Leaderboards;
 using osu.Game.Screens.Select;
 using osu.Game.Tests.Resources;
 using osu.Game.Users;
 
 namespace osu.Game.Tests.Visual.SongSelect
 {
+    [HeadlessTest]
     public partial class TestSceneBeatmapLeaderboardSorting : SongSelectComponentsTestScene
     {
+        protected override bool UseFreshStoragePerRun => true;
+
         [Cached]
         private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Aquamarine);
 
@@ -125,6 +131,71 @@ namespace osu.Game.Tests.Visual.SongSelect
             });
 
             AddStep("Clear all scores", () => scoreManager.Delete());
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestPpSortingThroughLeaderboardControls(bool legacy)
+        {
+            LegacyLeaderboard? legacyLeaderboard = null;
+            BeatmapInfo beatmapInfo = null!;
+            OsuConfigManager config = null!;
+            AddStep("prepare local scores", () =>
+            {
+                config = Dependencies.Get<OsuConfigManager>();
+                config.SetValue(OsuSetting.BeatmapLeaderboardSortMode, LeaderboardSortMode.Score);
+                config.SetValue(OsuSetting.ForkSongSelectStyle, legacy ? ForkSongSelectStyle.LegacySkinned : ForkSongSelectStyle.Modern);
+                scoreManager.Delete();
+                beatmapManager.Import(TestResources.GetQuickTestBeatmapForImport()).WaitSafely();
+                beatmapInfo = beatmapManager.GetAllUsableBeatmapSets().First().Beatmaps.First();
+                foreach (var (pp, total) in new[] { (10.0, 1_000_000L), (100.5, 100L), (80.25, 500L) })
+                    scoreManager.Import(new ScoreInfo
+                    {
+                        PP = pp,
+                        TotalScore = total,
+                        Ruleset = new OsuRuleset().RulesetInfo,
+                        BeatmapInfo = beatmapInfo,
+                        BeatmapHash = beatmapInfo.Hash,
+                    });
+                Beatmap.Value = beatmapManager.GetWorkingBeatmap(beatmapInfo);
+                if (legacy)
+                {
+                    contentContainer.Remove(beatmapDetailsArea, true);
+                    contentContainer.Add(legacyLeaderboard = new LegacyLeaderboard());
+                }
+            });
+            AddUntilStep("leaderboard controls loaded", () => legacy ? legacyLeaderboard!.IsLoaded : beatmapDetailsArea.IsLoaded);
+            AddStep("select local PP ordering", () =>
+            {
+                if (legacy)
+                {
+                    legacyLeaderboard!.Scope.Value = BeatmapLeaderboardScope.Local;
+                    var dropdown = legacyLeaderboard.ChildrenOfType<LegacyStableDropdown<LeaderboardSortMode>>().Single();
+                    Assert.That(dropdown.Items, Does.Contain(LeaderboardSortMode.PP));
+                    var scope = legacyLeaderboard.ChildrenOfType<LegacyStableDropdown<BeatmapLeaderboardScope>>().Single();
+                    Assert.That(scope.X + scope.DrawWidth, Is.LessThan(dropdown.X));
+                    Assert.That(dropdown.X + dropdown.DrawWidth, Is.LessThanOrEqualTo(410));
+                    dropdown.Current.Value = LeaderboardSortMode.PP;
+                }
+                else
+                {
+                    beatmapDetailsArea.ChildrenOfType<ShearedDropdown<BeatmapLeaderboardScope>>().Single().Current.Value = BeatmapLeaderboardScope.Local;
+                    var dropdown = beatmapDetailsArea.ChildrenOfType<ShearedDropdown<LeaderboardSortMode>>().Single();
+                    Assert.That(dropdown.Items, Does.Contain(LeaderboardSortMode.PP));
+                    dropdown.Current.Value = LeaderboardSortMode.PP;
+                }
+            });
+            AddUntilStep("PP reaches query and local results", () =>
+                leaderboardManager.CurrentCriteria?.Sorting == LeaderboardSortMode.PP
+                && leaderboardManager.Scores.Value?.TopScores.Select(s => s.PP).SequenceEqual(new double?[] { 100.5, 80.25, 10 }) == true);
+            AddAssert("sort selection persisted", () => config.Get<LeaderboardSortMode>(OsuSetting.BeatmapLeaderboardSortMode) == LeaderboardSortMode.PP);
+            AddStep("clean up scores and controls", () =>
+            {
+                legacyLeaderboard?.Expire();
+                scoreManager.Delete();
+                config.SetValue(OsuSetting.BeatmapLeaderboardSortMode, LeaderboardSortMode.Score);
+                config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.Modern);
+            });
         }
 
         private void importRandomScore(BeatmapInfo beatmapInfo)

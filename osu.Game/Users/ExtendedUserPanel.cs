@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions;
@@ -15,6 +16,8 @@ using osu.Framework.Input.Events;
 using osu.Framework.Localisation;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Metadata;
+using osu.Game.Online;
+using osu.Game.Localisation;
 using osu.Game.Overlays;
 using osuTK.Graphics;
 
@@ -32,6 +35,7 @@ namespace osu.Game.Users
 
         private UserStatus? lastStatus;
         private UserActivity? lastActivity;
+        private string? lastClientLabel;
         private DateTimeOffset? lastVisit;
         private IBindable<Colour4>? themeColour;
 
@@ -109,14 +113,17 @@ namespace osu.Game.Users
             UserStatus status = presence?.Status ?? UserStatus.Offline;
             UserActivity? activity = presence?.Activity;
 
-            if (status == lastStatus && activity == lastActivity)
+            string clientLabel = !MosuServerEnvironment.UsesMosuPresence || presence == null ? string.Empty
+                : string.Join(" · ", new[] { presence.Value.Platform, presence.Value.BuildKind }
+                    .Where(value => !string.IsNullOrWhiteSpace(value)));
+            if (status == lastStatus && activity == lastActivity && clientLabel == lastClientLabel)
                 return;
 
             if (status == UserStatus.Offline && lastVisit != null)
             {
                 LastVisitMessage.FadeTo(1);
                 LastVisitMessage.Clear();
-                LastVisitMessage.AddText(@"Last seen ");
+                LastVisitMessage.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5654);
                 LastVisitMessage.AddText(new DrawableDate(lastVisit.Value, italic: false)
                 {
                     Shadow = false
@@ -132,7 +139,7 @@ namespace osu.Game.Users
             }
             else
             {
-                statusMessage.Text = activity.GetStatus();
+                statusMessage.Text = MosuServerEnvironment.UsesMosuPresence ? PresenceStrings.Activity(activity) : activity.GetStatus();
                 statusMessage.TooltipText = activity.GetDetails() ?? string.Empty;
             }
 
@@ -141,6 +148,15 @@ namespace osu.Game.Users
             else
                 statusIcon.FadeColour(activity.GetAppropriateColour(Colours), 500, Easing.OutQuint);
 
+            if (MosuServerEnvironment.UsesMosuPresence && status != UserStatus.Offline)
+            {
+                LastVisitMessage.Clear();
+                LastVisitMessage.AddText(PresenceStrings.Client(presence!.Value));
+                LastVisitMessage.FadeTo(string.IsNullOrEmpty(clientLabel) ? 0 : 1);
+                statusMessage.TooltipText = string.Join("\n", new[] { activity?.GetDetails(), presence?.ClientVersion }
+                    .Where(value => !string.IsNullOrWhiteSpace(value)));
+            }
+            lastClientLabel = clientLabel;
             lastStatus = status;
             lastActivity = activity;
             lastVisit = status != UserStatus.Offline ? DateTimeOffset.Now : lastVisit;

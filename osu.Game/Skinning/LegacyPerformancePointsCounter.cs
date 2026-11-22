@@ -41,7 +41,14 @@ namespace osu.Game.Skinning
             }
         }
 
-        protected override LocalisableString FormatCount(int count) => count.ToString($@"0'{LegacySpriteText.PP_SUFFIX_CHAR}'");
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+            SkinComponentFont.For(this).Family.BindValueChanged(_ => UpdateDisplay(), true);
+        }
+
+        protected override LocalisableString FormatCount(int count) => SkinComponentFont.GetOverride(this) != null
+            ? $"{count}pp" : count.ToString($@"0'{LegacySpriteText.PP_SUFFIX_CHAR}'");
 
         protected sealed override OsuSpriteText CreateSpriteText() => new LegacySpriteText(LegacyFont.Score);
     }

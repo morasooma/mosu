@@ -37,12 +37,33 @@ namespace osu.Game.Tests.NonVisual
             });
         }
 
-        [TestCase(1024, 690)]
-        [TestCase(1366, 690)]
-        [TestCase(640, 640)]
+        [TestCase(1024, 544)]
+        [TestCase(1366, 544)]
+        [TestCase(640, 544)]
         public void TestLegacyCarouselKeepsStableCardWidth(float viewportWidth, float expectedWidth)
         {
             Assert.That(SongSelect.GetLegacyCarouselWidth(viewportWidth), Is.EqualTo(expectedWidth));
+        }
+
+        [TestCase(768, 544)]
+        [TestCase(960, 680)]
+        [TestCase(640, 453.3333f)]
+        public void TestLegacyCarouselWidthTracksScreenHeight(float height, float expectedWidth)
+        {
+            Assert.That(SongSelect.GetLegacyCarouselWidth(1920, height), Is.EqualTo(expectedWidth).Within(0.001));
+        }
+
+        [TestCase(1)]
+        [TestCase(0.8f)]
+        [TestCase(1.25f)]
+        public void TestClassicPreviewUsesStableDimensions(float scale)
+        {
+            Vector2 size = PanelSetBackground.GetClassicPreviewSize(PanelBeatmapStandalone.CLASSIC_HEIGHT * scale);
+            Assert.Multiple(() =>
+            {
+                Assert.That(size.X, Is.EqualTo(80 * 1.425f * scale).Within(0.001));
+                Assert.That(size.Y, Is.EqualTo(60 * 1.425f * scale).Within(0.001));
+            });
         }
 
         [TestCase(1024, 192)]

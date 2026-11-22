@@ -66,6 +66,17 @@ namespace osu.Game.Screens.Select
             internal Color4 MappedByTextColour => mappedByText.Colour;
 
             private CancellationTokenSource? cancellationSource;
+            private CancellationTokenSource? countWorkSource;
+            private CancellationTokenSource? countFallbackSource;
+            private readonly object countFallbackLock = new object();
+            private WorkingBeatmap? countFallbackBeatmap;
+            private RulesetInfo? countFallbackRuleset;
+            private Task<IReadOnlyList<StarDifficulty.CountStatistic>>? countFallbackTask;
+            private BeatmapDifficultyCache.BindableStarDifficulty? countBindable;
+            private int countFallbacksStarted;
+            private int countFallbackWaitsStarted;
+            internal int CountFallbacksStarted => Volatile.Read(ref countFallbacksStarted);
+            internal int CountFallbackWaitsStarted => Volatile.Read(ref countFallbackWaitsStarted);
 
             public DifficultyDisplay()
             {
@@ -136,7 +147,7 @@ namespace osu.Game.Screens.Select
                                                 {
                                                     Anchor = Anchor.BottomLeft,
                                                     Origin = Anchor.BottomLeft,
-                                                    Text = " mapped by ",
+                                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5153,
                                                     Font = OsuFont.Style.Body,
                                                 },
                                                 mapperLink = new MapperLinkContainer
@@ -246,28 +257,49 @@ namespace osu.Game.Screens.Select
             private void updateDisplay()
             {
                 cancellationSource?.Cancel();
+                countWorkSource?.Cancel();
+                if (countBindable != null)
+                    countBindable.CountStatisticsRequested -= onCountStatisticsRequested;
                 cancellationSource = new CancellationTokenSource();
+                resetCountFallback();
 
                 if (beatmap.IsDefault)
                 {
+                    difficultyText.AsyncText = string.Empty;
+                    mapperText.AsyncText = string.Empty;
                     ratingAndNameContainer.FadeOut(300, Easing.OutQuint);
                     countStatisticsDisplay.FadeOut(300, Easing.OutQuint);
                 }
                 else
                 {
                     ratingAndNameContainer.FadeIn(300, Easing.OutQuint);
-                    difficultyText.Text = beatmap.Value.BeatmapInfo.DifficultyName;
+                    difficultyText.AsyncText = beatmap.Value.BeatmapInfo.DifficultyName;
                     mapperLink.Action = () => linkHandler?.HandleLink(new LinkDetails(LinkAction.OpenUserProfile, beatmap.Value.Metadata.Author));
-                    mapperText.Text = beatmap.Value.Metadata.Author.Username;
+                    mapperText.AsyncText = beatmap.Value.Metadata.Author.Username;
                 }
 
-                starRatingDisplay.Current = (Bindable<StarDifficulty>)difficultyCache.GetBindableDifficulty(beatmap.Value.BeatmapInfo, cancellationSource.Token, SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE);
+                // Counts share the selected map's full SR/PP calculation. Use the same
+                // admission delay as its carousel card, rather than starting heavy work
+                // for every map that remains selected for only 150 ms while scrolling.
+                // Cached results and the initial star seed still publish immediately.
+                var request = difficultyCache.GetBindableDifficultyWithCountStatistics(beatmap.Value.BeatmapInfo, cancellationSource.Token,
+                    SongSelect.PERFORMANCE_CALCULATION_DEBOUNCE);
+                countBindable = request.Difficulty;
+                countBindable.CountStatisticsRequested += onCountStatisticsRequested;
+                starRatingDisplay.Current = request.Difficulty;
 
-                updateCountStatistics(cancellationSource.Token);
+                onCountStatisticsRequested(request.CountStatistics);
                 updateDifficultyStatistics();
             }
 
-            private void updateCountStatistics(CancellationToken cancellationToken)
+            private void onCountStatisticsRequested(Task<IReadOnlyList<StarDifficulty.CountStatistic>?> countStatistics)
+            {
+                countWorkSource?.Cancel();
+                countWorkSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationSource!.Token);
+                updateCountStatistics(countStatistics, countWorkSource.Token);
+            }
+
+            private void updateCountStatistics(Task<IReadOnlyList<StarDifficulty.CountStatistic>?> countStatistics, CancellationToken cancellationToken)
             {
                 if (beatmap.IsDefault)
                 {
@@ -277,17 +309,66 @@ namespace osu.Game.Screens.Select
 
                 WorkingBeatmap workingBeatmap = beatmap.Value;
                 RulesetInfo rulesetInfo = ruleset.Value;
+                CancellationToken selectionToken = cancellationSource!.Token;
 
-                Task.Run(() =>
+                _ = Task.Run(async () =>
                 {
                     try
                     {
-                        // This can take time as it is a synchronous task.
-                        // TODO: We're calling `GetPlayableBeatmap` multiple times every map load at song select.
-                        var playableBeatmap = workingBeatmap.GetPlayableBeatmap(rulesetInfo);
-                        var statistics = playableBeatmap.GetStatistics()
-                                                        .Select(s => new StatisticDifficulty.Data(s.Name, s.BarDisplayLength ?? 0, s.BarDisplayLength ?? 0, 1, s.Content))
-                                                        .ToList();
+                        // Wait for this selection's full calculation (not its initial star placeholder).
+                        // A cache/persisted result without counts or a failed calculation needs one fallback.
+                        var counts = await countStatistics.WaitAsync(cancellationToken).ConfigureAwait(false);
+                        cancellationToken.ThrowIfCancellationRequested();
+
+                        if (counts == null)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            Task<IReadOnlyList<StarDifficulty.CountStatistic>> fallback;
+                            lock (countFallbackLock)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                selectionToken.ThrowIfCancellationRequested();
+                                if (countFallbackTask?.IsFaulted == true || countFallbackTask?.IsCanceled == true)
+                                    resetCountFallbackLocked();
+
+                                if (!ReferenceEquals(countFallbackBeatmap, workingBeatmap) || !ReferenceEquals(countFallbackRuleset, rulesetInfo) || countFallbackTask == null)
+                                {
+                                    resetCountFallbackLocked();
+                                    countFallbackBeatmap = workingBeatmap;
+                                    countFallbackRuleset = rulesetInfo;
+                                    countFallbackSource = CancellationTokenSource.CreateLinkedTokenSource(selectionToken);
+                                    var fallbackToken = countFallbackSource.Token;
+                                    Interlocked.Increment(ref countFallbacksStarted);
+                                    countFallbackTask = Task.Run<IReadOnlyList<StarDifficulty.CountStatistic>>(() =>
+                                        workingBeatmap.GetPlayableBeatmap(rulesetInfo, Array.Empty<Mod>(), fallbackToken)
+                                                      .GetStatistics()
+                                                      .Select(s => new StarDifficulty.CountStatistic(s.Name, s.BarDisplayLength, s.Content)).ToArray(), fallbackToken);
+                                }
+
+                                fallback = countFallbackTask;
+                            }
+
+                            Interlocked.Increment(ref countFallbackWaitsStarted);
+                            try
+                            {
+                                counts = await fallback.WaitAsync(cancellationToken).ConfigureAwait(false);
+                            }
+                            catch
+                            {
+                                if (fallback.IsFaulted || fallback.IsCanceled)
+                                {
+                                    lock (countFallbackLock)
+                                    {
+                                        if (ReferenceEquals(countFallbackTask, fallback))
+                                            resetCountFallbackLocked();
+                                    }
+                                }
+
+                                throw;
+                            }
+                        }
+                        var statistics = counts.Select(s => new StatisticDifficulty.Data(s.Name, s.BarDisplayLength ?? 0,
+                            s.BarDisplayLength ?? 0, 1, s.Content)).ToList();
 
                         Schedule(() =>
                         {
@@ -315,6 +396,22 @@ namespace osu.Game.Screens.Select
                 }, cancellationToken);
             }
 
+            private void resetCountFallback()
+            {
+                lock (countFallbackLock)
+                    resetCountFallbackLocked();
+            }
+
+            private void resetCountFallbackLocked()
+            {
+                countFallbackSource?.Cancel();
+                countFallbackSource?.Dispose();
+                countFallbackSource = null;
+                countFallbackBeatmap = null;
+                countFallbackRuleset = null;
+                countFallbackTask = null;
+            }
+
             private void updateDifficultyStatistics() => Scheduler.AddOnce(() =>
             {
                 if (beatmap.IsDefault || ruleset.Value == null)
@@ -328,6 +425,16 @@ namespace osu.Game.Screens.Select
                 var displayAttributes = rulesetInstance.GetBeatmapAttributesForDisplay(beatmap.Value.BeatmapInfo, mods.Value).ToList();
                 difficultyStatisticsDisplay.Statistics = displayAttributes.Select(a => new StatisticDifficulty.Data(a)).ToList();
             });
+
+            protected override void Dispose(bool isDisposing)
+            {
+                cancellationSource?.Cancel();
+                countWorkSource?.Cancel();
+                resetCountFallback();
+                if (countBindable != null)
+                    countBindable.CountStatisticsRequested -= onCountStatisticsRequested;
+                base.Dispose(isDisposing);
+            }
 
             protected override void Update()
             {

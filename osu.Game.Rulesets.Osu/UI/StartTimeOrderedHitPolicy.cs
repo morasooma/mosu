@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using osu.Framework.Statistics;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Drawables;
 using osu.Game.Rulesets.Osu.Objects.Drawables;
@@ -25,6 +26,7 @@ namespace osu.Game.Rulesets.Osu.UI
 
         public ClickAction CheckHittable(DrawableHitObject hitObject, double time, HitResult result)
         {
+            using var operation = StutterTraceEventSource.Log.Measure("Notelock.CheckHittable");
             if (HitObjectContainer == null)
                 throw new InvalidOperationException($"{nameof(HitObjectContainer)} should be set before {nameof(CheckHittable)} is called.");
 
@@ -56,6 +58,7 @@ namespace osu.Game.Rulesets.Osu.UI
 
         public void HandleHit(DrawableHitObject hitObject)
         {
+            using var operation = StutterTraceEventSource.Log.Measure("Notelock.HandleHit");
             if (HitObjectContainer == null)
                 throw new InvalidOperationException($"{nameof(HitObjectContainer)} should be set before {nameof(HandleHit)} is called.");
 

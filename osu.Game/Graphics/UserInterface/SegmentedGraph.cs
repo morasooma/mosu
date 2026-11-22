@@ -94,7 +94,9 @@ namespace osu.Game.Graphics.UserInterface
                 return;
             }
 
-            float[] floatValues = arr.Select(v => Convert.ToSingle(v)).ToArray();
+            var floatValues = new float[arr.Length];
+            for (int i = 0; i < arr.Length; i++)
+                floatValues[i] = arr[i].ToSingle(null);
 
             // Shift values to eliminate negative ones
             float min = floatValues.Min();
@@ -112,7 +114,9 @@ namespace osu.Game.Graphics.UserInterface
                 floatValues[i] /= max;
 
             // Deduce tiers from values
-            tiers = floatValues.Select(v => (int)Math.Floor(v * tierCount)).ToArray();
+            tiers = new int[floatValues.Length];
+            for (int i = 0; i < floatValues.Length; i++)
+                tiers[i] = (int)Math.Floor(floatValues[i] * tierCount);
         }
 
         private void recalculateSegments()
@@ -215,7 +219,7 @@ namespace osu.Game.Graphics.UserInterface
                 drawSize = Source.DrawSize;
 
                 segments.Clear();
-                segments.AddRange(Source.segments.Where(s => s.Length * drawSize.X > 1));
+                Source.segments.CopyVisibleTo(segments, drawSize.X);
 
                 tierColours.Clear();
                 tierColours.AddRange(Source.tierColours);
@@ -323,6 +327,15 @@ namespace osu.Game.Graphics.UserInterface
             }
 
             public int Count => segments.Count;
+
+            public void CopyVisibleTo(List<SegmentInfo> destination, float drawWidth)
+            {
+                foreach (var segment in segments)
+                {
+                    if (segment.Length * drawWidth > 1)
+                        destination.Add(segment);
+                }
+            }
 
             public void Add(int tier, float start, float end)
             {

@@ -2,6 +2,8 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Linq;
+using osu.Game.Rulesets.Mods;
 using MessagePack;
 using osu.Game.Beatmaps;
 using osu.Game.Graphics;
@@ -39,6 +41,19 @@ namespace osu.Game.Users
     [Union(52, typeof(PlayingDailyChallenge))]
     public abstract class UserActivity
     {
+        /// <summary>
+        /// Detaches the wire state before an outgoing invocation crosses to a worker.
+        /// Activity union members contain scalars/strings, except for the game mod array.
+        /// MemberwiseClone retains the exact runtime subtype without running constructors.
+        /// </summary>
+        internal UserActivity Snapshot()
+        {
+            var snapshot = (UserActivity)MemberwiseClone();
+            if (snapshot is InGame game)
+                game.ModAcronyms = game.ModAcronyms?.ToArray();
+            return snapshot;
+        }
+
         public abstract string GetStatus(bool hideIdentifiableInformation = false);
         public virtual string? GetDetails(bool hideIdentifiableInformation = false) => null;
 
@@ -76,6 +91,17 @@ namespace osu.Game.Users
             [Key(3)]
             public string RulesetPlayingVerb { get; set; } = string.Empty; // TODO: i'm going with this for now, but this is wasteful
 
+            // Null means an older client did not report mods, not necessarily No Mod.
+            [Key(4)]
+            public string[]? ModAcronyms { get; set; }
+
+            public InGame WithMods(System.Collections.Generic.IEnumerable<Mod> mods)
+            {
+                if (MosuServerEnvironment.UsesMosuPresence)
+                    ModAcronyms = mods.Select(m => m.Acronym).Distinct().ToArray();
+                return this;
+            }
+
             protected InGame(IBeatmapInfo beatmapInfo, IRulesetInfo ruleset)
             {
                 BeatmapID = beatmapInfo.OnlineID;
@@ -108,6 +134,9 @@ namespace osu.Game.Users
         [MessagePackObject]
         public class InMultiplayerGame : InGame
         {
+            [Key(5)]
+            public long? RankedPlayRoomID { get; set; }
+
             public InMultiplayerGame(IBeatmapInfo beatmapInfo, IRulesetInfo ruleset)
                 : base(beatmapInfo, ruleset)
             {
@@ -266,6 +295,9 @@ namespace osu.Game.Users
             [Key(1)]
             public string RoomName { get; set; } = string.Empty;
 
+            [Key(2)]
+            public bool IsRankedPlay { get; set; }
+
             public InLobby(Room room)
             {
                 RoomID = room.RoomID ?? -1;
@@ -282,7 +314,8 @@ namespace osu.Game.Users
                         break;
 
                     case MatchType.RankedPlay:
-                        RoomID = -1;
+                        RoomID = room.RoomID;
+                        IsRankedPlay = true;
                         RoomName = "Ranked Play";
                         break;
 

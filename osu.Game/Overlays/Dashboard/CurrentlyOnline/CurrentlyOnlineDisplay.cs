@@ -34,6 +34,9 @@ namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
         private readonly IBindable<bool> isConnected = new Bindable<bool>();
 
         private Box background = null!;
+
+        [Cached]
+        private readonly RealtimeUserList.UserWithRankLookupCache userCache = new RealtimeUserList.UserWithRankLookupCache();
         private UserListToolbar userListToolbar = null!;
         private Container<RealtimeUserList> listContainer = null!;
         private BasicSearchTextBox searchTextBox = null!;
@@ -53,6 +56,7 @@ namespace osu.Game.Overlays.Dashboard.CurrentlyOnline
         {
             InternalChildren = new Drawable[]
             {
+                userCache,
                 background = new Box
                 {
                     RelativeSizeAxes = Axes.Both

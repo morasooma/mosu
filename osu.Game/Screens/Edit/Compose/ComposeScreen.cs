@@ -94,6 +94,8 @@ namespace osu.Game.Screens.Edit.Compose
             });
         }
 
+        protected override bool EnableHitSoundTracks => composer != null;
+
         private Drawable wrapSkinnableContent(Drawable content)
         {
             Debug.Assert(ruleset != null);

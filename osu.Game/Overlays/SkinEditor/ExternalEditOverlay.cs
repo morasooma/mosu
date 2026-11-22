@@ -51,6 +51,9 @@ namespace osu.Game.Overlays.SkinEditor
         private TaskCompletionSource? taskCompletionSource;
         private bool finishingEdit;
         private bool openSkinIni;
+        private BackdropBlurSurface background = null!;
+
+        protected override BackdropBlurSurface OpaqueBackground => background;
 
         protected override bool DimMainContent => false;
 
@@ -81,7 +84,7 @@ namespace osu.Game.Overlays.SkinEditor
                         Origin = Anchor.Centre,
                         Children = new Drawable[]
                         {
-                            new BackdropBlurSurface
+                            background = new BackdropBlurSurface
                             {
                                 SurfaceColour = colourProvider.Background5,
                                 RelativeSizeAxes = Axes.Both,

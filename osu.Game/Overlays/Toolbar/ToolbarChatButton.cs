@@ -4,6 +4,7 @@
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Game.Input.Bindings;
+using osu.Game.Graphics;
 
 namespace osu.Game.Overlays.Toolbar
 {
@@ -14,6 +15,7 @@ namespace osu.Game.Overlays.Toolbar
         public ToolbarChatButton()
         {
             Hotkey = GlobalAction.ToggleChat;
+            SetIcon(OsuIcon.Chat);
         }
 
         [BackgroundDependencyLoader(true)]

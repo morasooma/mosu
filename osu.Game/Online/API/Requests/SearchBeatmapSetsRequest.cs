@@ -3,10 +3,16 @@
 
 #nullable disable
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using JetBrains.Annotations;
+using Newtonsoft.Json.Linq;
+using osu.Framework.Extensions;
 using osu.Framework.IO.Network;
+using osu.Framework.Logging;
 using osu.Game.Extensions;
 using osu.Game.Overlays;
 using osu.Game.Overlays.BeatmapListing;
@@ -42,6 +48,91 @@ namespace osu.Game.Online.API.Requests
 
         [CanBeNull]
         public IReadOnlyCollection<ScoreRank> Ranks { get; }
+
+        public BeatmapCatalogueSource CatalogueSource { get; init; } = BeatmapCatalogueSource.Official;
+        public BeatmapCatalogueSource? ActualCatalogueSource { get; private set; }
+        internal BeatmapCatalogueSearch MirrorSearch { get; init; } = BeatmapCatalogueSearch.Shared;
+
+        internal CatalogueQuery MirrorQuery => new CatalogueQuery(query ?? string.Empty, ruleset.OnlineID, SearchCategory, SortCriteria, SortDirection,
+            Genre, Language, ExplicitContent, Extra?.ToArray() ?? [], General?.ToArray() ?? [],
+            Played != SearchPlayed.Any || Ranks?.Count > 0, cursor?.Properties.TryGetValue("mirror_page", out var page) == true ? page.ToObject<int>() : 0);
+
+        public override void Perform()
+        {
+            if (CatalogueSource == BeatmapCatalogueSource.Official && !ServerExclusiveOnly && API is not OfficialOsuBeatmapApi)
+            {
+                Fail(new InvalidOperationException("Connect the official osu! account, or select a mirror in the beatmap library."));
+                return;
+            }
+            if (ServerExclusiveOnly || CatalogueSource == BeatmapCatalogueSource.Official)
+            {
+                base.Perform();
+                return;
+            }
+            performMirrorSearch().WaitSafely();
+        }
+
+        private async Task performMirrorSearch()
+        {
+            using var cancellation = new CancellationTokenSource();
+            using var monitor = new Timer(_ =>
+            {
+                if (CompletionState != APIRequestCompletionState.Waiting)
+                    cancellation.Cancel();
+            }, null, 0, 50);
+            try
+            {
+                var criteria = MirrorQuery;
+                var filters = new BeatmapCatalogueFilters(criteria.Text);
+                var page = await MirrorSearch.SearchAsync(criteria, CatalogueSource, cancellation.Token).ConfigureAwait(false);
+                ActualCatalogueSource = page.Source;
+                var sets = new List<Responses.APIBeatmapSet>();
+                var serializer = Newtonsoft.Json.JsonSerializer.Create(new Newtonsoft.Json.JsonSerializerSettings
+                {
+                    NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore,
+                });
+                foreach (var row in page.Sets.OfType<JObject>())
+                {
+                    int id = (int?)row["id"] ?? 0;
+                    if (id <= 0 || id >= BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD)
+                        continue;
+                    if (row["user"] is JObject user && user["id"] == null)
+                        row.Remove("user");
+                    // Mirria uses camelCase for some difficulty fields.
+                    foreach (var beatmap in row["beatmaps"]?.OfType<JObject>() ?? [])
+                    {
+                        foreach (string key in new[] { "countCircles", "countSliders", "countSpinners", "isScoreable", "lastUpdated" })
+                        {
+                            string snake = string.Concat(key.Select(c => char.IsUpper(c) ? "_" + char.ToLowerInvariant(c) : c.ToString()));
+                            if (beatmap[key] != null && beatmap[snake] == null) beatmap[snake] = beatmap[key]!.DeepClone();
+                        }
+                    }
+                    var set = row.ToObject<Responses.APIBeatmapSet>(serializer)!;
+                    foreach (var beatmap in set.Beatmaps) beatmap.BeatmapSet = set;
+                    if (BeatmapMirrorMetadata.Parse(page.Source.ToString(), id, row) is { } metadata)
+                        BeatmapCatalogueMetadataCache.Store(id, metadata with { Complete = criteria.Mode < 0 && metadata.Complete });
+                    if (ExplicitContent == SearchExplicit.Hide && set.HasExplicitContent
+                        || !BeatmapCatalogueSearch.MatchesCategory(row, criteria.Category) || !filters.Matches(row, criteria.Mode))
+                        continue;
+                    sets.Add(set);
+                }
+                Logger.Log($"Beatmap catalogue source={page.Source} page={criteria.Page} raw={page.Sets.Count} shown={sets.Count}", LoggingTarget.Network);
+                TriggerSuccess(new SearchBeatmapSetsResponse
+                {
+                    BeatmapSets = sets,
+                    Cursor = page.HasMore ? new Cursor { Properties = new Dictionary<string, JToken> { ["mirror_page"] = criteria.Page + 1 } } : null,
+                    Total = sets.Count,
+                });
+            }
+            catch (Exception e)
+            {
+                Fail(e);
+            }
+            finally
+            {
+                await monitor.DisposeAsync().ConfigureAwait(false);
+            }
+        }
 
         private readonly string query;
         private readonly RulesetInfo ruleset;
@@ -86,7 +177,7 @@ namespace osu.Game.Online.API.Requests
 
             bool serverExclusiveOnly = ServerExclusiveOnly;
             IEnumerable<SearchExtra> forwardedExtra = serverExclusiveOnly
-                ? Extra.Where(e => e != SearchExtra.ServerExclusive)
+                ? Extra?.Where(e => e != SearchExtra.ServerExclusive)
                 : Extra;
 
             if (query != null)
@@ -141,12 +232,6 @@ namespace osu.Game.Online.API.Requests
         protected override void PostProcess()
         {
             base.PostProcess();
-
-            if (Response != null && ServerExclusiveOnly)
-            {
-                foreach (var beatmapSet in Response.BeatmapSets)
-                    ServerExclusiveBeatmapResources.Resolve(beatmapSet, API!.Endpoints);
-            }
 
             if (Response != null && Extra?.Contains(SearchExtra.ServerExclusive) == true)
             {

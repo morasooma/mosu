@@ -118,7 +118,7 @@ namespace osu.Game.Overlays.News
 
             main.AddParagraph(post.Title, t => t.Font = OsuFont.GetFont(size: 20, weight: FontWeight.SemiBold));
             main.AddParagraph(post.Preview, t => t.Font = OsuFont.GetFont(size: 12)); // Should use sans-serif font
-            main.AddParagraph("by ", t => t.Font = OsuFont.GetFont(size: 12));
+            main.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J3965, t => t.Font = OsuFont.GetFont(size: 12));
             main.AddText(post.Author, t => t.Font = OsuFont.GetFont(size: 12, weight: FontWeight.SemiBold));
         }
 

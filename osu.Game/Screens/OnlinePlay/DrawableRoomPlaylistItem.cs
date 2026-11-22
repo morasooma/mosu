@@ -72,6 +72,16 @@ namespace osu.Game.Screens.OnlinePlay
 
         public readonly PlaylistItem Item;
 
+        public string? PoolContributor { get; init; }
+
+        /// <summary>Use the supplied local metadata without an online lookup or navigation.</summary>
+        public bool UseLocalBeatmap { get; init; }
+
+        /// <summary>Optional actions for reusing this panel outside multiplayer playlists.</summary>
+        public Func<IEnumerable<Drawable>>? CreateActionButtons { get; init; }
+
+        public LocalisableString? Description { get; init; }
+
         public bool IsSelectedItem => SelectedItem.Value?.ID == Item.ID;
 
         private readonly DelayedLoadWrapper onScreenLoader;
@@ -169,6 +179,8 @@ namespace osu.Game.Screens.OnlinePlay
 
             onScreenLoader.DelayedLoadStarted += _ =>
             {
+                if (UseLocalBeatmap)
+                    return;
                 Task.Run(async () =>
                 {
                     try
@@ -194,6 +206,8 @@ namespace osu.Game.Screens.OnlinePlay
                 });
             };
 
+            if (UseLocalBeatmap)
+                beatmap = Item.Beatmap;
             refresh();
         }
 
@@ -307,7 +321,21 @@ namespace osu.Game.Screens.OnlinePlay
                         });
                     }
                     else
+                    {
                         thumbnail = null;
+                        if (UseLocalBeatmap)
+                            children.Add(new Container
+                            {
+                                Anchor = Anchor.CentreLeft, Origin = Anchor.CentreLeft,
+                                Width = 60, RelativeSizeAxes = Axes.Y, Masking = true, CornerRadius = 10,
+                                Child = new UpdateableBeatmapBackgroundSprite
+                                {
+                                    RelativeSizeAxes = Axes.Both,
+                                    Beatmap = { Value = beatmap },
+                                    BackgroundLoadDelay = 0,
+                                },
+                            });
+                    }
 
                     children.Add(new DifficultyIcon(beatmap, ruleset, requiredMods)
                     {
@@ -332,7 +360,9 @@ namespace osu.Game.Screens.OnlinePlay
             {
                 beatmapText.Clear();
 
-                if (beatmap != null)
+                if (UseLocalBeatmap && beatmap != null)
+                    beatmapText.AddText(beatmap.Metadata.GetDisplayTitleRomanisable(false), text => text.Truncate = true);
+                else if (beatmap != null)
                 {
                     beatmapText.AddLink(beatmap.GetDisplayTitleRomanisable(includeCreator: false),
                         LinkAction.OpenBeatmap,
@@ -349,11 +379,15 @@ namespace osu.Game.Screens.OnlinePlay
             {
                 authorText.Clear();
 
-                if (!string.IsNullOrEmpty(beatmap?.Metadata.Author.Username))
+                if (Description is { } description)
+                    authorText.AddText(description);
+                else if (!string.IsNullOrEmpty(beatmap?.Metadata.Author.Username))
                 {
-                    authorText.AddText("mapped by ");
+                    authorText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4361);
                     authorText.AddUserLink(beatmap.Metadata.Author);
                 }
+                if (PoolContributor != null)
+                    authorText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4362(PoolContributor));
             }
 
             if (explicitContent != null)
@@ -528,7 +562,7 @@ namespace osu.Game.Screens.OnlinePlay
             };
         }
 
-        private IEnumerable<Drawable> createButtons() => new[]
+        private IEnumerable<Drawable> createButtons() => CreateActionButtons?.Invoke() ?? new[]
         {
             new CompletionIcon
             {
@@ -554,7 +588,7 @@ namespace osu.Game.Screens.OnlinePlay
                 Size = new Vector2(30, 30),
                 Action = () => RequestResults?.Invoke(Item),
                 Alpha = AllowShowingResults ? 1 : 0,
-                TooltipText = "View results"
+                TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J4363
             },
             editButton = new PlaylistEditButton
             {
@@ -572,7 +606,7 @@ namespace osu.Game.Screens.OnlinePlay
                 Size = new Vector2(30, 30),
                 Alpha = AllowDeletion ? 1 : 0,
                 Action = () => RequestDeletion?.Invoke(Item),
-                TooltipText = "Remove from playlist"
+                TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J4364
             },
         };
 
@@ -603,6 +637,9 @@ namespace osu.Game.Screens.OnlinePlay
         {
             get
             {
+                if (UseLocalBeatmap)
+                    return Array.Empty<MenuItem>();
+
                 List<MenuItem> items = new List<MenuItem>();
 
                 if (beatmapOverlay != null)
@@ -768,7 +805,7 @@ namespace osu.Game.Screens.OnlinePlay
                 });
             }
 
-            public LocalisableString TooltipText => User == null ? string.Empty : $"queued by {User.Username}";
+            public LocalisableString TooltipText => User == null ? string.Empty : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4365(User.Username);
 
             private partial class TooltipArea : Component, IHasTooltip
             {

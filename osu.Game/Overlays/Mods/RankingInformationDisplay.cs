@@ -37,6 +37,8 @@ namespace osu.Game.Overlays.Mods
         private RollingCounter<double> counter = null!;
 
         private Box flashLayer = null!;
+        private Container flashContainer = null!;
+        private IBindable<float>? buttonRadius;
         private TextWithTooltip rankedText = null!;
         private IBindable<Colour4> themeColour = null!;
 
@@ -48,7 +50,7 @@ namespace osu.Game.Overlays.Mods
         {
             // You would think that we could add this to `Content`, but borders don't mix well
             // with additive blending children elements.
-            AddInternal(new Container
+            AddInternal(flashContainer = new Container
             {
                 Anchor = Anchor.BottomRight,
                 Origin = Anchor.BottomRight,
@@ -66,6 +68,9 @@ namespace osu.Game.Overlays.Mods
                     }
                 }
             });
+
+            buttonRadius = ColourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Button, ShearedButton.CORNER_RADIUS);
+            buttonRadius.BindValueChanged(r => flashContainer.CornerRadius = r.NewValue, true);
 
             LeftContent.AddRange(new Drawable[]
             {

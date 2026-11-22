@@ -48,6 +48,24 @@ namespace osu.Game.Tests.Visual.Gameplay
         [SetUp]
         public void Setup() => Schedule(() => testClock.CurrentTime = 0);
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestBakedTempoDoesNotChangeScrollVelocity(bool relative)
+        {
+            var beatmap = createBeatmap();
+            beatmap.ControlPointInfo.Add(0, new TimingControlPoint { BeatLength = time_range });
+            createTest(beatmap, d => d.RelativeScaleBeatLengthsOverride = relative, new ModGlitch
+            {
+                Amount = { Value = 100 }, Thirds = { Value = false }, Fifths = { Value = false },
+            });
+            assertPosition(0, 0);
+            // Only the first 500ms of each 1000ms gap is active: it becomes 333ms.
+            // The resulting 833ms gap scrolls at the authored velocity, not at 1.5x.
+            assertPosition(1, 5 / 6f);
+            setTime(100);
+            assertPosition(1, 11 / 15f);
+        }
+
         [TestCase("pooled")]
         [TestCase("non-pooled")]
         public void TestHitObjectLifetime(string pooled)
@@ -273,13 +291,14 @@ namespace osu.Game.Tests.Visual.Gameplay
             return beatmap;
         }
 
-        private void createTest(IBeatmap beatmap, Action<TestDrawableScrollingRuleset> overrideAction = null)
+        private void createTest(IBeatmap beatmap, Action<TestDrawableScrollingRuleset> overrideAction = null, Mod mod = null)
         {
             AddStep("create test", () =>
             {
                 var ruleset = new TestScrollingRuleset();
 
-                drawableRuleset = (TestDrawableScrollingRuleset)ruleset.CreateDrawableRulesetWith(CreateWorkingBeatmap(beatmap).GetPlayableBeatmap(ruleset.RulesetInfo));
+                Mod[] mods = mod == null ? Array.Empty<Mod>() : new[] { mod };
+                drawableRuleset = (TestDrawableScrollingRuleset)ruleset.CreateDrawableRulesetWith(CreateWorkingBeatmap(beatmap).GetPlayableBeatmap(ruleset.RulesetInfo, mods), mods);
                 drawableRuleset.FrameStablePlayback = false;
 
                 overrideAction?.Invoke(drawableRuleset);

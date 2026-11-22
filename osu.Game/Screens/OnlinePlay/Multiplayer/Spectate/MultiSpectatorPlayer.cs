@@ -29,6 +29,9 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Spectate
         /// </summary>
         public IAggregateAudioAdjustment ClockAdjustmentsFromMods => clockAdjustmentsFromMods;
 
+        private readonly bool rankedPlay;
+        protected override bool IsRankedPlaySession => rankedPlay;
+
         private readonly AudioAdjustments clockAdjustmentsFromMods = new AudioAdjustments();
         private readonly SpectatorPlayerClock spectatorPlayerClock;
 
@@ -41,10 +44,11 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Spectate
         /// </summary>
         /// <param name="score">The score containing the player's replay.</param>
         /// <param name="spectatorPlayerClock">The clock controlling the gameplay running state.</param>
-        public MultiSpectatorPlayer(Score score, SpectatorPlayerClock spectatorPlayerClock)
+        public MultiSpectatorPlayer(Score score, SpectatorPlayerClock spectatorPlayerClock, bool rankedPlay = false)
             : base(score, new PlayerConfiguration { AllowUserInteraction = false })
         {
             this.spectatorPlayerClock = spectatorPlayerClock;
+            this.rankedPlay = rankedPlay;
 
             ShowSettingsOverlay = false;
         }

@@ -267,7 +267,7 @@ namespace osu.Game.Screens.Edit.Timing
                             text = new OsuSpriteText
                             {
                                 Colour = colours.GrayF,
-                                Text = "Locked",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4343,
                                 Margin = new MarginPadding(5),
                                 Shadow = false,
                                 Font = OsuFont.Default.With(size: 12, weight: FontWeight.SemiBold),

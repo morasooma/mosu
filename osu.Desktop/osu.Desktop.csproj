@@ -1,10 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup Label="Project">
     <TargetFramework>net10.0</TargetFramework>
+    <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
     <OutputType>WinExe</OutputType>
     <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
-    <RuntimeIdentifier Condition="'$(OS)' != 'Windows_NT' and '$(RuntimeIdentifier)' == '' and '$([MSBuild]::IsOSPlatform(&quot;Linux&quot;))'">linux-x64</RuntimeIdentifier>
     <PlatformTarget Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier.Substring($([MSBuild]::Add($(RuntimeIdentifier.LastIndexOf('-')), 1))))</PlatformTarget>
     <PlatformTarget Condition="'$(RuntimeIdentifier)' == ''">x64</PlatformTarget>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -49,11 +49,12 @@
     <ProjectReference Include="..\osu.Game.Rulesets.Dodge\osu.Game.Rulesets.Dodge.csproj" />
   </ItemGroup>
   <ItemGroup Label="Package References">
-    <PackageReference Include="System.IO.Packaging" Version="10.0.12"/>
+    <PackageReference Include="System.IO.Packaging" Version="10.0.14"/>
     <!-- Held back due to invite bug in newer versions. See https://github.com/Lachee/discord-rpc-csharp/issues/286 -->
     <PackageReference Include="DiscordRichPresence" Version="1.5.0.51"/>
-    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.745401"/>
-    <PackageReference Include="Velopack" Version="1.2.0"/>
+    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.750501"/>
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.21"/>
+    <PackageReference Include="Velopack" Version="1.2.161"/>
   </ItemGroup>
   <ItemGroup Label="Resources">
     <EmbeddedResource Include="lazer.ico"/>

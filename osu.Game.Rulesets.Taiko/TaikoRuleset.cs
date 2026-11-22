@@ -10,6 +10,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Input.Bindings;
 using osu.Framework.Localisation;
+using osu.Framework.IO.Stores;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.Legacy;
 using osu.Game.Configuration;
@@ -47,8 +48,19 @@ using osuTK;
 
 namespace osu.Game.Rulesets.Taiko
 {
-    public class TaikoRuleset : Ruleset, ILegacyRuleset
+    public class TaikoRuleset : Ruleset, ILegacyRuleset, IHasLegacyScoreV1Processor
     {
+        public override IResourceStore<byte[]> CreateResourceStore()
+        {
+            // Ruleset defaults have their own namespace: they must not replace the
+            // similarly named generic gameplay sounds or user/beatmap skin files.
+            var resources = new ResourceStore<byte[]>();
+            resources.AddStore(new NamespacedResourceStore<byte[]>(
+                new DllResourceStore(typeof(Morasooma.Resources.ResourceAssembly).Assembly), "SoundOverrides/Rulesets/Taiko"));
+            resources.AddStore(base.CreateResourceStore());
+            return resources;
+        }
+
         public override DrawableRuleset CreateDrawableRulesetWith(IBeatmap beatmap, IReadOnlyList<Mod>? mods = null) => new DrawableTaikoRuleset(this, beatmap, mods);
 
         public override ScoreProcessor CreateScoreProcessor() => new TaikoScoreProcessor();
@@ -157,6 +169,8 @@ namespace osu.Game.Rulesets.Taiko
                         new TaikoModMosuStaticBpm(),
                         new TaikoModMosuTargetDifficulty(),
                         new TaikoModAudioEffects(),
+                        new TaikoModGlitch(),
+                        new TaikoModFlatline(),
                     };
 
                 case ModType.DifficultyReduction:
@@ -247,6 +261,9 @@ namespace osu.Game.Rulesets.Taiko
 
         public ILegacyScoreSimulator CreateLegacyScoreSimulator() => new TaikoLegacyScoreSimulator();
 
+        public ILegacyScoreV1Processor CreateLegacyScoreV1Processor(IWorkingBeatmap workingBeatmap, IBeatmap playableBeatmap, IReadOnlyList<Mod> mods)
+            => new TaikoLegacyScoreV1Processor(workingBeatmap.Beatmap, playableBeatmap, mods);
+
         public override IConvertibleReplayFrame CreateConvertibleReplayFrame() => new TaikoReplayFrame();
 
         public override IRulesetConfigManager CreateConfig(SettingsStore? settings) => new TaikoRulesetConfigManager(settings, RulesetInfo);
@@ -288,12 +305,12 @@ namespace osu.Game.Rulesets.Taiko
 
             return new[]
             {
-                new StatisticItem("Performance Breakdown", () => new PerformanceBreakdownChart(score)
+                new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5708, () => new PerformanceBreakdownChart(score)
                 {
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y
                 }),
-                new StatisticItem("Timing Distribution", () => new FillFlowContainer
+                new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5709, () => new FillFlowContainer
                 {
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y,

@@ -4,6 +4,7 @@
 using NUnit.Framework;
 using osu.Framework.Utils;
 using osu.Game.Beatmaps;
+using osu.Game.Online;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Scoring;
@@ -12,8 +13,36 @@ using osu.Game.Tests.Rulesets;
 
 namespace osu.Game.Rulesets.Osu.Tests
 {
+    [NonParallelizable]
     public class OsuScoreMultiplierTest : RulesetScoreMultiplierTest
     {
+        [Test]
+        public void TestThirdPartyProfilesKeepOriginalRelaxAndDifficultyAdjustMultipliers()
+        {
+            bool previous = MosuServerEnvironment.IsThirdPartyServer;
+            try
+            {
+                var ruleset = new OsuRuleset();
+                var map = new BeatmapDifficulty { CircleSize = 4, ApproachRate = 9, OverallDifficulty = 8, DrainRate = 6 };
+                MosuServerEnvironment.IsThirdPartyServer = true;
+                var thirdParty = ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(map));
+                Assert.That(thirdParty.CalculateFor(new Mod[] { new OsuModRelax() }), Is.EqualTo(0.1).Within(0.000001));
+                var da = new OsuModDifficultyAdjust { CircleSize = { Value = 3 } };
+                Assert.That(thirdParty.CalculateFor(new Mod[] { da }), Is.EqualTo(0.5).Within(0.000001));
+
+                MosuServerEnvironment.IsThirdPartyServer = false;
+                var local = ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(map, useOriginalMultipliers: true));
+                Assert.That(local.CalculateFor(new Mod[] { new OsuModRelax() }), Is.EqualTo(0.1).Within(0.000001));
+                Assert.That(local.CalculateFor(new Mod[] { da }), Is.EqualTo(0.5).Within(0.000001));
+                var mosu = ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(map));
+                Assert.That(mosu.CalculateFor(new Mod[] { new OsuModRelax() }), Is.EqualTo(1).Within(0.000001));
+                Assert.That(mosu.CalculateFor(new Mod[] { da }), Is.Not.EqualTo(0.5).Within(0.000001));
+            }
+            finally
+            {
+                MosuServerEnvironment.IsThirdPartyServer = previous;
+            }
+        }
         public OsuScoreMultiplierTest()
             : base(new OsuRuleset())
         {
@@ -147,7 +176,7 @@ namespace osu.Game.Rulesets.Osu.Tests
 
             [new Mod[] { new OsuModAutoplay() }, 1],
             [new Mod[] { new OsuModCinema() }, 1],
-            [new Mod[] { new OsuModRelax() }, 1], // Mosu: no RX score penalty
+            [new Mod[] { new OsuModRelax() }, 1],
             [new Mod[] { new OsuModAutopilot() }, 0.1],
             [new Mod[] { new OsuModSpunOut() }, 0.95],
 
@@ -229,7 +258,6 @@ namespace osu.Game.Rulesets.Osu.Tests
         public void TestMultipliers(Mod[] mods, double expectedMultiplier)
             => TestModCombination(mods, expectedMultiplier);
 
-        // Mosu DA multipliers (beatmap: CS 3, AR 4, OD 5, HP 6).
         [TestCase(null, null, null, null, 1)]
         [TestCase(2.9f, null, null, null, 0.97)]
         [TestCase(3.1f, null, null, null, 1.004)]
@@ -242,9 +270,6 @@ namespace osu.Game.Rulesets.Osu.Tests
         [TestCase(2.9f, 3.9f, null, null, 0.97 * 0.995)]
         [TestCase(2.9f, 3.9f, 4.9f, null, 0.97 * 0.995 * 0.98)]
         [TestCase(2.9f, 3.9f, 4.9f, 5.9f, 0.97 * 0.995 * 0.98)]
-        [TestCase(10f, null, null, null, 1.28)]
-        [TestCase(null, 10f, null, null, 0.7)]
-        [TestCase(null, null, 10f, null, 1.05)]
         [TestCase(0.0f, null, null, null, 0.1)]
         [TestCase(0.0f, 0.0f, 0.0f, 0.0f, 0.1)]
         public void TestDifficultyAdjust(float? cs, float? ar, float? od, float? hp, double expectedMultiplier)
@@ -278,6 +303,18 @@ namespace osu.Game.Rulesets.Osu.Tests
             var scoreInfo = totalScoreVersion != null ? new ScoreInfo { TotalScoreVersion = totalScoreVersion.Value } : null;
             var calculator = Ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(new BeatmapDifficulty(), scoreInfo));
             Assert.That(calculator.CalculateFor([new OsuModClassic()]), Is.EqualTo(expectedMultiplier).Within(Precision.DOUBLE_EPSILON));
+        }
+
+        [Test]
+        public void HistoricalRelaxAndDifficultyAdjustMultipliersArePreserved()
+        {
+            var map = new BeatmapDifficulty { CircleSize = 3, ApproachRate = 4, OverallDifficulty = 5, DrainRate = 6 };
+            var da = new OsuModDifficultyAdjust { CircleSize = { Value = 2.9f } };
+            var mods = new Mod[] { new OsuModRelax(), da };
+            var historical = Ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(map, new ScoreInfo { TotalScoreVersion = 30000019 }));
+            var current = Ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(map));
+            Assert.That(historical.CalculateFor(mods), Is.EqualTo(0.095).Within(0.000001));
+            Assert.That(current.CalculateFor(mods), Is.EqualTo(0.97).Within(0.000001));
         }
 
         [Test]

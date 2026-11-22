@@ -22,6 +22,7 @@ using osu.Game.Input.Bindings;
 using osu.Game.Localisation;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Overlays.Dashboard.Friends;
 using osu.Game.Overlays.Mods.Input;
 using osu.Game.Rulesets.Scoring;
@@ -45,6 +46,37 @@ namespace osu.Game.Configuration
         private string originalGameToken = string.Empty;
         private string? originalGameVersionLine;
 
+        public CustomThemeLibrary CustomThemes { get; }
+
+        private HashSet<string>? installedFontPackFamilies;
+
+        internal void RegisterFontPackFamilies(IEnumerable<string> families)
+        {
+            installedFontPackFamilies ??= new HashSet<string>(StringComparer.Ordinal);
+            installedFontPackFamilies.UnionWith(families);
+        }
+
+        private bool isInstalledFontPackFamily(string font)
+        {
+            // Config/theme loading precedes font-store registration. Resolve against
+            // this profile's validated archives, not the process-wide dropdown list.
+            if (installedFontPackFamilies == null)
+            {
+                installedFontPackFamilies = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var pack in new Graphics.Fonts.FontPackLibrary(storage).Installed())
+                    RegisterFontPackFamilies(pack.Manifest.Families.Select(f => pack.InstalledFamily(f.Name)));
+            }
+            return installedFontPackFamilies.Contains(font);
+        }
+
+        internal bool IsThemeFontAvailable(string font) => OsuGameBase.BuiltInCustomUIFonts.Contains(font)
+            || font.StartsWith("morafn-", StringComparison.Ordinal) && isInstalledFontPackFamily(font)
+            || ThemeInterfaceSettings.IsSafeFontName(font) && font.EndsWith(".fnt", StringComparison.OrdinalIgnoreCase)
+                && storage.GetStorageForDirectory("Fonts").Exists(font);
+
+        internal Bindable<bool> GetEditorAutoSeekOnPlacement(string rulesetShortName) => GetBindable<bool>(
+            rulesetShortName == "mania" ? OsuSetting.ForkManiaEditorAutoSeekOnPlacement : OsuSetting.EditorAutoSeekOnPlacement);
+
         protected override string Filename => @"game.ini";
         protected virtual string CustomFilename => @"mosu.ini";
 
@@ -53,10 +85,26 @@ namespace osu.Game.Configuration
         {
             this.storage = storage;
             migrateOldConfig(storage);
+            // Keep an explicitly chosen legacy global font; untouched profiles use
+            // the original per-family typography with the new switch enabled.
+            using (var saved = storage.GetStream(CustomFilename))
+            {
+                if (saved != null)
+                {
+                    using var reader = new StreamReader(saved);
+                    string text = reader.ReadToEnd();
+                    if (!text.Split('\n').Any(l => l.Split('=', 2)[0].Trim() == "ForkUseSeparateFonts")
+                        && Get<string>(OsuSetting.ForkCustomUIFont) != "Default")
+                        SetValue(OsuSetting.ForkUseSeparateFonts, false);
+                }
+            }
             migrateReleaseStreamSetting(storage);
             migrateLegacyConnectionProxySetting();
             migrateSongSelectStyleSetting();
+            migrateRelaxPpSystemDefault();
+            migrateMosuPpPrereleaseDefault();
             enforceSingleServerRestrictions();
+            CustomThemes = new CustomThemeLibrary(this);
         }
 
         /// <summary>
@@ -82,6 +130,36 @@ namespace osu.Game.Configuration
             // subsequent choice if the selected new style happens to equal its default value.
             SetValue(OsuSetting.ForkSongSelectV1Carousel, false);
             SetValue(OsuSetting.ForkSongSelectSkinnedLegacyCarousel, false);
+        }
+
+        /// <summary>
+        /// Older profiles persisted the former default (MosuRealistik) in mosu.ini. Move that
+        /// value to MosuPp once, then leave all later user choices untouched.
+        /// </summary>
+        private void migrateRelaxPpSystemDefault()
+        {
+            if (Get<bool>(OsuSetting.ForkRelaxPpSystemDefaultMigrated))
+                return;
+
+            if (Get<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem) == ForkRelaxPpSystem.MosuRealistik)
+                SetValue(OsuSetting.ForkRelaxPpSystem, ForkRelaxPpSystem.MosuPp);
+
+            SetValue(OsuSetting.ForkRelaxPpSystemDefaultMigrated, true);
+        }
+
+        private void migrateMosuPpPrereleaseDefault()
+        {
+            if (Get<bool>(OsuSetting.ForkMosuPpPrereleaseDefaultMigrated))
+                return;
+
+            // Very old profiles would have moved to TazikPp first. For profiles that
+            // already got that default, preserve a saved choice of any other system.
+            if (!Get<bool>(OsuSetting.ForkTazikPpDefaultMigrated)
+                || Get<ForkRelaxPpSystem>(OsuSetting.ForkRelaxPpSystem) == ForkRelaxPpSystem.TazikPp)
+                SetValue(OsuSetting.ForkRelaxPpSystem, ForkRelaxPpSystem.MosuPpPrerelease);
+
+            SetValue(OsuSetting.ForkTazikPpDefaultMigrated, true);
+            SetValue(OsuSetting.ForkMosuPpPrereleaseDefaultMigrated, true);
         }
 
         private void migrateLegacyConnectionProxySetting()
@@ -529,6 +607,13 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.Ruleset, string.Empty);
             SetDefault(OsuSetting.Skin, SkinInfo.MORASOOMA_SKIN.ToString());
             SetDefault(OsuSetting.ForkSeparateSkinsPerRuleset, false);
+            SetDefault(OsuSetting.ForkShowHitCircleNumbers, true);
+            SetDefault(OsuSetting.ForkShowFollowPoints, true);
+            SetDefault(OsuSetting.ForkShowSliderBall, true);
+            SetDefault(OsuSetting.ForkShowSliderFollowCircle, true);
+            SetDefault(OsuSetting.ForkShowReverseArrows, true);
+            SetDefault(OsuSetting.ForkShowSliderTicks, true);
+            SetDefault(OsuSetting.ForkShowSpinners, true);
             SetDefault(OsuSetting.ForkUseSkinCursorOutsideGameplay, false);
             SetDefault(OsuSetting.ForkOsuSkin, string.Empty);
             SetDefault(OsuSetting.ForkTaikoSkin, string.Empty);
@@ -552,6 +637,7 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ModSelectTextSearchStartsActive, true);
 
             SetDefault(OsuSetting.ChatDisplayHeight, ChatOverlay.DEFAULT_HEIGHT, 0.2f, 1f, 0.01f);
+            SetDefault(OsuSetting.ForkChatTranslatorEnabled, true);
 
             SetDefault(OsuSetting.BeatmapListingCardSize, BeatmapCardSize.Normal);
             SetDefault(OsuSetting.BeatmapListingFeaturedArtistFilter, true);
@@ -590,6 +676,7 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ExternalLinkWarning, true);
             SetDefault(OsuSetting.PreferNoVideo, false);
             SetDefault(OsuSetting.BeatmapDownloadMirror, DownloadMirror.Auto);
+            SetDefault(OsuSetting.BeatmapCatalogueSource, BeatmapCatalogueSource.Auto);
             SetDefault(OsuSetting.ForkUseOfficialBeatmapService, false);
             SetDefault(OsuSetting.ForkOfficialOsuFailureNotificationKey, string.Empty);
 
@@ -639,8 +726,13 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ForkAimAssistShowFlowDebug, false);
             SetDefault(OsuSetting.ForkCustomUsername, string.Empty);
             SetDefault(OsuSetting.ForkMorasoomaEndTag, false);
+            SetDefault(OsuSetting.ForkMorasoomaEndTagText, "MORASOOMA");
             SetDefault(OsuSetting.ForkCustomUIFont, "Default");
-            SetDefault(OsuSetting.ForkRussianFontFix, true);
+            SetDefault(OsuSetting.ForkUseSeparateFonts, true);
+            SetDefault(OsuSetting.ForkMainFont, "Default");
+            SetDefault(OsuSetting.ForkAlternateFont, "Default");
+            SetDefault(OsuSetting.ForkNumericFont, "Default");
+            SetDefault(OsuSetting.ForkInterFont, "Default");
             SetDefault(OsuSetting.ForkRelaxEnabled, false);
             SetDefault(OsuSetting.ForkRelaxBlindTapEnabled, false);
             SetDefault(OsuSetting.ForkRelaxBaseOffset, 22.0, -60, 60, 1);
@@ -659,12 +751,50 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ForkRelaxStreamBlindMode, false);
             SetDefault(OsuSetting.ForkRelaxStableBpm, 200.0, 60.0, 600.0, 1.0);
             SetDefault(OsuSetting.ForkRelaxStableBpmMigrationComplete, false);
-            SetDefault(OsuSetting.ForkRelaxPpSystem, ForkRelaxPpSystem.MosuRealistik);
+            SetDefault(OsuSetting.ForkRelaxPpSystem, ForkRelaxPpSystem.MosuPpPrerelease);
+            SetDefault(OsuSetting.ForkRelaxPpSystemDefaultMigrated, false);
+            SetDefault(OsuSetting.ForkTazikPpDefaultMigrated, false);
+            SetDefault(OsuSetting.ForkMosuPpPrereleaseDefaultMigrated, false);
+            SetDefault(OsuSetting.ForkAiAudioRecommendations, false);
+            SetDefault(OsuSetting.ForkAiAudioDevice, Overlays.Discovery.DiscoveryAudioDevice.Auto);
+            SetDefault(OsuSetting.ForkAiAudioCandidates, 12, 4, 24);
+            SetDefault(OsuSetting.ForkAiAudioBackgroundSearch, true);
+            SetDefault(OsuSetting.ForkAiBackgroundBlur, false);
+            SetDefault(OsuSetting.ForkAiBackgroundFilterMode, Graphics.Backgrounds.AI.BackgroundFilterMode.Suggestive);
+            SetDefault(OsuSetting.ForkAiGeneralModel, true);
+            SetDefault(OsuSetting.ForkAiAnimeModel, true);
+            SetDefault(OsuSetting.ForkAiGeneralThreshold, 0.30, 0.01, 0.99, 0.01);
+            SetDefault(OsuSetting.ForkAiAnimeThreshold, 0.30, 0.01, 0.99, 0.01);
+            SetDefault(OsuSetting.ForkAiCombination, Graphics.Backgrounds.AI.BackgroundSafetyCombination.Any);
+            SetDefault(OsuSetting.ForkAiBlurStrength, 16.0, 4, 32, 1);
+            SetDefault(OsuSetting.ForkAiCacheEnabled, true);
+            SetDefault(OsuSetting.ForkAiCacheMegabytes, 512, 64, 4096);
+            SetDefault(OsuSetting.ForkAiStillLife, false);
+            SetDefault(OsuSetting.ForkAiStillLifeBackend, Graphics.Backgrounds.AI.StillLifeBackend.Cpu);
+            SetDefault(OsuSetting.ForkAiStillLifeSize, Graphics.Backgrounds.AI.StillLifeResolution.Medium);
+            SetDefault(OsuSetting.ForkAiStillLifePasses, 3, 1, 6);
+            SetDefault(OsuSetting.ForkAiStillLifeSteps, 1, 1, 4);
+            SetDefault(OsuSetting.ForkAiStillLifeStrength, 0.45, 0.1, 0.9, 0.01);
+            SetDefault(OsuSetting.ForkAiStillLifeSeed, 12345, 0, int.MaxValue);
+            SetDefault(OsuSetting.ForkAiStillLifeThreads, 4, 1, 8);
+            SetDefault(OsuSetting.ForkBackgroundCalculationStartup, true);
+            SetDefault(OsuSetting.ForkBackgroundCalculationDelay, 0, 0, 300);
+            SetDefault(OsuSetting.ForkBackgroundCalculationModes, "{}");
+            SetDefault(OsuSetting.ForkBackgroundCalculationObjectCounts, true);
+            SetDefault(OsuSetting.ForkBackgroundCalculationScoreStatistics, true);
+            SetDefault(OsuSetting.ForkBackgroundCalculationOnlineMetadata, true);
+            SetDefault(OsuSetting.ForkBackgroundCalculationTags, true);
             SetDefault(OsuSetting.ForkDisableRemoteLogging, false);
             SetDefault(OsuSetting.ForkCustomRecommendedDifficultyEnabled, false);
             SetDefault(OsuSetting.ForkCustomRecommendedDifficulty, 5.0, 0.0, 15.0, 0.1);
             SetDefault(OsuSetting.ForkUncappedFrameRate, false);
             SetDefault(OsuSetting.ForkLimitMenuFps2x, false);
+            SetDefault(OsuSetting.ForkCustomFrameLimits, false);
+            SetDefault(OsuSetting.ForkCustomDrawHz, 0, 0, 16000);
+            SetDefault(OsuSetting.ForkCustomUpdateHz, 8000, 0, 16000);
+            SetDefault(OsuSetting.ForkCustomInputHz, 1000, 0, 16000);
+            SetDefault(OsuSetting.ForkCustomAudioHz, 1000, 0, 16000);
+            SetDefault(OsuSetting.ForkLinuxGamePriority, false);
             SetDefault(OsuSetting.ForkWindowsUltraPerformanceMode, false);
             SetDefault(OsuSetting.ForkSkinPerformanceMode, false);
             SetDefault(OsuSetting.ForkSkinPerformanceFreezeAnimations, true);
@@ -679,6 +809,8 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ForkAtlasRegionAllocator, false);
             SetDefault(OsuSetting.ForkGameplayRenderScale, 1f, 0.1f, 1f, 0.05f);
             SetDefault(OsuSetting.ForkPerformanceLogging, false);
+            SetDefault(OsuSetting.ForkBackgroundCalculationConcurrency, 2, 1, 4);
+            SetDefault(OsuSetting.ForkBackgroundCalculationDutyPercent, 50, 10, 100);
             SetDefault(OsuSetting.ForkAllowTearing, true);
             SetDefault(OsuSetting.ForkUpdateThreadSpinWait, false);
             SetDefault(OsuSetting.ForkFrameLimiterRestoreMode, FrameSync.Limit2x);
@@ -691,12 +823,15 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.Modern);
             SetDefault(OsuSetting.ForkSongSelectCarouselBackgroundDim, 0.10, 0, 1, 0.01);
             SetDefault(OsuSetting.ForkSongSelectCarouselPerformanceMode, false);
+            SetDefault(OsuSetting.ForkSongSelectModdedRatings, false);
             SetDefault(OsuSetting.ForkSongSelectCarouselPreviews, true);
             SetDefault(OsuSetting.ForkSongSelectCarouselLazyLoading, true);
             SetDefault(OsuSetting.ForkSongSelectCarouselPreviewResolution, 100, 25, 100);
             SetDefault(OsuSetting.ForkSongSelectCarouselBackgroundDim, 0.10, 0, 1, 0.01);
             SetDefault(OsuSetting.ForkSongSelectStoryboardBackground, false);
             SetDefault(OsuSetting.ForkAutoHideToolbar, false);
+            SetDefault(OsuSetting.ForkToolbarInvitations, true);
+            SetDefault(OsuSetting.ForkRankedInvitationsAllModes, false);
             SetDefault(OsuSetting.ForkReplayRenderDebugTraceMode, ReplayRenderDebugTraceMode.Disabled);
             SetDefault(OsuSetting.ForkReplayRenderQualityPreset, ReplayRenderQualityPreset.Balanced);
             SetDefault(OsuSetting.ForkReplayRenderResolution, "1920x1080");
@@ -707,7 +842,6 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ForkExportReplayOnlyClicks, false);
             SetDefault(OsuSetting.ForkVisualOD11, false);
             SetDefault(OsuSetting.ForkHitErrorMeterShowPositionalMisses, false);
-            SetDefault(OsuSetting.ForkRussianFontFix, true);
             SetDefault(OsuSetting.ForkRelaxEnabled, false);
             SetDefault(OsuSetting.ForkRelaxBlindTapEnabled, false);
             SetDefault(OsuSetting.ForkRelaxBaseOffset, 22.0, -60, 60, 1);
@@ -749,6 +883,8 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ForkAtlasRegionAllocator, false);
             SetDefault(OsuSetting.ForkGameplayRenderScale, 1f, 0.1f, 1f, 0.05f);
             SetDefault(OsuSetting.ForkPerformanceLogging, false);
+            SetDefault(OsuSetting.ForkBackgroundCalculationConcurrency, 2, 1, 4);
+            SetDefault(OsuSetting.ForkBackgroundCalculationDutyPercent, 50, 10, 100);
             SetDefault(OsuSetting.ForkDebugHudMode, DebugHudMode.Disabled);
             SetDefault(OsuSetting.ForkShowMemoryInToolbar, false);
             SetDefault(OsuSetting.ForkDebugFreezeAlerts, false);
@@ -773,17 +909,35 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.ForkExportReplayOnlyClicks, false);
             SetDefault(OsuSetting.ForkVisualOD11, false);
             SetDefault(OsuSetting.ForkHitErrorMeterShowPositionalMisses, false);
+#if DEBUG
+#endif
             SetDefault(OsuSetting.ForkUse8kPollingRate, false);
+            SetDefault(OsuSetting.InterfaceSoundPack, "default");
+            SetDefault(OsuSetting.GameResourcePack, "default");
+            SetDefault(OsuSetting.AppliedGameResourceFonts, "");
+            SetDefault(OsuSetting.GameResourceFontBaseline, "{}");
+            SetDefault(OsuSetting.AppliedGameResourceSounds, "");
+            SetDefault(OsuSetting.GameResourceSoundBaseline, "default");
             SetDefault(OsuSetting.ForkThemeMode, ThemeMode.Default);
+            SetDefault(OsuSetting.ForkCustomThemeJson, string.Empty);
+            SetDefault(OsuSetting.ForkCustomThemesJson, string.Empty);
+            SetDefault(OsuSetting.ForkActiveCustomThemeId, string.Empty);
+            SetDefault(OsuSetting.ForkFavouriteSettings, "[]");
             SetDefault(OsuSetting.ForkOverlayTransparency, false);
+            SetDefault(OsuSetting.ForkSongSelectTransparency, false);
             SetDefault(OsuSetting.ForkOverlayBlurStrength, 0.4, 0.0, 1.0, 0.01);
             SetDefault(OsuSetting.ForkOverlayDimAmount, 0.0, -1.0, 1.0, 0.01);
             SetDefault(OsuSetting.ForkMenuLogo, ForkMenuLogo.Random);
             SetDefault(OsuSetting.ForkMenuLogoGradient, ForkMenuLogoGradient.Random);
             SetDefault(OsuSetting.ForkMenuLogoTriangles, true);
             SetDefault(OsuSetting.ForkDisableInterfaceShear, false);
+            SetDefault(OsuSetting.ForkInterfaceAnimations, InterfaceAnimationMode.Full);
+            SetDefault(OsuSetting.ForkEnhancedAnimations, true);
+            SetDefault(OsuSetting.ForkBreakStyle, ForkBreakStyle.Default);
+            SetDefault(OsuSetting.ForkRussianLayoutSearch, true);
             SetDefault(OsuSetting.ForkDifficultyAdditionalInfo, true);
             SetDefault(OsuSetting.ForkShowModsInPresetList, true);
+            SetDefault(OsuSetting.ForkMergeModPresetsWithShift, true);
             SetDefault(OsuSetting.ForkEnhancedRankingRows, true);
             SetDefault(OsuSetting.ForkActiveProfileId, @"default");
             SetDefault(OsuSetting.ForkUseConnectionProxy, false);
@@ -799,6 +953,7 @@ namespace osu.Game.Configuration
 
             SetDefault(OsuSetting.MenuParallaxScale, 1.0f, 0.0f, 2.0f, 0.1f);
             SetDefault(OsuSetting.SongSelectCollectionFilter, string.Empty);
+            SetDefault(OsuSetting.SongSelectRememberCollection, true);
             SetDefault(OsuSetting.MultiplayerShowFullFilter, false);
             SetDefault(OsuSetting.PMFriendsOnly, false);
 
@@ -824,6 +979,7 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.LightenDuringBreaks, true);
 
             SetDefault(OsuSetting.HitLighting, true);
+            SetDefault(OsuSetting.ForkPracticeMode, true);
             SetDefault(OsuSetting.StarFountains, true);
 
             SetDefault(OsuSetting.HUDVisibilityMode, HUDVisibilityMode.Always);
@@ -848,6 +1004,7 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.Version, string.Empty);
 
             SetDefault(OsuSetting.ShowFirstRunSetup, true);
+            SetDefault(OsuSetting.ForkLibraryLocationChosen, storage?.Exists("mosu.ini") == true);
             SetDefault(OsuSetting.ShowMobileDisclaimer, RuntimeInfo.IsMobile);
 
             SetDefault(OsuSetting.ScreenshotFormat, ScreenshotFormat.Jpg);
@@ -881,6 +1038,7 @@ namespace osu.Game.Configuration
             SetDefault(OsuSetting.EditorWaveformOpacity, 0.25f, 0f, 1f, 0.25f);
             SetDefault(OsuSetting.EditorShowHitMarkers, true);
             SetDefault(OsuSetting.EditorAutoSeekOnPlacement, true);
+            SetDefault(OsuSetting.ForkManiaEditorAutoSeekOnPlacement, false);
             SetDefault(OsuSetting.EditorLimitedDistanceSnap, false);
             SetDefault(OsuSetting.EditorShowSpeedChanges, false);
             SetDefault(OsuSetting.EditorScaleOrigin, EditorOrigin.GridCentre);
@@ -1038,7 +1196,7 @@ namespace osu.Game.Configuration
         }
 
         public Func<Guid, string> LookupSkinName { private get; set; } = _ => @"unknown";
-        public Func<GlobalAction, LocalisableString> LookupKeyBindings { private get; set; } = _ => @"unknown";
+        public Func<GlobalAction, LocalisableString> LookupKeyBindings { private get; set; } = _ => global::osu.Game.Localisation.ClientTranslationStrings.J3226;
 
         IBindable<float> IGameplaySettings.ComboColourNormalisationAmount => GetOriginalBindable<float>(OsuSetting.ComboColourNormalisationAmount);
         IBindable<float> IGameplaySettings.PositionalHitsoundsLevel => GetOriginalBindable<float>(OsuSetting.PositionalHitsoundsLevel);
@@ -1102,6 +1260,7 @@ namespace osu.Game.Configuration
         SongSelectGroupMode,
         SongSelectSortingMode,
         SongSelectCollectionFilter,
+        SongSelectRememberCollection,
         RandomSelectAlgorithm,
         ModSelectHotkeyStyle,
         ShowFpsDisplay,
@@ -1111,6 +1270,7 @@ namespace osu.Game.Configuration
         SongSelectBackgroundBlur,
         Version,
         ShowFirstRunSetup,
+        ForkLibraryLocationChosen,
         ShowConvertedBeatmaps,
         Skin,
         ScreenshotFormat,
@@ -1173,6 +1333,7 @@ namespace osu.Game.Configuration
         ForkAimAssistShowFlowDebug,
         ForkCustomUsername,
         ForkMorasoomaEndTag,
+        ForkMorasoomaEndTagText,
         ForkRelaxEnabled,
         ForkRelaxBlindTapEnabled,
         ForkRelaxBaseOffset,
@@ -1192,11 +1353,20 @@ namespace osu.Game.Configuration
         ForkRelaxStableBpm,
         ForkRelaxStableBpmMigrationComplete,
         ForkRelaxPpSystem,
+        ForkRelaxPpSystemDefaultMigrated,
+        ForkTazikPpDefaultMigrated,
         ForkDisableRemoteLogging,
+        ForkPracticeMode,
         ForkCustomRecommendedDifficultyEnabled,
         ForkCustomRecommendedDifficulty,
         ForkUncappedFrameRate,
         ForkLimitMenuFps2x,
+        ForkCustomFrameLimits,
+        ForkCustomDrawHz,
+        ForkCustomUpdateHz,
+        ForkCustomInputHz,
+        ForkCustomAudioHz,
+        ForkLinuxGamePriority,
         ForkWindowsUltraPerformanceMode,
         ForkSkinPerformanceMode,
         ForkSkinPerformanceFreezeAnimations,
@@ -1208,6 +1378,13 @@ namespace osu.Game.Configuration
         ForkSkinPerformanceBlackBackground,
         ForkArgonFollowRing,
         ForkSeparateSkinsPerRuleset,
+        ForkShowHitCircleNumbers,
+        ForkShowFollowPoints,
+        ForkShowSliderBall,
+        ForkShowSliderFollowCircle,
+        ForkShowReverseArrows,
+        ForkShowSliderTicks,
+        ForkShowSpinners,
         ForkUseSkinCursorOutsideGameplay,
         ForkOsuSkin,
         ForkTaikoSkin,
@@ -1223,6 +1400,37 @@ namespace osu.Game.Configuration
         ForkAtlasRegionAllocator,
         ForkGameplayRenderScale,
         ForkPerformanceLogging,
+        ForkAiAudioRecommendations,
+        ForkAiAudioDevice,
+        ForkAiAudioCandidates,
+        ForkAiAudioBackgroundSearch,
+        ForkAiBackgroundBlur,
+        ForkAiBackgroundFilterMode,
+        ForkAiGeneralModel,
+        ForkAiAnimeModel,
+        ForkAiGeneralThreshold,
+        ForkAiAnimeThreshold,
+        ForkAiCombination,
+        ForkAiBlurStrength,
+        ForkAiCacheEnabled,
+        ForkAiCacheMegabytes,
+        ForkAiStillLife,
+        ForkAiStillLifeBackend,
+        ForkAiStillLifeSize,
+        ForkAiStillLifePasses,
+        ForkAiStillLifeSteps,
+        ForkAiStillLifeStrength,
+        ForkAiStillLifeSeed,
+        ForkAiStillLifeThreads,
+        ForkBackgroundCalculationStartup,
+        ForkBackgroundCalculationDelay,
+        ForkBackgroundCalculationModes,
+        ForkBackgroundCalculationObjectCounts,
+        ForkBackgroundCalculationScoreStatistics,
+        ForkBackgroundCalculationOnlineMetadata,
+        ForkBackgroundCalculationTags,
+        ForkBackgroundCalculationConcurrency,
+        ForkBackgroundCalculationDutyPercent,
         ForkDebugHudMode,
         ForkShowMemoryInToolbar,
         ForkDebugFreezeAlerts,
@@ -1237,12 +1445,15 @@ namespace osu.Game.Configuration
         ForkSongSelectV1Carousel,
         ForkSongSelectStyle,
         ForkSongSelectCarouselPerformanceMode,
+        ForkSongSelectModdedRatings,
         ForkSongSelectCarouselPreviews,
         ForkSongSelectCarouselLazyLoading,
         ForkSongSelectCarouselPreviewResolution,
         ForkSongSelectCarouselBackgroundDim,
         ForkSongSelectStoryboardBackground,
         ForkAutoHideToolbar,
+        ForkToolbarInvitations,
+        ForkRankedInvitationsAllModes,
         ForkReplayRenderDebugTraceMode,
         ForkReplayRenderQualityPreset,
         ForkReplayRenderResolution,
@@ -1252,22 +1463,40 @@ namespace osu.Game.Configuration
         ForkReplayRenderShowResultsAfterPeriod,
         ModSelectTextSearchStartsActive,
         BeatmapDownloadMirror,
+        BeatmapCatalogueSource,
         ForkUseOfficialBeatmapService,
         ForkOfficialOsuFailureNotificationKey,
         ForkExportReplayOnlyClicks,
         ForkVisualOD11,
         ForkHitErrorMeterShowPositionalMisses,
+#if DEBUG
+#endif
         ForkUse8kPollingRate,
+        InterfaceSoundPack,
+        GameResourcePack,
+        AppliedGameResourceFonts,
+        GameResourceFontBaseline,
+        AppliedGameResourceSounds,
+        GameResourceSoundBaseline,
         ForkThemeMode,
+        ForkCustomThemeJson,
+        ForkCustomThemesJson,
+        ForkActiveCustomThemeId,
         ForkOverlayTransparency,
+        ForkSongSelectTransparency,
         ForkOverlayBlurStrength,
         ForkOverlayDimAmount,
         ForkMenuLogo,
         ForkMenuLogoGradient,
         ForkMenuLogoTriangles,
         ForkDisableInterfaceShear,
+        ForkInterfaceAnimations,
+        ForkEnhancedAnimations,
+        ForkBreakStyle,
+        ForkRussianLayoutSearch,
         ForkDifficultyAdditionalInfo,
         ForkShowModsInPresetList,
+        ForkMergeModPresetsWithShift,
         ForkEnhancedRankingRows,
         ForkActiveProfileId,
         ForkUseConnectionProxy,
@@ -1276,7 +1505,12 @@ namespace osu.Game.Configuration
         ForkUseStableDirectoryDirectly,
         ForkStableDirectoryPath,
         ForkCustomUIFont,
-        ForkRussianFontFix,
+        ForkUseSeparateFonts,
+        ForkMainFont,
+        ForkAlternateFont,
+        ForkNumericFont,
+        ForkInterFont,
+        ForkChatTranslatorEnabled,
         ForkClassicModDefault,
         ForkHideVisualSliderMisses,
         ForkShowBeatmapsWithMissingAudio,
@@ -1331,6 +1565,10 @@ namespace osu.Game.Configuration
         /// <summary>
         /// Blocks private messages, room invites, and duel requests from non-friends.
         /// </summary>
-        PMFriendsOnly
+        PMFriendsOnly,
+
+        ForkFavouriteSettings,
+        ForkManiaEditorAutoSeekOnPlacement,
+        ForkMosuPpPrereleaseDefaultMigrated
     }
 }

@@ -91,7 +91,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                 {
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
-                    Text = "MOB SPAWN ZONE",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4745,
                     Font = OsuFont.Default.With(size: 14, weight: FontWeight.Bold),
                     Colour = colours.Orange0,
                 },

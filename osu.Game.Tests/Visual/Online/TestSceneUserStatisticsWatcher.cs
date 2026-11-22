@@ -35,6 +35,7 @@ namespace osu.Game.Tests.Visual.Online
 
         private Action<GetUsersRequest>? handleGetUsersRequest;
         private Action<GetUserRequest>? handleGetUserRequest;
+        private Action<GetScoreRequest>? handleGetScoreRequest;
 
         private readonly Dictionary<(int userId, string rulesetName), UserStatistics> serverSideStatistics = new Dictionary<(int userId, string rulesetName), UserStatistics>();
 
@@ -46,11 +47,19 @@ namespace osu.Game.Tests.Visual.Online
             {
                 handleGetUserRequest = null;
                 handleGetUsersRequest = null;
+                handleGetScoreRequest = null;
 
                 dummyAPI.HandleRequest = request =>
                 {
                     switch (request)
                     {
+                        case GetScoreRequest getScoreRequest:
+                            if (handleGetScoreRequest != null)
+                                handleGetScoreRequest(getScoreRequest);
+                            else
+                                getScoreRequest.TriggerSuccess(new SoloScoreInfo { ID = (ulong)getScoreRequest.ScoreId, UserID = API.LocalUser.Value.Id });
+                            return true;
+
                         case GetUsersRequest getUsersRequest:
                             if (handleGetUsersRequest != null)
                             {
@@ -271,6 +280,145 @@ namespace osu.Game.Tests.Visual.Online
             AddStep("signal score processed", () => ((ISpectatorClient)spectatorClient).UserScoreProcessed(userId, scoreId));
             AddUntilStep("update received", () => update != null);
             AddAssert("statistics values are correct", () => statisticsProvider.GetStatisticsFor(ruleset)!.TotalScore, () => Is.EqualTo(5_000_000));
+        }
+
+        [Test]
+        public void TestLostPushRefreshesOnlyAfterDurableProcessing()
+        {
+            int userId = getUserId();
+            long scoreId = getScoreId();
+            var ruleset = new OsuRuleset().RulesetInfo;
+            setUpUser(userId);
+            bool processed = false;
+            int polls = 0;
+            ScoreBasedUserStatisticsUpdate? update = null;
+            AddStep("handle score readiness", () => handleGetScoreRequest = request =>
+            {
+                polls++;
+                request.TriggerSuccess(new SoloScoreInfo { ID = (ulong)scoreId, UserID = userId, Processed = processed });
+            });
+            registerForUpdates(scoreId, ruleset, value => update = value);
+            AddUntilStep("unprocessed score polled", () => polls > 0);
+            AddAssert("no stale statistics published", () => update == null);
+            feignScoreProcessing(userId, ruleset, 5_000_000);
+            AddStep("commit score processing", () => processed = true);
+            AddUntilStep("fallback update received", () => update != null);
+            AddAssert("correct delta retained", () => update!.Before.TotalScore == 4_000_000 && update.After.TotalScore == 5_000_000);
+        }
+
+        [Test]
+        public void TestReadinessFailureRetriesAndDuplicateRegistrationIsSafe()
+        {
+            int userId = getUserId();
+            long scoreId = getScoreId();
+            var ruleset = new OsuRuleset().RulesetInfo;
+            setUpUser(userId);
+            int polls = 0;
+            ScoreBasedUserStatisticsUpdate? update = null;
+            AddStep("fail first readiness request", () => handleGetScoreRequest = request =>
+            {
+                if (++polls == 1)
+                    request.TriggerFailure(new InvalidOperationException("temporary outage"));
+                else
+                    request.TriggerSuccess(new SoloScoreInfo { ID = (ulong)scoreId, UserID = userId, Processed = true });
+            });
+            registerForUpdates(scoreId, ruleset, value => update = value);
+            registerForUpdates(scoreId, ruleset, _ => { });
+            feignScoreProcessing(userId, ruleset, 5_000_000);
+            AddUntilStep("retried and refreshed", () => update != null);
+            AddAssert("only one retry chain", () => polls, () => Is.EqualTo(2));
+        }
+
+        [Test]
+        public void TestStatisticsFetchFailureDoesNotPublishCachedValues()
+        {
+            int userId = getUserId();
+            long scoreId = getScoreId();
+            var ruleset = new OsuRuleset().RulesetInfo;
+            setUpUser(userId);
+            int requests = 0;
+            ScoreBasedUserStatisticsUpdate? update = null;
+            AddStep("ready score and failing statistics", () =>
+            {
+                handleGetScoreRequest = request => request.TriggerSuccess(new SoloScoreInfo { ID = (ulong)scoreId, UserID = userId, Processed = true });
+                handleGetUserRequest = request =>
+                {
+                    requests++;
+                    request.TriggerFailure(new InvalidOperationException("temporary stats outage"));
+                };
+            });
+            registerForUpdates(scoreId, ruleset, value => update = value);
+            AddUntilStep("statistics fetch failed", () => requests > 0);
+            AddAssert("cached values not published", () => update == null);
+            feignScoreProcessing(userId, ruleset, 5_000_000);
+            AddStep("restore statistics endpoint", () => handleGetUserRequest = null);
+            AddUntilStep("statistics retry succeeded", () => update != null);
+            AddAssert("new statistics", () => update!.After.TotalScore, () => Is.EqualTo(5_000_000));
+        }
+
+        [Test]
+        public void TestReadinessResponseAfterAccountChangeIsIgnored()
+        {
+            int userId = getUserId();
+            long scoreId = getScoreId();
+            var ruleset = new OsuRuleset().RulesetInfo;
+            setUpUser(userId);
+            GetScoreRequest? pending = null;
+            ScoreBasedUserStatisticsUpdate? update = null;
+            AddStep("hold readiness request", () => handleGetScoreRequest = request => pending = request);
+            registerForUpdates(scoreId, ruleset, value => update = value);
+            AddUntilStep("request pending", () => pending != null);
+            AddStep("switch account", () => dummyAPI.LocalUser.Value = new APIUser { Id = getUserId() });
+            AddStep("release old account response", () => pending!.TriggerSuccess(new SoloScoreInfo { ID = (ulong)scoreId, UserID = userId, Processed = true }));
+            AddWaitStep("allow callbacks", 3);
+            AddAssert("no old account update", () => update == null);
+        }
+
+        [Test]
+        public void TestStatisticsResponseAfterAccountChangeIsIgnored()
+        {
+            int userId = getUserId();
+            long scoreId = getScoreId();
+            var ruleset = new OsuRuleset().RulesetInfo;
+            setUpUser(userId);
+            GetUserRequest? pending = null;
+            ScoreBasedUserStatisticsUpdate? update = null;
+            AddStep("hold statistics response", () =>
+            {
+                handleGetScoreRequest = request => request.TriggerSuccess(new SoloScoreInfo { ID = (ulong)scoreId, UserID = userId, Processed = true });
+                handleGetUserRequest = request => pending = request;
+            });
+            registerForUpdates(scoreId, ruleset, value => update = value);
+            AddUntilStep("statistics pending", () => pending != null);
+            AddStep("switch account", () => dummyAPI.LocalUser.Value = new APIUser { Id = getUserId() });
+            AddStep("release old statistics", () => pending!.TriggerSuccess(new APIUser
+            {
+                Id = userId,
+                Statistics = new UserStatistics { TotalScore = 99_000_000 }
+            }));
+            AddWaitStep("allow callbacks", 3);
+            AddAssert("no old account update", () => update == null);
+            AddAssert("new account cache not overwritten", () => statisticsProvider.GetStatisticsFor(ruleset)?.TotalScore != 99_000_000);
+        }
+
+        [Test]
+        public void TestPushAndReadinessRacePublishesOnce()
+        {
+            int userId = getUserId();
+            long scoreId = getScoreId();
+            var ruleset = new OsuRuleset().RulesetInfo;
+            setUpUser(userId);
+            GetScoreRequest? pending = null;
+            int updates = 0;
+            AddStep("hold readiness request", () => handleGetScoreRequest = request => pending = request);
+            registerForUpdates(scoreId, ruleset, _ => updates++);
+            AddUntilStep("request pending", () => pending != null);
+            feignScoreProcessing(userId, ruleset, 5_000_000);
+            AddStep("deliver push", () => ((ISpectatorClient)spectatorClient).UserScoreProcessed(userId, scoreId));
+            AddUntilStep("push received", () => updates == 1);
+            AddStep("release readiness", () => pending!.TriggerSuccess(new SoloScoreInfo { ID = (ulong)scoreId, UserID = userId, Processed = true }));
+            AddWaitStep("allow callbacks", 3);
+            AddAssert("single update", () => updates, () => Is.EqualTo(1));
         }
 
         private int nextUserId = 2000;

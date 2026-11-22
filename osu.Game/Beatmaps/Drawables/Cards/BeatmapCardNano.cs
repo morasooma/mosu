@@ -37,12 +37,13 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             }
         }
 
-        private const float height = 60;
-        private const float width = 300;
+        public const float HEIGHT = 60;
+        public new const float WIDTH = 300;
 
         [Cached]
         private readonly BeatmapCardContent content;
 
+        private readonly bool keepCoversLoaded;
         private CollapsibleButtonContainer buttonContainer = null!;
 
         private FillFlowContainer idleBottomContent = null!;
@@ -50,15 +51,17 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         private TruncatingSpriteText titleText = null!;
         private TruncatingSpriteText artistText = null!;
         private OsuSpriteText? mappedByText;
+        private LinkFlowContainer mapperText = null!;
         private IBindable<Colour4> themeColour = null!;
 
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
 
-        public BeatmapCardNano(APIBeatmapSet beatmapSet)
+        public BeatmapCardNano(APIBeatmapSet beatmapSet, bool keepCoversLoaded = false)
             : base(beatmapSet, false)
         {
-            content = new BeatmapCardContent(height);
+            this.keepCoversLoaded = keepCoversLoaded;
+            content = new BeatmapCardContent(HEIGHT);
 
             Action = DefaultAction;
         }
@@ -66,18 +69,18 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         [BackgroundDependencyLoader]
         private void load()
         {
-            Width = width;
-            Height = height;
+            Width = WIDTH;
+            Height = HEIGHT;
 
             Child = content.With(c =>
             {
                 c.MainContent = new Container
                 {
                     RelativeSizeAxes = Axes.X,
-                    Height = height,
+                    Height = HEIGHT,
                     Children = new Drawable[]
                     {
-                        buttonContainer = new CollapsibleButtonContainer(BeatmapSet)
+                        buttonContainer = new CollapsibleButtonContainer(BeatmapSet, keepBackgroundLoaded: keepCoversLoaded, sharedDownloadTracker: DownloadTracker)
                         {
                             Width = Width,
                             FavouriteState = { BindTarget = FavouriteState },
@@ -123,7 +126,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                                             AlwaysPresent = true,
                                             Children = new Drawable[]
                                             {
-                                                new LinkFlowContainer(s =>
+                                                mapperText = new LinkFlowContainer(s =>
                                                 {
                                                     s.Shadow = false;
                                                     s.Font = OsuFont.GetFont(size: 16, weight: FontWeight.SemiBold);
@@ -131,7 +134,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                                                 {
                                                     d.AutoSizeAxes = Axes.Both;
                                                     d.Margin = new MarginPadding { Top = 2 };
-                                                    d.AddText("mapped by ", t => { t.Colour = colourProvider.Content2; mappedByText = (OsuSpriteText)t; });
+                                                    d.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3221, t => { t.Colour = colourProvider.Content2; mappedByText = (OsuSpriteText)t; });
                                                     d.AddUserLink(BeatmapSet.Author);
                                                 }),
                                             }
@@ -151,13 +154,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                         }
                     }
                 };
-                c.ExpandedContent = new Container
-                {
-                    RelativeSizeAxes = Axes.X,
-                    AutoSizeAxes = Axes.Y,
-                    Padding = new MarginPadding { Horizontal = 10, Vertical = 13 },
-                    Child = new BeatmapCardDifficultyList(BeatmapSet)
-                };
+                // Nano cards never expand; do not allocate an unreachable difficulty list.
                 c.Expanded.BindTarget = Expanded;
             });
 
@@ -169,6 +166,18 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                 if (mappedByText != null)
                     mappedByText.Colour = colourProvider.Content2;
             }, true);
+        }
+
+        protected override void OnBeatmapSetChanged()
+        {
+            content.ResetModel();
+            buttonContainer.ChangeBeatmapSet(BeatmapSet);
+            titleText.Text = new RomanisableString(BeatmapSet.TitleUnicode, BeatmapSet.Title);
+            artistText.Text = createArtistText();
+            mapperText.Clear();
+            mapperText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3221, t => { t.Colour = colourProvider.Content2; mappedByText = (OsuSpriteText)t; });
+            mapperText.AddUserLink(BeatmapSet.Author);
+            UpdateState();
         }
 
         private LocalisableString createArtistText()

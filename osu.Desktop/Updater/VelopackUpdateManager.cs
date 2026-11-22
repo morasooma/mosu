@@ -108,7 +108,7 @@ namespace osu.Desktop.Updater
                 }
                 else
                 {
-                    updateSource = new SimpleWebSource(updateUrl);
+                    updateSource = StableMirrorUpdateSource.Create(updateUrl);
                 }
 
                 log($"Checking {updateUrl} on channel {updateChannel}...");
@@ -206,14 +206,27 @@ namespace osu.Desktop.Updater
 
         private void restartToApplyUpdate(Velopack.UpdateManager updateManager, UpdateInfo update)
         {
-            game.RestartOnExitAction = () => updateManager.WaitExitThenApplyUpdates(update.TargetFullRelease);
+            game.RestartOnExitAction = () =>
+            {
+                log($"Launching updater for {update.TargetFullRelease.Version} after shutdown...");
+                try
+                {
+                    updateManager.WaitExitThenApplyUpdates(update.TargetFullRelease, restart: true);
+                }
+                catch (Exception e)
+                {
+                    Logger.Error(e, "Could not launch the updater after shutdown.");
+                    Logger.Flush();
+                    throw;
+                }
+            };
             game.AttemptExit();
         }
 
         private static string getUpdateChannel(Game.Configuration.ReleaseStream releaseStream, bool isLinux)
             => releaseStream == Game.Configuration.ReleaseStream.DevBuild
                 ? isLinux ? "dev-linux" : "dev"
-                : "stable";
+                : isLinux ? "stable-linux" : "stable";
 
         private static string getDevUpdateUrl(string stableUpdateUrl)
         {

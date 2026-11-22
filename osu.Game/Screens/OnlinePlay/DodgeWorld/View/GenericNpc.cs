@@ -202,7 +202,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
             body.BorderColour = alive ? colours.Purple1 : colours.Gray4;
 
             promptText.Text = alive
-                ? DialogueLanguage == "ru" ? "E   ДИАЛОГ" : "E   TALK"
+                ? DialogueLanguage == "ru" ? global::osu.Game.Localisation.ClientTranslationStrings.J4735 : global::osu.Game.Localisation.ClientTranslationStrings.J4736
                 : DialogueLanguage == "ru" ? "E" : "E";
             interactionPrompt.Width = alive ? 132 : 56;
         }

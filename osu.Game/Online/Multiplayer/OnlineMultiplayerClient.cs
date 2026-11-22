@@ -16,7 +16,9 @@ using osu.Game.Online.API;
 using osu.Game.Online.Matchmaking;
 using osu.Game.Online.Matchmaking.Requests;
 using osu.Game.Online.Matchmaking.Responses;
+using osu.Game.Online.Multiplayer.MatchTypes.Dodge;
 using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
+using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
 using osu.Game.Online.RankedPlay;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays.Notifications;
@@ -31,6 +33,9 @@ namespace osu.Game.Online.Multiplayer
         private readonly string endpoint;
 
         private IHubClientConnector? connector;
+
+        public override Task InviteServer()
+            => invokeAsync("InviteServer");
 
         public override IBindable<bool> IsConnected { get; } = new BindableBool();
 
@@ -77,8 +82,7 @@ namespace osu.Game.Online.Multiplayer
             var conn = activeConnection;
             if (conn == null)
             {
-                if (Room != null)
-                    LeaveRoom().FireAndForget();
+                scheduleLeaveStaleRoom();
                 return;
             }
 
@@ -95,8 +99,8 @@ namespace osu.Game.Online.Multiplayer
                 string? message = ex.GetHubExceptionMessage();
                 Logger.Log($"{nameof(OnlineMultiplayerClient)} invoke of '{methodName}' failed with hub error: {message}", LoggingTarget.Network, LogLevel.Important);
 
-                if (isRoomNotFoundException(message) && Room != null)
-                    LeaveRoom().FireAndForget();
+                if (isRoomNotFoundException(message))
+                    scheduleLeaveStaleRoom();
             }
         }
 
@@ -117,8 +121,7 @@ namespace osu.Game.Online.Multiplayer
             var conn = activeConnection;
             if (conn == null)
             {
-                if (Room != null)
-                    LeaveRoom().FireAndForget();
+                scheduleLeaveStaleRoom();
                 return fallback;
             }
 
@@ -136,12 +139,19 @@ namespace osu.Game.Online.Multiplayer
                 string? message = ex.GetHubExceptionMessage();
                 Logger.Log($"{nameof(OnlineMultiplayerClient)} invoke of '{methodName}' failed with hub error: {message}", LoggingTarget.Network, LogLevel.Important);
 
-                if (isRoomNotFoundException(message) && Room != null)
-                    LeaveRoom().FireAndForget();
+                if (isRoomNotFoundException(message))
+                    scheduleLeaveStaleRoom();
 
                 return fallback;
             }
         }
+
+        private void scheduleLeaveStaleRoom() => Scheduler.Add(() =>
+        {
+            // Network continuations may run on worker threads; Room is update-thread-only.
+            if (Room != null)
+                LeaveRoom().FireAndForget();
+        });
 
         private static bool isRoomNotFoundException(string? message)
         {
@@ -167,6 +177,8 @@ namespace osu.Game.Online.Multiplayer
             {
                 connector.ConfigureConnection = connection =>
                 {
+                    connection.On<ServerPlayInvitation>("ServerPlayInvited", ReceiveServerPlayInvitation);
+                    connection.On<string>("ServerPlayInvitationRevoked", RevokeServerPlayInvitation);
                     // this is kind of SILLY
                     // https://github.com/dotnet/aspnetcore/issues/15198
                     connection.On<MultiplayerRoomState>(nameof(IMultiplayerClient.RoomStateChanged), ((IMultiplayerClient)this).RoomStateChanged);
@@ -311,7 +323,7 @@ namespace osu.Game.Online.Multiplayer
                         break;
 
                     default:
-                        PostNotification?.Invoke(new SimpleErrorNotification { Text = @"Failed to invite this user. Check the network log for details." });
+                        PostNotification?.Invoke(new SimpleErrorNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.J3849 });
                         break;
                 }
             }
@@ -339,7 +351,11 @@ namespace osu.Game.Online.Multiplayer
             => invokeAsync(nameof(IMultiplayerServer.ChangeUserMods), newMods);
 
         public override Task SendMatchRequest(MatchUserRequest request)
-            => invokeAsync(nameof(IMultiplayerServer.SendMatchRequest), request);
+            => request is DodgePlayerPositionRequest or RankedPlayCursorPositionRequest
+                          or TagCoopCursorPositionRequest or TagCoopReplayFramesRequest or TagCoopJudgementRequest
+                          or RankedPlayCardHandReplayRequest
+                ? Task.CompletedTask
+                : invokeAsync(nameof(IMultiplayerServer.SendMatchRequest), request);
 
         public override Task StartMatch()
             => invokeAsync(nameof(IMultiplayerServer.StartMatch));

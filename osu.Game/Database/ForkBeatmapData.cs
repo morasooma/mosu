@@ -37,6 +37,14 @@ namespace osu.Game.Database
 
         public int RelaxMosuPpPerformancePointsVersion { get; set; }
 
+        public double RelaxTazikPpStarRating { get; set; }
+
+        public double RelaxTazikPpMaxPerformancePoints { get; set; }
+
+        public bool RelaxTazikPpPerformancePointsCalculated { get; set; }
+
+        public int RelaxTazikPpPerformancePointsVersion { get; set; }
+
         public bool PerformancePointsCalculated { get; set; }
 
         public bool RelaxPerformancePointsCalculated { get; set; }

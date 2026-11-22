@@ -20,6 +20,14 @@ namespace osu.Game.Rulesets.Edit
         EditorTimelineLane GetTimelineLaneByIndex(int index);
 
         /// <summary>
+        /// Whether a lane is displayed and available for selection on the timeline.
+        /// Does not affect gameplay or playfield visibility.
+        /// </summary>
+        bool IsTimelineLaneVisible(int index) => true;
+
+        float GetTimelineMinimumMarkerWidth(HitObject hitObject) => 9;
+
+        /// <summary>
         /// Returns a stable equality key for objects which should share one
         /// collapsed timeline marker, or <see langword="null"/> to keep the
         /// object independent.

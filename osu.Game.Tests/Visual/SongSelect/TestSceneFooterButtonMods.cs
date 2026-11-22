@@ -154,10 +154,36 @@ namespace osu.Game.Tests.Visual.SongSelect
         [Test]
         public void TestUnrankedBadge()
         {
-            AddStep(@"Add unranked mod", () => changeMods(new[] { new OsuModDeflate() }));
+            AddStep(@"Add unranked mod", () => changeMods(new[] { new OsuModAutopilot() }));
             AddUntilStep("Unranked badge shown", () => footerButtonMods.ChildrenOfType<FooterButtonMods.UnrankedBadge>().Single().Alpha == 1);
             AddStep(@"Clear selected mod", () => changeMods(Array.Empty<Mod>()));
             AddUntilStep("Unranked badge not shown", () => footerButtonMods.ChildrenOfType<FooterButtonMods.UnrankedBadge>().Single().Alpha == 0);
+        }
+
+        [Test]
+        public void TestDetachedFooterCoalescesBeatmapChanges()
+        {
+            int transforms = 0;
+            var ruleset = new OsuRuleset();
+            AddStep("prepare no-mod footer", () =>
+            {
+                footerButtonMods.Ruleset.Value = ruleset.RulesetInfo;
+                changeMods(Array.Empty<Mod>());
+            });
+            AddWaitStep("apply initial display", 3);
+            AddStep("detach hidden legacy footer", () =>
+            {
+                Remove(footerButtonMods, false);
+                footerButtonMods.FinishTransforms(true);
+                transforms = footerButtonMods.ChildrenOfType<Drawable>().Append(footerButtonMods).Sum(d => d.Transforms.Count());
+            });
+            AddRepeatStep("change map without updating footer", () => Beatmap.Value = CreateWorkingBeatmap(ruleset.RulesetInfo), 50);
+            AddAssert("hidden footer does not accumulate animations", () =>
+                footerButtonMods.ChildrenOfType<Drawable>().Append(footerButtonMods).Sum(d => d.Transforms.Count()) == transforms);
+            AddStep("select new mods before showing", () => changeMods(new Mod[] { new OsuModHidden() }));
+            AddStep("show footer", () => Add(footerButtonMods));
+            AddUntilStep("latest multiplier applied", () => footerButtonMods.ChildrenOfType<OsuSpriteText>()
+                .Any(t => t.Text.ToString() == ModUtils.FormatScoreMultiplier(1.04).ToString()));
         }
 
         private void changeMods(IReadOnlyList<Mod> mods) => footerButtonMods.Mods.Value = mods;

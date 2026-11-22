@@ -4,8 +4,12 @@
 #nullable disable
 
 using osu.Framework.Allocation;
+using System.Threading.Tasks;
 using osu.Framework.Graphics.Textures;
 using osu.Game.Beatmaps;
+using osu.Game.Configuration;
+using osu.Game.Graphics.Backgrounds.AI;
+using osu.Framework.Graphics.Rendering;
 
 namespace osu.Game.Graphics.Backgrounds
 {
@@ -14,6 +18,12 @@ namespace osu.Game.Graphics.Backgrounds
         public readonly WorkingBeatmap Beatmap;
 
         private readonly string fallbackTextureName;
+        private BackgroundSafetyPresentation safety;
+        private Texture sourceTexture;
+
+        // Check the original upload even when safety presentation temporarily covers the sprite.
+        // This never waits for inference or generated artwork.
+        internal bool TextureUploadComplete => sourceTexture?.UploadComplete != false;
 
         public BeatmapBackground(WorkingBeatmap beatmap, string fallbackTextureName = @"Backgrounds/bg1")
         {
@@ -22,9 +32,29 @@ namespace osu.Game.Graphics.Backgrounds
         }
 
         [BackgroundDependencyLoader]
-        private void load(LargeTextureStore textures)
+        private void load(LargeTextureStore textures, BackgroundSafetyService safetyService = null, OsuConfigManager config = null, IRenderer renderer = null, StillLifeService stillLife = null)
         {
-            Sprite.Texture = Beatmap?.GetBackground() ?? textures.Get(fallbackTextureName);
+            var texture = sourceTexture = Beatmap?.GetBackground() ?? textures.Get(fallbackTextureName);
+            if (Beatmap != null && safetyService != null && config != null && renderer != null)
+                safety = new BackgroundSafetyPresentation(Sprite, texture, Beatmap, safetyService, config, renderer, stillLife, generateStillLife: true);
+            else
+                Sprite.Texture = texture;
+        }
+
+        internal Task PrepareSafety() => safety?.Prepare(priority: true) ?? Task.CompletedTask;
+
+        internal void ApplySafety() => safety?.Update();
+
+        protected override void Update()
+        {
+            base.Update();
+            safety?.Update();
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            safety?.Dispose();
+            base.Dispose(isDisposing);
         }
 
         public override bool Equals(Background other)

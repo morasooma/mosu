@@ -10,17 +10,21 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Screens.Play.HUD;
+using osu.Game.Overlays;
 using osu.Game.Skinning;
 
 namespace osu.Game.Screens.Play
 {
     public partial class ArgonKeyCounter : KeyCounter
     {
-        private Circle inputIndicator = null!;
+        private SkinComponentRoundedContainer inputIndicator = null!;
         private OsuSpriteText keyNameText = null!;
         private OsuSpriteText countText = null!;
 
         private UprightAspectMaintainingContainer uprightContainer = null!;
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+        private Colour4 idleColour => themeColours.GetColour(OverlayColour.Content2, colours.Blue0);
+        private Colour4 activeColour => themeColours.GetColour(OverlayColour.Content1, Colour4.White);
 
         // These values were taken from Figma
         private const float line_height = 3;
@@ -45,7 +49,7 @@ namespace osu.Game.Screens.Play
         {
             Children = new Drawable[]
             {
-                inputIndicator = new Circle
+                inputIndicator = new SkinComponentRoundedContainer
                 {
                     RelativeSizeAxes = Axes.X,
                     Height = line_height * scale_factor,
@@ -95,6 +99,12 @@ namespace osu.Game.Screens.Play
             base.LoadComplete();
 
             CountPresses.BindValueChanged(e => countText.Text = e.NewValue.ToString(@"#,0"), true);
+            themeColours.Bind(action => Scheduler.Add(action), () =>
+            {
+                keyNameText.FadeColour(IsActive.Value ? activeColour : idleColour);
+                countText.Colour = activeColour;
+                inputIndicator.Colour = themeColours.GetColour(OverlayColour.Highlight1, Colour4.White);
+            });
         }
 
         protected override void Update()
@@ -117,7 +127,7 @@ namespace osu.Game.Screens.Play
             base.Activate(forwardPlayback);
 
             keyNameText
-                .FadeColour(Colour4.White, SkinPerformanceMode.ShouldSimplifyHud ? 0 : 10, Easing.OutQuint);
+                .FadeColour(activeColour, SkinPerformanceMode.ShouldSimplifyHud ? 0 : 10, Easing.OutQuint);
 
             inputIndicator
                 .FadeIn(SkinPerformanceMode.ShouldSimplifyHud ? 0 : 10, Easing.OutQuint)
@@ -131,7 +141,7 @@ namespace osu.Game.Screens.Play
             base.Deactivate(forwardPlayback);
 
             keyNameText
-                .FadeColour(colours.Blue0, SkinPerformanceMode.ShouldSimplifyHud ? 0 : 200, Easing.OutQuart);
+                .FadeColour(idleColour, SkinPerformanceMode.ShouldSimplifyHud ? 0 : 200, Easing.OutQuart);
 
             inputIndicator
                 .MoveToY(0, SkinPerformanceMode.ShouldSimplifyHud ? 0 : 250, Easing.OutQuart)

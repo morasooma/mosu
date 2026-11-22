@@ -385,7 +385,7 @@ namespace osu.Game.Screens.Play
                                 Y = 0.7f,
                                 Font = OsuFont.GetFont(weight: FontWeight.Bold, size: 12),
                                 Origin = Anchor.Centre,
-                                Text = @"SKIP",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J5075,
                             },
                         }
                     }

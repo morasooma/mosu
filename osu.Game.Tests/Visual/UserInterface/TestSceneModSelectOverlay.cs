@@ -70,6 +70,7 @@ namespace osu.Game.Tests.Visual.UserInterface
             AddStep("reset classic mod default", () => configManager.SetValue(OsuSetting.ForkClassicModDefault, false));
             AddStep("reset fork mod numeric input", () => configManager.SetValue(OsuSetting.ForkEnableModNumericInput, false));
             AddStep("show mods in presets", () => configManager.SetValue(OsuSetting.ForkShowModsInPresetList, true));
+            AddStep("enable preset merging", () => configManager.SetValue(OsuSetting.ForkMergeModPresetsWithShift, true));
             AddStep("reset mouse", () => InputManager.MoveMouseTo(Vector2.One));
             AddStep("set beatmap", () => Beatmap.Value = CreateWorkingBeatmap(new OsuRuleset().RulesetInfo));
             AddStep("set up presets", () =>
@@ -119,6 +120,67 @@ namespace osu.Game.Tests.Visual.UserInterface
         {
             createScreen();
             AddStep("toggle state", () => modSelectOverlay.ToggleVisibility());
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestShiftMergesPresets(bool keyboard)
+        {
+            createScreen();
+            AddStep("select DT HR RX", () => SelectedMods.Value = new Mod[]
+            {
+                new OsuModDoubleTime { SpeedChange = { Value = 1.25 } }, new OsuModHardRock(), new OsuModRelax()
+            });
+            AddStep("set second preset to HT HD DA", () => Realm.Write(r =>
+                r.All<ModPreset>().Single(p => p.Name == "Half Time 0.5x").Mods = new Mod[]
+                {
+                    new OsuModHalfTime(), new OsuModHidden(), new OsuModDifficultyAdjust()
+                }));
+            waitForColumnLoad();
+            AddStep("hold shift", () => InputManager.PressKey(Key.ShiftLeft));
+            AddStep("apply second preset", () =>
+            {
+                if (keyboard)
+                    InputManager.Key(Key.Number2);
+                else
+                    modSelectOverlay.ChildrenOfType<ModPresetPanel>().Single(p => p.Preset.Value.Name == "Half Time 0.5x").TriggerClick();
+            });
+            AddStep("release shift", () => InputManager.ReleaseKey(Key.ShiftLeft));
+            AddAssert("DT HD HR RX selected", () => new HashSet<Mod>(SelectedMods.Value).SetEquals(new Mod[]
+            {
+                new OsuModDoubleTime { SpeedChange = { Value = 1.25 } }, new OsuModHidden(), new OsuModHardRock(), new OsuModRelax()
+            }));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void TestShiftPresetMergePreservesSettings(bool enabled)
+        {
+            createScreen();
+            AddStep("configure merging", () => configManager.SetValue(OsuSetting.ForkMergeModPresetsWithShift, enabled));
+            AddStep("select customised HT and HD", () => SelectedMods.Value = new Mod[]
+            {
+                new OsuModHalfTime { SpeedChange = { Value = 0.7 } }, new OsuModHidden()
+            });
+            AddStep("hold shift", () => InputManager.PressKey(Key.ShiftLeft));
+            AddStep("apply HT preset", () => modSelectOverlay.ChildrenOfType<ModPresetPanel>().Single(p => p.Preset.Value.Name == "Half Time 0.5x").TriggerClick());
+            AddStep("release shift", () => InputManager.ReleaseKey(Key.ShiftLeft));
+            AddAssert("expected selection", () => new HashSet<Mod>(SelectedMods.Value).SetEquals(enabled
+                ? new Mod[] { new OsuModHalfTime { SpeedChange = { Value = 0.7 } }, new OsuModHidden() }
+                : new Mod[] { new OsuModHalfTime { SpeedChange = { Value = 0.5 } } }));
+        }
+
+        [Test]
+        public void TestShiftClickActivePresetDoesNotDeselect()
+        {
+            createScreen();
+            AddStep("select preset", () => InputManager.Key(Key.Number2));
+            AddStep("hold shift", () => InputManager.PressKey(Key.ShiftLeft));
+            AddStep("apply active preset", () => InputManager.Key(Key.Number2));
+            AddStep("release shift", () => InputManager.ReleaseKey(Key.ShiftLeft));
+            AddAssert("preset still selected", () => SelectedMods.Value.Count == 1 && SelectedMods.Value.Single() is OsuModHalfTime);
+            AddStep("toggle without shift", () => InputManager.Key(Key.Number2));
+            AddAssert("preset deselected", () => SelectedMods.Value.Count == 0);
         }
 
         [Test]

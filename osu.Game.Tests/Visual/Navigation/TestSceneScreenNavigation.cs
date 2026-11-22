@@ -581,11 +581,6 @@ namespace osu.Game.Tests.Visual.Navigation
 
             AddAssert("retry count is 0", () => player.RestartCount == 0);
 
-            // todo: see https://github.com/ppy/osu/issues/22220
-            // tests are supposed to be immune to this edge case by the logic in TestPlayer,
-            // but we're running a full game instance here, so we have to work around it manually.
-            AddStep("end spectator before retry", () => Game.SpectatorClient.EndPlaying(player.GameplayState));
-
             AddStep("attempt to retry", () => player.ChildrenOfType<HotkeyRetryOverlay>().First().Action());
             AddAssert("old player score marked failed", () => player.Score.ScoreInfo.Rank, () => Is.EqualTo(ScoreRank.F));
             AddUntilStep("wait for old player gone", () => Game.ScreenStack.CurrentScreen != player);

@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -23,12 +23,18 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                 {
                     Caption = GraphicsSettingsStrings.ScreenshotFormat,
                     Current = config.GetBindable<ScreenshotFormat>(OsuSetting.ScreenshotFormat)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ScreenshotFormat",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GraphicsSettingsStrings.ShowCursorInScreenshots,
                     Current = config.GetBindable<bool>(OsuSetting.ScreenshotCaptureMenuCursor)
                 })
+                {
+                    FavouriteId = "OsuSetting.ScreenshotCaptureMenuCursor",
+                }
             };
         }
     }

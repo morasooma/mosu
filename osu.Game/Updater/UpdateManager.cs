@@ -2,10 +2,8 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using osu.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
@@ -18,7 +16,6 @@ using osu.Game.Localisation;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Notifications;
-using osu.Game.Utils;
 using osuTK;
 
 namespace osu.Game.Updater
@@ -56,22 +53,9 @@ namespace osu.Game.Updater
         {
             base.LoadComplete();
 
-            if (game.IsDeployedBuild)
-            {
-                // make sure the release stream setting matches the build which was just run.
-                if (FixedReleaseStream != null)
-                    config.SetValue(OsuSetting.ReleaseStream, FixedReleaseStream.Value);
-
-                // notify the user if they're using a build that is not officially sanctioned.
-                if (RuntimeInfo.EntryAssembly.GetCustomAttribute<OfficialBuildAttribute>() == null)
-                    Notifications.Post(new SimpleNotification { Text = NotificationsStrings.NotOfficialBuild, IsImportant = false, Transient = true });
-            }
-            else
-            {
-                // log that this is not an official build, for if users build their own game without an assembly version.
-                // this is only logged because a notification would be too spammy in local test builds.
-                Logger.Log(NotificationsStrings.NotOfficialBuild.ToString());
-            }
+            // Make sure the release stream setting matches the build which was just run.
+            if (game.IsDeployedBuild && FixedReleaseStream != null)
+                config.SetValue(OsuSetting.ReleaseStream, FixedReleaseStream.Value);
 
             config.BindWith(OsuSetting.ReleaseStream, releaseStream);
             releaseStream.BindValueChanged(_ => CheckForUpdate());

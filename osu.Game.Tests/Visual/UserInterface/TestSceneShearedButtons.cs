@@ -97,6 +97,40 @@ namespace osu.Game.Tests.Visual.UserInterface
         }
 
         [Test]
+        public void TestStrongRoundingAfterResize()
+        {
+            ShearedButton button = null;
+            bool originalDisableShear = false;
+            var originalTheme = OverlayColourProvider.CustomTheme.Value;
+            var originalThemeMode = OverlayColourProvider.CurrentTheme.Value;
+
+            AddStep("enable strong rounding without shear", () =>
+            {
+                originalDisableShear = OsuGame.DisableShear.Value;
+                OsuGame.DisableShear.Value = true;
+                var theme = new osu.Game.Overlays.CustomTheme.CustomThemeDefinition();
+                theme.Geometry.ButtonRadius = 50;
+                OverlayColourProvider.CurrentTheme.Value = ThemeMode.Custom;
+                OverlayColourProvider.CustomTheme.Value = theme;
+                Child = button = new ShearedButton { Width = 100, Height = 30, Text = "Test" };
+            });
+            AddUntilStep("radius follows laid out height", () =>
+                button.ChildrenOfType<Container>().Any(c => c.Masking && effectiveRadius(c) == 15));
+            AddStep("resize to narrow icon button", () => button.Width = 16);
+            AddUntilStep("radius follows smallest axis", () =>
+                button.ChildrenOfType<Container>().Where(c => c.Masking).All(c => effectiveRadius(c) <= 8));
+            AddStep("restore geometry", () =>
+            {
+                OverlayColourProvider.CurrentTheme.Value = originalThemeMode;
+                OverlayColourProvider.CustomTheme.Value = originalTheme;
+                OsuGame.DisableShear.Value = originalDisableShear;
+            });
+        }
+
+        private static float effectiveRadius(Container container) => (float)typeof(CompositeDrawable)
+            .GetProperty("effectiveCornerRadius", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(container);
+
+        [Test]
         public void TestSizing()
         {
             ShearedToggleButton toggleButton = null;

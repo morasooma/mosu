@@ -16,6 +16,8 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Input.Events;
+using osu.Framework.Screens;
+using osu.Game.Screens.Edit;
 using osu.Framework.Utils;
 using osu.Game.Beatmaps;
 using osu.Game.Graphics;
@@ -66,7 +68,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                    .Append(new DrawableTernaryButton<OsuAction>
                    {
                        Current = rectangularGridSnapToggle,
-                       Description = "Grid Snap",
+                       Description = global::osu.Game.Localisation.ClientTranslationStrings.J3298,
                        CreateIcon = () => new SpriteIcon { Icon = OsuIcon.EditorGridSnap },
                        Action = OsuAction.EditorToggleGridSnap,
                        Hotkey = HotkeyForAction(OsuAction.EditorToggleGridSnap)
@@ -136,6 +138,64 @@ namespace osu.Game.Rulesets.Osu.Edit
                     FreehandSliderToolboxGroup
                 }
             );
+        }
+
+        [Resolved]
+        private Editor editor { get; set; }
+
+        private HitObject[] lastRecordedTake = Array.Empty<HitObject>();
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+
+            var offset = new BindableInt(0) { MinValue = -200, MaxValue = 200 };
+            var recordButton = new osu.Game.Graphics.UserInterfaceV2.RoundedButton
+            {
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J3299,
+                RelativeSizeAxes = Axes.X,
+                Height = 35,
+                Action = () =>
+                {
+                    BlueprintContainer.CommitIfPlacementActive();
+                    EditorClock.Stop();
+                    editor.Push(new RealtimeMappingScreen(EditorBeatmap, EditorClock.CurrentTime, offset.Value, objects =>
+                    {
+                        lastRecordedTake = objects;
+                        EditorBeatmap.AddRange(objects);
+                    }));
+                },
+            };
+            RightToolbox.Add(new EditorToolboxGroup(global::osu.Game.Localisation.ClientTranslationStrings.J3300)
+            {
+                Children = new Drawable[]
+                {
+                    recordButton,
+                    new osu.Game.Graphics.UserInterfaceV2.RoundedButton
+                    {
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J3301,
+                        RelativeSizeAxes = Axes.X,
+                        Height = 35,
+                        Action = () =>
+                        {
+                            EditorBeatmap.BeginChange();
+                            foreach (var obj in lastRecordedTake)
+                            {
+                                if (EditorBeatmap.HitObjects.Contains(obj))
+                                    EditorBeatmap.Remove(obj);
+                            }
+                            EditorBeatmap.EndChange();
+                            lastRecordedTake = Array.Empty<HitObject>();
+                        },
+                    },
+                    new ExpandableSlider<int>
+                    {
+                        Current = offset,
+                        ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3302,
+                        ContractedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3303,
+                    },
+                }
+            });
         }
 
         private void updatePositionSnapGrid(ValueChangedEvent<PositionSnapGridType> obj)

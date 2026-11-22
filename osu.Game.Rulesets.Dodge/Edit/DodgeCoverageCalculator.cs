@@ -137,11 +137,11 @@ namespace osu.Game.Rulesets.Dodge.Edit
                     for (int i = 0; i < emitter.EffectiveBulletCount; i++)
                     {
                         double effectiveEndTime = Math.Min(emitter.ExitTimeAt(burst, i), continuedBulletEndTime);
-                        Vector2 endPosition = emitter.EndPositionAt(burst, i);
+                        var (sourcePosition, endPosition) = emitter.TrajectoryPointsAt(burst, i);
                         Vector2[] points = emitter.Duration <= 0
                             ? new[] { endPosition, endPosition }
                             : DodgeTrajectory.CreatePathVertices(
-                                                 emitter.SourcePositionAt(burst),
+                                                 sourcePosition,
                                                  endPosition,
                                                  (float)Math.Max(0, (effectiveEndTime - emitter.EmissionTimeAt(burst)) / emitter.Duration),
                                                  emitter.MovementType,

@@ -27,7 +27,7 @@ namespace osu.Game.Rulesets.Taiko.Mods
         public override string Name => @"Single Tap";
         public override string Acronym => @"SG";
         public override IconUsage? Icon => OsuIcon.ModSingleTap;
-        public override LocalisableString Description => @"One key for dons, one key for kats.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3760;
 
         public override bool Ranked => true;
         public override Type[] IncompatibleMods => new[] { typeof(ModAutoplay), typeof(ModRelax), typeof(TaikoModCinema) };

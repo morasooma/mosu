@@ -16,6 +16,8 @@ using osu.Framework.Testing;
 using osu.Framework.Utils;
 using osu.Game.Beatmaps;
 using osu.Game.Database;
+using osu.Game.Configuration;
+using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Online;
 using osu.Game.Online.API;
@@ -35,6 +37,8 @@ using osu.Game.Screens.Ranking.Statistics;
 using osu.Game.Skinning;
 using osu.Game.Tests.Resources;
 using osu.Game.Users;
+using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 using osuTK.Input;
 using Realms;
@@ -88,6 +92,43 @@ namespace osu.Game.Tests.Visual.Ranking
             {
                 skins?.CurrentSkinInfo.Value = v ? skins.DefaultClassicSkin.SkinInfo : skins.CurrentSkinInfo.Default;
             });
+        }
+
+        [TestCase(360)]
+        [TestCase(720)]
+        [TestCase(1100)]
+        public void TestLegacyScrollEndsAtContent(float height)
+        {
+            TestResultsScreen screen = null;
+            LegacyResultsPanel panel = null;
+            OsuScrollContainer scroll = null;
+            OsuConfigManager config = null;
+            ForkSongSelectStyle originalStyle = default;
+
+            AddStep("load legacy result at viewport height", () =>
+            {
+                config = Dependencies.Get<OsuConfigManager>();
+                originalStyle = config.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle);
+                config.SetValue(OsuSetting.ForkSongSelectStyle, ForkSongSelectStyle.LegacySkinned);
+                Child = new Container
+                {
+                    Size = new Vector2(1280, height),
+                    Child = resultsContainer = new TestResultsContainer(screen = createResultsScreen()),
+                };
+            });
+            AddUntilStep("legacy result laid out", () =>
+            {
+                panel = screen?.ChildrenOfType<LegacyResultsPanel>().SingleOrDefault();
+                scroll = screen?.ChildrenOfType<OsuScrollContainer>().FirstOrDefault(s => s.ChildrenOfType<LegacyResultsPanel>().Any());
+                return panel?.RequiredScrollHeight > 0 && scroll?.DrawHeight > 0;
+            });
+            AddWaitStep("settle skin layout", 5);
+            AddStep("scroll to end", () => scroll.ScrollToEnd(false));
+            AddAssert("end cannot scroll beyond result content", () => scroll.Current,
+                () => Is.LessThanOrEqualTo(Math.Max(0, panel.RequiredScrollHeight - scroll.DrawHeight) + 1));
+            AddAssert("result still intersects viewport", () =>
+                panel.ScreenSpaceDrawQuad.BottomRight.Y > scroll.ScreenSpaceDrawQuad.TopLeft.Y);
+            AddStep("restore style", () => config.SetValue(OsuSetting.ForkSongSelectStyle, originalStyle));
         }
 
         [Test]
@@ -465,6 +506,32 @@ namespace osu.Game.Tests.Visual.Ranking
             });
 
             AddAssert("download button is enabled", () => screen.ChildrenOfType<DownloadButton>().Last().Enabled.Value);
+        }
+
+        [Test]
+        public void TestResultsAccentAppliesToBottomPanelAndCards()
+        {
+            TestResultsScreen screen = null;
+
+            loadResultsScreen(() => screen = createResultsScreen());
+            AddUntilStep("wait for load", () => this.ChildrenOfType<ScorePanelList>().Single().AllPanelsVisible);
+
+            AddStep("enable custom theme with Results accent", () =>
+            {
+                OverlayColourProvider.CurrentTheme.Value = ThemeMode.Custom;
+                var theme = new CustomThemeDefinition();
+                theme.SetContextOverride(ThemeSurfaceContext.Results, SurfaceColourRole.Accent, Colour4.FromHex("#FF3388"));
+                OverlayColourProvider.CustomTheme.Value = theme;
+            });
+
+            AddAssert("score panel border thickness and colour reflect accent", () =>
+            {
+                var panel = this.ChildrenOfType<ScorePanel>().First();
+                var containers = panel.ChildrenOfType<Container>().Where(c => c.Name == "Top layer" || c.Name == "Middle layer");
+                return containers.Any(c => c.ChildrenOfType<Container>().Any(bg => bg.BorderThickness > 0 && ((Colour4)bg.BorderColour) == Colour4.FromHex("#FF3388")));
+            });
+
+            AddStep("restore default theme", () => OverlayColourProvider.CurrentTheme.Value = ThemeMode.Default);
         }
 
         [Test]

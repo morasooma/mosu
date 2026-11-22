@@ -23,10 +23,12 @@ namespace osu.Game.Skinning.Triangles
 
         private const float alpha_when_invalid = 0.3f;
 
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+
         [BackgroundDependencyLoader]
         private void load(OsuColour colours)
         {
-            Colour = colours.BlueLighter;
+            themeColours.Bind(action => Scheduler.Add(action), () => Colour = themeColours.GetColour(Overlays.OverlayColour.Content1, colours.BlueLighter));
         }
 
         public override bool IsValid

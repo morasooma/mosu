@@ -13,6 +13,11 @@ namespace osu.Game.Screens.Play.HUD
 {
     public partial class DefaultSongProgressGraph : SquareGraph
     {
+        public DefaultSongProgressGraph(bool trackDrawInfo = true)
+            : base(trackDrawInfo)
+        {
+        }
+
         private IEnumerable<HitObject> objects;
 
         public IEnumerable<HitObject> Objects

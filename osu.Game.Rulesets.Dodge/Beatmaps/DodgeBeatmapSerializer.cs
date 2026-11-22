@@ -29,7 +29,7 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
     /// </summary>
     public static class DodgeBeatmapSerializer
     {
-        public const int CURRENT_VERSION = 20;
+        public const int CURRENT_VERSION = 24;
         private static readonly JsonSerializerOptions options = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -108,6 +108,9 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
                     WaveAmplitude = emitter.WaveAmplitude,
                     WaveCycles = emitter.WaveCycles,
                     WavePhase = emitter.WavePhase,
+                    LoopScope = emitter.LoopScope.ToString(),
+                    LoopOffsetX = emitter.LoopOffset.X,
+                    LoopOffsetY = emitter.LoopOffset.Y,
                     TrajectoryGuideStyle = emitter.TrajectoryGuideStyle.ToString(),
                 }).ToList(),
                 CameraChanges = beatmap.HitObjects.OfType<DodgeCameraChange>().Select(change => new DodgeCameraChangeData
@@ -119,6 +122,7 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
                     EndX = change.EndPosition.X,
                     EndY = change.EndPosition.Y,
                     Continuous = change.Continuous,
+                    Mode = change.Mode.ToString(),
                     Easing = change.Easing.ToString(),
                 }).ToList(),
                 ArenaChanges = beatmap.HitObjects.OfType<DodgeArenaChange>().Select(change => new DodgeArenaChangeData
@@ -127,6 +131,7 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
                     Duration = change.Duration,
                     TargetX = change.TargetPosition.X,
                     TargetY = change.TargetPosition.Y,
+                    WorldSpace = change.WorldSpace,
                     Width = change.TargetSize.X,
                     Height = change.TargetSize.Y,
                     Rotation = change.TargetRotation,
@@ -157,6 +162,14 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
                     Duration = trigger.Duration,
                     Action = trigger.Action.ToString(),
                     Strength = trigger.Strength,
+                    MoveFromCurrentPosition = trigger.MoveFromCurrentPosition,
+                    SourceX = trigger.SourcePosition.X,
+                    SourceY = trigger.SourcePosition.Y,
+                    TargetX = trigger.TargetPosition.X,
+                    TargetY = trigger.TargetPosition.Y,
+                    Width = trigger.TargetSize.X,
+                    Height = trigger.TargetSize.Y,
+                    Easing = trigger.Easing.ToString(),
                     X = trigger.Position.X,
                     Y = trigger.Position.Y,
                     Colour = trigger.Colour.ToHex(),
@@ -265,6 +278,9 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
                                           WaveAmplitude = document.Version >= 11 ? emitter.WaveAmplitude : DodgeHitObject.DEFAULT_WAVE_AMPLITUDE,
                                           WaveCycles = document.Version >= 11 ? Math.Max(1, emitter.WaveCycles) : DodgeHitObject.DEFAULT_WAVE_CYCLES,
                                           WavePhase = document.Version >= 11 ? emitter.WavePhase : 0,
+                                          LoopScope = document.Version >= 24 && Enum.TryParse(emitter.LoopScope, true, out DodgeEmitterLoopScope scope)
+                                              && Enum.IsDefined(scope) ? scope : DodgeEmitterLoopScope.Individual,
+                                          LoopOffset = document.Version >= 24 ? new Vector2(emitter.LoopOffsetX, emitter.LoopOffsetY) : new Vector2(128, 0),
                                           // Emitters used full path guides before guide styles became
                                           // author-configurable in format v11. Preserve that appearance
                                           // when loading legacy maps instead of introducing arrows.
@@ -279,6 +295,7 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
                                           Position = new Vector2(change.StartX, change.StartY),
                                           EndPosition = new Vector2(change.EndX, change.EndY),
                                           Continuous = document.Version >= 16 && change.Continuous,
+                                          Mode = document.Version >= 22 && Enum.TryParse(change.Mode, out DodgeCameraMode mode) ? mode : DodgeCameraMode.Scroll,
                                           Easing = document.Version >= 17 ? parseCameraEasing(change.Easing) : DodgeCameraEasing.Linear,
                                       }))
                                       .Concat(document.ArenaChanges.Select(change => new DodgeArenaChange
@@ -287,6 +304,7 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
                                           Duration = change.Duration,
                                           TargetPosition = new Vector2(change.TargetX, change.TargetY),
                                           TargetSize = new Vector2(change.Width, change.Height),
+                                          WorldSpace = document.Version >= 22 && change.WorldSpace,
                                           TargetRotation = document.Version >= 14 ? change.Rotation : 0,
                                           KiaiShakeAngle = document.Version >= 19 ? change.KiaiShakeAngle : 0,
                                           Colour = document.Version >= 12
@@ -312,8 +330,13 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
                                       .Concat(document.Version >= 20 ? document.Triggers.Select(trigger => new DodgeTrigger
                                       {
                                           StartTime = trigger.StartTime,
-                                          Duration = Math.Clamp(trigger.Duration, 0, DodgeTrigger.MAX_DURATION),
+                                          Duration = trigger.Duration,
                                           Action = parseTriggerAction(trigger.Action),
+                                          MoveFromCurrentPosition = document.Version >= 22 && trigger.MoveFromCurrentPosition,
+                                          SourcePosition = new Vector2(trigger.SourceX, trigger.SourceY),
+                                          TargetPosition = new Vector2(trigger.TargetX, trigger.TargetY),
+                                          TargetSize = new Vector2(trigger.Width, trigger.Height),
+                                          Easing = parseCameraEasing(trigger.Easing),
                                           Strength = Math.Clamp(trigger.Strength, 0, 1),
                                           Position = new Vector2(trigger.X, trigger.Y),
                                           Colour = parseColour(trigger.Colour),
@@ -606,11 +629,13 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
             public float EndX { get; set; }
             public float EndY { get; set; }
             public bool Continuous { get; set; }
+            public string Mode { get; set; } = nameof(DodgeCameraMode.Scroll);
             public string Easing { get; set; } = nameof(DodgeCameraEasing.Linear);
         }
 
         private class DodgeArenaChangeData
         {
+            public bool WorldSpace { get; set; }
             public double StartTime { get; set; }
             public double Duration { get; set; }
             public float TargetX { get; set; }
@@ -647,6 +672,14 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
             public double Duration { get; set; } = 300;
             public string Action { get; set; } = nameof(DodgeTriggerAction.ClearBullets);
             public float Strength { get; set; } = 0.5f;
+            public bool MoveFromCurrentPosition { get; set; } = true;
+            public float SourceX { get; set; } = 256;
+            public float SourceY { get; set; } = 192;
+            public float TargetX { get; set; } = 256;
+            public float TargetY { get; set; } = 192;
+            public float Width { get; set; } = 512;
+            public float Height { get; set; } = 384;
+            public string Easing { get; set; } = nameof(DodgeCameraEasing.Linear);
             public float X { get; set; } = 256;
             public float Y { get; set; } = 32;
             public string Colour { get; set; } = "FFFFFF";
@@ -680,6 +713,9 @@ namespace osu.Game.Rulesets.Dodge.Beatmaps
             public float WaveAmplitude { get; set; } = DodgeHitObject.DEFAULT_WAVE_AMPLITUDE;
             public int WaveCycles { get; set; } = DodgeHitObject.DEFAULT_WAVE_CYCLES;
             public float WavePhase { get; set; }
+            public string LoopScope { get; set; } = nameof(DodgeEmitterLoopScope.Individual);
+            public float LoopOffsetX { get; set; } = 128;
+            public float LoopOffsetY { get; set; }
             public string TrajectoryGuideStyle { get; set; } = nameof(DodgeTrajectoryGuideStyle.Path);
         }
 

@@ -161,17 +161,17 @@ namespace osu.Game.Screens.Ranking
             switch (replayAvailability)
             {
                 case ReplayAvailability.Local:
-                    button.TooltipText = @"watch replay";
+                    button.TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5099;
                     button.Enabled.Value = true;
                     break;
 
                 case ReplayAvailability.Online:
-                    button.TooltipText = @"download replay";
+                    button.TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5100;
                     button.Enabled.Value = true;
                     break;
 
                 default:
-                    button.TooltipText = @"replay unavailable";
+                    button.TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5101;
                     button.Enabled.Value = false;
                     break;
             }

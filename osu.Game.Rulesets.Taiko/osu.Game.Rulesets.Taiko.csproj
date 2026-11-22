@@ -12,6 +12,12 @@
     <IsPackable>true</IsPackable>
   </PropertyGroup>
 
+  <!-- Use the accepted ruleset-specific recordings, not shadowed originals.
+       Keep raw audio on disk and preserve conversion fixtures separately. -->
+  <ItemGroup>
+    <EmbeddedResource Remove="Resources/Samples/**/*" />
+  </ItemGroup>
+
   <ItemGroup Label="Project References">
     <ProjectReference Include="..\osu.Game\osu.Game.csproj" />
   </ItemGroup>

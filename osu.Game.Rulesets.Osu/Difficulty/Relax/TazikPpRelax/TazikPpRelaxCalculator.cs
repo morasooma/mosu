@@ -1,0 +1,719 @@
+// Adapted from taziksfear’s MosuPP 2.0.0 (PR #7, 3d3a196ed6540a3099d246dd5c6f662366c28db8).
+
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using TazikPpRxCs;
+using osu.Game.Beatmaps;
+using osu.Game.Configuration;
+using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Osu.Mods;
+using osu.Game.Rulesets.Scoring;
+using osu.Game.Scoring;
+using osu.Game.Utils;
+
+namespace osu.Game.Rulesets.Osu.Difficulty.Relax.TazikPpRelax
+{
+    /// <summary>
+    /// TazikPp RX calculator: an exact, self-contained copy of the TazikPp development calculator (Realistik core +
+    /// all TazikPp rules), used only when the Relax PP system is TazikPp. The "Mosu" system keeps using the Realistik
+    /// calculator in Relax/Realistik; nothing here is shared with it.
+    /// </summary>
+    internal static class TazikPpRelaxCalculator
+    {
+        private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<RxPhysicalChallenge.Features>> challenge_features = new();
+        private static readonly ConditionalWeakTable<RxBeatmap, RxMissEvidence> miss_evidence = new();
+
+        // Prepared attributes own the map. Song selection must not retain every map in a global dictionary.
+        private static readonly ConditionalWeakTable<OsuDifficultyAttributes, RxBeatmap> beatmapsByAttributes = new();
+
+        /// <summary>
+        /// TazikPp: speed PP / aim PP of an SS on the same beatmap + mods. The map-type decisions (aim-focused map, stream map,
+        /// stream-only abuse) use these instead of the score's own values, so accuracy and misses cannot move a score across
+        /// a rule threshold (a score with misses could otherwise get more PP than an SS).
+        /// Cached per prepared <see cref="RxBeatmap"/> instance (a new one is created by every <see cref="Prepare"/>) and per
+        /// mods / clock rate, so different beatmaps can never share an entry even when their hash is missing.
+        /// </summary>
+        private static readonly ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, ReferenceRatios>> reference_ratios =
+            new ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, ReferenceRatios>>();
+
+        // BeforeFlowGuard: ratio where the Aim-Focused Flow Guard runs; Final: after all aim/speed rules (Simple Stream Nerf, Stream-Only Guard).
+        // Load: the loaded parts of an SS (the owner's "kiai", only with TazikPpBalance.OwnerRules).
+        private readonly record struct ReferenceRatios(double BeforeFlowGuard, double Final, double StreamWeight, double SkillPp, RxLoadSections.Result? Load);
+
+        /// <summary>
+        /// TazikPp "RP Balance (RX)": respect points of the prepared beatmap (computed in <see cref="Prepare"/> from the playable beatmap,
+        /// which has the stacking, slider paths and mods the RX representation does not keep).
+        /// </summary>
+        private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<RxRespectPoints.Result>> respect_points =
+            new ConditionalWeakTable<RxBeatmap, StrongBox<RxRespectPoints.Result>>();
+
+        /// <summary>TazikPp "Aim Control (RX)": control PP of the prepared beatmap per clock rate.</summary>
+        private static readonly ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<double, double>> control_pp =
+            new ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<double, double>>();
+
+        /// <summary>TazikPp "RP Balance (RX)": total PP of an SS on the same prepared beatmap + mods (the RP multiplier reference).</summary>
+        private static readonly ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, double>> ss_totals =
+            new ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, double>>();
+
+        // CS Gain: RP and Arles of the playable beatmap rated at the reference CS (prepared with it), final SS PP there per mods.
+        private readonly record struct CsReference(float Cs, RxRespectPoints.Result Rp, RxArles.Analysis Arles);
+
+        private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<CsReference>> cs_reference =
+            new ConditionalWeakTable<RxBeatmap, StrongBox<CsReference>>();
+
+        private static readonly ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, double>> cs_reference_pp =
+            new ConditionalWeakTable<RxBeatmap, ConcurrentDictionary<string, double>>();
+
+        /// <summary>The map-level TazikPp multipliers of one map + mods (from an SS).</summary>
+        private readonly record struct MapLevel(double ControlPp, double Control, double Rp, double Arles, double TypeScale)
+        {
+            public double Product => Control * Rp * Arles * TypeScale;
+        }
+
+        private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<RxArles.Analysis>> arles =
+            new ConditionalWeakTable<RxBeatmap, StrongBox<RxArles.Analysis>>();
+
+        /// <summary>TazikPp "Player Balance (RX)": played length and slider share of the prepared beatmap.</summary>
+        private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<RxPlayerBalance.Shape>> player_shape =
+            new ConditionalWeakTable<RxBeatmap, StrongBox<RxPlayerBalance.Shape>>();
+
+        /// <summary>TazikPp 1.1 draft (<see cref="RxOwnerRules"/>): what the owner's rules read from the prepared beatmap.</summary>
+        private static readonly ConditionalWeakTable<RxBeatmap, StrongBox<RxOwnerShape.Shape>> owner_shape =
+            new ConditionalWeakTable<RxBeatmap, StrongBox<RxOwnerShape.Shape>>();
+
+        public static bool IsRelax(IEnumerable<Mod> mods) => RealistikRelaxBalance.IsRelax(mods);
+
+        public static void Prepare(IBeatmap beatmap, Mod[] mods, IEnumerable<OsuDifficultyAttributes> attributes)
+        {
+            if (!IsRelax(mods))
+                return;
+
+            IBeatmap evidenceBeatmap = beatmap;
+            Mod[] evidenceMods = mods.ToArray();
+            bool csRaisedByMod = mods.Any(m => m.Acronym is "HR" or "DA");
+            if (RxPhysicalPlay.Enabled)
+            {
+                beatmap = RxPhysicalPlay.Create(beatmap, mods);
+                mods = RxPhysicalPlay.Mods(mods);
+            }
+
+            try
+            {
+                RxBeatmap converted = RealistikBeatmapConverter.Convert(beatmap, TazikPpBalance.Current.OwnerRules && TazikPpBalance.Current.UseHitAreaDistances);
+                if (TazikPpBalance.Current.OwnerRules)
+                    miss_evidence.Add(converted, new RxMissEvidence(evidenceBeatmap, evidenceMods));
+                respect_points.AddOrUpdate(converted, new StrongBox<RxRespectPoints.Result>(RxRespectPoints.Calculate(beatmap, mods)));
+                arles.AddOrUpdate(converted, new StrongBox<RxArles.Analysis>(RxArles.Analyze(beatmap)));
+                player_shape.AddOrUpdate(converted, new StrongBox<RxPlayerBalance.Shape>(RxPlayerBalance.Analyze(beatmap)));
+
+                if (TazikPpBalance.Current.OwnerRules)
+                    owner_shape.AddOrUpdate(converted, new StrongBox<RxOwnerShape.Shape>(RxOwnerShape.Analyze(beatmap)));
+
+                // TazikPp 1.1 draft: DA up to HR's CS counts as HR (the same CS pays the same).
+                float referenceCs = RxCsGain.ReferenceCs(beatmap.BeatmapInfo.Difficulty.CircleSize,
+                    mods.Any(m => m.Acronym == "HR") || (TazikPpBalance.Current.OwnerRules && (mods.Any(m => m.Acronym == "DA") || (RxPhysicalPlay.Enabled && csRaisedByMod))));
+                if (beatmap.Difficulty.CircleSize > referenceCs + 1e-6)
+                {
+                    cs_reference.AddOrUpdate(converted, new StrongBox<CsReference>(new CsReference(referenceCs,
+                        RxRespectPoints.Calculate(beatmap, mods, referenceCs), RxArles.Analyze(beatmap, referenceCs))));
+                }
+                foreach (OsuDifficultyAttributes attribute in attributes)
+                    beatmapsByAttributes.AddOrUpdate(attribute, converted);
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidOperationException(
+                    $"Managed RX beatmap preparation failed for '{beatmap.BeatmapInfo.Hash}'.",
+                    exception);
+            }
+        }
+
+        public static void Prepare(IBeatmap beatmap, Mod[] mods, OsuDifficultyAttributes attributes)
+            => Prepare(beatmap, mods, new[] { attributes });
+
+        internal static RxBeatmap? GetPreparedBeatmap(OsuDifficultyAttributes attributes)
+            => beatmapsByAttributes.TryGetValue(attributes, out RxBeatmap? beatmap) ? beatmap : null;
+
+        public static OsuPerformanceAttributes CalculatePerformance(ScoreInfo score, OsuDifficultyAttributes difficulty)
+            => calculatePerformance(score, difficulty, null);
+
+        /// <summary>Score-local contextual miss evidence, available to replay-aware and gameplay callers.</summary>
+        internal static OsuPerformanceAttributes CalculatePerformanceWithMissLoad(ScoreInfo score, OsuDifficultyAttributes difficulty, double missLoad)
+        {
+            if (!double.IsFinite(missLoad) || missLoad < 0) throw new ArgumentOutOfRangeException(nameof(missLoad));
+            return calculatePerformance(score, difficulty, missLoad);
+        }
+
+        private static OsuPerformanceAttributes calculatePerformance(ScoreInfo score, OsuDifficultyAttributes difficulty, double? missLoad)
+        {
+            if (score.BeatmapInfo is null)
+                throw new InvalidOperationException("Managed RX calculation requires BeatmapInfo.");
+            if (!IsRelax(score.Mods))
+                throw new InvalidOperationException("Managed RX calculator was called for a non-RX score.");
+
+            if (!beatmapsByAttributes.TryGetValue(difficulty, out RxBeatmap? beatmap))
+            {
+                throw new InvalidOperationException(
+                    $"Managed RX beatmap was not prepared for '{score.BeatmapInfo.Hash}'. "
+                    + "Run the matching difficulty calculation before performance calculation.");
+            }
+
+            if (beatmap.HitObjects.Count == 0)
+                return new OsuPerformanceAttributes();
+
+            try
+            {
+                RxScoreState state = createScoreState(score);
+                state.MissLoad = missLoad is double suppliedMissLoad ? Math.Clamp(suppliedMissLoad, 0, state.Misses)
+                    : miss_evidence.TryGetValue(beatmap, out var evidence) ? evidence.MissLoad(score.HitEvents, (int)state.Misses) : null;
+                OsuPerformanceAttributes attributes = calculate(beatmap, state, score.Mods);
+
+                if (RelaxPpSystemSelection.Current != ForkRelaxPpSystem.TazikPp)
+                    return attributes;
+
+                double ssTotal = getSsTotal(beatmap, score.Mods);
+
+                // TazikPp "Aim Control (RX)", "RP Balance (RX)" (with "Section Types (RX)"), "Arles (RX)" and the type scale: one
+                // multiplier each per map + mods, from an SS (see mapLevel).
+                respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? respectPoints);
+                arles.TryGetValue(beatmap, out StrongBox<RxArles.Analysis>? shape);
+                double clockRate = RxPhysicalPlay.Enabled ? 1 : ModUtils.CalculateRateWithMods(score.Mods);
+                MapLevel level = mapLevel(beatmap, clockRate, ssTotal, attributes.TazikPpStreamWeight ?? 0, respectPoints?.Value, shape?.Value);
+
+                scale(attributes, level.Control);
+                attributes.TazikPpBreakdown?.Add(new("control", level.Control));
+                attributes.TazikPpControlPp = level.ControlPp;
+                attributes.TazikPpControlMultiplier = level.Control;
+
+                if (respectPoints != null)
+                {
+                    RxRespectPoints.Result rp = respectPoints.Value;
+                    scale(attributes, level.Rp);
+                    attributes.TazikPpBreakdown?.Add(new("rp", level.Rp));
+                    attributes.TazikPpRespectPoints = rp.Value;
+                    attributes.TazikPpRpType = rp.Type.ToString();
+                    attributes.TazikPpRpRemainderType = rp.Type == RxRespectPoints.MapType.Stream ? rp.RemainderType.ToString() : null;
+                    attributes.TazikPpComposition = rp.Composition;
+                    attributes.TazikPpRespectPointsMultiplier = level.Rp;
+                }
+
+                if (shape != null)
+                {
+                    scale(attributes, level.Arles);
+                    attributes.TazikPpBreakdown?.Add(new("arles", level.Arles));
+                    attributes.TazikPpArlesConfidence = shape.Value.Confidence;
+                    attributes.TazikPpArlesMultiplier = level.Arles;
+                }
+
+                scale(attributes, level.TypeScale);
+                attributes.TazikPpBreakdown?.Add(new("typeScale", level.TypeScale));
+
+                TazikPpBalance balance = TazikPpBalance.Current;
+                owner_shape.TryGetValue(beatmap, out StrongBox<RxOwnerShape.Shape>? ownerShape);
+                RxOwnerRules.Play play = ownerPlay(score, beatmap, clockRate);
+                RxRespectPoints.MapType? rpType = respectPoints?.Value.Type;
+                double streamShare = attributes.TazikPpStreamWeight ?? 0;
+                // The owner's AimSlop rules: the whole map for an AimSlop map, the part outside the streams for a stream map with AimSlop rest.
+                double aimSlopWeight = rpType == RxRespectPoints.MapType.AimSlop ? 1
+                    : rpType == RxRespectPoints.MapType.Stream && respectPoints?.Value.RemainderType == RxRespectPoints.MapType.AimSlop ? 1 - streamShare : 0;
+
+                // TazikPp "CS Reduction (RX)": bigger circles than the map has (DA lower CS, EZ) — applied last, so nothing absorbs it.
+                // The owner's long AimSlop rule has its own CS penalty instead.
+                double csReductionStrength = balance.CsReductionStrength;
+                if (balance.OwnerRules && ownerShape != null)
+                    csReductionStrength *= 1 - aimSlopWeight * RxMath.SmoothStep(ownerShape.Value.LengthMs / 1000, 80, 100);
+                double csReduction = RxCsReduction.Multiplier(score.BeatmapInfo.Difficulty.CircleSize, beatmap.CircleSize, csReductionStrength);
+                scale(attributes, csReduction);
+                attributes.TazikPpBreakdown?.Add(new("csReduction", csReduction));
+                attributes.TazikPpCsReductionMultiplier = csReduction;
+
+                // TazikPp "CS Gain (RX)": smaller circles than the map's own CS (at most CS 5) pay only on maps that are hard there.
+                double csGain = 1;
+                if (cs_reference.TryGetValue(beatmap, out StrongBox<CsReference>? csReference))
+                {
+                    double referencePp = getCsReferencePp(beatmap, score.Mods, clockRate, csReference.Value);
+                    // Its "hard by itself" thresholds are on the unscaled PP: the overall scale must not open the gain to easier maps.
+                    csGain = RxCsGain.Multiplier(referencePp > 0 ? ssTotal * level.Product / referencePp : 1, referencePp / TazikPpBalance.Current.GlobalScale);
+                    scale(attributes, csGain);
+                    attributes.TazikPpBreakdown?.Add(new("csGain", csGain));
+                    attributes.TazikPpCsReferencePp = referencePp;
+                }
+
+                // TazikPp 1.1 draft: the owner's rules (RxOwnerRules), one multiplier each per map + mods.
+                double owner = 1;
+                if (balance.OwnerRules && ownerShape != null)
+                {
+                    RxOwnerShape.Shape shapeOfMap = ownerShape.Value;
+                    RxLoadSections.Result load = attributes.TazikPpLoad ?? RxLoadSections.Result.EMPTY;
+
+                    owner *= ownerRule(attributes, "owner.hd", RxOwnerRules.Hidden(play));
+                    owner *= ownerRule(attributes, "owner.od", RxOwnerRules.Od(play));
+                    owner *= ownerRule(attributes, "owner.csRaise", RxOwnerRules.CsRaise(play));
+                    owner *= ownerRule(attributes, "owner.sliders", RxOwnerRules.Sliders(shapeOfMap));
+                    owner *= ownerRule(attributes, "owner.control", RxOwnerRules.Control(respectPoints?.Value.Composition));
+                    owner *= ownerRule(attributes, "owner.streams", RxOwnerRules.Streams(shapeOfMap, load, play, streamShare));
+                    owner *= ownerRule(attributes, "owner.overlappingStreams", RxOwnerRules.OverlappingStreams(shapeOfMap, streamShare));
+                    owner *= ownerRule(attributes, "owner.overlappingStreamMap", RxOwnerRules.OverlappingStreamMap(shapeOfMap));
+                    owner *= ownerRule(attributes, "owner.nomod", RxPhysicalPlay.Enabled ? 1 : RxOwnerRules.NomodMultiplier(clockRate, balance.NomodScale));
+
+                    if (aimSlopWeight > 0)
+                    {
+                        RxOwnerRules.AimSlopParts aimSlop = RxOwnerRules.AimSlop(shapeOfMap, load, play);
+                        owner *= ownerRule(attributes, "owner.aimSlop", 1 + aimSlopWeight * (aimSlop.Value - 1));
+                        attributes.TazikPpBreakdown?.Add(new("owner.aimSlop.farm", aimSlop.Farm));
+                        attributes.TazikPpBreakdown?.Add(new("owner.aimSlop.repeats", aimSlop.Repeats));
+                    }
+
+                    attributes.TazikPpBreakdown?.Add(new("owner.loadParts", load.Seconds.Length));
+                    attributes.TazikPpBreakdown?.Add(new("owner.loadSeconds", load.TotalSeconds));
+                    attributes.TazikPpBreakdown?.Add(new("owner.streamSpacing", shapeOfMap.StreamSpacing));
+                    attributes.TazikPpBreakdown?.Add(new("owner.streamSpaced", shapeOfMap.StreamSpaced));
+                    attributes.TazikPpBreakdown?.Add(new("owner.streamShare", streamShare));
+                    attributes.TazikPpBreakdown?.Add(new("owner.tightStreamShare", shapeOfMap.TightStreamShare));
+                    attributes.TazikPpBreakdown?.Add(new("owner.wideBackAndForth", shapeOfMap.WideBackAndForthShare));
+                }
+
+                // TazikPp "Player Balance (RX)": length, slider share and rate as the players see them, at the map's SS level so far.
+                if (player_shape.TryGetValue(beatmap, out StrongBox<RxPlayerBalance.Shape>? playerShape))
+                {
+                    double players = RxPlayerBalance.Multiplier(playerShape.Value, clockRate, ssTotal * level.Product * csReduction * csGain * owner, TazikPpBalance.Current);
+                    if (players != 1)
+                    {
+                        scale(attributes, players);
+                        attributes.TazikPpBreakdown?.Add(new("players", players));
+                    }
+                }
+
+                // Applied after the level-dependent DT penalty: an additional bonus, not part of its reference level.
+                if (balance.OwnerRules)
+                    ownerRule(attributes, "owner.rateBonus", RxOwnerRules.RateBonus(clockRate));
+
+                if (balance.OwnerRules && player_shape.TryGetValue(beatmap, out StrongBox<RxPlayerBalance.Shape>? lengthShape))
+                    ownerRule(attributes, "owner.longMap", RxLongMapPenalty.Multiplier(lengthShape.Value.LengthMs / 1000 / clockRate, balance.LongMapNerf));
+
+                if (RxPhysicalPlay.Enabled && balance.PhysicalChallengeStrength > 0)
+                {
+                    var feature = challenge_features.GetValue(beatmap, m => new StrongBox<RxPhysicalChallenge.Features>(RxPhysicalChallenge.Analyze(m))).Value;
+                    double strength = balance.PhysicalChallengeStrength;
+                    double visible = attributes.TazikPpBreakdown?.FirstOrDefault(x => x.Key == "visibleNotes").Value ?? 1;
+                    ownerRule(attributes, "physical.speed", RxPhysicalChallenge.Speed(feature, strength));
+                    ownerRule(attributes, "physical.reading", RxPhysicalChallenge.Reading(feature, visible, strength));
+                    ownerRule(attributes, "physical.circle", RxPhysicalChallenge.Circle(play.BaseCs, play.PlayedCs, strength));
+                    ownerRule(attributes, "physical.rotation", RxPhysicalChallenge.Rotation(feature, strength));
+                    attributes.TazikPpBreakdown?.Add(new("physical.speedPressure", feature.SpeedPressure));
+                    attributes.TazikPpBreakdown?.Add(new("physical.visibleNotes", feature.VisibleNotes));
+                    attributes.TazikPpBreakdown?.Add(new("physical.rotationShare", feature.RotationShare));
+                }
+
+                return attributes;
+            }
+            catch (Exception exception) when (exception is not InvalidOperationException)
+            {
+                throw new InvalidOperationException(
+                    $"Managed RX PP calculation failed for '{score.BeatmapInfo.Hash}'.",
+                    exception);
+            }
+        }
+
+        private static double ownerRule(OsuPerformanceAttributes attributes, string key, double multiplier)
+        {
+            scale(attributes, multiplier);
+            attributes.TazikPpBreakdown?.Add(new(key, multiplier));
+            return multiplier;
+        }
+
+        private static RxOwnerRules.Play ownerPlay(ScoreInfo score, RxBeatmap beatmap, double clockRate)
+        {
+            BeatmapDifficulty own = score.BeatmapInfo!.Difficulty;
+            return new RxOwnerRules.Play(clockRate, own.CircleSize, beatmap.CircleSize, own.ApproachRate, beatmap.ApproachRate, own.OverallDifficulty,
+                beatmap.OverallDifficulty, !RxPhysicalPlay.Enabled && score.Mods.Any(m => m is OsuModHardRock), score.Mods.Any(m => m is OsuModDifficultyAdjust || (RxPhysicalPlay.Enabled && m is OsuModHardRock)),
+                score.Mods.Any(m => m is OsuModHidden || m.Acronym == "TC"), RxLockedDifficulty.IsLocked(score.Mods));
+        }
+
+        private static void scale(OsuPerformanceAttributes attributes, double multiplier)
+        {
+            attributes.Aim *= multiplier;
+            attributes.Speed *= multiplier;
+            attributes.Accuracy *= multiplier;
+            attributes.Reading *= multiplier;
+            attributes.Total *= multiplier;
+        }
+
+        private static double getControlPp(RxBeatmap beatmap, double clockRate)
+            => control_pp.GetValue(beatmap, _ => new ConcurrentDictionary<double, double>())
+                         .GetOrAdd(clockRate, rate => RxAimControl.ControlPp(beatmap, rate, TazikPpBalance.Current.OwnerRules && TazikPpBalance.Current.UseHitAreaDistances));
+
+        private static MapLevel mapLevel(RxBeatmap beatmap, double clockRate, double ssTotal, double streamWeight, RxRespectPoints.Result? respectPoints,
+                                         RxArles.Analysis? shape)
+        {
+            // "Aim Control (RX)": fast direction changes at small / medium spacing join the total as a third skill.
+            double controlPp = getControlPp(beatmap, clockRate) * TazikPpBalance.Current.ControlScale;
+            double control = RxAimControl.Multiplier(controlPp, ssTotal);
+            double rpMultiplier = 1, typeScale = 1;
+
+            // "RP Balance (RX)": the total moves to the map's RP, within ±20%. "Section Types (RX)": a stream map is a stream map
+            // only in its streams — RP and the type scale of the rest come from its type without streams, by the streams' PP share.
+            if (respectPoints is RxRespectPoints.Result rp)
+            {
+                bool stream = rp.Type == RxRespectPoints.MapType.Stream;
+                double rpValue = stream ? streamWeight * rp.Value + (1 - streamWeight) * rp.RemainderValue : rp.Value;
+                double rpLimit = TazikPpBalance.Current.RpLimit;
+                rpMultiplier = Math.Pow(Math.Clamp(RxRespectPoints.Multiplier(rpValue, ssTotal * control), 1 - rpLimit, 1 + rpLimit), TazikPpBalance.Current.RpStrength);
+                typeScale = stream
+                    ? streamWeight * TazikPpBalance.Current.TypeScale(rp.Type) + (1 - streamWeight) * TazikPpBalance.Current.TypeScale(rp.RemainderType)
+                    : TazikPpBalance.Current.TypeScale(rp.Type);
+            }
+
+            // "Arles (RX)" is applied after RP so its clamp cannot absorb the bonus.
+            return new MapLevel(controlPp, control, rpMultiplier, shape?.Multiplier ?? 1, TazikPpBalance.Current.GlobalScale * typeScale);
+        }
+
+        /// <summary>CS Gain: final SS PP of the map + mods at the reference CS (before CS Reduction / CS Gain).</summary>
+        private static double getCsReferencePp(RxBeatmap beatmap, IReadOnlyList<Mod> mods, double clockRate, CsReference reference)
+        {
+            var perBeatmap = cs_reference_pp.GetValue(beatmap, _ => new ConcurrentDictionary<string, double>());
+            string key = string.Join(",", mods.Select(m => $"{m.Acronym}({string.Join(";", m.SettingDescription.Select(d => $"{d.setting}={d.value}"))})")
+                                              .OrderBy(a => a, StringComparer.Ordinal));
+
+            return perBeatmap.GetOrAdd(key, _ =>
+            {
+                RxBeatmap copy = withCircleSize(beatmap, reference.Cs);
+                respect_points.AddOrUpdate(copy, new StrongBox<RxRespectPoints.Result>(reference.Rp));
+
+                uint objects = (uint)copy.HitObjects.Count;
+                var ss = new RxScoreState { Count300 = objects, PassedObjects = objects > 0 ? objects : null };
+                OsuPerformanceAttributes ssAttributes = calculate(copy, ss, mods);
+                return ssAttributes.Total * mapLevel(copy, clockRate, ssAttributes.Total, ssAttributes.TazikPpStreamWeight ?? 0, reference.Rp, reference.Arles).Product;
+            });
+        }
+
+        private static RxBeatmap withCircleSize(RxBeatmap beatmap, float circleSize)
+        {
+            var copy = new RxBeatmap
+            {
+                Version = beatmap.Version,
+                ApproachRate = beatmap.ApproachRate,
+                CircleSize = circleSize,
+                HpDrainRate = beatmap.HpDrainRate,
+                OverallDifficulty = beatmap.OverallDifficulty,
+                SliderMultiplier = beatmap.SliderMultiplier,
+                SliderTickRate = beatmap.SliderTickRate,
+            };
+            copy.TimingPoints.AddRange(beatmap.TimingPoints);
+            copy.DifficultyPoints.AddRange(beatmap.DifficultyPoints);
+            copy.HitObjects.AddRange(beatmap.HitObjects);
+            return copy;
+        }
+
+        private static double getSsTotal(RxBeatmap beatmap, IReadOnlyList<Mod> mods)
+        {
+            var perBeatmap = ss_totals.GetValue(beatmap, _ => new ConcurrentDictionary<string, double>());
+            // Mod settings are part of the key (rate, AR/OD lock and DA values are settings, not acronyms).
+            string modsKey = string.Join(",", mods.Select(m => $"{m.Acronym}({string.Join(";", m.SettingDescription.Select(d => $"{d.setting}={d.value}"))})")
+                                                  .OrderBy(a => a, StringComparer.Ordinal));
+
+            return perBeatmap.GetOrAdd(modsKey, _ =>
+            {
+                uint objects = (uint)beatmap.HitObjects.Count;
+                var ss = new RxScoreState { Count300 = objects, PassedObjects = objects > 0 ? objects : null };
+                return calculate(beatmap, ss, mods).Total;
+            });
+        }
+
+        /// <summary>The TazikPp / MosuRealistik pipeline for one score state (everything except "RP Balance (RX)").</summary>
+        private static OsuPerformanceAttributes calculate(RxBeatmap beatmap, RxScoreState scoreState, IEnumerable<Mod> scoreMods)
+        {
+            bool mosuPp = RelaxPpSystemSelection.Current == ForkRelaxPpSystem.TazikPp;
+
+            // TazikPp "Traceable = Hidden (RX)": Traceable (TC) is calculated exactly like Hidden (HD) — reading bonus,
+            // HD reading guard and every mod check below see HD. MosuRealistik keeps the original mods.
+            Mod[] ppMods = mosuPp
+                ? scoreMods.Select(m => m.Acronym == "TC" ? new OsuModHidden() : m).ToArray()
+                : scoreMods.ToArray();
+
+            // TazikPp 1.1 draft: HD is paid by the owner's HD Buff only, not by the core's HD reading.
+            bool ownerRules = mosuPp && TazikPpBalance.Current.OwnerRules;
+            if (ownerRules)
+                ppMods = ppMods.Where(m => m is not OsuModHidden).ToArray();
+
+            if (RxPhysicalPlay.Enabled)
+                ppMods = RxPhysicalPlay.Mods(ppMods);
+
+            RxMods performanceMods = getPerformanceMods(ppMods);
+            double clockRate = ModUtils.CalculateRateWithMods(ppMods);
+
+            // TazikPp "AR/OD Lock (RX)": a rate mod with "Lock AR/OD" is calculated with the AR / OD really played.
+            bool lockedDifficulty = mosuPp && RxLockedDifficulty.IsLocked(ppMods);
+            float effectiveAr = lockedDifficulty ? RxLockedDifficulty.Ar(beatmap.ApproachRate, clockRate) : beatmap.ApproachRate;
+            // TazikPp 1.1 draft: the core sees OD up to 10; OD above pays only through the owner's OD rule.
+            float playedOd = ownerRules ? Math.Min(beatmap.OverallDifficulty, RxOwnerRules.OD_BASE) : beatmap.OverallDifficulty;
+            float effectiveOd = lockedDifficulty ? RxLockedDifficulty.Od(playedOd, clockRate) : playedOd;
+
+            RxNativePerformanceResult result = MosuRxCalculator.Calculate(new RxCalculationRequest
+            {
+                Beatmap = beatmap,
+                Mods = performanceMods,
+                Score = scoreState,
+                EffectiveAr = effectiveAr,
+                EffectiveOd = effectiveOd,
+                EffectiveCs = beatmap.CircleSize,
+                EffectiveHp = beatmap.HpDrainRate,
+                ClockRate = clockRate,
+                UseHitAreaDistances = TazikPpBalance.Current.OwnerRules && TazikPpBalance.Current.UseHitAreaDistances,
+            });
+
+            double nativeMultiplier = calculateNativeMultiplier(result, scoreState);
+            RealistikRelaxBalance.ApplyComponentGuards(
+                result,
+                ppMods,
+                scoreState,
+                beatmap,
+                (float)result.Difficulty.Cs,
+                clockRate);
+
+            // Diagnostics for the site's "why did the PP change": every rule's multiplier in calculation order (1 = no effect).
+            // Aim-scoped entries are ratios of the aim PP, the others multiply the whole total.
+            var breakdown = new List<KeyValuePair<string, double>>();
+            double aimBefore;
+
+            // Its parts, for the site only ("pattern" is their product, clamped to 0.5–1). TazikPp 1.1 draft: no anti-farm part (the owner's
+            // AimSlop repeats rule takes its place).
+            var patternParts = RealistikRelaxBalance.PatternBreakdown(ppMods, result);
+            double patternMultiplier = ownerRules
+                ? Math.Clamp(patternParts.FlowOverboost * patternParts.HrWideStream, 0.50, 1)
+                : RealistikRelaxBalance.PatternMultiplier(ppMods, result);
+            breakdown.Add(new("pattern", patternMultiplier));
+
+            breakdown.Add(new("pattern.antiFarm", patternParts.AntiFarm));
+            breakdown.Add(new("pattern.flowOverboost", patternParts.FlowOverboost));
+            breakdown.Add(new("pattern.hrWideStream", patternParts.HrWideStream));
+
+            // TazikPp "Spike Filler Guard (RX)": maps with several hard moments are not "one spike in filler" — only the anti-farm
+            // part of the pattern multiplier is lifted.
+            if (mosuPp && !ownerRules && respect_points.TryGetValue(beatmap, out StrongBox<RxRespectPoints.Result>? moments))
+            {
+                double unguarded = patternMultiplier;
+                patternMultiplier = RxSpikeFillerGuard.Apply(patternMultiplier, result.Difficulty.JumpSpikeFillerWeight, moments.Value.HardMoments);
+                breakdown.Add(new("spikeFillerGuard", patternMultiplier / unguarded));
+            }
+
+            double lengthAimMultiplier = RealistikRelaxBalance.LengthAimMultiplier(ppMods, result);
+            result.PpAim *= lengthAimMultiplier;
+            breakdown.Add(new("aim:lengthAim", lengthAimMultiplier));
+
+            ReferenceRatios reference = mosuPp
+                ? getReferenceRatios(beatmap, performanceMods, ppMods, clockRate, effectiveAr, effectiveOd)
+                : default;
+
+            if (mosuPp)
+            {
+                // TazikPp "Aim-Focused Flow Guard (RX)": no flow bonus for aim-focused maps (flow comes from their spaced streams).
+                aimBefore = result.PpAim;
+                RxAimFocusedFlowGuard.Apply(result, reference.BeforeFlowGuard);
+                breakdown.Add(new("aim:flowGuard", ratio(result.PpAim, aimBefore)));
+
+                // TazikPp "Length Bonus (RX)" + "Spike Nerf (RX)": many hard moments are worth more than one short spike.
+                aimBefore = result.PpAim;
+                RxLengthBonus.Apply(result);
+                breakdown.Add(new("aim:lengthBonus", ratio(result.PpAim, aimBefore)));
+
+                // TazikPp "Point Variety Nerf (RX)": 2–4 spot back-and-forth spam loses most aim/speed PP.
+                aimBefore = result.PpAim;
+                RxPointVarietyNerf.Apply(result, beatmap);
+                breakdown.Add(new("aim:pointVariety", ratio(result.PpAim, aimBefore)));
+
+                // TazikPp "Extreme Jump Nerf (RX)": maps with 80+ jumps faster than 4.5 px/ms (glass beach) lose up to 31% aim PP.
+                aimBefore = result.PpAim;
+                RxExtremeJumpNerf.Apply(result, beatmap);
+                breakdown.Add(new("aim:extremeJump", ratio(result.PpAim, aimBefore)));
+
+                // TazikPp "Accuracy Gate (RX)": accuracy PP is paid by how hard the map is (aim + speed PP of an SS).
+                double accuracyGate = RxAccuracyGate.Multiplier(reference.SkillPp);
+                result.PpAccuracy *= accuracyGate;
+                breakdown.Add(new("acc:accuracyGate", accuracyGate));
+            }
+
+            result.Pp = RealistikRelaxBalance.RebuildTotal(result, scoreState, nativeMultiplier);
+
+            if (RealistikRelaxBalance.IsVerticalBalanceEligible(ppMods))
+            {
+                double verticalPressure = RealistikRelaxBalance.VerticalPressure(
+                    beatmap,
+                    (float)result.Difficulty.Cs,
+                    scoreState.PassedObjects,
+                    clockRate);
+                if (verticalPressure > 0)
+                {
+                    result.PpAim *= 1 - 0.06 * verticalPressure;
+                    result.Pp = RealistikRelaxBalance.RebuildTotal(result, scoreState, nativeMultiplier);
+                }
+            }
+
+            double odMultiplier = ownerRules ? 1 : RealistikRelaxBalance.OdMultiplier(result.Difficulty.Od);
+            breakdown.Add(new("od", odMultiplier));
+
+            // Product of the TazikPp total-PP rules below (1 for MosuRealistik).
+            double mosuPpMultiplier = 1.0;
+
+            if (mosuPp)
+            {
+                // TazikPp "Stream Map Nerf (RX)": stream maps (speed PP ≥ 1.0–1.3× aim PP) lose up to 35% of the PP their streams earn.
+                mosuPpMultiplier *= record(breakdown, "streamMap", RxStreamMapNerf.Multiplier(reference.Final, reference.StreamWeight));
+
+                // TazikPp "Stream-Only Guard (RX)": speed PP ≥ 5–10× aim PP (streams into one point): speed PP stops counting
+                // (none from 10×) and the rest keeps ≤ 10% of the PP.
+                mosuPpMultiplier *= record(breakdown, "streamOnly", RxStreamOnlyGuard.Apply(result, scoreState, nativeMultiplier, reference.Final));
+
+                // TazikPp "One-Point Map Guard (RX)": every note stacked on 1–2 spots (e.g. Iyul' [HS]) keeps ~3% of the PP.
+                mosuPpMultiplier *= record(breakdown, "onePoint", RxOnePointMapGuard.Multiplier(beatmap));
+
+                // TazikPp "Short High CS Nerf (RX)": CS 5–6+ maps with 300–700 objects lose up to 15% (smooth in CS and length).
+                mosuPpMultiplier *= record(breakdown, "shortHighCs", RxShortHighCsNerf.Multiplier(beatmap));
+
+                // TazikPp "Visible Notes Reading (RX)": more spaced notes on screen at once (lower AR, higher BPM) → up to +20%.
+                // TazikPp 1.1 draft (proposal): paid per spaced note on screen beyond what the same map shows at AR 10 on screen.
+                mosuPpMultiplier *= record(breakdown, "visibleNotes", ownerRules
+                    ? RxVisibleNotesReading.MultiplierOverAr10(beatmap, effectiveAr, clockRate)
+                    : RxVisibleNotesReading.Multiplier(beatmap, effectiveAr));
+
+                // TazikPp "CS PP Buff (RX)": CS 4 +5%, 5 +10%, 6 +15%, 7 +25%, 8 +50% ... (smooth, CS incl. HR/EZ/DA).
+                // TazikPp 1.1 draft: replaced by the owner's HR Buff and DA CS Buff.
+                mosuPpMultiplier *= record(breakdown, "csBuff", ownerRules ? 1 : RxCsPpBuff.Multiplier(beatmap.CircleSize));
+
+                // TazikPp "Heavy Miss Penalty (RX)": every miss above 15 removes another ~10% (× e^(−0.11 · (misses − 15))).
+                mosuPpMultiplier *= record(breakdown, "heavyMiss", RxHeavyMissPenalty.Multiplier(scoreState.Misses, scoreState.MissLoad));
+            }
+
+            return new OsuPerformanceAttributes
+            {
+                Aim = result.PpAim * odMultiplier * patternMultiplier * mosuPpMultiplier,
+                Speed = result.PpSpeed * odMultiplier * mosuPpMultiplier,
+                Accuracy = result.PpAccuracy * odMultiplier * mosuPpMultiplier,
+                Reading = result.PpReading * odMultiplier * mosuPpMultiplier,
+                Flashlight = 0,
+                EffectiveMissCount = result.EffectiveMissCount,
+                Total = result.Pp * odMultiplier * patternMultiplier * mosuPpMultiplier,
+                TazikPpSpikeFillerWeight = mosuPp ? result.Difficulty.JumpSpikeFillerWeight : null,
+                TazikPpBreakdown = mosuPp ? breakdown : null,
+                TazikPpStreamWeight = mosuPp ? reference.StreamWeight : null,
+                TazikPpLoad = reference.Load,
+            };
+        }
+
+        private static double ratio(double after, double before) => before > 0 ? after / before : 1;
+
+        private static double record(List<KeyValuePair<string, double>> breakdown, string key, double multiplier)
+        {
+            breakdown.Add(new(key, multiplier));
+            return multiplier;
+        }
+
+        /// <summary>
+        /// Runs the same pipeline as <see cref="CalculatePerformance"/> for an SS (up to the TazikPp map-type rules) and returns
+        /// its speed PP / aim PP ratios.
+        /// </summary>
+        private static ReferenceRatios getReferenceRatios(RxBeatmap beatmap, RxMods performanceMods, IEnumerable<Mod> mods, double clockRate,
+                                                          float effectiveAr, float effectiveOd)
+        {
+            var perBeatmap = reference_ratios.GetValue(beatmap, _ => new ConcurrentDictionary<string, ReferenceRatios>());
+            // AR / OD are part of the key: "Lock AR/OD" is a mod setting, not an acronym.
+            string modsKey = $"{(uint)performanceMods}|{clockRate:R}|{effectiveAr:R}|{effectiveOd:R}|"
+                             + string.Join(",", mods.Select(m => m.Acronym).OrderBy(a => a, StringComparer.Ordinal));
+            return perBeatmap.GetOrAdd(modsKey, _ => calculateReferenceRatios(beatmap, performanceMods, mods, clockRate, effectiveAr, effectiveOd));
+        }
+
+        private static ReferenceRatios calculateReferenceRatios(RxBeatmap beatmap, RxMods performanceMods, IEnumerable<Mod> mods, double clockRate,
+                                                                float effectiveAr, float effectiveOd)
+        {
+            uint objects = (uint)beatmap.HitObjects.Count;
+            var ss = new RxScoreState { Count300 = objects, PassedObjects = objects > 0 ? objects : null };
+
+            RxNativePerformanceResult result = MosuRxCalculator.Calculate(new RxCalculationRequest
+            {
+                Beatmap = beatmap,
+                Mods = performanceMods,
+                Score = ss,
+                EffectiveAr = effectiveAr,
+                EffectiveOd = effectiveOd,
+                EffectiveCs = beatmap.CircleSize,
+                EffectiveHp = beatmap.HpDrainRate,
+                ClockRate = clockRate,
+                UseHitAreaDistances = TazikPpBalance.Current.OwnerRules && TazikPpBalance.Current.UseHitAreaDistances,
+            });
+
+            RealistikRelaxBalance.ApplyComponentGuards(result, mods, ss, beatmap, (float)result.Difficulty.Cs, clockRate);
+            result.PpAim *= RealistikRelaxBalance.LengthAimMultiplier(mods, result);
+
+            double beforeFlowGuard = RxStreamOnlyGuard.SpeedAimRatio(result);
+
+            RxAimFocusedFlowGuard.Apply(result, beforeFlowGuard);
+            RxLengthBonus.Apply(result);
+            RxPointVarietyNerf.Apply(result, beatmap);
+            RxExtremeJumpNerf.Apply(result, beatmap);
+
+            if (RealistikRelaxBalance.IsVerticalBalanceEligible(mods))
+            {
+                double verticalPressure = RealistikRelaxBalance.VerticalPressure(beatmap, (float)result.Difficulty.Cs, ss.PassedObjects, clockRate);
+                if (verticalPressure > 0)
+                    result.PpAim *= 1 - 0.06 * verticalPressure;
+            }
+
+            return new ReferenceRatios(beforeFlowGuard, RxStreamOnlyGuard.SpeedAimRatio(result), RxSectionTypes.StreamShare(beatmap, result),
+                result.PpAim + result.PpSpeed, TazikPpBalance.Current.OwnerRules ? RxLoadSections.Find(result, clockRate) : null);
+        }
+
+        private static RxScoreState createScoreState(ScoreInfo score)
+        {
+            uint count300 = (uint)Math.Max(0, score.Statistics.GetValueOrDefault(HitResult.Great));
+            uint count100 = (uint)Math.Max(0, score.Statistics.GetValueOrDefault(HitResult.Ok));
+            uint count50 = (uint)Math.Max(0, score.Statistics.GetValueOrDefault(HitResult.Meh));
+            uint misses = (uint)Math.Max(0, score.Statistics.GetValueOrDefault(HitResult.Miss));
+            uint passedObjects = count300 + count100 + count50 + misses;
+
+            return new RxScoreState
+            {
+                Count300 = count300,
+                Count100 = count100,
+                Count50 = count50,
+                Misses = misses,
+                MaxCombo = score.MaxCombo > 0 ? (uint)score.MaxCombo : null,
+                PassedObjects = passedObjects > 0 ? passedObjects : null,
+            };
+        }
+
+        private static RxMods getPerformanceMods(IEnumerable<Mod> mods)
+        {
+            RxMods value = RxMods.Relax;
+
+            foreach (Mod mod in mods)
+            {
+                value |= mod.Acronym switch
+                {
+                    "NF" => RxMods.NoFail,
+                    "TD" => RxMods.TouchDevice,
+                    "HD" => RxMods.Hidden,
+                    "EZ" => RxMods.Easy,
+                    "FL" => RxMods.Flashlight,
+                    "SO" => RxMods.SpunOut,
+                    _ => RxMods.None,
+                };
+            }
+
+            return value;
+        }
+
+        private static double calculateNativeMultiplier(RxNativePerformanceResult result, RxScoreState score)
+        {
+            double componentNorm = RealistikRelaxBalance.RebuildTotal(result, score, 1);
+            if (componentNorm <= 0)
+                return 1.09;
+
+            // Preserves the exact native global multiplier, including SpunOut.
+            return result.Pp / componentNorm;
+        }
+
+    }
+}

@@ -21,17 +21,24 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
     /// </summary>
     public partial class RelaxPoolSongSelect : PlaylistsSongSelect
     {
-        public override string Title => "Add beatmaps to Relax pool";
+        public override string Title => $"Add beatmaps to {modeName} pool";
 
         private readonly Room room;
+        private readonly int mapRulesetId;
+        private readonly string modeName;
+
+        [Resolved]
+        private IAPIProvider api { get; set; } = null!;
 
         [Resolved]
         private INotificationOverlay notifications { get; set; } = null!;
 
-        public RelaxPoolSongSelect(Room room)
-            : base(room, "Add to Relax pool")
+        public RelaxPoolSongSelect(Room room, int rulesetId = 4, string modeName = "Relax")
+            : base(room, $"Add to {modeName} pool")
         {
             this.room = room;
+            this.modeName = modeName;
+            mapRulesetId = rulesetId switch { 4 or 5 => 0, 6 => 1, 7 => 2, _ => rulesetId };
 
             // PlaylistsSongSelect uses room-specific screen offsets. The pool selector should retain
             // the regular SongSelect geometry and only reuse playlist selection behaviour.
@@ -64,17 +71,18 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         {
             item = null!;
 
-            if (beatmap.OnlineID <= 0 || beatmap.Ruleset.OnlineID != 0)
+            if (beatmap.OnlineID <= 0 || beatmap.Ruleset.OnlineID != mapRulesetId)
             {
                 if (notifyFailure)
-                    notifications.Post(new SimpleNotification { Text = "Only online osu! difficulties can be added." });
+                    notifications.Post(new SimpleNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4868(modeName) });
                 return false;
             }
 
             item = new PlaylistItem(beatmap)
             {
                 ID = beatmap.OnlineID,
-                RulesetID = 0,
+                RulesetID = mapRulesetId,
+                OwnerID = api.LocalUser.Value.Id,
                 RequiredMods = Array.Empty<APIMod>(),
                 AllowedMods = Array.Empty<APIMod>(),
                 Freestyle = false,
@@ -95,7 +103,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         [
             new ScreenFooterButton
             {
-                Text = "Add whole set",
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4869,
                 Icon = osu.Framework.Graphics.Sprites.FontAwesome.Solid.LayerGroup,
                 Action = addCurrentSet,
             }

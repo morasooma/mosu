@@ -73,6 +73,15 @@ namespace osu.Game.Beatmaps
                 lookupResults.Add(res);
 
                 beatmapInfo.OnlineID = res.BeatmapID;
+                if (res.BeatmapStatus == BeatmapOnlineStatus.ArchivedMirror)
+                {
+                    // Keep the local revision and its ID; an archive is not a source of
+                    // official status, author, tags, or submission dates.
+                    if (beatmapInfo.Status != BeatmapOnlineStatus.LocallyModified)
+                        beatmapInfo.Status = BeatmapOnlineStatus.ArchivedMirror;
+                    continue;
+                }
+
                 if (shouldTrackOnlineVersion(beatmapInfo, res))
                 {
                     beatmapInfo.OnlineMD5Hash = res.MD5Hash;
@@ -105,6 +114,13 @@ namespace osu.Game.Beatmaps
                         continue;
 
                     beatmapInfo.OnlineID = res.BeatmapID;
+                    if (res.BeatmapStatus == BeatmapOnlineStatus.ArchivedMirror)
+                    {
+                        if (beatmapInfo.Status != BeatmapOnlineStatus.LocallyModified)
+                            beatmapInfo.Status = BeatmapOnlineStatus.ArchivedMirror;
+                        continue;
+                    }
+
                     if (shouldTrackOnlineVersion(beatmapInfo, res))
                     {
                         beatmapInfo.OnlineMD5Hash = res.MD5Hash;
@@ -141,8 +157,13 @@ namespace osu.Game.Beatmaps
                 }
             }
 
+            if (lookupResults.Any(r => r?.BeatmapStatus == BeatmapOnlineStatus.ArchivedMirror)
+                && !lookupResults.Any(r => r != null && r.BeatmapStatus != BeatmapOnlineStatus.ArchivedMirror)
+                && beatmapSet.Status != BeatmapOnlineStatus.LocallyModified)
+                beatmapSet.Status = BeatmapOnlineStatus.ArchivedMirror;
+
             if (beatmapSet.Beatmaps.All(b => b.MatchesOnlineVersion)
-                && lookupResults.All(r => r != null)
+                && lookupResults.All(r => r != null && r.BeatmapStatus != BeatmapOnlineStatus.ArchivedMirror)
                 && lookupResults.Select(r => r!.BeatmapSetID).Distinct().Count() == 1)
             {
                 var representative = lookupResults.First()!;

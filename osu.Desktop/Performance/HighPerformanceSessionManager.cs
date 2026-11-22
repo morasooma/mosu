@@ -18,6 +18,8 @@ namespace osu.Desktop.Performance
 
         private GCLatencyMode originalGCMode;
 
+        private GCLatencyMode? sessionGCMode;
+
         public IDisposable BeginSession()
         {
             enterSession();
@@ -35,18 +37,27 @@ namespace osu.Desktop.Performance
             Logger.Log("Starting high performance session");
 
             originalGCMode = GCSettings.LatencyMode;
+            sessionGCMode = null;
             try
             {
-                GCSettings.LatencyMode = GCLatencyMode.LowLatency;
-                Logger.Log($"GC LatencyMode set to: {GCSettings.LatencyMode} (requested: {GCLatencyMode.LowLatency}, ServerGC: {GCSettings.IsServerGC})");
+                // LowLatency shrinks the workstation GC's Gen0 budget drastically. Gameplay startup allocates
+                // hundreds of megabytes while constructing the player and skin, which can otherwise trigger
+                // thousands of foreground collections and stall the update thread for several seconds.
+                // SustainedLowLatency still favours short pauses, but permits background collection and keeps a
+                // practical allocation budget for the whole gameplay session.
+                GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+                // Satori maps both low-latency requests to LowLatency when read back. Remember the
+                // actual mode so that leaving gameplay can restore Interactive on either runtime.
+                sessionGCMode = GCSettings.LatencyMode;
+                Logger.Log($"GC LatencyMode set to: {GCSettings.LatencyMode} (requested: {GCLatencyMode.SustainedLowLatency}, ServerGC: {GCSettings.IsServerGC})");
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, $"Failed to set GC LatencyMode to {GCLatencyMode.LowLatency}");
+                Logger.Error(ex, $"Failed to set GC LatencyMode to {GCLatencyMode.SustainedLowLatency}");
             }
 
-            // Without doing this, the new GC mode won't kick in until the next GC, which could be at a more noticeable point in time.
-            GC.Collect(0);
+            // Do not force a collection here. Player construction is already allocation-heavy, and forcing the
+            // mode transition to take effect synchronously makes the gameplay-start path more expensive.
         }
 
         private void exitSession()
@@ -59,7 +70,7 @@ namespace osu.Desktop.Performance
 
             Logger.Log("Ending high performance session");
 
-            if (GCSettings.LatencyMode == GCLatencyMode.LowLatency)
+            if (sessionGCMode.HasValue && GCSettings.LatencyMode == sessionGCMode.Value)
             {
                 try
                 {

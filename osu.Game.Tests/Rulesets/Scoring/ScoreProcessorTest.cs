@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using NUnit.Framework;
 using NUnit.Framework.Legacy;
 using osu.Framework.Utils;
@@ -44,6 +45,73 @@ namespace osu.Game.Tests.Rulesets.Scoring
                     new HitCircle()
                 }
             };
+        }
+
+        [Test]
+        public void TestStableScoreDisplayDoesNotConvertScoreV1Again()
+        {
+            scoreProcessor.ApplyBeatmap(beatmap);
+            long legacyScore = 12345;
+            scoreProcessor.LegacyTotalScoreSource = () => legacyScore;
+            scoreProcessor.RefreshLegacyTotalScore();
+            Assert.That(scoreProcessor.GetDisplayScore(ScoringMode.Classic), Is.EqualTo(12345));
+            Assert.That(scoreProcessor.GetDisplayScore(ScoringMode.Standardised), Is.EqualTo(12345));
+            var saved = new ScoreInfo();
+            scoreProcessor.PopulateScore(saved);
+            Assert.That(saved.TotalScore, Is.EqualTo(12345));
+            Assert.That(saved.LegacyTotalScore, Is.EqualTo(12345));
+            legacyScore = 120;
+            scoreProcessor.RefreshLegacyTotalScore();
+            Assert.That(scoreProcessor.TotalScore.Value, Is.EqualTo(120));
+        }
+
+        [Test]
+        public void TestAutoplayCancellationStopsAtObjectAndPreservesVirtualDispatch()
+        {
+            using var cancellation = new CancellationTokenSource();
+            var largeBeatmap = new TestBeatmap(new OsuRuleset().RulesetInfo)
+            {
+                HitObjects = Enumerable.Range(0, 1000).Select(_ => (HitObject)new HitCircle()).ToList(),
+            };
+            var processor = new CancellationProbeProcessor(count =>
+            {
+                if (count == 16)
+                    cancellation.Cancel();
+            });
+            Assert.Throws<OperationCanceledException>(() => processor.ApplyBeatmap(largeBeatmap, cancellation.Token));
+            Assert.That(processor.LegacyOverrideCalls, Is.EqualTo(1));
+            Assert.That(processor.ResultsCreated, Is.EqualTo(16));
+            Assert.That(processor.Simulating, Is.False);
+
+            processor.ApplyBeatmap(largeBeatmap);
+            var reference = new ScoreProcessor(new OsuRuleset());
+            reference.ApplyBeatmap(largeBeatmap);
+            Assert.That(processor.LegacyOverrideCalls, Is.EqualTo(2));
+            Assert.That(processor.MaximumCombo, Is.EqualTo(reference.MaximumCombo));
+            Assert.That(processor.MaximumTotalScore, Is.EqualTo(reference.MaximumTotalScore));
+            Assert.That(processor.MaximumStatistics, Is.EquivalentTo(reference.MaximumStatistics));
+        }
+
+        private partial class CancellationProbeProcessor : ScoreProcessor
+        {
+            private readonly Action<int> onCreate;
+            public int ResultsCreated { get; private set; }
+            public int LegacyOverrideCalls { get; private set; }
+            public bool Simulating => IsSimulating;
+
+            public CancellationProbeProcessor(Action<int> onCreate) : base(new OsuRuleset()) => this.onCreate = onCreate;
+
+            public override void ApplyBeatmap(IBeatmap beatmap)
+            {
+                LegacyOverrideCalls++;
+                base.ApplyBeatmap(beatmap);
+            }
+
+            protected override JudgementResult CreateResult(HitObject hitObject, Judgement judgement)
+            {
+                onCreate(++ResultsCreated);
+                return base.CreateResult(hitObject, judgement);
+            }
         }
 
         [TestCase(ScoringMode.Standardised, HitResult.Meh, 83_398)]

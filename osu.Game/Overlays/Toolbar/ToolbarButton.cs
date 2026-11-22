@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -16,6 +17,7 @@ using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Input.Bindings;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 using osuTK.Graphics;
 
@@ -61,6 +63,13 @@ namespace osu.Game.Overlays.Toolbar
         protected readonly Container BackgroundContent;
 
         private readonly FillFlowContainer subTooltipFlow;
+        private IBindable<float>? topBarRadiusBindable;
+        private IBindable<Colour4>? iconColourBindable;
+        private IBindable<Colour4>? tooltip1ColourBindable;
+        private IBindable<Colour4>? tooltip2ColourBindable;
+        private IBindable<Colour4>? hoverColourBindable;
+        private IBindable<ThemeMode>? themeModeBindable;
+        private IBindable<CustomThemeDefinition>? customThemeBindable;
 
         protected ToolbarButton()
         {
@@ -81,7 +90,7 @@ namespace osu.Game.Overlays.Toolbar
                             RelativeSizeAxes = Axes.Both,
                             Masking = true,
                             CornerRadius = 6,
-                            CornerExponent = 3f,
+                            CornerExponent = 2f,
                             Children = new Drawable[]
                             {
                                 HoverBackground = new Box
@@ -154,8 +163,8 @@ namespace osu.Game.Overlays.Toolbar
             };
         }
 
-        [BackgroundDependencyLoader]
-        private void load()
+        [BackgroundDependencyLoader(true)]
+        private void load(OverlayColourProvider? colourProvider)
         {
             if (Hotkey != null)
             {
@@ -166,6 +175,52 @@ namespace osu.Game.Overlays.Toolbar
                     Hotkey = new Hotkey(Hotkey.Value),
                     Margin = new MarginPadding { Left = 3 },
                 });
+            }
+
+            topBarRadiusBindable = OverlayColourProvider.GetTopBarRadius();
+            topBarRadiusBindable.BindValueChanged(r =>
+            {
+                float radius = r.NewValue;
+                BackgroundContent.CornerRadius = radius <= 0 ? 0 : System.Math.Clamp(radius, 0f, 17f);
+            }, true);
+
+            if (colourProvider != null)
+            {
+                iconColourBindable = colourProvider.GetColourBindable(OverlayColour.Content1);
+                iconColourBindable.BindValueChanged(_ => UpdateThemeColours(colourProvider));
+
+                tooltip1ColourBindable = colourProvider.GetColourBindable(OverlayColour.Content1);
+                tooltip1ColourBindable.BindValueChanged(_ => UpdateThemeColours(colourProvider));
+
+                tooltip2ColourBindable = colourProvider.GetColourBindable(OverlayColour.Content2);
+                tooltip2ColourBindable.BindValueChanged(_ => UpdateThemeColours(colourProvider));
+
+                hoverColourBindable = colourProvider.GetColourBindable(OverlayColour.Light4);
+                hoverColourBindable.BindValueChanged(_ => UpdateThemeColours(colourProvider));
+
+                themeModeBindable = OverlayColourProvider.CurrentTheme.GetBoundCopy();
+                themeModeBindable.BindValueChanged(_ => UpdateThemeColours(colourProvider));
+
+                customThemeBindable = OverlayColourProvider.CustomTheme.GetBoundCopy();
+                customThemeBindable.BindValueChanged(_ => UpdateThemeColours(colourProvider), true);
+            }
+        }
+
+        protected virtual void UpdateThemeColours(OverlayColourProvider colourProvider)
+        {
+            if (OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom)
+            {
+                IconContainer.Colour = colourProvider.Content1;
+                tooltip1.Colour = colourProvider.Content1;
+                tooltip2.Colour = colourProvider.Content2;
+                HoverBackground.Colour = colourProvider.Light4.Opacity(0.5f);
+            }
+            else
+            {
+                IconContainer.Colour = Color4.White;
+                tooltip1.Colour = Color4.White;
+                tooltip2.Colour = Color4.White.Opacity(0.85f);
+                HoverBackground.Colour = OsuColour.Gray(80).Opacity(180);
             }
         }
 

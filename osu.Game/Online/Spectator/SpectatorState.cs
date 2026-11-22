@@ -21,6 +21,9 @@ namespace osu.Game.Online.Spectator
         [Key(0)]
         public int? BeatmapID { get; set; }
 
+        [IgnoreMember]
+        public string? BeatmapChecksum { get; set; }
+
         [Key(1)]
         public int? RulesetID { get; set; }
 
@@ -46,7 +49,7 @@ namespace osu.Game.Online.Spectator
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
 
-            return BeatmapID == other.BeatmapID && Mods.SequenceEqual(other.Mods) && RulesetID == other.RulesetID && State == other.State;
+            return BeatmapID == other.BeatmapID && BeatmapChecksum == other.BeatmapChecksum && Mods.SequenceEqual(other.Mods) && RulesetID == other.RulesetID && State == other.State;
         }
 
         public override string ToString() => $"Beatmap:{BeatmapID} Mods:{string.Join(',', Mods)} Ruleset:{RulesetID} State:{State}";

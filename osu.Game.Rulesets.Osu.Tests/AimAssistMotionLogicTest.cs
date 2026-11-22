@@ -12,6 +12,95 @@ namespace osu.Game.Rulesets.Osu.Tests
     [TestFixture]
     public class AimAssistMotionLogicTest
     {
+        [TestCase(0.89f, 60, 20, 100, false, false)]
+        [TestCase(1f, 60, 20, 100, false, true)]
+        [TestCase(1f, 60, 121, 100, false, false)]
+        [TestCase(1f, 90, 20, 100, false, false)]
+        [TestCase(1f, 60, 20, 221, false, false)]
+        [TestCase(1f, 60, 20, 100, true, false)]
+        public void TestRecoveryRequiresRecentLocalUncapturedTarget(float strength, float distance, double age,
+                                                                   double untilHit, bool captured, bool expected)
+        {
+            Assert.That(AimAssistController.CanRecoverNearTarget(strength, distance, 32, 185, age, untilHit, captured), Is.EqualTo(expected));
+        }
+
+        [TestCase(120)]
+        [TestCase(240)]
+        [TestCase(1000)]
+        public void TestRecoveryClosesStoppedMouseUndershootWithinGracePeriod(int frameRate)
+        {
+            Vector2 remaining = new Vector2(30, 0);
+            float dt = 1f / frameRate;
+            for (int i = 0; i < frameRate / 10; i++)
+                remaining -= AimAssistController.GetRecoveryAssistStep(remaining, Vector2.Zero, dt, 1);
+            Assert.That(remaining.Length, Is.LessThan(0.01f));
+        }
+
+        [Test]
+        public void TestRecoveryCanBrakeOvershootButHasBoundedSpeed()
+        {
+            Vector2 correction = AimAssistController.GetRecoveryAssistStep(new Vector2(-100, 0), new Vector2(2, 0), 0.01f, 1);
+            Assert.That(correction.X, Is.LessThan(0));
+            Assert.That(correction.Length, Is.LessThanOrEqualTo(5.81f));
+        }
+
+        [TestCase(120)]
+        [TestCase(240)]
+        [TestCase(1000)]
+        public void TestMaximumModStrengthCapturesNearMissAfterSmoothing(int frameRate)
+        {
+            const float radius = 32;
+            Vector2 target = new Vector2(120, 55);
+            Vector2 velocity = new Vector2(1000, 0);
+            Vector2 offset = Vector2.Zero;
+            Vector2 previousStep = Vector2.Zero;
+            float dt = 1f / frameRate;
+            float strength = AimAssistController.GetConfiguredStrengthFactor((float)MosuAimAssistProfile.FromStrength(0.7f).Strength);
+            Vector2 raw = Vector2.Zero;
+            bool captured = false;
+
+            for (int frame = 0; frame < Math.Ceiling(0.12f / dt); frame++)
+            {
+                raw += velocity * dt;
+                if ((target - raw - offset).Length <= radius)
+                {
+                    captured = true;
+                    break;
+                }
+
+                float intent = Vector2.Dot(Vector2.Normalize(target - raw), Vector2.UnitX);
+                float authority = AimAssistController.GetPointCorrectionWeight(strength, 1, 1, 0.7f + 0.3f * Math.Max(0, intent));
+                Vector2 desired = AimAssistController.GetTrajectoryMissCorrection(raw, target, radius, velocity, 0.18f,
+                    AimAssistController.GetPointCaptureInset(radius, strength)) * authority;
+                Vector2 correction = (desired - offset) * (1 - MathF.Exp(-dt / 0.007f));
+                previousStep = AimAssistController.GetPlayerLedAssistStep(correction, velocity * dt, strength, previousStep);
+                offset += previousStep;
+                captured |= (target - raw - offset).Length <= radius;
+            }
+
+            Assert.That(captured, Is.True, "The smoothed gameplay trajectory must enter the hitbox, not merely approach its edge.");
+        }
+
+        [TestCase(-0.2f, true)]
+        [TestCase(-0.5f, false)]
+        public void TestStickyDirectionThresholdSurvivesCorrectionGate(float alignment, bool expected)
+        {
+            MosuAimAssistProfile profile = MosuAimAssistProfile.FromStrength(0.7f);
+            bool directionAllowed = AimAssistController.IsPointDirectionAllowed(alignment, (float)profile.IntentThreshold);
+            bool acquired = AimAssistController.ShouldActivatePointTrajectory(55, profile.FovRadius, alignment,
+                (float)profile.IntentThreshold, 0);
+            bool corrected = AimAssistController.ShouldAttemptPointCorrection(80, 55, 32, profile.FovRadius, directionAllowed);
+            Assert.That(acquired && directionAllowed && corrected, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void TestCaptureInsetDoesNotCorrectAnAlreadySafeTrajectory()
+        {
+            Vector2 correction = AimAssistController.GetTrajectoryMissCorrection(Vector2.Zero, new Vector2(100, 30), 32,
+                new Vector2(1000, 0), 0.12f, AimAssistController.GetPointCaptureInset(32, 1));
+            Assert.That(correction, Is.EqualTo(Vector2.Zero));
+        }
+
         [Test]
         public void TestFastLongJumpExpandsAcquisitionReach()
         {

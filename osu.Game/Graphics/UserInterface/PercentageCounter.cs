@@ -28,7 +28,20 @@ namespace osu.Game.Graphics.UserInterface
             Current.Value = DisplayedCount = 1.0f;
         }
 
-        protected override LocalisableString FormatCount(double count) => count.FormatAccuracy();
+        private double? lastFormattedAccuracy;
+        private LocalisableString lastFormattedText;
+
+        protected override LocalisableString FormatCount(double count)
+        {
+            // Rolling transforms can change the value every frame without changing the visible
+            // hundredths of a percent. Reuse the localisable descriptor, not a culture-specific string.
+            double accuracy = count.FloorToDecimalDigits(4);
+            if (lastFormattedAccuracy.HasValue && lastFormattedAccuracy.Value.Equals(accuracy))
+                return lastFormattedText;
+
+            lastFormattedAccuracy = accuracy;
+            return lastFormattedText = count.FormatAccuracy();
+        }
 
         protected override double GetProportionalDuration(double currentValue, double newValue)
         {

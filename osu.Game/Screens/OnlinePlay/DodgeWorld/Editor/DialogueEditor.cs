@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
@@ -36,7 +37,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
         /// <summary>How many branches one character may have. The API refuses more.</summary>
         public const int BRANCH_LIMIT = 8;
 
-        private readonly Action<string> reportStatus;
+        private readonly Action<LocalisableString> reportStatus;
 
         private readonly OsuSpriteText header;
         private readonly OsuSpriteText pageIndicator;
@@ -52,7 +53,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
         private int branch;
         private int page;
 
-        public DialogueEditor(OsuColour colours, Action<string> reportStatus)
+        public DialogueEditor(OsuColour colours, Action<LocalisableString> reportStatus)
         {
             this.reportStatus = reportStatus;
 
@@ -69,23 +70,21 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                 {
                     header = new OsuSpriteText
                     {
-                        Text = "ВЫБЕРИ NPC",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4514,
                         Font = OsuFont.Default.With(size: 16, weight: FontWeight.Bold),
                         Colour = colours.Orange1,
                     },
                     pageIndicator = new OsuSpriteText
                     {
-                        Text = "ВЕТКА — / — • РЕПЛИКА — / —",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4515,
                         Font = OsuFont.Default.With(size: 12, weight: FontWeight.Bold),
                         Colour = colours.GrayA,
                     },
                     WrappedText.Paragraph(
-                        "Ветка — это один разговор: реплики читаются по порядку. Следующий разговор берёт следующую"
-                        + " ветку и по кругу возвращается к первой. Одна ветка — персонаж говорит одно и то же;"
-                        + " несколько — каждый раз другое.", colours.GrayA, 12),
+                        global::osu.Game.Localisation.ClientTranslationStrings.J4516, colours.GrayA, 12),
                     new OsuSpriteText
                     {
-                        Text = "РУССКИЙ",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4517,
                         Font = OsuFont.Default.With(size: 11, weight: FontWeight.Bold),
                         Colour = colours.Pink1,
                     },
@@ -98,7 +97,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                     },
                     new OsuSpriteText
                     {
-                        Text = "ENGLISH",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4518,
                         Font = OsuFont.Default.With(size: 11, weight: FontWeight.Bold),
                         Colour = colours.Pink1,
                     },
@@ -109,15 +108,15 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                         LengthLimit = page_length_limit,
                         CommitOnFocusLost = true,
                     },
-                    button("Предыдущая реплика", () => movePage(-1)),
-                    button("Следующая реплика", () => movePage(1)),
-                    button("Добавить реплику после текущей", addPage),
-                    button("Удалить текущую реплику", deletePage),
-                    button("Предыдущая ветка", () => moveBranch(-1)),
-                    button("Следующая ветка", () => moveBranch(1)),
-                    button("Добавить ветку после текущей", addBranch),
-                    button("Удалить текущую ветку", deleteBranch),
-                    button("Применить диалог к NPC", Apply),
+                    button(global::osu.Game.Localisation.ClientTranslationStrings.J4519, () => movePage(-1)),
+                    button(global::osu.Game.Localisation.ClientTranslationStrings.J4520, () => movePage(1)),
+                    button(global::osu.Game.Localisation.ClientTranslationStrings.J4521, addPage),
+                    button(global::osu.Game.Localisation.ClientTranslationStrings.J4522, deletePage),
+                    button(global::osu.Game.Localisation.ClientTranslationStrings.J4523, () => moveBranch(-1)),
+                    button(global::osu.Game.Localisation.ClientTranslationStrings.J4524, () => moveBranch(1)),
+                    button(global::osu.Game.Localisation.ClientTranslationStrings.J4525, addBranch),
+                    button(global::osu.Game.Localisation.ClientTranslationStrings.J4526, deleteBranch),
+                    button(global::osu.Game.Localisation.ClientTranslationStrings.J4527, Apply),
                 },
             };
 
@@ -125,7 +124,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
             english.OnCommit += (_, _) => captureCurrentPage();
         }
 
-        private static RoundedButton button(string text, Action action) => new RoundedButton
+        private static RoundedButton button(LocalisableString text, Action action) => new RoundedButton
         {
             RelativeSizeAxes = Axes.X,
             Height = 32,
@@ -143,10 +142,10 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
 
             if (npc == null)
             {
-                header.Text = "ВЫБЕРИ NPC";
+                header.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4514;
                 russian.Text = string.Empty;
                 english.Text = string.Empty;
-                pageIndicator.Text = "ВЕТКА — / — • РЕПЛИКА — / —";
+                pageIndicator.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4515;
                 return;
             }
 
@@ -165,7 +164,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
         {
             if (target == null)
             {
-                reportStatus("Сначала выбери NPC.");
+                reportStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4528);
                 return;
             }
 
@@ -175,8 +174,8 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                 englishDraft.Select(pages => pages.ToArray()).ToArray());
 
             reportStatus(russianDraft.Count == 1
-                ? $"Диалог применён: {russianDraft[0].Count} реплик, одна ветка — говорит одно и то же."
-                : $"Диалог применён: {russianDraft.Count} ветки по кругу, реплик всего {russianDraft.Sum(pages => pages.Count)}.");
+                ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4529(russianDraft[0].Count)
+                : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4530(russianDraft.Count, russianDraft.Sum(pages => pages.Count)));
         }
 
         private void captureCurrentPage()
@@ -216,7 +215,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
         {
             if (target == null)
             {
-                reportStatus("Сначала выбери NPC.");
+                reportStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4528);
                 return;
             }
 
@@ -231,7 +230,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
         {
             if (target == null || russianDraft[branch].Count <= 1)
             {
-                reportStatus("Нельзя удалить единственную реплику ветки. Удали саму ветку.");
+                reportStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4531);
                 return;
             }
 
@@ -245,13 +244,13 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
         {
             if (target == null)
             {
-                reportStatus("Сначала выбери NPC.");
+                reportStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4528);
                 return;
             }
 
             if (russianDraft.Count >= BRANCH_LIMIT)
             {
-                reportStatus($"Больше {BRANCH_LIMIT} веток у одного NPC быть не может.");
+                reportStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4532(BRANCH_LIMIT));
                 return;
             }
 
@@ -261,14 +260,14 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
             englishDraft.Insert(branch, new List<string> { string.Empty });
             page = 0;
             showPage();
-            reportStatus($"Ветка {branch + 1} добавлена. Не забудь «Применить диалог к NPC».");
+            reportStatus(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4533(branch + 1));
         }
 
         private void deleteBranch()
         {
             if (target == null || russianDraft.Count <= 1)
             {
-                reportStatus("Нельзя удалить единственную ветку.");
+                reportStatus(global::osu.Game.Localisation.ClientTranslationStrings.J4534);
                 return;
             }
 
@@ -312,7 +311,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
 
             russian.Text = russianDraft[branch][page];
             english.Text = englishDraft[branch][page];
-            pageIndicator.Text = $"ВЕТКА {branch + 1} / {russianDraft.Count} • РЕПЛИКА {page + 1} / {russianDraft[branch].Count}";
+            pageIndicator.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4535(branch + 1, russianDraft.Count, page + 1, russianDraft[branch].Count);
         }
 
         /// <summary>

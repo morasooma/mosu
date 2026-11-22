@@ -5,10 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
+using osu.Game.Overlays;
 
 namespace osu.Game.Screens.Ranking.Statistics
 {
@@ -96,6 +98,9 @@ namespace osu.Game.Screens.Ranking.Statistics
 
         public partial class Spacer : CompositeDrawable
         {
+            private Box box = null!;
+            private IBindable<Colour4>? themeColour;
+
             public Spacer()
             {
                 RelativeSizeAxes = Axes.Both;
@@ -108,12 +113,22 @@ namespace osu.Game.Screens.Ranking.Statistics
                     Anchor = Anchor.Centre,
                     CornerRadius = 2,
                     Masking = true,
-                    Child = new Box
+                    Child = box = new Box
                     {
                         RelativeSizeAxes = Axes.Both,
                         Colour = Color4Extensions.FromHex("#222")
                     }
                 };
+            }
+
+            [BackgroundDependencyLoader(true)]
+            private void load(OverlayColourProvider? colourProvider)
+            {
+                if (colourProvider != null)
+                {
+                    themeColour = colourProvider.GetColourBindable(OverlayColour.Background4);
+                    themeColour.BindValueChanged(colour => box.FadeColour(colour.NewValue, OverlayColourProvider.ThemeTransitionDuration(150), Easing.OutQuint), true);
+                }
             }
         }
     }

@@ -140,6 +140,12 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                 freestyle.Value = initialItem.Freestyle;
             }
 
+            if (room.Type == MatchType.TagCoop)
+            {
+                freestyle.Value = false;
+                freestyle.Disabled = true;
+            }
+
             Mods.BindValueChanged(_ => updateValidMods());
             Ruleset.BindValueChanged(onRulesetChanged);
             freestyle.BindValueChanged(onFreestyleChanged);
@@ -314,6 +320,9 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
                     Freestyle = { BindTarget = freestyle }
                 }
             ]);
+
+            if (room.Type == MatchType.TagCoop)
+                buttons.RemoveAll(button => button is FooterButtonFreestyle);
 
             return buttons;
         }

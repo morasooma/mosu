@@ -35,6 +35,9 @@ namespace osu.Game.Overlays
 
         public PopupDialog CurrentDialog { get; private set; }
 
+        protected override bool HasOpaqueBackground => CurrentDialog?.State.Value == Visibility.Visible
+                                                      && IsOpaqueBackgroundReady(CurrentDialog.Background);
+
         public override bool IsPresent => (Scheduler.HasPendingTasks || dialogContainer.Children.Count > 0)
                                           // The following line ensures that dialogs are not presented while the dialog overlay
                                           // cannot be displayed. This is due to the `Schedule` usage inside `Push()`.
@@ -101,6 +104,7 @@ namespace osu.Game.Overlays
                 }
 
                 Logger.Log($"{nameof(DialogOverlay)}: Showing dialog {dialog}");
+                dialogContainer.Width = Math.Min(dialog.PreferredWidth, Math.Max(300, DrawWidth - 40));
                 dialogContainer.Add(dialog);
                 Show();
 
@@ -125,6 +129,13 @@ namespace osu.Game.Overlays
                 Logger.Log($"{nameof(DialogOverlay)}: Dismissing dialog {dialog}");
                 CurrentDialog = null;
             }
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+            if (CurrentDialog != null)
+                dialogContainer.Width = Math.Min(CurrentDialog.PreferredWidth, Math.Max(300, DrawWidth - 40));
         }
 
         protected override bool BlockNonPositionalInput => true;

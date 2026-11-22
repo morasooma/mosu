@@ -24,5 +24,14 @@ namespace osu.Game.Users
         /// </summary>
         [Key(1)]
         public UserStatus? Status { get; set; }
+
+        [Key(2)]
+        public string? Platform { get; set; }
+
+        [Key(3)]
+        public string? BuildKind { get; set; }
+
+        [Key(4)]
+        public string? ClientVersion { get; set; }
     }
 }

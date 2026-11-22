@@ -3,10 +3,12 @@
 
 using System;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Cursor;
 using osu.Framework.Testing;
 using osu.Framework.Utils;
@@ -20,6 +22,7 @@ using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Scoring;
+using osu.Game.Rulesets.UI;
 using osu.Game.Scoring;
 using osu.Game.Screens.Select;
 using osu.Game.Tests.Resources;
@@ -141,6 +144,38 @@ namespace osu.Game.Tests.Visual.SongSelect
                 foreach (var score in fillFlow.Children)
                     score.Show();
             });
+        }
+
+        [Test]
+        public void TestAsyncRowLoadsModIconsBeforeUpdateAndReusesAcrossScoringModes()
+        {
+            BeatmapLeaderboardScore row = null!;
+            ModIcon[] loadedIcons = null!;
+            AddStep("load score row async", () =>
+            {
+                var info = getTestScores()[1];
+                LoadComponentAsync(row = new BeatmapLeaderboardScore(info), loaded =>
+                {
+                    const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                    var container = (FillFlowContainer<Drawable>)typeof(BeatmapLeaderboardScore).GetField("modsContainer", flags)!.GetValue(loaded)!;
+                    loadedIcons = container.Children.OfType<ModIcon>().ToArray();
+                    Assert.That(loadedIcons.Length, Is.EqualTo(info.Mods.Length));
+                    Assert.That(loadedIcons.All(icon => icon.LoadState == LoadState.Ready), Is.True, "mod icon glyph/texture loading belongs to the row loader");
+                    foreach (var icon in loadedIcons)
+                    {
+                        var sprite = (SpriteIcon)typeof(ModIcon).GetField("modIcon", flags)!.GetValue(icon)!;
+                        Assert.That(sprite.LoadState, Is.EqualTo(LoadState.Ready));
+                        Assert.That(typeof(SpriteIcon).GetField("loadedIcon", flags)!.GetValue(sprite),
+                            Is.EqualTo(icon.Mod.Icon ?? FontAwesome.Solid.Question), "actual score mod icon is seeded during background loading");
+                    }
+                    Child = loaded;
+                });
+            });
+            AddUntilStep("row attached", () => row.IsLoaded && loadedIcons != null);
+            AddStep("switch to classic", () => config.SetValue(OsuSetting.ScoreDisplayMode, ScoringMode.Classic));
+            AddAssert("classic reuses loaded mod icons", () => row.ChildrenOfType<ModIcon>().SequenceEqual(loadedIcons));
+            AddStep("switch to standardised", () => config.SetValue(OsuSetting.ScoreDisplayMode, ScoringMode.Standardised));
+            AddAssert("standardised reuses loaded mod icons", () => row.ChildrenOfType<ModIcon>().SequenceEqual(loadedIcons));
         }
 
         [Test]

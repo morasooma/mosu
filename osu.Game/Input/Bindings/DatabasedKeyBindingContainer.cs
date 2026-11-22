@@ -9,6 +9,7 @@ using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Input.Bindings;
 using osu.Game.Database;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets;
 using Realms;
 
@@ -29,6 +30,8 @@ namespace osu.Game.Input.Bindings
 
         [Resolved]
         private RealmAccess realm { get; set; }
+
+        public IEnumerable<IKeyBinding> CurrentKeyBindings => KeyBindings ?? Enumerable.Empty<IKeyBinding>();
 
         public override IEnumerable<IKeyBinding> DefaultKeyBindings => ruleset.CreateInstance().GetDefaultKeyBindings(variant ?? 0);
 
@@ -51,17 +54,26 @@ namespace osu.Game.Input.Bindings
 
         protected override void LoadComplete()
         {
-            realmSubscription = realm.RegisterForNotifications(queryRealmKeyBindings, (sender, _) =>
+            using var loading = PerformancePhaseLogger.Begin("KeyBindings.LoadComplete", detail: typeof(T).Name);
+            using (PerformancePhaseLogger.Begin("KeyBindings.RegisterNotifications", detail: typeof(T).Name))
             {
-                // The first fire of this is a bit redundant as this is being called in base.LoadComplete,
-                // but this is safest in case the subscription is restored after a context recycle.
-                ReloadMappings(sender.AsQueryable());
-            });
+                realmSubscription = realm.RegisterForNotifications(queryRealmKeyBindings, (sender, _) =>
+                {
+                    // The first fire of this is a bit redundant as this is being called in base.LoadComplete,
+                    // but this is safest in case the subscription is restored after a context recycle.
+                    ReloadMappings(sender.AsQueryable());
+                });
+            }
 
-            base.LoadComplete();
+            using (PerformancePhaseLogger.Begin("KeyBindings.BaseLoadComplete", detail: typeof(T).Name))
+                base.LoadComplete();
         }
 
-        protected sealed override void ReloadMappings() => ReloadMappings(queryRealmKeyBindings(realm.Realm));
+        protected sealed override void ReloadMappings()
+        {
+            using var reload = PerformancePhaseLogger.Begin("KeyBindings.QueryMappings", detail: typeof(T).Name);
+            ReloadMappings(queryRealmKeyBindings(realm.Realm));
+        }
 
         private IQueryable<RealmKeyBinding> queryRealmKeyBindings(Realm realm)
         {
@@ -72,13 +84,18 @@ namespace osu.Game.Input.Bindings
 
         protected virtual void ReloadMappings(IQueryable<RealmKeyBinding> realmKeyBindings)
         {
-            var defaults = DefaultKeyBindings.ToList();
+            using var reload = PerformancePhaseLogger.Begin("KeyBindings.BuildMappings", detail: typeof(T).Name);
+            List<IKeyBinding> defaults;
+            using (PerformancePhaseLogger.Begin("KeyBindings.GetDefaults", detail: typeof(T).Name))
+                defaults = DefaultKeyBindings.ToList();
 
-            List<RealmKeyBinding> newBindings = realmKeyBindings.AsEnumerable().Detach()
-                                                                // this ordering is important to ensure that we read entries from the database in the order
-                                                                // enforced by DefaultKeyBindings. allow for song select to handle actions that may otherwise
-                                                                // have been eaten by the music controller due to query order.
-                                                                .OrderBy(b => defaults.FindIndex(d => (int)d.Action == b.ActionInt)).ToList();
+            List<RealmKeyBinding> detached;
+            using (PerformancePhaseLogger.Begin("KeyBindings.DetachMappings", detail: typeof(T).Name))
+                detached = realmKeyBindings.AsEnumerable().Select(RealmKeyBinding.CreateDetached).ToList();
+
+            List<RealmKeyBinding> newBindings;
+            using (PerformancePhaseLogger.Begin("KeyBindings.OrderMappings", detail: typeof(T).Name))
+                newBindings = OrderByDefaultActionPriority(detached, defaults);
 
             // In the case no bindings were found in the database, presume this usage is for a non-databased ruleset.
             // This actually should never be required and can be removed if it is ever deemed to cause a problem.
@@ -88,6 +105,19 @@ namespace osu.Game.Input.Bindings
                 KeyBindings = defaults;
             else
                 KeyBindings = newBindings;
+        }
+
+        internal static List<RealmKeyBinding> OrderByDefaultActionPriority(IEnumerable<RealmKeyBinding> bindings, IReadOnlyList<IKeyBinding> defaults)
+        {
+            var defaultOrder = new Dictionary<int, int>();
+
+            // Multiple default keys can map to the same action. Keep its first position, as FindIndex did.
+            for (int i = 0; i < defaults.Count; i++)
+                defaultOrder.TryAdd((int)defaults[i].Action, i);
+
+            // Preserve default action priority for conflicting keys (for example song select vs music).
+            // Unknown actions used to sort at -1; OrderBy retains their relative order.
+            return bindings.OrderBy(b => defaultOrder.TryGetValue(b.ActionInt, out int index) ? index : -1).ToList();
         }
 
         protected override void Dispose(bool isDisposing)

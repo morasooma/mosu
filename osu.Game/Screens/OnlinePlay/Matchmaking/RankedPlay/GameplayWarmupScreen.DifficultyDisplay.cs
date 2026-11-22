@@ -122,7 +122,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                                                 {
                                                     Anchor = Anchor.BottomLeft,
                                                     Origin = Anchor.BottomLeft,
-                                                    Text = " mapped by ",
+                                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4911,
                                                     Font = OsuFont.Style.Body,
                                                 },
                                                 mapperText = new TruncatingSpriteText

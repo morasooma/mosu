@@ -70,8 +70,13 @@ namespace osu.Game.Skinning
 
         protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
         {
-            if (Ruleset.CreateResourceStore() is IResourceStore<byte[]> resources)
+            if (Ruleset.CreateResourceStore() is IResourceStore<byte[]> bundled)
+            {
+                var resources = new ResourceStore<byte[]>();
+                resources.AddStore(new NamespacedResourceStore<byte[]>(osu.Game.IO.GameResourcePackStore.Borrow(parent.Get<OsuGameBase>().Resources), "Rulesets/" + (Ruleset.ShortName == "taiko" ? "Taiko" : Ruleset.ShortName)));
+                resources.AddStore(bundled);
                 rulesetResourcesSkin = new ResourceStoreBackedSkin(resources, parent.Get<GameHost>(), parent.Get<AudioManager>());
+            }
 
             return base.CreateChildDependencies(parent);
         }

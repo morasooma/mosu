@@ -65,7 +65,7 @@ namespace osu.Game.Rulesets.UI
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
                     Direction = FillDirection.Vertical,
-                    Child = tinySwitch = new ModSwitchTiny(mod)
+                    Child = tinySwitch = new ModSwitchTiny(mod, iconCaption: mod.Icon != null)
                     {
                         Anchor = Anchor.TopCentre,
                         Origin = Anchor.TopCentre,
@@ -81,17 +81,17 @@ namespace osu.Game.Rulesets.UI
                 {
                     Anchor = Anchor.TopCentre,
                     Origin = Anchor.TopCentre,
-                    Size = new Vector2(37, 26) * mod.IconScale,
+                    Size = new Vector2(37, 24) * mod.IconScale,
                     // arbitrary adjustment for better vertical alignment
                     Margin = new MarginPadding { Top = -1 },
                     Icon = mod.Icon.Value
                 });
-                tinySwitch.Scale = new Vector2(0.3f);
+                tinySwitch.Scale = new Vector2(0.52f);
             }
 
             overlayColours = colourProvider;
             osuColours = colours;
-            var modTypeColour = colours.ForModType(mod.Type);
+            var modTypeColour = overlayColours?.GetModTypeColour(mod.Type, colours) ?? colours.ForModType(mod.Type);
             activeForegroundColour = modTypeColour;
             activeBackgroundColour = Interpolation.ValueAt<Colour4>(0.1f, Colour4.Black, modTypeColour, 0, 1);
 
@@ -99,6 +99,7 @@ namespace osu.Game.Rulesets.UI
             {
                 themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
                 themeColour.BindValueChanged(_ => updateThemeColours(), true);
+                colourProvider.PaletteVersion.BindValueChanged(_ => updateThemeColours());
             }
             else
                 updateThemeColours();
@@ -106,7 +107,16 @@ namespace osu.Game.Rulesets.UI
 
         private void updateThemeColours()
         {
-            if (overlayColours != null && OverlayColourProvider.IsDarkTheme)
+            var modTypeColour = overlayColours?.GetModTypeColour(mod.Type, osuColours!) ?? osuColours!.ForModType(mod.Type);
+            activeForegroundColour = modTypeColour;
+            activeBackgroundColour = Interpolation.ValueAt<Colour4>(0.1f, Colour4.Black, modTypeColour, 0, 1);
+
+            if (overlayColours != null && OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom)
+            {
+                inactiveForegroundColour = overlayColours.Content2;
+                inactiveBackgroundColour = overlayColours.Background2;
+            }
+            else if (overlayColours != null && OverlayColourProvider.IsDarkTheme)
             {
                 inactiveForegroundColour = overlayColours.Light4;
                 inactiveBackgroundColour = overlayColours.Background2;

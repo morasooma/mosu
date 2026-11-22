@@ -18,12 +18,12 @@ namespace osu.Game.Rulesets.Osu.Mods
     {
         public override string Name => "Approach Different";
         public override string Acronym => "AD";
-        public override LocalisableString Description => "Never trust the approach circles...";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3659;
         public override IconUsage? Icon => OsuIcon.ModApproachDifferent;
 
         public override Type[] IncompatibleMods => new[] { typeof(IHidesApproachCircles), typeof(OsuModFreezeFrame) };
 
-        [SettingSource("Initial size", "Change the initial size of the approach circle, relative to hit circles.", 0)]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3660), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3661), 0)]
         public BindableFloat Scale { get; } = new BindableFloat(4)
         {
             Precision = 0.1f,
@@ -31,7 +31,7 @@ namespace osu.Game.Rulesets.Osu.Mods
             MaxValue = 10,
         };
 
-        [SettingSource("Style", "Change the animation style of the approach circles.", 1)]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3662), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3663), 1)]
         public Bindable<AnimationStyle> Style { get; } = new Bindable<AnimationStyle>(AnimationStyle.Gravity);
 
         public void ApplyToDrawableHitObject(DrawableHitObject drawable)

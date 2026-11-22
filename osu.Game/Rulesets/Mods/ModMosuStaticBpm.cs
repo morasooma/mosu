@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using osu.Framework.Audio;
 using osu.Framework.Bindables;
+using osu.Framework.Graphics.Sprites;
+using osu.Game.Graphics;
 using osu.Framework.Localisation;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
@@ -30,6 +32,7 @@ namespace osu.Game.Rulesets.Mods
 
         public override string Name => "Static BPM";
         public override string Acronym => "SB";
+        public override IconUsage? Icon => OsuIcon.ModMosuStaticBpm;
         public override ModType Type => ModType.Mosu;
         public override LocalisableString Description => MosuModsStrings.ModStaticBpmDescription;
         public override bool Ranked => true;
@@ -65,7 +68,7 @@ namespace osu.Game.Rulesets.Mods
         {
             get
             {
-                yield return (MosuModsStrings.ModStaticBpmTargetBpm, $"{TargetBpm.Value} BPM");
+                yield return (MosuModsStrings.ModStaticBpmTargetBpm, global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4231(TargetBpm.Value));
 
                 if (referenceBpm.Value > 0)
                     yield return (MosuModsStrings.ModSpeedChange, $"{SpeedChange.Value:N2}x");

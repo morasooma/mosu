@@ -1,13 +1,19 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using NUnit.Framework;
 using osu.Game.Beatmaps;
 using osu.Game.Rulesets.Difficulty;
+using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Osu.Difficulty;
+using osu.Game.Rulesets.Osu.Difficulty.Evaluators.Speed;
 using osu.Game.Rulesets.Osu.Difficulty.Relax.Realistik;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Scoring;
@@ -74,6 +80,108 @@ namespace osu.Game.Rulesets.Osu.Tests
             Assert.That(timedAttributes[74600].StarRating, Is.EqualTo(6.5240617806983261).Within(CHECK_PRECISION));
         }
 
+        [TestCase("diffcalc-test")]
+        [TestCase("801165")]
+        public void TestTimedPrefixStatisticsMatchReference(string name)
+        {
+            IWorkingBeatmap working = GetBeatmap(name);
+            IBeatmap playable = working.GetPlayableBeatmap(new OsuRuleset().RulesetInfo);
+            var timed = CreateDifficultyCalculator(working).CalculateTimed();
+
+            for (int i = 0; i < timed.Count; i++)
+            {
+                var prefix = new Beatmap
+                {
+                    BeatmapInfo = playable.BeatmapInfo,
+                    Difficulty = playable.Difficulty,
+                    HitObjects = playable.HitObjects.Take(i + 1).ToList(),
+                    Breaks = playable.Breaks,
+                };
+                var actual = (OsuDifficultyAttributes)timed[i].Attributes;
+                var expectedScore = new OsuLegacyScoreSimulator().Simulate(working, prefix);
+                double expectedNestedScore = osu.Game.Rulesets.Osu.Difficulty.Utils.LegacyScoreUtils.CalculateNestedScorePerObject(prefix, i + 1);
+
+                Assert.That(actual.MaxCombo, Is.EqualTo(prefix.GetMaxCombo()), $"prefix {i}");
+                Assert.That(actual.NestedScorePerObject, Is.EqualTo(expectedNestedScore), $"prefix {i}");
+                Assert.That(actual.MaximumLegacyComboScore, Is.EqualTo(expectedScore.ComboScore), $"prefix {i}");
+            }
+        }
+
+        [Test]
+        public void TestTimedCalculationAllocationOn801165()
+        {
+            IWorkingBeatmap working = GetBeatmap("801165");
+            // Warm JIT/resource setup before measuring timed-prefix cost.
+            CreateDifficultyCalculator(working).CalculateTimed();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            CreateDifficultyCalculator(working).CalculateTimed();
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            TestContext.Progress.WriteLine($"TIMED_801165_ALLOC bytes={allocated}");
+            Assert.That(allocated, Is.LessThan(25 * 1024 * 1024), "Timed calculations must not recreate prefix-sized sorting and score graphs for every object.");
+        }
+
+        [TestCase("none")]
+        [TestCase("DT")]
+        [TestCase("HR")]
+        [TestCase("MRX")]
+        public void TestEveryTimedPrefixMatchesNonIncrementalReference(string mod)
+        {
+            Mod[] mods = mod switch
+            {
+                "DT" => new Mod[] { new OsuModDoubleTime() },
+                "HR" => new Mod[] { new OsuModHardRock() },
+                "MRX" => new Mod[] { new OsuModMosuRelax() },
+                _ => Array.Empty<Mod>(),
+            };
+            var working = GetBeatmap("diffcalc-test");
+            var expected = new NonIncrementalCalculator(working).CalculateTimed(mods);
+            var calculator = CreateDifficultyCalculator(working);
+            var actual = calculator.CalculateTimed(mods);
+            Assert.That(actual.Count, Is.EqualTo(expected.Count));
+            for (int i = 0; i < actual.Count; i++)
+                Assert.That(actual[i].Attributes, Is.EqualTo(expected[i].Attributes).UsingPropertiesComparer(), $"prefix {i}, {mod}");
+            Assert.That(calculator.Calculate(mods), Is.EqualTo(CreateDifficultyCalculator(working).Calculate(mods)).UsingPropertiesComparer());
+        }
+
+        [TestCase("diffcalc-test", "none")]
+        [TestCase("801165", "none")]
+        [TestCase("diffcalc-test", "DT")]
+        [TestCase("diffcalc-test", "HR")]
+        [TestCase("diffcalc-test", "RX")]
+        [TestCase("801165", "RX")]
+        [TestCase("diffcalc-test", "MRX")]
+        [TestCase("801165", "MRX")]
+        public void TestStarOnlyAttributesMatchFullCalculation(string name, string mod)
+        {
+            Mod[] mods = mod switch
+            {
+                "DT" => new Mod[] { new OsuModDoubleTime() },
+                "HR" => new Mod[] { new OsuModHardRock() },
+                "RX" => new Mod[] { new OsuModRelax() },
+                "MRX" => new Mod[] { new OsuModMosuRelax() },
+                _ => Array.Empty<Mod>(),
+            };
+            var working = GetBeatmap(name);
+            var full = (OsuDifficultyAttributes)CreateDifficultyCalculator(working).Calculate(mods);
+            var previewCalculator = CreateDifficultyCalculator(working);
+            previewCalculator.PreparePerformanceCalculation = false;
+            var preview = (OsuDifficultyAttributes)previewCalculator.Calculate(mods);
+
+            Assert.That(preview, Is.EqualTo(full).UsingPropertiesComparer(), $"all difficulty attributes, {name}/{mod}");
+            Assert.That(preview.StarRating, Is.EqualTo(full.StarRating));
+            Assert.That(preview.MaxCombo, Is.EqualTo(full.MaxCombo));
+            Assert.That(ManagedRealistikRelaxCalculator.GetPreparedBeatmap(preview), Is.Null,
+                "star-only requests must not prepare the independent Relax PP representation");
+        }
+
+        private class NonIncrementalCalculator : OsuDifficultyCalculator
+        {
+            public NonIncrementalCalculator(IWorkingBeatmap working) : base(new OsuRuleset().RulesetInfo, working) { }
+            protected override void BeginTimedCalculation(IBeatmap beatmap, Mod[] mods) { }
+            protected override void OnTimedPrefixAdded(IBeatmap prefixBeatmap, HitObject addedObject) { }
+            protected override void EndTimedCalculation() { }
+        }
+
         [Test]
         public void TestTimedRelaxPerformanceUsesSinglePreparedMap()
         {
@@ -119,6 +227,134 @@ namespace osu.Game.Rulesets.Osu.Tests
                 Assert.That(attributes, Is.EqualTo(expectedAttributes).UsingPropertiesComparer());
                 Assert.That(timedAttributes.Last().Attributes, Is.EqualTo(expectedAttributes).UsingPropertiesComparer());
             }
+        }
+
+        [Test]
+        public void TestRhythmEvaluationDoesNotAllocatePerObject()
+        {
+            var working = GetBeatmap("diffcalc-test");
+            var calculator = new ConstructionProbeCalculator(working, _ => { });
+            var playable = working.GetPlayableBeatmap(new OsuRuleset().RulesetInfo);
+            var objects = calculator.CreateObjects(playable).ToArray();
+            double sum = 0;
+            for (int pass = 0; pass < 3; pass++)
+            {
+                foreach (var obj in objects)
+                    sum += RhythmEvaluator.EvaluateDifficultyOf(obj);
+            }
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int pass = 0; pass < 10; pass++)
+            {
+                foreach (var obj in objects)
+                    sum += RhythmEvaluator.EvaluateDifficultyOf(obj);
+            }
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            TestContext.Progress.WriteLine($"RHYTHM_ALLOC evaluations={objects.Length * 10} bytes={allocated}");
+            Assert.That(double.IsFinite(sum), Is.True);
+            Assert.That(allocated, Is.LessThan(1024), "bounded rhythm history must not allocate a list and islands for each object");
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestCancellationDuringDifficultyObjectConstruction(bool timed)
+        {
+            using var cancellation = new CancellationTokenSource();
+            var calculator = new ConstructionProbeCalculator(GetBeatmap("diffcalc-test"), reads =>
+            {
+                if (reads == 16)
+                    cancellation.Cancel();
+            });
+
+            Assert.Throws<OperationCanceledException>(() =>
+            {
+                if (timed)
+                    calculator.CalculateTimed(cancellation.Token);
+                else
+                    calculator.Calculate(cancellation.Token);
+            });
+
+            // Cancellation happens inside construction, not before entering the calculator.
+            // Merely throwing at the later skill loop would still read the complete map.
+            Assert.That(calculator.LegacyOverrideCalled, Is.True);
+            Assert.That(calculator.ObjectReads, Is.EqualTo(16));
+            Assert.That(calculator.AvailableObjects, Is.GreaterThan(16));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestOriginalConstructionOverrideIsUsed(bool timed)
+        {
+            var working = GetBeatmap("diffcalc-test");
+            var expected = CreateDifficultyCalculator(working).Calculate();
+            var calculator = new ConstructionProbeCalculator(working, _ => { });
+            var actual = timed ? calculator.CalculateTimed().Last().Attributes : calculator.Calculate();
+
+            Assert.That(calculator.LegacyOverrideCalled, Is.True);
+            Assert.That(calculator.ObjectReads, Is.EqualTo(2 * (calculator.AvailableObjects - 1)));
+            Assert.That(actual, Is.EqualTo(expected).UsingPropertiesComparer());
+        }
+
+        private class ConstructionProbeCalculator : OsuDifficultyCalculator
+        {
+            private readonly Action<int> onRead;
+            public bool LegacyOverrideCalled { get; private set; }
+            public int ObjectReads { get; private set; }
+            public int AvailableObjects { get; private set; }
+
+            public ConstructionProbeCalculator(IWorkingBeatmap working, Action<int> onRead)
+                : base(new OsuRuleset().RulesetInfo, working)
+            {
+                this.onRead = onRead;
+            }
+
+            public IEnumerable<DifficultyHitObject> CreateObjects(IBeatmap beatmap) => base.CreateDifficultyHitObjects(beatmap, Array.Empty<Mod>());
+
+            // Deliberately override only the original extension point used by existing rulesets.
+            protected override IEnumerable<DifficultyHitObject> CreateDifficultyHitObjects(IBeatmap beatmap, Mod[] mods)
+            {
+                LegacyOverrideCalled = true;
+                AvailableObjects = beatmap.HitObjects.Count;
+                return base.CreateDifficultyHitObjects(new ConstructionProbeBeatmap(beatmap.HitObjects, () => onRead(++ObjectReads)), mods);
+            }
+        }
+
+        private class ConstructionProbeBeatmap : Beatmap, IBeatmap
+        {
+            private readonly IReadOnlyList<HitObject> objects;
+
+            public ConstructionProbeBeatmap(IReadOnlyList<HitObject> objects, Action onRead)
+            {
+                this.objects = new CountingHitObjects(objects, onRead);
+            }
+
+            IReadOnlyList<HitObject> IBeatmap.HitObjects => objects;
+        }
+
+        private class CountingHitObjects : IReadOnlyList<HitObject>
+        {
+            private readonly IReadOnlyList<HitObject> objects;
+            private readonly Action onRead;
+
+            public CountingHitObjects(IReadOnlyList<HitObject> objects, Action onRead)
+            {
+                this.objects = objects;
+                this.onRead = onRead;
+            }
+
+            public int Count => objects.Count;
+
+            public HitObject this[int index]
+            {
+                get
+                {
+                    onRead();
+                    return objects[index];
+                }
+            }
+
+            public IEnumerator<HitObject> GetEnumerator() => objects.GetEnumerator();
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         }
 
         protected override DifficultyCalculator CreateDifficultyCalculator(IWorkingBeatmap beatmap) => new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, beatmap);

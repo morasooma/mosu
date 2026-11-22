@@ -1,6 +1,7 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -42,14 +43,18 @@ namespace osu.Game.Overlays.Profile.Sections
 
         private APIRequest<List<TModel>>? retrievalRequest;
         private CancellationTokenSource? loadCancellation;
+        private ItemBatch? pendingBatch;
+        private readonly Queue<Drawable> pendingItems = new Queue<Drawable>();
+        private bool pendingHasMore;
 
         private ShowMoreButton moreButton = null!;
         private OsuSpriteText missing = null!;
         private readonly LocalisableString? missingText;
         private IBindable<Colour4> themeColour = null!;
 
-        protected PaginatedProfileSubsection(Bindable<UserProfileData?> user, LocalisableString? headerText = null, LocalisableString? missingText = null)
-            : base(user, headerText, CounterVisibilityState.AlwaysVisible)
+        protected PaginatedProfileSubsection(Bindable<UserProfileData?> user, LocalisableString? headerText = null, LocalisableString? missingText = null,
+                                            CounterVisibilityState counterVisibilityState = CounterVisibilityState.AlwaysVisible)
+            : base(user, headerText, counterVisibilityState)
         {
             this.missingText = missingText;
         }
@@ -106,6 +111,7 @@ namespace osu.Game.Overlays.Profile.Sections
             loadCancellation?.Cancel();
             retrievalRequest?.Cancel();
 
+            clearPendingItems();
             CurrentPage = null;
             ItemsContainer.Clear();
 
@@ -126,13 +132,19 @@ namespace osu.Game.Overlays.Profile.Sections
             CurrentPage = CurrentPage?.TakeNext(ItemsPerPage) ?? new PaginationParameters(InitialItemsCount);
 
             retrievalRequest = CreateRequest(User.Value, new PaginationParameters(CurrentPage.Value.Offset, CurrentPage.Value.Limit + 1));
-            retrievalRequest.Success += items => UpdateItems(items, loadCancellation);
+            // Capture this request's token, not the mutable field: a later user/page
+            // change must not give an obsolete response the new request's lifetime.
+            var cancellation = loadCancellation;
+            retrievalRequest.Success += items => UpdateItems(items, cancellation);
 
             api.Queue(retrievalRequest);
         }
 
         protected virtual void UpdateItems(List<TModel> items, CancellationTokenSource cancellationTokenSource) => Schedule(() =>
         {
+            if (cancellationTokenSource.IsCancellationRequested)
+                return;
+
             if (!items.Any() && CurrentPage?.Offset == 0)
             {
                 moreButton.Hide();
@@ -151,16 +163,64 @@ namespace osu.Game.Overlays.Profile.Sections
 
             OnItemsReceived(items);
 
-            LoadComponentsAsync(items.Select(CreateDrawableItem).Where(d => d != null).Cast<Drawable>(), drawables =>
+            // LoadComponentsAsync enumerates its input on the caller. Passing a LINQ
+            // projection there constructed every score/card subtree on Update before
+            // any background loading began. Construct them inside the batch's loader.
+            LoadComponentAsync(new ItemBatch(items, CreateDrawableItemFactory(items.Count)), batch =>
             {
-                missing.Hide();
-
-                moreButton.FadeTo(hasMore ? 1 : 0);
-                moreButton.IsLoading = false;
-
-                ItemsContainer.AddRange(drawables);
+                clearPendingItems();
+                pendingBatch = batch;
+                pendingHasMore = hasMore;
+                foreach (var drawable in batch)
+                    pendingItems.Enqueue(drawable);
             }, cancellationTokenSource.Token);
         });
+
+        protected override void Update()
+        {
+            base.Update();
+
+            if (pendingBatch == null)
+                return;
+
+            // Dependency loading is complete, but each subtree still runs its first
+            // LoadComplete/layout on admission. Bound that work as in the listing.
+            for (int i = 0; i < 4 && pendingItems.TryDequeue(out var item); i++)
+            {
+                pendingBatch.Remove(item, false);
+                ItemsContainer.Add(item);
+            }
+
+            if (pendingItems.Count == 0)
+            {
+                clearPendingItems();
+                missing.Hide();
+                moreButton.FadeTo(pendingHasMore ? 1 : 0);
+                moreButton.IsLoading = false;
+            }
+        }
+
+        private void clearPendingItems()
+        {
+            pendingItems.Clear();
+            pendingBatch?.Dispose();
+            pendingBatch = null;
+        }
+
+        private partial class ItemBatch : Container<Drawable>
+        {
+            private readonly List<TModel> models;
+            private readonly Func<TModel, Drawable?> createItem;
+
+            public ItemBatch(List<TModel> models, Func<TModel, Drawable?> createItem)
+            {
+                this.models = models;
+                this.createItem = createItem;
+            }
+
+            [BackgroundDependencyLoader]
+            private void load() => ChildrenEnumerable = models.Select(createItem).OfType<Drawable>();
+        }
 
         protected virtual int GetCount(APIUser user) => 0;
 
@@ -170,12 +230,18 @@ namespace osu.Game.Overlays.Profile.Sections
 
         protected abstract APIRequest<List<TModel>> CreateRequest(UserProfileData user, PaginationParameters pagination);
 
+        /// <summary>
+        /// Captures any page-local state before construction starts on a loader thread.
+        /// </summary>
+        protected virtual Func<TModel, Drawable?> CreateDrawableItemFactory(int itemCount) => CreateDrawableItem;
+
         protected abstract Drawable? CreateDrawableItem(TModel model);
 
         protected override void Dispose(bool isDisposing)
         {
             retrievalRequest?.Cancel();
             loadCancellation?.Cancel();
+            clearPendingItems();
             base.Dispose(isDisposing);
         }
     }

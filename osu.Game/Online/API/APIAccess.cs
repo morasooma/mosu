@@ -532,7 +532,8 @@ namespace osu.Game.Online.API
         }
 
         public IHubClientConnector GetHubConnector(string clientName, string endpoint) =>
-            new HubClientConnector(clientName, endpoint, this, versionHash, rulesetHashCache);
+            new HubClientConnector(clientName, endpoint, this, versionHash, rulesetHashCache,
+                () => config.Get<ReleaseStream>(OsuSetting.ReleaseStream));
 
         public IChatClient GetChatClient() => new WebSocketChatClient(this);
 

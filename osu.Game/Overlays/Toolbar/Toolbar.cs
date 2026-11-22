@@ -18,12 +18,17 @@ using osu.Game.Rulesets;
 using osu.Framework.Input.Bindings;
 using osu.Game.Graphics.Containers;
 using osu.Game.Input.Bindings;
+using osu.Game.Overlays.CustomTheme;
+using osu.Framework.Graphics.Effects;
 
 namespace osu.Game.Overlays.Toolbar
 {
     public partial class Toolbar : OverlayContainer, IKeyBindingHandler<GlobalAction>
     {
         public const float HEIGHT = 40;
+        public const float FLOATING_HEIGHT = 58;
+        public const float FLOATING_TOP_MARGIN = 6;
+        public const float FLOATING_HORIZONTAL_MARGIN = 12;
         public const float TOOLTIP_HEIGHT = 30;
 
         /// <summary>
@@ -38,10 +43,78 @@ namespace osu.Game.Overlays.Toolbar
         /// </summary>
         public bool AutoHideActive { get; set; }
 
+        public bool SongSelectActive { get; set; }
+        private float surfaceAlpha = 1f;
+
         public Action OnHome;
+
+        // Offscreen theme captures omit the wall clock so publication thumbnails contain no local time.
+        internal bool HideClockForCapture { get; init; }
 
         private ToolbarUserButton userButton;
         private ToolbarRulesetSelector rulesetSelector;
+
+        private Container wrapperContainer;
+        private Container contentContainer;
+        private ToolbarBackground background;
+        private Box barBackground;
+        private Container leftButtonBackgroundPlate;
+        private Box leftButtonBackground;
+        private Container rightButtonBackgroundPlate;
+        private Box rightButtonBackground;
+        private Box rulesetFadeBox;
+        private OsuScrollContainer rulesetScroll;
+        private ToolbarServerInvitation serverInvitation;
+        private InverseCornerFillet leftDownwardFillet;
+        private InverseCornerFillet rightDownwardFillet;
+
+        [Cached]
+        private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Purple, ThemeSurfaceContext.TopBar);
+
+        private IBindable<ThemeMode>? themeModeBindable;
+        private IBindable<CustomThemeDefinition>? customThemeBindable;
+
+        internal Container ContentContainer => contentContainer;
+        internal Container WrapperContainer => wrapperContainer;
+        internal Container LeftPod => leftButtonBackgroundPlate;
+        internal Container RightPod => rightButtonBackgroundPlate;
+        internal InverseCornerFillet LeftDownwardFillet => leftDownwardFillet;
+        internal InverseCornerFillet RightDownwardFillet => rightDownwardFillet;
+        public TopBarVariant CurrentVariant => topBarVariantBindable?.Value ?? TopBarVariant.Flat;
+        public float CurrentRadius => topBarRadiusBindable?.Value ?? 10f;
+
+        /// <summary>
+        /// Determines whether a point in local toolbar coordinates falls within the transparent concave corner cutout
+        /// when <see cref="TopBarVariant.DownwardRounded"/> is active.
+        /// </summary>
+        public bool IsInverseCornerTransparentAt(Vector2 toolbarLocalPos)
+        {
+            float radius = Math.Clamp(topBarRadiusBindable?.Value ?? 10f, 0f, 24f);
+            if ((topBarVariantBindable?.Value ?? TopBarVariant.Flat) != TopBarVariant.DownwardRounded || radius <= 0f)
+                return false;
+
+            if (toolbarLocalPos.Y < HEIGHT || toolbarLocalPos.Y > HEIGHT + radius)
+                return false;
+
+            if (toolbarLocalPos.X >= 0f && toolbarLocalPos.X <= radius)
+            {
+                float dx = toolbarLocalPos.X - radius;
+                float dy = toolbarLocalPos.Y - (HEIGHT + radius);
+                return (dx * dx + dy * dy) <= (radius * radius);
+            }
+
+            if (toolbarLocalPos.X >= DrawWidth - radius && toolbarLocalPos.X <= DrawWidth)
+            {
+                float dx = toolbarLocalPos.X - (DrawWidth - radius);
+                float dy = toolbarLocalPos.Y - (HEIGHT + radius);
+                return (dx * dx + dy * dy) <= (radius * radius);
+            }
+
+            return false;
+        }
+
+        private IBindable<TopBarVariant> topBarVariantBindable;
+        private IBindable<float> topBarRadiusBindable;
 
         private const double transition_time = 500;
 
@@ -60,9 +133,30 @@ namespace osu.Game.Overlays.Toolbar
         protected override void UpdateAfterChildren()
         {
             base.UpdateAfterChildren();
+            float targetSurfaceAlpha = SongSelectActive && OverlayTransparency.SongSelectActive ? 0.25f : 1f;
+            if (surfaceAlpha != targetSurfaceAlpha)
+            {
+                surfaceAlpha = targetSurfaceAlpha;
+                updateLayout();
+            }
+            background.Alpha = surfaceAlpha;
+            rulesetSelector.TransparentBackground = SongSelectActive && OverlayTransparency.SongSelectActive;
+            rulesetScroll.Padding = new MarginPadding { Right = serverInvitation.Alpha > 0 ? Math.Min(serverInvitation.Width + 8, rulesetScroll.DrawWidth) : 0 };
+            serverInvitation.Width = Math.Min(340, rulesetScroll.DrawWidth);
+            // An opaque scroll-edge gradient does not belong on glass chrome.
+            rulesetFadeBox.Alpha = serverInvitation.Alpha > 0 || (SongSelectActive && OverlayTransparency.SongSelectActive) ? 0 : 1;
 
             // this only needed to be set for the initial LoadComplete/Update, so layout completes and gets buttons in a state they can correctly handle keyboard input for hotkeys.
             AlwaysPresent = false;
+
+            if ((topBarVariantBindable?.Value ?? TopBarVariant.Flat) == TopBarVariant.Attached)
+            {
+                float radius = Math.Clamp(topBarRadiusBindable?.Value ?? 10f, 0f, 24f);
+                if (leftButtonBackgroundPlate.Parent != null)
+                    leftButtonBackgroundPlate.Width = leftButtonBackgroundPlate.Parent.DrawWidth + radius;
+                if (rightButtonBackgroundPlate.Parent != null)
+                    rightButtonBackgroundPlate.Width = rightButtonBackgroundPlate.Parent.DrawWidth + radius;
+            }
         }
 
         [Resolved]
@@ -71,122 +165,195 @@ namespace osu.Game.Overlays.Toolbar
         [BackgroundDependencyLoader(true)]
         private void load(OsuGame osuGame)
         {
-            ToolbarBackground background;
             HoverInterceptor interceptor;
 
             Children = new Drawable[]
             {
                 background = new ToolbarBackground(),
-                new GridContainer
+                leftDownwardFillet = new InverseCornerFillet(FilletDirection.Left)
+                {
+                    Anchor = Anchor.TopLeft,
+                    Origin = Anchor.TopLeft,
+                    Position = new Vector2(0, HEIGHT),
+                    Alpha = 0,
+                },
+                rightDownwardFillet = new InverseCornerFillet(FilletDirection.Right)
+                {
+                    Anchor = Anchor.TopRight,
+                    Origin = Anchor.TopRight,
+                    Position = new Vector2(0, HEIGHT),
+                    Alpha = 0,
+                },
+                wrapperContainer = new Container
                 {
                     RelativeSizeAxes = Axes.Both,
-                    ColumnDimensions = new[]
+                    Children = new Drawable[]
                     {
-                        new Dimension(GridSizeMode.AutoSize),
-                        new Dimension(),
-                        new Dimension(GridSizeMode.AutoSize)
-                    },
-                    Content = new[]
-                    {
-                        new Drawable[]
+                        contentContainer = new Container
                         {
-                            new Container
+                            RelativeSizeAxes = Axes.Both,
+                            Children = new Drawable[]
                             {
-                                Name = "Left buttons",
-                                RelativeSizeAxes = Axes.Y,
-                                AutoSizeAxes = Axes.X,
-                                Depth = float.MinValue,
-                                Children = new Drawable[]
+                                new SongSelectBackdropSurface
                                 {
-                                    new Box
+                                    IsActive = () => SongSelectActive,
+                                    GetCornerRadius = () => contentContainer.CornerRadius,
+                                },
+                                barBackground = new Box
+                                {
+                                    Colour = OsuColour.Gray(0.1f),
+                                    RelativeSizeAxes = Axes.Both,
+                                },
+                            },
+                        },
+                        new GridContainer
+                        {
+                            RelativeSizeAxes = Axes.Both,
+                            ColumnDimensions = new[]
+                            {
+                                new Dimension(GridSizeMode.AutoSize),
+                                new Dimension(),
+                                new Dimension(GridSizeMode.AutoSize)
+                            },
+                            Content = new[]
+                            {
+                                new Drawable[]
+                                {
+                                    new Container
                                     {
-                                        Colour = OsuColour.Gray(0.1f),
-                                        RelativeSizeAxes = Axes.Both,
-                                    },
-                                    new FillFlowContainer
-                                    {
-                                        Direction = FillDirection.Horizontal,
+                                        Name = "Left buttons",
                                         RelativeSizeAxes = Axes.Y,
                                         AutoSizeAxes = Axes.X,
+                                        Depth = float.MinValue,
                                         Children = new Drawable[]
                                         {
-                                            new ToolbarSettingsButton(),
-                                            new ToolbarHomeButton
+                                            leftButtonBackgroundPlate = new Container
                                             {
-                                                Action = () => OnHome?.Invoke()
+                                                Alpha = 0,
+                                                BypassAutoSizeAxes = Axes.Both,
+                                                RelativeSizeAxes = Axes.None,
+                                                Size = Vector2.Zero,
+                                                Children = new Drawable[]
+                                                {
+                                                    new SongSelectBackdropSurface
+                                                    {
+                                                        IsActive = () => SongSelectActive,
+                                                        GetCornerRadius = () => leftButtonBackgroundPlate.CornerRadius,
+                                                    },
+                                                    leftButtonBackground = new Box
+                                                    {
+                                                        Colour = OsuColour.Gray(0.1f),
+                                                        RelativeSizeAxes = Axes.Both,
+                                                    },
+                                                },
                                             },
-                                        },
-                                    },
-                                }
-                            },
-                            new Container
-                            {
-                                Name = "Ruleset selector",
-                                RelativeSizeAxes = Axes.Both,
-                                Children = new Drawable[]
-                                {
-                                    new OsuScrollContainer(Direction.Horizontal)
-                                    {
-                                        ScrollbarVisible = false,
-                                        RelativeSizeAxes = Axes.Both,
-                                        Masking = false,
-                                        Children = new Drawable[]
-                                        {
-                                            rulesetSelector = new ToolbarRulesetSelector()
+                                            new FillFlowContainer
+                                            {
+                                                Direction = FillDirection.Horizontal,
+                                                RelativeSizeAxes = Axes.Y,
+                                                AutoSizeAxes = Axes.X,
+                                                Children = new Drawable[]
+                                                {
+                                                    new ToolbarSettingsButton(),
+                                                    new ToolbarHomeButton
+                                                    {
+                                                        Action = () => OnHome?.Invoke()
+                                                    },
+                                                },
+                                            },
                                         }
                                     },
-                                    new Box
+                                    new Container
                                     {
-                                        Colour = ColourInfo.GradientHorizontal(OsuColour.Gray(0.1f).Opacity(0), OsuColour.Gray(0.1f)),
-                                        Width = 50,
-                                        RelativeSizeAxes = Axes.Y,
-                                        Anchor = Anchor.TopRight,
-                                        Origin = Anchor.TopRight,
-                                    },
-                                }
-                            },
-                            new Container
-                            {
-                                Name = "Right buttons",
-                                RelativeSizeAxes = Axes.Y,
-                                AutoSizeAxes = Axes.X,
-                                Anchor = Anchor.TopRight,
-                                Origin = Anchor.TopRight,
-                                Children = new Drawable[]
-                                {
-                                    new Box
-                                    {
-                                        Colour = OsuColour.Gray(0.1f),
+                                        Name = "Ruleset selector",
                                         RelativeSizeAxes = Axes.Both,
+                                        Children = new Drawable[]
+                                        {
+                                            rulesetScroll = new OsuScrollContainer(Direction.Horizontal)
+                                            {
+                                                ScrollbarVisible = false,
+                                                RelativeSizeAxes = Axes.Both,
+                                                Masking = false,
+                                                Children = new Drawable[]
+                                                {
+                                                    rulesetSelector = new ToolbarRulesetSelector()
+                                                }
+                                            },
+                                            serverInvitation = new ToolbarServerInvitation
+                                            {
+                                                Anchor = Anchor.TopRight,
+                                                Origin = Anchor.TopRight,
+                                            },
+                                            rulesetFadeBox = new Box
+                                            {
+                                                Colour = ColourInfo.GradientHorizontal(OsuColour.Gray(0.1f).Opacity(0), OsuColour.Gray(0.1f)),
+                                                Width = 50,
+                                                RelativeSizeAxes = Axes.Y,
+                                                Anchor = Anchor.TopRight,
+                                                Origin = Anchor.TopRight,
+                                            },
+                                        }
                                     },
-                                    new FillFlowContainer
+                                    new Container
                                     {
-                                        Anchor = Anchor.TopRight,
-                                        Origin = Anchor.TopRight,
-                                        Direction = FillDirection.Horizontal,
+                                        Name = "Right buttons",
                                         RelativeSizeAxes = Axes.Y,
                                         AutoSizeAxes = Axes.X,
+                                        Anchor = Anchor.TopRight,
+                                        Origin = Anchor.TopRight,
                                         Children = new Drawable[]
                                         {
-
-                                            new ToolbarRankingsButton(),
-                                            new ToolbarBeatmapListingButton(),
-                                            new ToolbarSupporterQuestsButton(),
-                                            new ToolbarChatButton(),
-                                            new ToolbarSocialButton(),
-                                            new ToolbarMusicButton(),
-                                            //new ToolbarButton
-                                            //{
-                                            //    Icon = FontAwesome.Solid.search
-                                            //},
-                                            userButton = new ToolbarUserButton(),
-                                            new ToolbarClock(),
-                                            new ToolbarNotificationButton(),
-                                            new ToolbarMemoryDisplay(),
+                                            rightButtonBackgroundPlate = new Container
+                                            {
+                                                Alpha = 0,
+                                                BypassAutoSizeAxes = Axes.Both,
+                                                RelativeSizeAxes = Axes.None,
+                                                Size = Vector2.Zero,
+                                                Children = new Drawable[]
+                                                {
+                                                    new SongSelectBackdropSurface
+                                                    {
+                                                        IsActive = () => SongSelectActive,
+                                                        GetCornerRadius = () => rightButtonBackgroundPlate.CornerRadius,
+                                                    },
+                                                    rightButtonBackground = new Box
+                                                    {
+                                                        Colour = OsuColour.Gray(0.1f),
+                                                        RelativeSizeAxes = Axes.Both,
+                                                    },
+                                                },
+                                            },
+                                            new FillFlowContainer
+                                            {
+                                                Anchor = Anchor.TopRight,
+                                                Origin = Anchor.TopRight,
+                                                Direction = FillDirection.Horizontal,
+                                                RelativeSizeAxes = Axes.Y,
+                                                AutoSizeAxes = Axes.X,
+                                                Children = new Drawable[]
+                                                {
+                                                    new ToolbarRankingsButton(),
+                                                    new ToolbarBeatmapListingButton(),
+                                                    new ToolbarSupporterQuestsButton(),
+                                                    new ToolbarThemeLibraryButton(),
+                                                    new ToolbarDiscoveryButton(),
+                                                    new ToolbarChatButton(),
+                                                    new ToolbarSocialButton(),
+                                                    new ToolbarMusicButton(),
+                                                    //new ToolbarButton
+                                                    //{
+                                                    //    Icon = FontAwesome.Solid.search
+                                                    //},
+                                                    userButton = new ToolbarUserButton(),
+                                                    new ToolbarClock { Alpha = HideClockForCapture ? 0 : 1 },
+                                                    new ToolbarNotificationButton(),
+                                                    new ToolbarMemoryDisplay(),
+                                                }
+                                            },
                                         }
                                     },
-                                }
-                            },
+                                },
+                            }
                         },
                     }
                 },
@@ -200,6 +367,18 @@ namespace osu.Game.Overlays.Toolbar
 
             if (osuGame != null)
                 OverlayActivationMode.BindTo(osuGame.OverlayActivationMode);
+
+            topBarVariantBindable = OverlayColourProvider.GetTopBarVariant();
+            topBarRadiusBindable = OverlayColourProvider.GetTopBarRadius();
+
+            topBarVariantBindable.BindValueChanged(_ => updateLayout());
+            topBarRadiusBindable.BindValueChanged(_ => updateLayout());
+
+            themeModeBindable = OverlayColourProvider.CurrentTheme.GetBoundCopy();
+            themeModeBindable.BindValueChanged(_ => updateLayout());
+
+            customThemeBindable = OverlayColourProvider.CustomTheme.GetBoundCopy();
+            customThemeBindable.BindValueChanged(_ => updateLayout());
         }
 
         protected override void LoadComplete()
@@ -207,6 +386,205 @@ namespace osu.Game.Overlays.Toolbar
             base.LoadComplete();
 
             rulesetSelector.Current.BindTo(ruleset);
+            updateLayout();
+        }
+
+        private void updateLayout()
+        {
+            var variant = topBarVariantBindable?.Value ?? TopBarVariant.Flat;
+            float radius = Math.Clamp(topBarRadiusBindable?.Value ?? 10f, 0f, 24f);
+
+            Colour4 bgColour = OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom
+                ? (colourProvider?.Background5 ?? (Colour4)OsuColour.Gray(0.1f))
+                : (Colour4)OsuColour.Gray(0.1f);
+            Colour4 deepBgColour = OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom
+                ? (colourProvider?.Background6 ?? (Colour4)OsuColour.Gray(0.06f))
+                : (Colour4)OsuColour.Gray(0.06f);
+            Colour4 podBgColour = OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom
+                ? (colourProvider?.Background4 ?? (Colour4)OsuColour.Gray(0.12f))
+                : (Colour4)OsuColour.Gray(0.12f);
+
+            bgColour = bgColour.Opacity(surfaceAlpha);
+            deepBgColour = deepBgColour.Opacity(surfaceAlpha);
+            podBgColour = podBgColour.Opacity(surfaceAlpha);
+
+            background?.UpdateGradientPosition(variant, radius);
+
+            if (leftDownwardFillet != null)
+                leftDownwardFillet.Alpha = 0;
+            if (rightDownwardFillet != null)
+                rightDownwardFillet.Alpha = 0;
+
+            switch (variant)
+            {
+                case TopBarVariant.Flat:
+                    Height = HEIGHT;
+                    wrapperContainer.Padding = new MarginPadding(0);
+                    contentContainer.RelativeSizeAxes = Axes.Both;
+                    contentContainer.Size = Vector2.One;
+                    contentContainer.Position = Vector2.Zero;
+                    contentContainer.Masking = false;
+                    contentContainer.CornerRadius = 0f;
+                    contentContainer.EdgeEffect = default;
+
+                    barBackground.Colour = bgColour;
+                    if (rulesetFadeBox != null)
+                        rulesetFadeBox.Colour = ColourInfo.GradientHorizontal(bgColour.Opacity(0), bgColour);
+                    resetPods(bgColour);
+                    break;
+
+                case TopBarVariant.Rounded:
+                    Height = HEIGHT;
+                    wrapperContainer.Padding = new MarginPadding(0);
+                    contentContainer.RelativeSizeAxes = Axes.X;
+                    contentContainer.Width = 1f;
+                    contentContainer.Height = HEIGHT + radius;
+                    contentContainer.Position = new Vector2(0, -radius);
+                    contentContainer.Masking = radius > 0f;
+                    contentContainer.CornerRadius = radius;
+                    contentContainer.EdgeEffect = radius > 0f ? new EdgeEffectParameters
+                    {
+                        Type = EdgeEffectType.Shadow,
+                        Colour = Colour4.Black.Opacity(0.25f),
+                        Radius = 8f,
+                    } : default;
+
+                    barBackground.Colour = bgColour;
+                    if (rulesetFadeBox != null)
+                        rulesetFadeBox.Colour = ColourInfo.GradientHorizontal(bgColour.Opacity(0), bgColour);
+                    resetPods(bgColour);
+                    break;
+
+                case TopBarVariant.DownwardRounded:
+                    Height = HEIGHT;
+                    wrapperContainer.Padding = new MarginPadding(0);
+                    contentContainer.RelativeSizeAxes = Axes.Both;
+                    contentContainer.Size = Vector2.One;
+                    contentContainer.Position = Vector2.Zero;
+                    contentContainer.Masking = false;
+                    contentContainer.CornerRadius = 0f;
+                    contentContainer.EdgeEffect = default;
+
+                    barBackground.Colour = bgColour;
+                    if (rulesetFadeBox != null)
+                        rulesetFadeBox.Colour = ColourInfo.GradientHorizontal(bgColour.Opacity(0), bgColour);
+                    resetPods(bgColour);
+
+                    if (radius > 0f)
+                    {
+                        if (leftDownwardFillet != null)
+                            leftDownwardFillet.UpdateFillet(radius, bgColour);
+                        if (rightDownwardFillet != null)
+                            rightDownwardFillet.UpdateFillet(radius, bgColour);
+                    }
+                    break;
+
+                case TopBarVariant.Floating:
+                    Height = FLOATING_HEIGHT;
+                    wrapperContainer.Padding = new MarginPadding
+                    {
+                        Top = FLOATING_TOP_MARGIN,
+                        Bottom = FLOATING_HEIGHT - HEIGHT - FLOATING_TOP_MARGIN,
+                        Horizontal = FLOATING_HORIZONTAL_MARGIN,
+                    };
+                    contentContainer.RelativeSizeAxes = Axes.Both;
+                    contentContainer.Size = Vector2.One;
+                    contentContainer.Position = Vector2.Zero;
+                    contentContainer.Masking = radius > 0f;
+                    contentContainer.CornerRadius = radius;
+                    contentContainer.EdgeEffect = radius > 0f ? new EdgeEffectParameters
+                    {
+                        Type = EdgeEffectType.Shadow,
+                        Colour = Colour4.Black.Opacity(0.35f),
+                        Radius = 12f,
+                    } : default;
+
+                    barBackground.Colour = bgColour;
+                    if (rulesetFadeBox != null)
+                        rulesetFadeBox.Colour = ColourInfo.GradientHorizontal(bgColour.Opacity(0), bgColour);
+                    resetPods(bgColour);
+                    break;
+
+                case TopBarVariant.Attached:
+                    Height = HEIGHT;
+                    wrapperContainer.Padding = new MarginPadding(0);
+                    contentContainer.RelativeSizeAxes = Axes.Both;
+                    contentContainer.Size = Vector2.One;
+                    contentContainer.Position = Vector2.Zero;
+                    contentContainer.Masking = false;
+                    contentContainer.CornerRadius = 0f;
+                    contentContainer.EdgeEffect = default;
+
+                    barBackground.Colour = deepBgColour;
+                    if (rulesetFadeBox != null)
+                        rulesetFadeBox.Colour = ColourInfo.GradientHorizontal(deepBgColour.Opacity(0), deepBgColour);
+                    applyAttachedPods(radius, podBgColour);
+                    break;
+
+                default:
+                    goto case TopBarVariant.Flat;
+            }
+
+            if (State.Value == Visibility.Hidden)
+                Y = -Height;
+        }
+
+        private void resetPods(Colour4 podColour)
+        {
+            leftButtonBackgroundPlate.Alpha = 0;
+            leftButtonBackgroundPlate.BypassAutoSizeAxes = Axes.Both;
+            leftButtonBackgroundPlate.RelativeSizeAxes = Axes.None;
+            leftButtonBackgroundPlate.Size = Vector2.Zero;
+            leftButtonBackgroundPlate.Position = Vector2.Zero;
+            leftButtonBackgroundPlate.Masking = false;
+            leftButtonBackgroundPlate.CornerRadius = 0f;
+            leftButtonBackgroundPlate.EdgeEffect = default;
+            leftButtonBackground.Colour = podColour;
+
+            rightButtonBackgroundPlate.Alpha = 0;
+            rightButtonBackgroundPlate.BypassAutoSizeAxes = Axes.Both;
+            rightButtonBackgroundPlate.RelativeSizeAxes = Axes.None;
+            rightButtonBackgroundPlate.Size = Vector2.Zero;
+            rightButtonBackgroundPlate.Position = Vector2.Zero;
+            rightButtonBackgroundPlate.Masking = false;
+            rightButtonBackgroundPlate.CornerRadius = 0f;
+            rightButtonBackgroundPlate.EdgeEffect = default;
+            rightButtonBackground.Colour = podColour;
+        }
+
+        private void applyAttachedPods(float radius, Colour4 podColour)
+        {
+            leftButtonBackgroundPlate.Alpha = 1;
+            leftButtonBackgroundPlate.BypassAutoSizeAxes = Axes.Both;
+            leftButtonBackgroundPlate.RelativeSizeAxes = Axes.None;
+            leftButtonBackgroundPlate.Width = (leftButtonBackgroundPlate.Parent?.DrawWidth ?? 100f) + radius;
+            leftButtonBackgroundPlate.Height = HEIGHT + radius;
+            leftButtonBackgroundPlate.Position = new Vector2(-radius, -radius);
+            leftButtonBackgroundPlate.Masking = radius > 0f;
+            leftButtonBackgroundPlate.CornerRadius = radius;
+            leftButtonBackgroundPlate.EdgeEffect = radius > 0f ? new EdgeEffectParameters
+            {
+                Type = EdgeEffectType.Shadow,
+                Colour = Colour4.Black.Opacity(0.3f),
+                Radius = 6f,
+            } : default;
+            leftButtonBackground.Colour = podColour;
+
+            rightButtonBackgroundPlate.Alpha = 1;
+            rightButtonBackgroundPlate.BypassAutoSizeAxes = Axes.Both;
+            rightButtonBackgroundPlate.RelativeSizeAxes = Axes.None;
+            rightButtonBackgroundPlate.Width = (rightButtonBackgroundPlate.Parent?.DrawWidth ?? 400f) + radius;
+            rightButtonBackgroundPlate.Height = HEIGHT + radius;
+            rightButtonBackgroundPlate.Position = new Vector2(0, -radius);
+            rightButtonBackgroundPlate.Masking = radius > 0f;
+            rightButtonBackgroundPlate.CornerRadius = radius;
+            rightButtonBackgroundPlate.EdgeEffect = radius > 0f ? new EdgeEffectParameters
+            {
+                Type = EdgeEffectType.Shadow,
+                Colour = Colour4.Black.Opacity(0.3f),
+                Radius = 6f,
+            } : default;
+            rightButtonBackground.Colour = podColour;
         }
 
         public partial class ToolbarBackground : Container
@@ -220,15 +598,12 @@ namespace osu.Game.Overlays.Toolbar
                 RelativeSizeAxes = Axes.Both;
                 Children = new Drawable[]
                 {
-                    new Box
-                    {
-                        RelativeSizeAxes = Axes.Both,
-                        Colour = OsuColour.Gray(0.1f),
-                    },
                     gradientBackground = new Box
                     {
                         RelativeSizeAxes = Axes.X,
-                        Anchor = Anchor.BottomLeft,
+                        Anchor = Anchor.TopLeft,
+                        Origin = Anchor.TopLeft,
+                        Y = HEIGHT,
                         Alpha = 0,
                         Height = 80,
                         Colour = ColourInfo.GradientVertical(
@@ -236,6 +611,25 @@ namespace osu.Game.Overlays.Toolbar
                     },
                 };
             }
+
+            public void UpdateGradientPosition(TopBarVariant variant, float radius = 0f)
+            {
+                float barBottom = variant switch
+                {
+                    TopBarVariant.Floating => FLOATING_TOP_MARGIN + HEIGHT,
+                    TopBarVariant.DownwardRounded => HEIGHT,
+                    _ => HEIGHT,
+                };
+
+                gradientBackground.Y = barBottom;
+                gradientBackground.Margin = new MarginPadding(0);
+                Padding = new MarginPadding
+                {
+                    Horizontal = variant == TopBarVariant.Floating ? FLOATING_HORIZONTAL_MARGIN : 0
+                };
+            }
+
+            public Box GradientBox => gradientBackground;
 
             protected override void LoadComplete()
             {
@@ -247,9 +641,9 @@ namespace osu.Game.Overlays.Toolbar
             private void updateState()
             {
                 if (ShowGradient.Value)
-                    gradientBackground.FadeIn(2500, Easing.OutQuint);
+                    gradientBackground.FadeIn(InterfaceAnimation.FadeDuration(2500), Easing.OutQuint);
                 else
-                    gradientBackground.FadeOut(200, Easing.OutQuint);
+                    gradientBackground.FadeOut(InterfaceAnimation.FadeDuration(200), Easing.OutQuint);
             }
         }
 
@@ -292,16 +686,16 @@ namespace osu.Game.Overlays.Toolbar
 
         protected override void PopIn()
         {
-            this.MoveToY(0, transition_time, Easing.OutQuint);
-            this.FadeIn(transition_time / 4, Easing.OutQuint);
+            this.MoveToY(0, InterfaceAnimation.MovementDuration(transition_time), Easing.OutQuint);
+            this.FadeIn(InterfaceAnimation.FadeDuration(transition_time / 4), Easing.OutQuint);
         }
 
         protected override void PopOut()
         {
             userButton.StateContainer?.Hide();
 
-            this.MoveToY(-DrawSize.Y, transition_time, Easing.OutQuint);
-            this.FadeOut(transition_time, Easing.InQuint);
+            this.MoveToY(-DrawSize.Y, InterfaceAnimation.MovementDuration(transition_time), Easing.OutQuint);
+            this.FadeOut(InterfaceAnimation.FadeDuration(transition_time), Easing.InQuint);
         }
 
         public bool OnPressed(KeyBindingPressEvent<GlobalAction> e)

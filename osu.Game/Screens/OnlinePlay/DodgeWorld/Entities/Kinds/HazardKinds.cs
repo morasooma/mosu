@@ -127,39 +127,39 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities.Kinds
 
         protected override IEnumerable<EntityField> DescribeFields()
         {
-            yield return Field("Направление", "градусы; 0 — вправо",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4648, global::osu.Game.Localisation.ClientTranslationStrings.J4649,
                 emitter => EditorValue.Format(emitter.Direction),
                 (emitter, text) => emitter.Direction = HazardValues.Wrap(EditorValue.Float(text, emitter.Direction, -360, 360)));
 
-            yield return Field("Поворот за цикл", "градусы; не ноль — получается вертушка",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4650, global::osu.Game.Localisation.ClientTranslationStrings.J4651,
                 emitter => EditorValue.Format(emitter.Turn),
                 (emitter, text) => emitter.Turn = EditorValue.Float(text, emitter.Turn, -HazardValues.MAX_TURN, HazardValues.MAX_TURN));
 
-            yield return Field("Цикл", "миллисекунд между залпами",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4652, global::osu.Game.Localisation.ClientTranslationStrings.J4653,
                 emitter => EditorValue.Format(emitter.CycleMilliseconds),
                 (emitter, text) => emitter.CycleMilliseconds = EditorValue.Int(text, emitter.CycleMilliseconds, HazardValues.MIN_CYCLE, HazardValues.MAX_CYCLE));
 
-            yield return Field("Сдвиг фазы", "миллисекунд; этим разводят соседние устройства",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4654, global::osu.Game.Localisation.ClientTranslationStrings.J4655,
                 emitter => EditorValue.Format(emitter.PhaseMilliseconds),
                 (emitter, text) => emitter.PhaseMilliseconds = EditorValue.Int(text, emitter.PhaseMilliseconds, 0, HazardValues.MAX_PHASE));
 
-            yield return Field("Пуль в залпе", "0 — не стреляет",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4656, global::osu.Game.Localisation.ClientTranslationStrings.J4657,
                 emitter => EditorValue.Format(emitter.ProjectileCount),
                 (emitter, text) => emitter.ProjectileCount = EditorValue.Int(text, emitter.ProjectileCount, 0, MAX_PROJECTILE_COUNT));
 
-            yield return Field("Разброс", "градусы; 360 — кольцо",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4658, global::osu.Game.Localisation.ClientTranslationStrings.J4659,
                 emitter => EditorValue.Format(emitter.Spread),
                 (emitter, text) => emitter.Spread = EditorValue.Float(text, emitter.Spread, 0, MAX_SPREAD));
 
-            yield return Field("Урон одной пули", null,
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4660, null,
                 emitter => EditorValue.Format(emitter.ProjectileDamage),
                 (emitter, text) => emitter.ProjectileDamage = EditorValue.Int(text, emitter.ProjectileDamage, HazardValues.MIN_DAMAGE, HazardValues.MAX_DAMAGE));
 
-            yield return Field("Скорость пули", "единиц в секунду",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4661, global::osu.Game.Localisation.ClientTranslationStrings.J4662,
                 emitter => EditorValue.Format(emitter.ProjectileSpeed),
                 (emitter, text) => emitter.ProjectileSpeed = EditorValue.Float(text, emitter.ProjectileSpeed, MIN_SPEED, MAX_SPEED));
 
-            yield return Field("Дальность пули", "единиц; дальше пуля исчезает",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4663, global::osu.Game.Localisation.ClientTranslationStrings.J4664,
                 emitter => EditorValue.Format(emitter.ProjectileRange),
                 (emitter, text) => emitter.ProjectileRange = EditorValue.Float(text, emitter.ProjectileRange, MIN_RANGE, MAX_RANGE));
         }
@@ -235,35 +235,35 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities.Kinds
 
         protected override IEnumerable<EntityField> DescribeFields()
         {
-            yield return Field("Направление", "градусы; 0 — вправо",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4648, global::osu.Game.Localisation.ClientTranslationStrings.J4649,
                 beam => EditorValue.Format(beam.Direction),
                 (beam, text) => beam.Direction = HazardValues.Wrap(EditorValue.Float(text, beam.Direction, -360, 360)));
 
-            yield return Field("Поворот за цикл", "градусы; не ноль — луч подметает",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4650, global::osu.Game.Localisation.ClientTranslationStrings.J4665,
                 beam => EditorValue.Format(beam.Turn),
                 (beam, text) => beam.Turn = EditorValue.Float(text, beam.Turn, -HazardValues.MAX_TURN, HazardValues.MAX_TURN));
 
-            yield return Field("Цикл", "миллисекунд на одно включение и выключение",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4652, global::osu.Game.Localisation.ClientTranslationStrings.J4666,
                 beam => EditorValue.Format(beam.CycleMilliseconds),
                 (beam, text) => beam.CycleMilliseconds = EditorValue.Int(text, beam.CycleMilliseconds, HazardValues.MIN_CYCLE, HazardValues.MAX_CYCLE));
 
-            yield return Field("Сдвиг фазы", "миллисекунд; этим разводят соседние устройства",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4654, global::osu.Game.Localisation.ClientTranslationStrings.J4655,
                 beam => EditorValue.Format(beam.PhaseMilliseconds),
                 (beam, text) => beam.PhaseMilliseconds = EditorValue.Int(text, beam.PhaseMilliseconds, 0, HazardValues.MAX_PHASE));
 
-            yield return Field("Сколько горит", "миллисекунд из цикла; последние 600 мс перед включением — предупреждение",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4667, global::osu.Game.Localisation.ClientTranslationStrings.J4668,
                 beam => EditorValue.Format(beam.ActiveMilliseconds),
                 (beam, text) => beam.ActiveMilliseconds = EditorValue.Int(text, beam.ActiveMilliseconds, MIN_ACTIVE, HazardValues.MAX_CYCLE));
 
-            yield return Field("Длина", "единиц",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4669, global::osu.Game.Localisation.ClientTranslationStrings.J4670,
                 beam => EditorValue.Format(beam.Length),
                 (beam, text) => beam.Length = EditorValue.Float(text, beam.Length, MIN_LENGTH, MAX_LENGTH));
 
-            yield return Field("Толщина", "единиц",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4671, global::osu.Game.Localisation.ClientTranslationStrings.J4670,
                 beam => EditorValue.Format(beam.Width),
                 (beam, text) => beam.Width = EditorValue.Float(text, beam.Width, MIN_WIDTH, MAX_WIDTH));
 
-            yield return Field("Урон", "снимается не чаще раза в 0,7 с",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4672, global::osu.Game.Localisation.ClientTranslationStrings.J4673,
                 beam => EditorValue.Format(beam.Damage),
                 (beam, text) => beam.Damage = EditorValue.Int(text, beam.Damage, HazardValues.MIN_DAMAGE, HazardValues.MAX_DAMAGE));
         }

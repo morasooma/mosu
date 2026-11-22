@@ -55,7 +55,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Card
                         d.AddText(new RomanisableString(beatmap.Metadata.ArtistUnicode, beatmap.Metadata.Artist), static s => s.Font = OsuFont.GetFont(size: 9, weight: FontWeight.SemiBold));
 
                         d.NewParagraph();
-                        d.AddText("mapped by ", static s => s.Font = OsuFont.GetFont(size: 9, weight: FontWeight.SemiBold));
+                        d.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4933, static s => s.Font = OsuFont.GetFont(size: 9, weight: FontWeight.SemiBold));
                         d.AddText(beatmap.Metadata.Author.Username, s =>
                         {
                             s.Font = OsuFont.GetFont(size: 9, weight: FontWeight.SemiBold);

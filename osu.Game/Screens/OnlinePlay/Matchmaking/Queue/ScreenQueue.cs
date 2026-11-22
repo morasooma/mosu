@@ -32,6 +32,8 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Input.Bindings;
+using osu.Game.Localisation;
+using osu.Framework.Localisation;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
@@ -65,6 +67,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         private CloudVisualisation cloud = null!;
         private RatingDistributionGraph ratingGraph = null!;
         private FillFlowContainer resultPanelContainer = null!;
+        private RankedPlayActiveMatches activeMatches = null!;
 
         [Resolved]
         private OsuColour colours { get; set; } = null!;
@@ -85,6 +88,9 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         private IBindable<RulesetInfo> ruleset { get; set; } = null!;
 
         [Resolved]
+        private RulesetStore rulesets { get; set; } = null!;
+
+        [Resolved]
         private MusicController music { get; set; } = null!;
 
         [Resolved]
@@ -95,9 +101,13 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
         private readonly Bindable<MatchmakingPool[]?> availablePools = new Bindable<MatchmakingPool[]?>();
         private readonly Bindable<MatchmakingPool?> selectedPool = new Bindable<MatchmakingPool?>();
         private readonly BindableBool randomMods = new BindableBool();
+        private readonly Bindable<string> localVisualMod = new Bindable<string>("None");
+        private LocalRankedPlayVisualMods queuedVisualMods = new LocalRankedPlayVisualMods();
+        private FormDropdown<string>? localVisualModDropdown;
         private readonly MatchmakingPoolType poolType;
         private IAPIProvider api = null!;
         private RelaxRankedPoolResponse? relaxPool;
+        private int modePoolLoadVersion;
         private ScreenFooterButton? manageRelaxPoolButton;
         private OsuSpriteText queueCountsText = null!;
         private OsuSpriteText relaxPoolOwnerText = null!;
@@ -135,24 +145,24 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             {
                 manageRelaxPoolButton = new ScreenFooterButton
                 {
-                    Text = "Manage Relax pool",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4870,
                     Icon = FontAwesome.Solid.List,
                     Action = () =>
                     {
                         if (relaxPool?.CanManage == true)
                         {
-                            this.Push(new RelaxPoolEditorScreen(relaxPool));
+                            this.Push(new RelaxPoolEditorScreen(relaxPool, selectedPool.Value?.Name ?? "Ranked Play"));
                             return;
                         }
 
                         if (relaxPool == null)
                         {
-                            notifications.Post(new SimpleNotification { Text = "Could not load Relax pool access. Retrying…" });
+                            notifications.Post(new SimpleNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.J4871 });
                             fetchRelaxPool();
                             return;
                         }
 
-                        notifications.Post(new SimpleNotification { Text = "You need the Relax pool creator role to manage a pool." });
+                        notifications.Post(new SimpleNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.J4872 });
                     }
                 };
                 buttons.Add(manageRelaxPoolButton);
@@ -247,16 +257,16 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                                         }
                                                                     }
                                                                     : Empty(),
-                                                                new QueueSectionHeader("Queued players"),
+                                                                new QueueSectionHeader(global::osu.Game.Localisation.ClientTranslationStrings.J4873),
                                                                 queueCountsText = new OsuSpriteText
                                                                 {
                                                                     Font = OsuFont.Style.Caption1,
-                                                                    Text = "Standard: 0  •  Random mods: 0"
+                                                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4874
                                                                 },
                                                                 relaxPoolOwnerText = new OsuSpriteText
                                                                 {
                                                                     Font = OsuFont.Style.Caption2,
-                                                                    Text = "Relax pool selected: automatic fallback"
+                                                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4875
                                                                 }
                                                             }
                                                         }
@@ -307,11 +317,14 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                 Padding = new MarginPadding(10) { Bottom = 0 },
                                                 RowDimensions =
                                                 [
-                                                    new Dimension(GridSizeMode.AutoSize)
+                                                    new Dimension(GridSizeMode.AutoSize),
+                                                    new Dimension(GridSizeMode.Relative, poolType == MatchmakingPoolType.RankedPlay ? 0.55f : 1),
+                                                    new Dimension(GridSizeMode.AutoSize),
+                                                    new Dimension(),
                                                 ],
                                                 Content = new[]
                                                 {
-                                                    new Drawable[] { new QueueSectionHeader("Recent Matches") },
+                                                    new Drawable[] { new QueueSectionHeader(global::osu.Game.Localisation.ClientTranslationStrings.J4876) },
                                                     new Drawable[]
                                                     {
                                                         new OsuScrollContainer(Direction.Vertical)
@@ -324,6 +337,22 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                                 AutoSizeAxes = Axes.Y,
                                                                 Spacing = new Vector2(10),
                                                             }
+                                                        }
+                                                    },
+                                                    new Drawable[]
+                                                    {
+                                                        poolType == MatchmakingPoolType.RankedPlay
+                                                            ? new QueueSectionHeader(RankedPlayLobbyStrings.ActiveMatches)
+                                                            : new Container()
+                                                    },
+                                                    new Drawable[]
+                                                    {
+                                                        new OsuScrollContainer(Direction.Vertical)
+                                                        {
+                                                            RelativeSizeAxes = Axes.Both,
+                                                            ScrollbarOverlapsContent = false,
+                                                            Alpha = poolType == MatchmakingPoolType.RankedPlay ? 1 : 0,
+                                                            Child = activeMatches = new RankedPlayActiveMatches { Spectate = spectateMatch },
                                                         }
                                                     }
                                                 }
@@ -356,7 +385,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                 ],
                                                 Content = new[]
                                                 {
-                                                    new Drawable[] { new QueueSectionHeader("Queues") },
+                                                    new Drawable[] { new QueueSectionHeader(global::osu.Game.Localisation.ClientTranslationStrings.J4877) },
                                                     new Drawable[]
                                                     {
                                                         mainContent = new Container
@@ -393,7 +422,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                                 ],
                                                 Content = new[]
                                                 {
-                                                    new Drawable[] { new QueueSectionHeader("Ratings") },
+                                                    new Drawable[] { new QueueSectionHeader(global::osu.Game.Localisation.ClientTranslationStrings.J4878) },
                                                     new Drawable[]
                                                     {
                                                         new Container
@@ -421,12 +450,11 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             {
                 experimentalText.AddIcon(FontAwesome.Solid.Lightbulb);
                 experimentalText.AddText(@" ");
-                experimentalText.AddText("This system is under continuous and rapid development.\n", sp => sp.Font = sp.Font.With(weight: FontWeight.SemiBold));
-                experimentalText.AddText("Follow the ");
-                experimentalText.AddLink("changelog", @"https://osu.ppy.sh/community/forums/topics/2202736", sp => sp.Font = sp.Font.With(weight: FontWeight.SemiBold));
-                experimentalText.AddText(" and provide any ");
-                experimentalText.AddLink("feedback", @"https://osu.ppy.sh/community/forums/topics/2198397", sp => sp.Font = sp.Font.With(weight: FontWeight.SemiBold));
-                experimentalText.AddText(" on the osu! forums!");
+                experimentalText.AddText(ClientBrandingStrings.MatchmakingNotice, sp => sp.Font = sp.Font.With(weight: FontWeight.SemiBold));
+                experimentalText.AddText("\n");
+                experimentalText.AddLink(ClientBrandingStrings.News, @"https://t.me/morasooma", sp => sp.Font = sp.Font.With(weight: FontWeight.SemiBold));
+                experimentalText.AddText(" · ");
+                experimentalText.AddLink(ClientBrandingStrings.Community, @"https://discord.gg/bRSDssrgUE", sp => sp.Font = sp.Font.With(weight: FontWeight.SemiBold));
             }
         }
 
@@ -452,12 +480,14 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
             currentState.BindTo(queue.CurrentState);
             currentState.BindValueChanged(s => SetState(s.NewValue));
+            ruleset.BindValueChanged(_ => updateLocalVisualMods());
 
             selectedPool.BindTo(queue.SelectedPool);
             selectedPool.BindValueChanged(e =>
             {
                 refreshLobbyData();
-                updateRelaxPoolOwnerText();
+                fetchRelaxPool();
+                updateLocalVisualMods();
             }, true);
 
             isConnected = client.IsConnected.GetBoundCopy();
@@ -481,17 +511,23 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
         private void fetchRelaxPool()
         {
-            if (poolType != MatchmakingPoolType.RankedPlay)
+            int version = ++modePoolLoadVersion;
+            relaxPool = null;
+            updateRelaxPoolOwnerText();
+            if (poolType != MatchmakingPoolType.RankedPlay || selectedPool.Value == null)
                 return;
 
-            var request = new GetRelaxRankedPoolRequest();
+            int mode = selectedPool.Value.RulesetId;
+            var request = new GetRelaxRankedPoolRequest { RulesetId = mode };
             request.Success += response =>
             {
+                if (version != modePoolLoadVersion || selectedPool.Value?.RulesetId != mode) return;
                 relaxPool = response;
                 updateRelaxPoolOwnerText();
             };
             request.Failure += _ =>
             {
+                if (version != modePoolLoadVersion || selectedPool.Value?.RulesetId != mode) return;
                 relaxPool = null;
                 updateRelaxPoolOwnerText();
             };
@@ -500,10 +536,9 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
         private void updateRelaxPoolOwnerText()
         {
-            relaxPoolOwnerText.Alpha = selectedPool.Value?.RulesetId == 4 ? 1 : 0;
-            relaxPoolOwnerText.Text = relaxPool?.SelectedOwner is { } owner
-                ? $"Relax pool selected: {owner.Username}"
-                : "Relax pool selected: automatic fallback";
+            relaxPoolOwnerText.Alpha = poolType == MatchmakingPoolType.RankedPlay ? 1 : 0;
+            relaxPoolOwnerText.Text = relaxPool == null ? global::osu.Game.Localisation.ClientTranslationStrings.J4879
+                : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4880(relaxPool.Beatmaps.Count, string.Join(", ", relaxPool.Editors.Select(editor => editor.Username)));
         }
 
         private async Task populateAvailablePools(CancellationToken cancellationToken)
@@ -558,10 +593,38 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                 userRating = status.UserRating;
 
             ratingGraph.SetData(status.RatingDistribution, userRating);
-            queueCountsText.Text = $"Standard: {status.StandardQueueCount}  •  Random mods: {status.RandomModsQueueCount}";
+            queueCountsText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4881(status.StandardQueueCount, status.RandomModsQueueCount);
 
             loadRecentMatches(status.RecentMatches, ++recentMatchesLoadVersion).FireAndForget();
+            if (poolType == MatchmakingPoolType.RankedPlay)
+                activeMatches.SetMatches(status.ActiveMatches);
         });
+
+        private bool joiningSpectator;
+
+        private async void spectateMatch(RankedPlayActiveMatch match)
+        {
+            if (joiningSpectator || currentState.Value is not (MatchmakingScreenState.Idle or MatchmakingScreenState.Queueing)
+                || client.Room != null)
+                return;
+            joiningSpectator = true;
+            try
+            {
+                // Do not race queue admission against joining as an observer.
+                await client.MatchmakingLeaveQueue();
+                Schedule(() =>
+                {
+                    joiningSpectator = false;
+                    if (this.IsCurrentScreen() && currentState.Value == MatchmakingScreenState.Idle && client.Room == null)
+                        this.Push(new RankedPlaySpectatorLoader(match.RoomId, match.UserIds[0]));
+                });
+            }
+            catch (Exception ex)
+            {
+                Schedule(() => joiningSpectator = false);
+                Logger.Error(ex, "Could not leave matchmaking before spectating.");
+            }
+        }
 
         private async Task loadRecentMatches(RankedPlayRecentMatch[] matches, int loadVersion)
         {
@@ -631,10 +694,11 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             recentMatchesLoadVersion++;
             lastRecentMatchesRenderKey = null;
             resultPanelContainer.Clear();
+            activeMatches.SetMatches([]);
             resultPanelContainer.LayoutDuration = 0;
             userRating = null;
             ratingGraph.SetData([], null);
-            queueCountsText.Text = "Standard: 0  •  Random mods: 0";
+            queueCountsText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4874;
 
             cloud.Users = Array.Empty<APIUser>();
         }
@@ -705,9 +769,33 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
             }
         }
 
+        private void updateLocalVisualMods()
+        {
+            if (localVisualModDropdown == null)
+                return;
+
+            // The queue's pool, not the globally selected song-select ruleset, owns the mode.
+            var poolRuleset = selectedPool.Value == null ? null : rulesets.GetRuleset(selectedPool.Value.RulesetId == RulesetInfo.OSU_RELAX_ONLINE_ID ? 0 : selectedPool.Value.RulesetId);
+            var available = poolRuleset == null
+                ? new[] { "None" }
+                : LocalRankedPlayVisualMods.Available(poolRuleset.CreateInstance()).ToArray();
+            localVisualModDropdown.Items = available;
+            if (!available.Contains(localVisualMod.Value))
+                localVisualMod.Value = "None";
+        }
+
+        private partial class LocalVisualModDropdown : FormDropdown<string>
+        {
+            protected override LocalisableString GenerateItemText(string item)
+                => item == "None" ? RankedPlayVisualModsStrings.None : base.GenerateItemText(item);
+        }
+
         public void SetState(MatchmakingScreenState newState)
         {
             mainContent.FadeInFromZero(500, Easing.OutQuint);
+            // This control only belongs to the idle content. Pool changes can still fire while
+            // queueing or resuming from a match, after the previous content has been disposed.
+            localVisualModDropdown = null;
             mainContent.Clear();
 
             startLoopPlaybackDelegate?.Cancel();
@@ -740,6 +828,21 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                 AvailablePools = { BindTarget = availablePools },
                                 SelectedPool = { BindTarget = selectedPool }
                             },
+                            new Container
+                            {
+                                Alpha = poolType == MatchmakingPoolType.RankedPlay ? 1 : 0,
+                                Anchor = Anchor.TopCentre,
+                                Origin = Anchor.TopCentre,
+                                Width = 400,
+                                AutoSizeAxes = Axes.Y,
+                                Child = localVisualModDropdown = new LocalVisualModDropdown
+                                {
+                                    Caption = RankedPlayVisualModsStrings.Caption,
+                                    HintText = RankedPlayVisualModsStrings.Hint,
+                                    Items = new[] { "None" },
+                                    Current = { BindTarget = localVisualMod },
+                                },
+                            },
                             new FillFlowContainer
                             {
                                 Anchor = Anchor.TopCentre,
@@ -756,7 +859,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                         AutoSizeAxes = Axes.Y,
                                         Child = new FormCheckBox
                                         {
-                                            Caption = "Random mods",
+                                            Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4883,
                                             Current = { BindTarget = randomMods }
                                         }
                                     },
@@ -770,9 +873,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                         Action = () =>
                                         {
                                             Debug.Assert(selectedPool.Value != null);
+                                            queuedVisualMods = poolType == MatchmakingPoolType.RankedPlay
+                                                ? new LocalRankedPlayVisualMods(localVisualMod.Value)
+                                                : new LocalRankedPlayVisualMods();
                                             queue.JoinQueue(selectedPool.Value, randomMods.Value);
                                         },
-                                        Text = "Begin queueing",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4884,
                                     }
                                 }
                             },
@@ -785,9 +891,10 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                         }
                     };
 
-                    duelHint.AddText("Open the ");
-                    duelHint.AddLink("dashboard", () => dashboardOverlay?.Show());
-                    duelHint.AddText(" to duel another player!");
+                    updateLocalVisualMods();
+                    duelHint.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4885);
+                    duelHint.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J4886, () => dashboardOverlay?.Show());
+                    duelHint.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4887);
 
                     break;
 
@@ -814,7 +921,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                     {
                                         Anchor = Anchor.TopCentre,
                                         Origin = Anchor.TopCentre,
-                                        Text = "Searching for a match...",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4888,
                                         Font = OsuFont.Style.Title,
                                     },
                                     new QueueTimerText
@@ -836,7 +943,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                 Anchor = Anchor.Centre,
                                 Origin = Anchor.Centre,
                                 Width = 200,
-                                Text = "Stop queueing",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4889,
                                 Action = () => queue.LeaveQueue()
                             }
                         }
@@ -868,7 +975,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                             {
                                 Anchor = Anchor.Centre,
                                 Origin = Anchor.Centre,
-                                Text = "Waiting for opponents...",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4890,
                                 Font = OsuFont.GetFont(size: 32, weight: FontWeight.Light, typeface: Typeface.TorusAlternate),
                             },
                             new LoadingSpinner
@@ -905,7 +1012,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                             {
                                 Anchor = Anchor.Centre,
                                 Origin = Anchor.Centre,
-                                Text = "Good luck!",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4891,
                                 Font = OsuFont.GetFont(size: 32, weight: FontWeight.Light, typeface: Typeface.TorusAlternate),
                             },
                         }
@@ -929,7 +1036,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
                                     break;
 
                                 case MatchmakingPoolType.RankedPlay:
-                                    this.Push(new RankedPlayScreen(client.Room));
+                                    this.Push(new RankedPlayScreen(client.Room, queuedVisualMods));
                                     break;
                             }
                         });
@@ -1045,7 +1152,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
         public partial class QueueSectionHeader : SectionHeader
         {
-            public QueueSectionHeader(string header)
+            public QueueSectionHeader(LocalisableString header)
                 : base(header)
             {
                 // Reduce base class padding.

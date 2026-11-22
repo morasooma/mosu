@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.LocalisationExtensions;
@@ -10,10 +11,13 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Input.Events;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Online;
+using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Overlays;
 using osu.Game.Overlays.Profile.Header.Components;
 using osu.Game.Resources.Localisation.Web;
 using osu.Game.Rulesets;
+using osu.Game.Rulesets.Mods;
 using osuTK;
 
 namespace osu.Game.Users
@@ -30,6 +34,8 @@ namespace osu.Game.Users
         private GlobalRankDisplay globalRankDisplay = null!;
         private ProfileValueDisplay countryRankDisplay = null!;
         private LoadingLayer loadingLayer = null!;
+        private Container mainContentContainer = null!;
+        private IBindable<float>? mainContentRadius;
 
         public UserRankPanel(APIUser user)
             : base(user)
@@ -39,19 +45,30 @@ namespace osu.Game.Users
         }
 
         [BackgroundDependencyLoader]
-        private void load()
+        private void load(IBindable<RulesetInfo> ruleset, IBindable<IReadOnlyList<Mod>> selectedMods)
         {
+            this.ruleset.BindTo(ruleset);
+            this.selectedMods.BindTo(selectedMods);
+
             BorderColour = ColourProvider?.Light1 ?? Colours.GreyVioletLighter;
+            mainContentRadius = ColourProvider?.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Card, 10f)
+                ?? OverlayColourProvider.GetGeometryRadius(osu.Game.Overlays.CustomTheme.GeometryRole.Card, 10f);
+            mainContentRadius.BindValueChanged(r =>
+            {
+                if (mainContentContainer != null)
+                    mainContentContainer.CornerRadius = r.NewValue;
+            }, true);
         }
 
         [Resolved]
         private LocalUserStatisticsProvider? statisticsProvider { get; set; }
 
         [Resolved]
-        private IBindable<RulesetInfo> ruleset { get; set; } = null!;
+        private IAPIProvider api { get; set; } = null!;
 
-        [Resolved]
-        private IBindable<System.Collections.Generic.IReadOnlyList<osu.Game.Rulesets.Mods.Mod>> selectedMods { get; set; } = null!;
+        // Keep owned copies: disposing a panel must not unbind the game's shared selection.
+        private readonly IBindable<RulesetInfo> ruleset = new Bindable<RulesetInfo>();
+        private readonly IBindable<IReadOnlyList<Mod>> selectedMods = new Bindable<IReadOnlyList<Mod>>();
 
         protected override void LoadComplete()
         {
@@ -60,8 +77,8 @@ namespace osu.Game.Users
             if (statisticsProvider != null)
                 statisticsProvider.StatisticsUpdated += onStatisticsUpdated;
 
-            ruleset.BindValueChanged(_ => updateDisplay(), true);
-            selectedMods.BindValueChanged(_ => updateDisplay(), true);
+            ruleset.BindValueChanged(_ => selectionChanged(), true);
+            selectedMods.BindValueChanged(_ => selectionChanged(), true);
         }
 
         private void onStatisticsUpdated(UserStatisticsUpdate update)
@@ -69,7 +86,19 @@ namespace osu.Game.Users
             updateDisplay();
         }
 
-        private void updateDisplay()
+        private void selectionChanged()
+        {
+            updateDisplay();
+            Scheduler.AddOnce(refetchStatistics);
+        }
+
+        private void refetchStatistics()
+        {
+            if (api.IsLoggedIn)
+                statisticsProvider?.RefetchStatistics(getCurrentRuleset());
+        }
+
+        private RulesetInfo getCurrentRuleset()
         {
             var currentRuleset = ruleset.Value;
 
@@ -99,7 +128,12 @@ namespace osu.Game.Users
                 }
             }
 
-            var statistics = statisticsProvider?.GetStatisticsFor(currentRuleset);
+            return currentRuleset;
+        }
+
+        private void updateDisplay()
+        {
+            var statistics = statisticsProvider?.GetStatisticsFor(getCurrentRuleset());
 
             loadingLayer.State.Value = statistics == null ? Visibility.Visible : Visibility.Hidden;
 
@@ -121,12 +155,12 @@ namespace osu.Game.Users
                 AutoSizeAxes = Axes.Y,
                 Children = new Drawable[]
                 {
-                    new Container
+                    mainContentContainer = new Container
                     {
                         Name = "Main content",
                         RelativeSizeAxes = Axes.X,
                         Height = main_content_height,
-                        CornerRadius = 10,
+                        CornerRadius = mainContentRadius?.Value ?? 10,
                         Masking = true,
                         Children = new Drawable[]
                         {

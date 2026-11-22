@@ -4,6 +4,7 @@
 using System;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
@@ -27,7 +28,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
 
         public string Value => EditorValue.Format(checkbox.Current.Value);
 
-        public LabelledToggleField(string label, string? hint, string value, OsuColour colours, Action onChanged)
+        public LabelledToggleField(LocalisableString label, LocalisableString? hint, string value, OsuColour colours, Action onChanged)
         {
             RelativeSizeAxes = Axes.X;
             AutoSizeAxes = Axes.Y;
@@ -40,13 +41,13 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                 Spacing = new Vector2(0, 2),
             };
 
-            if (!string.IsNullOrEmpty(hint))
-                content.Add(WrappedText.Paragraph(hint, colours.GrayA, 10));
+            if (!LocalisableString.IsNullOrEmpty(hint))
+                content.Add(WrappedText.Paragraph(hint.Value, colours.GrayA, 10));
 
             content.Add(checkbox = new OsuCheckbox
             {
                 RelativeSizeAxes = Axes.X,
-                LabelText = label.ToUpperInvariant(),
+                LabelText = new CaseTransformableString(label, Casing.UpperCase),
                 Current = { Value = EditorValue.Bool(value, false) },
             });
 

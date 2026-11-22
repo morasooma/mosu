@@ -119,6 +119,7 @@ namespace osu.Game.Input.Bindings
             new KeyBinding(InputKey.F9, GlobalAction.ToggleSocial),
             new KeyBinding(new[] { InputKey.Control, InputKey.B }, GlobalAction.ToggleBeatmapListing),
             new KeyBinding(new[] { InputKey.Control, InputKey.O }, GlobalAction.ToggleSettings),
+            new KeyBinding(new[] { InputKey.Control, InputKey.Alt, InputKey.O }, GlobalAction.ToggleFavouriteSettings),
             new KeyBinding(new[] { InputKey.Control, InputKey.N }, GlobalAction.ToggleNotifications),
             new KeyBinding(new[] { InputKey.Control, InputKey.P }, GlobalAction.ToggleProfile),
         };
@@ -631,6 +632,9 @@ namespace osu.Game.Input.Bindings
 
         [LocalisableDescription(typeof(EditorStrings), nameof(EditorStrings.SeekToEnd))]
         EditorSeekToEnd,
+
+        [LocalisableDescription(typeof(FavouriteSettingsStrings), nameof(FavouriteSettingsStrings.ToggleAction))]
+        ToggleFavouriteSettings,
     }
 
     public enum GlobalActionCategory

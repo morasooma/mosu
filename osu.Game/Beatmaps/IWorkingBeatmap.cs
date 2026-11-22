@@ -60,6 +60,11 @@ namespace osu.Game.Beatmaps
         Texture? GetLegacyPreviewBackground(int resolutionPercent);
 
         /// <summary>
+        /// Retrieves a 4:3 stable-style preview cropped directly from the source background.
+        /// </summary>
+        Texture? GetClassicPreviewBackground(int resolutionPercent);
+
+        /// <summary>
         /// Retrieves a cropped background for this <see cref="IWorkingBeatmap"/> used for display on panels.
         /// </summary>
         Texture? GetPanelBackground();

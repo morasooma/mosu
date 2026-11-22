@@ -62,9 +62,12 @@ namespace osu.Game.Overlays.Settings.Sections.Audio
                         RelativeSizeAxes = Axes.X,
                         Current = { BindTarget = Current },
                         KeyboardStep = 1,
-                        LabelFormat = v => $"{v:N0} ms",
+                        LabelFormat = v => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4021(v),
                         TooltipFormat = BeatmapOffsetControl.GetOffsetExplanatoryText,
-                    }),
+                    })
+                    {
+                        FavouriteId = "ui:AudioSettingsStrings.AudioOffset",
+                    },
                     new Container
                     {
                         RelativeSizeAxes = Axes.X,

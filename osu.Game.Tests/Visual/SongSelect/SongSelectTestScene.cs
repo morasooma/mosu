@@ -38,8 +38,11 @@ namespace osu.Game.Tests.Visual.SongSelect
         protected ScoreManager ScoreManager { get; private set; } = null!;
 
         private RealmDetachedBeatmapStore beatmapStore = null!;
+        protected RealmDetachedBeatmapStore DetachedBeatmapStore => beatmapStore;
+        protected BeatmapDifficultyCache difficultyCache = null!;
 
         protected Screens.Select.SongSelect SongSelect { get; private set; } = null!;
+        protected void ReleaseExitedSongSelect() => SongSelect = null!;
         protected BeatmapCarousel Carousel => SongSelect.ChildrenOfType<BeatmapCarousel>().Single();
 
         [Cached]
@@ -91,7 +94,9 @@ namespace osu.Game.Tests.Visual.SongSelect
             // At a point we have isolated interactive test runs enough, this can likely be removed.
             dependencies.Cache(Rulesets = new RealmRulesetStore(Realm));
             dependencies.Cache(Realm);
-            dependencies.Cache(Beatmaps = new BeatmapManager(LocalStorage, Realm, null, Dependencies.Get<AudioManager>(), Resources, Dependencies.Get<GameHost>(), Beatmap.Default));
+            // Keep difficulty calculations on the same isolated manager used by song select.
+            dependencies.Cache(difficultyCache = new BeatmapDifficultyCache());
+            dependencies.Cache(Beatmaps = new BeatmapManager(LocalStorage, Realm, null, Dependencies.Get<AudioManager>(), Resources, Dependencies.Get<GameHost>(), Beatmap.Default, difficultyCache));
             dependencies.Cache(Config = new OsuConfigManager(LocalStorage));
             dependencies.Cache(ScoreManager = new ScoreManager(Rulesets, () => Beatmaps, LocalStorage, Realm, API, Config));
 
@@ -104,6 +109,7 @@ namespace osu.Game.Tests.Visual.SongSelect
         private void load()
         {
             Add(beatmapStore);
+            Add(difficultyCache);
         }
 
         public override void SetUpSteps()

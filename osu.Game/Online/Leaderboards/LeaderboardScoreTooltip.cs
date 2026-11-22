@@ -119,7 +119,7 @@ namespace osu.Game.Online.Leaderboards
             topScoreStatistics.Clear();
             bottomScoreStatistics.Clear();
 
-            foreach (var mod in score.Mods.AsOrdered())
+            foreach (var mod in score.Mods.AsVisible().AsOrdered())
             {
                 modStatistics.Add(new ModCell(mod));
             }

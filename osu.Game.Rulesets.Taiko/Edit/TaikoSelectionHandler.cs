@@ -23,7 +23,7 @@ namespace osu.Game.Rulesets.Taiko.Edit
         {
             if (selection.All(s => s.Item is Hit))
             {
-                yield return new TernaryStateToggleMenuItem("Rim")
+                yield return new TernaryStateToggleMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J3337)
                 {
                     State = { BindTarget = composer.SelectionRimState },
                     Hotkey = new Hotkey(new KeyCombination(InputKey.W), new KeyCombination(InputKey.R)),
@@ -32,7 +32,7 @@ namespace osu.Game.Rulesets.Taiko.Edit
 
             if (selection.All(s => s.Item is TaikoHitObject))
             {
-                yield return new TernaryStateToggleMenuItem("Strong")
+                yield return new TernaryStateToggleMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J3338)
                 {
                     State = { BindTarget = composer.SelectionStrongState },
                     Hotkey = new Hotkey(new KeyCombination(InputKey.E)),

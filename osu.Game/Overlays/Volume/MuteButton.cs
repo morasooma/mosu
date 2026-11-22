@@ -19,6 +19,8 @@ namespace osu.Game.Overlays.Volume
 {
     public partial class MuteButton : OsuButton, IHasCurrentValue<bool>
     {
+        protected override bool ApplyGeometryRadius => false;
+
         private readonly Bindable<bool> current = new Bindable<bool>();
 
         public Bindable<bool> Current

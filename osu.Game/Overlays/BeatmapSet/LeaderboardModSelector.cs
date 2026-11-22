@@ -14,6 +14,7 @@ using osu.Framework.Input.Events;
 using osu.Game.Graphics.UserInterface;
 using osuTK.Graphics;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions.IEnumerableExtensions;
@@ -26,6 +27,8 @@ namespace osu.Game.Overlays.BeatmapSet
         public readonly Bindable<IRulesetInfo> Ruleset = new Bindable<IRulesetInfo>();
 
         private readonly FillFlowContainer<ModButton> modsContainer;
+        private const int buttons_per_update = 4;
+        private readonly Queue<IMod> pendingMods = new Queue<IMod>();
 
         public LeaderboardModSelector()
         {
@@ -53,6 +56,7 @@ namespace osu.Game.Overlays.BeatmapSet
 
         private void onRulesetChanged(ValueChangedEvent<IRulesetInfo> ruleset)
         {
+            pendingMods.Clear();
             SelectedMods.Clear();
             modsContainer.Clear();
 
@@ -64,15 +68,32 @@ namespace osu.Game.Overlays.BeatmapSet
             if (rulesetInstance == null)
                 return;
 
-            modsContainer.Add(new ModButton(new ModNoMod()));
-            modsContainer.AddRange(rulesetInstance.AllMods.Where(m => m.UserPlayable).Select(m => new ModButton(m)));
+            pendingMods.Enqueue(new ModNoMod());
+            foreach (var mod in rulesetInstance.AllMods.Where(m => m.UserPlayable))
+                pendingMods.Enqueue(mod);
+        }
 
-            modsContainer.ForEach(button =>
+        protected override void Update()
+        {
+            base.Update();
+
+            // ModIcon dependency loading and first LoadComplete are synchronous
+            // here. Do not construct every ruleset icon in one update frame.
+            for (int i = 0; i < buttons_per_update && pendingMods.TryDequeue(out var mod); i++)
             {
-                button.Anchor = Anchor.TopCentre;
-                button.Origin = Anchor.TopCentre;
-                button.OnSelectionChanged = selectionChanged;
-            });
+                modsContainer.Add(new ModButton(mod)
+                {
+                    Anchor = Anchor.TopCentre,
+                    Origin = Anchor.TopCentre,
+                    OnSelectionChanged = selectionChanged,
+                });
+            }
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            pendingMods.Clear();
+            base.Dispose(isDisposing);
         }
 
         protected override bool OnHover(HoverEvent e)

@@ -15,7 +15,7 @@ namespace osu.Game.Rulesets.Mania.Mods
         public override string Name => "Fade In";
         public override string Acronym => "FI";
         public override IconUsage? Icon => OsuIcon.ModFadeIn;
-        public override LocalisableString Description => @"Keys appear out of nowhere!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3634;
         public override bool ValidForFreestyleAsRequiredMod => false;
 
         public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[]

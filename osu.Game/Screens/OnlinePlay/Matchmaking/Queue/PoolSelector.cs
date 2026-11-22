@@ -146,7 +146,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Queue
 
                 Ruleset? rulesetInstance = rulesetStore.GetRuleset(pool.RulesetId == 4 ? 0 : pool.RulesetId)?.CreateInstance();
 
-                string rulesetName = pool.RulesetId == 4 ? "osu!relax" : rulesetInstance?.Description ?? string.Empty;
+                string rulesetName = pool.RulesetId == 4 ? "Standard Relax" : rulesetInstance?.Description ?? string.Empty;
                 if (pool.Variant != 0)
                     rulesetName += $" {pool.Variant}K";
 

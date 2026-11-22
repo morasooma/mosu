@@ -14,7 +14,10 @@ namespace osu.Game.Screens.Edit.Timing
     public partial class TimingScreen : EditorScreenWithTimeline
     {
         [Cached]
-        public readonly Bindable<ControlPointGroup> SelectedGroup = new Bindable<ControlPointGroup>();
+        public readonly Bindable<ControlPointGroup?> SelectedGroup = new Bindable<ControlPointGroup?>();
+
+        [Cached]
+        public ControlPointSelection Selection { get; }
 
         private readonly Bindable<EditorScreenMode> currentEditorMode = new Bindable<EditorScreenMode>();
 
@@ -24,6 +27,7 @@ namespace osu.Game.Screens.Edit.Timing
         public TimingScreen()
             : base(EditorScreenMode.Timing)
         {
+            Selection = new ControlPointSelection(SelectedGroup);
         }
 
         protected override Drawable CreateMainContent() => new GridContainer
@@ -74,6 +78,7 @@ namespace osu.Game.Screens.Edit.Timing
             if (editorClock == null)
                 return;
 
+            Selection.Clear();
             double accurateTime = editorClock.CurrentTimeAccurate;
 
             var activeTimingPoint = EditorBeatmap.ControlPointInfo.TimingPointAt(accurateTime);

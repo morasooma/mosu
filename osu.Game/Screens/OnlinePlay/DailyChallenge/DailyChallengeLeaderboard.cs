@@ -13,6 +13,7 @@ using osu.Game.Beatmaps;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
+using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.Rooms;
 using osu.Game.Rulesets;
@@ -27,7 +28,7 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
     {
         public IBindable<MultiplayerScore?> UserBestScore => userBestScore;
         private readonly Bindable<MultiplayerScore?> userBestScore = new Bindable<MultiplayerScore?>();
-        public Bindable<IReadOnlyList<Mod>> SelectedMods = new Bindable<IReadOnlyList<Mod>>();
+        public Bindable<IReadOnlyList<Mod>> SelectedMods = new Bindable<IReadOnlyList<Mod>>(Array.Empty<Mod>());
 
         /// <summary>
         /// A function determining whether each mod in the score can be selected.
@@ -129,20 +130,49 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
         protected override void LoadComplete()
         {
             base.LoadComplete();
+            SelectedMods.BindValueChanged(_ =>
+            {
+                if (request?.Relax != selectedRelax)
+                    RefetchScores(force: true);
+            });
             RefetchScores();
+        }
+
+        private bool? selectedRelax => MosuServerEnvironment.IsMosuServerUrl(MosuServerEnvironment.ActiveApiUrl)
+            ? SelectedMods.Value.Any(m => m.Acronym is "RX" or "MRX")
+              || playlistItem.RequiredMods.Any(m => m.Acronym is "RX" or "MRX")
+            : null;
+
+        protected override void Dispose(bool isDisposing)
+        {
+            request?.Cancel();
+            cancellationTokenSource?.Cancel();
+            cancellationTokenSource?.Dispose();
+            base.Dispose(isDisposing);
         }
 
         private IndexPlaylistScoresRequest? request;
 
-        public void RefetchScores()
+        public void RefetchScores(bool force = false)
         {
-            if (request?.CompletionState == APIRequestCompletionState.Waiting)
+            if (!force && request?.CompletionState == APIRequestCompletionState.Waiting)
                 return;
 
-            request = new IndexPlaylistScoresRequest(room.RoomID!.Value, playlistItem.ID);
+            request?.Cancel();
+            cancellationTokenSource?.Cancel();
+            userBestScore.Value = null;
+            userBestContainer.Clear();
+            userBestHeader.Hide();
+            var currentRequest = request = new IndexPlaylistScoresRequest(room.RoomID!.Value, playlistItem.ID)
+            {
+                Relax = selectedRelax,
+            };
 
             request.Success += req => Schedule(() =>
             {
+                if (request != currentRequest)
+                    return;
+
                 var best = req.Scores.Select(s => s.CreateScoreInfo(scoreManager, rulesets, beatmap.Value.BeatmapInfo)).ToArray();
 
                 userBestScore.Value = req.UserScore;
@@ -178,6 +208,9 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
                         };
                     }), loaded =>
                     {
+                        if (request != currentRequest)
+                            return;
+
                         scoreFlow.Clear();
                         scoreFlow.AddRange(loaded);
                         scoreFlow.FadeTo(1, 400, Easing.OutQuint);
@@ -202,7 +235,18 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
                 userBestHeader.FadeTo(userBest == null ? 0 : 1);
             });
 
+            request.Failure += _ => Schedule(() =>
+            {
+                if (request != currentRequest)
+                    return;
+
+                scoreFlow.Clear();
+                loadingLayer.Hide();
+            });
+
             loadingLayer.Show();
+            if (force)
+                scoreFlow.Clear();
             scoreFlow.FadeTo(0.5f, 400, Easing.OutQuint);
             api.Queue(request);
         }

@@ -11,9 +11,15 @@ namespace osu.Game.Online.Legacy
 {
     public enum StableBanchoClientPacket : ushort
     {
+        ChangeAction = 0,
         SendPublicMessage = 1,
         Logout = 2,
         Ping = 4,
+        StartSpectating = 16,
+        StopSpectating = 17,
+        SpectateFrames = 18,
+        CantSpectate = 21,
+        UserStatsRequest = 85,
         SendPrivateMessage = 25,
         PartLobby = 29,
         JoinLobby = 30,
@@ -47,6 +53,12 @@ namespace osu.Game.Online.Legacy
         UserId = 5,
         SendMessage = 7,
         UserStatistics = 11,
+        SpectatorJoined = 13,
+        SpectatorLeft = 14,
+        SpectateFrames = 15,
+        SpectatorCantSpectate = 22,
+        FellowSpectatorJoined = 42,
+        FellowSpectatorLeft = 43,
         Notification = 24,
         UpdateMatch = 26,
         NewMatch = 27,
@@ -438,6 +450,19 @@ namespace osu.Game.Online.Legacy
             };
             reader.EnsureFullyConsumed();
             return statistics;
+        }
+
+        public static StableBanchoPacket CreateActionPacket(byte action, string text, string checksum, int mods, byte rulesetId, int beatmapId)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream);
+            writer.Write(action);
+            writeString(stream, text);
+            writeString(stream, checksum);
+            writer.Write(mods);
+            writer.Write(rulesetId);
+            writer.Write(beatmapId);
+            return new StableBanchoPacket(StableBanchoClientPacket.ChangeAction, stream.ToArray());
         }
 
         public static StableBanchoPacket CreateScoreFramePacket(StableBanchoScoreFrame frame)

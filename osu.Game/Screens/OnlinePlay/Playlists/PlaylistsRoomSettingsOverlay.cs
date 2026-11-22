@@ -171,7 +171,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                                                             {
                                                                 RelativeSizeAxes = Axes.X,
                                                                 TabbableContentContainer = this,
-                                                                PlaceholderText = "Unlimited",
+                                                                PlaceholderText = global::osu.Game.Localisation.ClientTranslationStrings.J5032,
                                                             },
                                                         },
                                                         new Section("Room visibility")
@@ -241,7 +241,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                                                                         {
                                                                             RelativeSizeAxes = Axes.X,
                                                                             Height = 40,
-                                                                            Text = "+ Add more beatmaps",
+                                                                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5037,
                                                                             Action = () => EditPlaylist?.Invoke()
                                                                         }
                                                                     }
@@ -438,7 +438,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             public void SelectBeatmap() => editPlaylistButton.TriggerClick();
 
             private void onPlaylistChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
-                playlistLength.Text = $"Length: {room.Playlist.GetTotalDuration(rulesets)}";
+                playlistLength.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5038(room.Playlist.GetTotalDuration(rulesets));
 
             private bool hasValidSettings => room.RoomID == null && NameField.Text.Length > 0 && room.Playlist.Count > 0
                                              && hasValidDuration;
@@ -473,7 +473,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
 
                 if (text.StartsWith(not_found_prefix, StringComparison.Ordinal))
                 {
-                    ErrorText.Text = "One or more beatmaps were not available online. Please remove or replace the highlighted items.";
+                    ErrorText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5039;
 
                     int[] invalidBeatmapIDs = text
                                               .Substring(not_found_prefix.Length + 1)
@@ -507,7 +507,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
         {
             public CreateRoomButton()
             {
-                Text = "Create";
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J5040;
             }
 
             [BackgroundDependencyLoader]

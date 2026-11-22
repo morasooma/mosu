@@ -1,0 +1,11 @@
+<Project>
+  <!-- Isolate vendored code from framework-specific build and analyzer properties. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyVersion>4.9.0.0</AssemblyVersion>
+    <Version>4.9.69-ga405fe8484</Version>
+  </PropertyGroup>
+</Project>

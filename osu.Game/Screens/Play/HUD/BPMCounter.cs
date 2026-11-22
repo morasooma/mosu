@@ -18,6 +18,8 @@ namespace osu.Game.Screens.Play.HUD
 {
     public partial class BPMCounter : RollingCounter<double>, ISerialisableDrawable
     {
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+
         protected override double RollingDuration => 375;
 
         [Resolved]
@@ -29,7 +31,7 @@ namespace osu.Game.Screens.Play.HUD
         [BackgroundDependencyLoader]
         private void load(OsuColour colour)
         {
-            Colour = colour.BlueLighter;
+            themeColours.Bind(action => Scheduler.Add(action), () => Colour = themeColours.GetColour(Overlays.OverlayColour.Content1, colour.BlueLighter));
             Current.Value = DisplayedCount = 0;
         }
 
@@ -82,7 +84,7 @@ namespace osu.Game.Screens.Play.HUD
                             Anchor = Anchor.BottomLeft,
                             Origin = Anchor.BottomLeft,
                             Font = OsuFont.Numeric.With(size: 8),
-                            Text = @"BPM",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5085,
                             Padding = new MarginPadding { Bottom = 2f }, // align baseline better
                         }
                     }

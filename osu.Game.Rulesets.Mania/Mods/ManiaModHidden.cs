@@ -29,7 +29,7 @@ namespace osu.Game.Rulesets.Mania.Mods
         public const float MAX_COVERAGE = 400f;
         private const float coverage_increase_per_combo = 0.5f;
 
-        public override LocalisableString Description => @"Keys fade out before you hit them!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3635;
 
         public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[]
         {

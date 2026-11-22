@@ -3,6 +3,7 @@
 
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
+using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 
@@ -19,7 +20,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
     /// </remarks>
     internal static class WrappedText
     {
-        public static OsuTextFlowContainer Paragraph(string text, ColourInfo colour, float size = 12,
+        public static OsuTextFlowContainer Paragraph(LocalisableString text, ColourInfo colour, float size = 12,
                                                      FontWeight weight = FontWeight.Regular) =>
             new OsuTextFlowContainer(sprite => sprite.Font = OsuFont.Default.With(size: size, weight: weight))
             {

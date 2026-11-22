@@ -23,6 +23,8 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Overlays;
+using osu.Game.Online.API;
+using osu.Game.Online.Leaderboards;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Localisation;
 using osu.Game.Overlays.Settings;
@@ -82,6 +84,12 @@ namespace osu.Game.Screens.Ranking
 
         [Resolved]
         private SkinManager skinManager { get; set; } = null!;
+
+        [Resolved]
+        private IAPIProvider api { get; set; } = null!;
+
+        [Resolved(CanBeNull = true)]
+        private LeaderboardManager? leaderboardManager { get; set; }
 
         public ReplayRenderPopover(ScoreInfo scoreInfo, double? trimStart = null, double? trimEnd = null)
             : base(false)
@@ -146,7 +154,7 @@ namespace osu.Game.Screens.Ranking
                 Current = config.GetBindable<ReplayRenderQualityPreset>(OsuSetting.ForkReplayRenderQualityPreset).GetBoundCopy(),
             };
 
-            var encoderDropdown = new OsuDropdown<string>
+            var encoderDropdown = new ReplayEncoderDropdown
             {
                 RelativeSizeAxes = Axes.X,
                 Items = RenderEncodingSelector.GetEncoderOptions(),
@@ -166,9 +174,11 @@ namespace osu.Game.Screens.Ranking
                 Font = OsuFont.GetFont(size: 12),
             }, secondary: true);
 
+            var bitrateSetting = createSetting(ReplayRenderStrings.VideoBitrate, bitrateSlider);
+
             void updateRecommendedBitrate()
             {
-                if (bitrateTouchedByUser)
+                if (bitrateTouchedByUser || encoderDropdown.Current.Value == RenderEncodingSelector.CompactEncoder)
                     return;
 
                 updatingRecommendedBitrate = true;
@@ -189,21 +199,21 @@ namespace osu.Game.Screens.Ranking
                 bitrateTouchedByUser = false;
                 updateRecommendedBitrate();
             });
-            encoderDropdown.Current.BindValueChanged(_ =>
+            encoderDropdown.Current.BindValueChanged(change =>
             {
-                if (encoderDropdown.Current.Value == RenderEncodingSelector.AutoEncoderLabel)
+                bool compact = change.NewValue == RenderEncodingSelector.CompactEncoder;
+                bitrateSetting.Alpha = recommendationText.Alpha = compact ? 0 : 1;
+
+                if (change.NewValue == RenderEncodingSelector.AutoEncoderLabel)
                     bitrateTouchedByUser = false;
 
                 updateRecommendedBitrate();
-            });
-
-            bitrateTouchedByUser = false;
-            updateRecommendedBitrate();
+            }, true);
 
             _ = Task.Run(() =>
             {
                 string recommendation = RenderEncodingSelector.DescribeRecommendation(host);
-                host.UpdateThread.Scheduler.Add(() => recommendationText.Text = $"Recommended: {recommendation}");
+                host.UpdateThread.Scheduler.Add(() => recommendationText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5103(recommendation));
             });
 
             var periodText = trackThemedText(new OsuSpriteText
@@ -243,7 +253,7 @@ namespace osu.Game.Screens.Ranking
                         createSetting(ReplayRenderStrings.Resolution, resolutionDropdown),
                         createSetting(ReplayRenderStrings.Framerate, fpsDropdown),
                         createSetting(ReplayRenderStrings.QualityPreset, qualityPresetDropdown),
-                        createSetting(ReplayRenderStrings.VideoBitrate, bitrateSlider),
+                        bitrateSetting,
                         createSetting(ReplayRenderStrings.Encoder, encoderDropdown),
                         recommendationText,
                         periodText,
@@ -303,7 +313,8 @@ namespace osu.Game.Screens.Ranking
 
                 config.SetValue(OsuSetting.ForkReplayRenderResolution, resolution);
                 config.SetValue(OsuSetting.ForkReplayRenderFps, fps);
-                config.SetValue(OsuSetting.ForkReplayRenderBitrateMbps, bitrate);
+                if (encoder != RenderEncodingSelector.CompactEncoder)
+                    config.SetValue(OsuSetting.ForkReplayRenderBitrateMbps, bitrate);
                 config.SetValue(OsuSetting.ForkReplayRenderEncoder, encoder);
                 config.SetValue(OsuSetting.ForkReplayRenderQualityPreset, qualityPreset);
                 config.SetValue(OsuSetting.ForkReplayRenderShowResultsAfterPeriod, showResultsAfterPeriod);
@@ -378,10 +389,15 @@ namespace osu.Game.Screens.Ranking
 
                 notifications?.Post(notification);
 
+                var snapshot = ReplayRenderSnapshot.Capture(scoreInfo, leaderboardManager, api, config);
+                string snapshotPath = renderStorage.GetFullPath($".replay-render-snapshot-{Guid.NewGuid():N}.json");
+                argsList.Add("--render-snapshot");
+                argsList.Add(snapshotPath);
+
                 monitoringRender = true;
                 Hide();
 
-                _ = launchRenderAsync(argsList.ToArray(), renderStorage, statusPath, cancelPath, notification);
+                _ = launchRenderAsync(argsList.ToArray(), renderStorage, statusPath, cancelPath, notification, snapshot, snapshotPath);
                 returnToMainMenu();
             }
             catch (Exception ex)
@@ -410,10 +426,30 @@ namespace osu.Game.Screens.Ranking
             }
         }
 
-        private async Task launchRenderAsync(string[] args, Storage renderStorage, string statusPath, string cancelPath, ProgressNotification notification)
+        private async Task launchRenderAsync(string[] args, Storage renderStorage, string statusPath, string cancelPath, ProgressNotification notification,
+                                             ReplayRenderSnapshot snapshot, string snapshotPath)
         {
             try
             {
+                // Resolve the snapshot on Update, then do all network/file work in the background.
+                // Only start the child once the immutable presentation packet is complete.
+                await Task.Run(async () =>
+                {
+                    if (!File.Exists(cancelPath))
+                        await snapshot.PrepareAvatarsAsync(config).ConfigureAwait(false);
+                    snapshot.Write(snapshotPath);
+                }).ConfigureAwait(false);
+
+                if (File.Exists(cancelPath))
+                {
+                    host.UpdateThread.Scheduler.Add(() =>
+                    {
+                        monitoringRender = false;
+                        notification.State = ProgressNotificationState.Cancelled;
+                    });
+                    return;
+                }
+
                 Process process = await Task.Run(() =>
                 {
                     var startedProcess = new Process
@@ -457,6 +493,14 @@ namespace osu.Game.Screens.Ranking
                 }
                 catch
                 {
+                }
+            }
+            finally
+            {
+                try { File.Delete(snapshotPath); } catch { }
+                if (renderProcess == null)
+                {
+                    try { File.Delete(cancelPath); } catch { }
                 }
             }
         }
@@ -601,8 +645,8 @@ namespace osu.Game.Screens.Ranking
                     notification.State = ProgressNotificationState.Active;
                     notification.Progress = status.Progress;
                     notification.Text = status.TotalFrames > 0
-                        ? $"Rendering replay... {status.CurrentFrame}/{status.TotalFrames} ({status.Progress:P0}) at {status.EffectiveRenderFps:0.#} fps ({status.RealtimeFactor:0.##}x)"
-                        : "Rendering replay...";
+                        ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5106(status.CurrentFrame, status.TotalFrames, status.Progress, status.EffectiveRenderFps, status.RealtimeFactor)
+                        : global::osu.Game.Localisation.ClientTranslationStrings.J5107;
                     break;
 
                 case ReplayRenderOperationState.DownloadingFFmpeg:
@@ -617,8 +661,8 @@ namespace osu.Game.Screens.Ranking
                         ? () => renderStorage.PresentFileExternally(status.OutputFileName)
                         : null;
                     notification.CompletionText = !string.IsNullOrEmpty(status.OutputFileName)
-                        ? $"Replay render finished: {status.OutputFileName}"
-                        : "Replay render finished.";
+                        ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5109(status.OutputFileName)
+                        : global::osu.Game.Localisation.ClientTranslationStrings.J5110;
                     notification.State = ProgressNotificationState.Completed;
                     break;
 
@@ -630,8 +674,8 @@ namespace osu.Game.Screens.Ranking
                 case ReplayRenderOperationState.Cancelled:
                     notification.State = ProgressNotificationState.Cancelled;
                     notification.CompletionText = !string.IsNullOrEmpty(status.OutputFileName)
-                        ? $"Replay render cancelled. Partial output: {status.OutputFileName}"
-                        : "Replay render cancelled.";
+                        ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5111(status.OutputFileName)
+                        : global::osu.Game.Localisation.ClientTranslationStrings.J5112;
                     break;
             }
         }
@@ -712,6 +756,16 @@ namespace osu.Game.Screens.Ranking
             TimeSpan sTime = TimeSpan.FromMilliseconds(start);
             TimeSpan eTime = TimeSpan.FromMilliseconds(end);
             return $"Period: {(int)sTime.TotalMinutes:00}:{sTime.Seconds:00} -> {(int)eTime.TotalMinutes:00}:{eTime.Seconds:00}";
+        }
+
+        private sealed partial class ReplayEncoderDropdown : OsuDropdown<string>
+        {
+            protected override LocalisableString GenerateItemText(string item) => item switch
+            {
+                RenderEncodingSelector.AutoEncoderLabel => ReplayRenderStrings.AutoEncoder,
+                RenderEncodingSelector.CompactEncoder => ReplayRenderStrings.CompactHevcEncoder,
+                _ => base.GenerateItemText(item),
+            };
         }
 
         private FillFlowContainer createSetting(LocalisableString label, Drawable control) => new FillFlowContainer

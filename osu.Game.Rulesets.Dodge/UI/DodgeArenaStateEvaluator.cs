@@ -57,17 +57,73 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         private readonly DodgeArenaChange[] changes;
         private readonly DodgeArenaState[] startStates;
+        private readonly HashSet<DodgeArenaChange> eventChanges = new HashSet<DodgeArenaChange>();
 
-        public DodgeArenaStateEvaluator(IEnumerable<DodgeArenaChange> changes)
+        public DodgeArenaStateEvaluator(IEnumerable<DodgeArenaChange> changes, IEnumerable<DodgeTrigger>? triggers = null)
         {
-            this.changes = changes.OrderBy(change => change.StartTime).ToArray();
-            startStates = new DodgeArenaState[this.changes.Length];
+            var merged = changes.Cast<DodgeHitObject>()
+                                .Concat(triggers?.Where(t => t.Action == DodgeTriggerAction.ResizeArena) ?? Enumerable.Empty<DodgeTrigger>())
+                                .OrderBy(change => change.StartTime).ToArray();
+            this.changes = new DodgeArenaChange[merged.Length];
+            startStates = new DodgeArenaState[merged.Length];
+            for (int i = 0; i < merged.Length; i++)
+            {
+                DodgeHitObject item = merged[i];
+                startStates[i] = evaluate(item.StartTime, i);
+                if (item is DodgeArenaChange arenaChange)
+                {
+                    this.changes[i] = arenaChange;
+                    continue;
+                }
 
-            for (int i = 0; i < this.changes.Length; i++)
-                startStates[i] = evaluate(this.changes[i].StartTime, i);
+                var trigger = (DodgeTrigger)item;
+                DodgeArenaState previous = startStates[i];
+                var generated = new DodgeArenaChange
+                {
+                    StartTime = trigger.StartTime,
+                    Duration = trigger.Duration,
+                    TargetPosition = trigger.TargetPosition,
+                    TargetSize = trigger.TargetSize,
+                    WorldSpace = true,
+                    Easing = trigger.Easing,
+                    TargetRotation = previous.Rotation,
+                    KiaiShakeAngle = previous.KiaiShakeAngle,
+                    Colour = previous.BackgroundColour,
+                    Opacity = previous.BackgroundOpacity,
+                    OutlineColour = previous.BorderColour,
+                    BorderOpacity = previous.BorderOpacity,
+                };
+                this.changes[i] = generated;
+                eventChanges.Add(generated);
+            }
         }
 
         public DodgeArenaState Evaluate(double time) => evaluate(time, changes.Length);
+
+        internal bool HasChanges => changes.Length > 0;
+
+        internal IEnumerable<double> GeometryBoundaryTimes => changes.SelectMany(change => new[] { change.StartTime, change.StartTime + change.Duration });
+
+        internal bool IsGeometryConstantBetween(double startTime, double endTime)
+        {
+            for (int i = changes.Length - 1; i >= 0; i--)
+            {
+                DodgeArenaChange change = changes[i];
+                if (change.StartTime > startTime)
+                {
+                    if (change.StartTime <= endTime)
+                        return false;
+                    continue;
+                }
+
+                // The first legacy object defines the initial arena without a transition.
+                return (i == 0 && !change.WorldSpace && !eventChanges.Contains(change))
+                       || change.StartTime <= 0 || change.Duration <= 0
+                       || change.StartTime + change.Duration <= startTime;
+            }
+
+            return true;
+        }
 
         private DodgeArenaState evaluate(double time, int count)
         {
@@ -80,19 +136,29 @@ namespace osu.Game.Rulesets.Dodge.UI
 
                 DodgeArenaState target = getConstrainedTarget(change);
 
-                // The earliest arena object defines the initial arena regardless of its timestamp.
-                // This also keeps older maps working when their first timing point prevented placing it at zero.
-                if (i == 0 || change.StartTime <= 0 || change.Duration <= 0)
+                // Only legacy arena objects implicitly define the initial state.
+                // A world-space arena is a timeline event, even when it is the first arena.
+                if ((i == 0 && !change.WorldSpace && !eventChanges.Contains(change)) || change.StartTime <= 0 || change.Duration <= 0
+                    || time >= change.StartTime + change.Duration)
                     return target;
 
                 float progress = (float)Math.Clamp((time - change.StartTime) / change.Duration, 0, 1);
                 progress = change.Easing.Apply(progress);
+                bool world = change.WorldSpace || startStates[i].Size.X > DodgePlayfield.WIDTH
+                             || startStates[i].Size.Y > DodgePlayfield.HEIGHT || startStates[i].Position.X < 0
+                             || startStates[i].Position.Y < 0 || startStates[i].Position.X + startStates[i].Size.X > DodgePlayfield.WIDTH
+                             || startStates[i].Position.Y + startStates[i].Size.Y > DodgePlayfield.HEIGHT;
                 Vector2 size = new Vector2(
-                    Math.Clamp(lerp(startStates[i].Size.X, target.Size.X, progress), DodgeArenaChange.MIN_SIZE, DodgePlayfield.WIDTH),
-                    Math.Clamp(lerp(startStates[i].Size.Y, target.Size.Y, progress), DodgeArenaChange.MIN_SIZE, DodgePlayfield.HEIGHT));
+                    Math.Clamp(lerp(startStates[i].Size.X, target.Size.X, progress), DodgeArenaChange.MIN_SIZE, world ? DodgeArenaChange.MAX_WORLD_SIZE : DodgePlayfield.WIDTH),
+                    Math.Clamp(lerp(startStates[i].Size.Y, target.Size.Y, progress), DodgeArenaChange.MIN_SIZE, world ? DodgeArenaChange.MAX_WORLD_SIZE : DodgePlayfield.HEIGHT));
                 Vector2 position = new Vector2(
-                    Math.Clamp(lerp(startStates[i].Position.X, target.Position.X, progress), 0, DodgePlayfield.WIDTH - size.X),
-                    Math.Clamp(lerp(startStates[i].Position.Y, target.Position.Y, progress), 0, DodgePlayfield.HEIGHT - size.Y));
+                    lerp(startStates[i].Position.X, target.Position.X, progress),
+                    lerp(startStates[i].Position.Y, target.Position.Y, progress));
+                if (!world)
+                {
+                    position.X = Math.Clamp(position.X, 0, DodgePlayfield.WIDTH - size.X);
+                    position.Y = Math.Clamp(position.Y, 0, DodgePlayfield.HEIGHT - size.Y);
+                }
 
                 return new DodgeArenaState(
                     position,
@@ -107,20 +173,21 @@ namespace osu.Game.Rulesets.Dodge.UI
 
             // The first change is the initial state and must already be visible during pre-game,
             // including maps whose timing begins after zero.
-            if (count > 0)
+            if (count > 0 && !changes[0].WorldSpace && !eventChanges.Contains(changes[0]))
                 return getConstrainedTarget(changes[0]);
 
             return DEFAULT;
         }
 
-        private static DodgeArenaState getConstrainedTarget(DodgeArenaChange change)
+        private DodgeArenaState getConstrainedTarget(DodgeArenaChange change)
         {
+            bool world = change.WorldSpace;
             Vector2 targetSize = new Vector2(
-                Math.Clamp(change.TargetSize.X, DodgeArenaChange.MIN_SIZE, DodgePlayfield.WIDTH),
-                Math.Clamp(change.TargetSize.Y, DodgeArenaChange.MIN_SIZE, DodgePlayfield.HEIGHT));
+                Math.Clamp(change.TargetSize.X, DodgeArenaChange.MIN_SIZE, world ? DodgeArenaChange.MAX_WORLD_SIZE : DodgePlayfield.WIDTH),
+                Math.Clamp(change.TargetSize.Y, DodgeArenaChange.MIN_SIZE, world ? DodgeArenaChange.MAX_WORLD_SIZE : DodgePlayfield.HEIGHT));
             Vector2 targetPosition = new Vector2(
-                Math.Clamp(change.TargetPosition.X, 0, DodgePlayfield.WIDTH - targetSize.X),
-                Math.Clamp(change.TargetPosition.Y, 0, DodgePlayfield.HEIGHT - targetSize.Y));
+                world ? Math.Clamp(change.TargetPosition.X, -DodgeArenaChange.MAX_WORLD_SIZE, DodgeArenaChange.MAX_WORLD_SIZE) : Math.Clamp(change.TargetPosition.X, 0, DodgePlayfield.WIDTH - targetSize.X),
+                world ? Math.Clamp(change.TargetPosition.Y, -DodgeArenaChange.MAX_WORLD_SIZE, DodgeArenaChange.MAX_WORLD_SIZE) : Math.Clamp(change.TargetPosition.Y, 0, DodgePlayfield.HEIGHT - targetSize.Y));
 
             return new DodgeArenaState(
                 targetPosition,

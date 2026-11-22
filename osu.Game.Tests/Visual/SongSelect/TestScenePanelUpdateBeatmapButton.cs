@@ -84,8 +84,12 @@ namespace osu.Game.Tests.Visual.SongSelect
                 };
             });
             AddAssert("button initially invisible", () => button.Alpha == 0f);
+            AddAssert("hidden button has no layout footprint", () => button.Size == osuTK.Vector2.Zero && button.Margin.Equals(new MarginPadding()));
             AddStep("online revision changes", () => beatmap.OnlineMD5Hash = "updated");
             AddUntilStep("update button becomes visible", () => button.Alpha, () => Is.EqualTo(1f));
+            AddAssert("visible button height restored", () => button.Height == 22f);
+            AddStep("revision is updated", () => beatmap.MD5Hash = "updated");
+            AddUntilStep("button collapses again", () => button.Alpha == 0f && button.Size == osuTK.Vector2.Zero);
         }
     }
 }

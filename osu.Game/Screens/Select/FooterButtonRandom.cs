@@ -22,6 +22,8 @@ namespace osu.Game.Screens.Select
 {
     public partial class FooterButtonRandom : ScreenFooterButton
     {
+        public override osu.Game.Overlays.CustomTheme.ThemeSurfaceContext? ButtonContext => osu.Game.Overlays.CustomTheme.ThemeSurfaceContext.FooterRandom;
+
         public Action? NextRandom { get; set; }
         public Action? PreviousRandom { get; set; }
 

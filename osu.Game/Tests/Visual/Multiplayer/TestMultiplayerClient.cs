@@ -285,12 +285,14 @@ namespace osu.Game.Tests.Visual.Multiplayer
             RoomJoined = true;
         }
 
-        protected override Task LeaveRoomInternal()
+        public Task LeaveRoomDelay { get; set; } = Task.CompletedTask;
+
+        protected override async Task LeaveRoomInternal()
         {
+            await LeaveRoomDelay.ConfigureAwait(false);
             RoomJoined = false;
             ServerAPIRoom = null;
             ServerRoom = null;
-            return Task.CompletedTask;
         }
 
         public override Task InvitePlayer(int userId)
@@ -418,6 +420,17 @@ namespace osu.Game.Tests.Visual.Multiplayer
 
             switch (request)
             {
+                case RankedPlayModBanRequest ban:
+                    var rankedState = (RankedPlayRoomState)ServerRoom.MatchState!;
+                    if (rankedState.Stage != RankedPlayStage.ModBan || !rankedState.Users.ContainsKey(userId)
+                        || rankedState.RandomModBans.ContainsKey(userId))
+                        throw new InvalidOperationException("Cannot change this mod ban.");
+                    rankedState.RandomModBanSelections[userId] = ban.Acronym;
+                    if (ban.Confirm)
+                        rankedState.RandomModBans[userId] = ban.Acronym;
+                    await ((IMultiplayerClient)this).MatchRoomStateChanged(clone(rankedState)).ConfigureAwait(false);
+                    break;
+
                 case ChangeTeamRequest changeTeam:
                     TeamVersusRoomState roomState = (TeamVersusRoomState)ServerRoom.MatchState!;
                     TeamVersusUserState userState = (TeamVersusUserState)LocalUser.MatchState!;

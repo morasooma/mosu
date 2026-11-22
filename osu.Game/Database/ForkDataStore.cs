@@ -14,12 +14,13 @@ using osu.Framework.Platform;
 using osu.Game.Configuration;
 using osu.Game.Rulesets.Difficulty;
 using Realms;
+using osu.Game.Graphics.Backgrounds.AI;
 
 namespace osu.Game.Database
 {
     public class ForkDataStore : IDisposable
     {
-        private const int schema_version = 11; // 11: RelaxMosuPp* fields (MosuPp relax PP system).
+        private const int schema_version = 14; // 14: versioned background classification cache; original osu! Realm is unchanged.
 
         /// <summary>
         /// Calculator revision of the Mosu/Realistik relax PP system
@@ -39,6 +40,13 @@ namespace osu.Game.Database
         /// </summary>
         public const int RELAX_MOSU_PP_PERFORMANCE_CALCULATION_VERSION = 40;
 
+        public const int RELAX_TAZIK_PP_PERFORMANCE_CALCULATION_VERSION = 44;
+        public const int RELAX_PRERELEASE_PERFORMANCE_CALCULATION_VERSION = 46;
+
+        // The prerelease uses the existing versioned JSON cache in fork.realm; no schema migration.
+        private const string prerelease_cache_ruleset = "library-relax-pp";
+        private const string prerelease_cache_mods = nameof(ForkRelaxPpSystem.MosuPpPrerelease);
+
         private readonly Storage storage;
         private readonly ConcurrentDictionary<Guid, double> ppCache = new ConcurrentDictionary<Guid, double>();
         private readonly ConcurrentDictionary<Guid, RelaxBeatmapData> relaxCache = new ConcurrentDictionary<Guid, RelaxBeatmapData>();
@@ -48,8 +56,14 @@ namespace osu.Game.Database
         private readonly ConcurrentDictionary<Guid, int> relaxVersions = new ConcurrentDictionary<Guid, int>();
         private readonly ConcurrentDictionary<Guid, int> relaxVanillaVersions = new ConcurrentDictionary<Guid, int>();
         private readonly ConcurrentDictionary<Guid, int> relaxMosuPpVersions = new ConcurrentDictionary<Guid, int>();
+        private readonly ConcurrentDictionary<Guid, RelaxBeatmapData> relaxTazikPpCache = new();
+        private readonly ConcurrentDictionary<Guid, int> relaxTazikPpVersions = new();
+        private readonly ConcurrentDictionary<Guid, RelaxBeatmapData> relaxPrereleaseCache = new();
+        private readonly ConcurrentDictionary<Guid, int> relaxPrereleaseVersions = new();
         private readonly ConcurrentDictionary<Guid, DodgeDifficultyData> dodgeDifficultyCache = new ConcurrentDictionary<Guid, DodgeDifficultyData>();
-        private readonly ConcurrentDictionary<Guid, string> tagCoopReplays = new ConcurrentDictionary<Guid, string>();
+        private readonly ConcurrentDictionary<Guid, long> mosuScores = new ConcurrentDictionary<Guid, long>();
+        private readonly TagCoopReplayCache tagCoopReplays = new TagCoopReplayCache();
+        private readonly ConcurrentDictionary<Guid, byte> tagCoopReplayIds = new ConcurrentDictionary<Guid, byte>();
         private readonly ConcurrentDictionary<(Guid BeatmapId, string Ruleset), AdditionalInfoData> additionalInfoCache = new ConcurrentDictionary<(Guid, string), AdditionalInfoData>();
 
         public static int GetRelaxCalculationVersion(ForkRelaxPpSystem system)
@@ -57,6 +71,8 @@ namespace osu.Game.Database
             {
                 ForkRelaxPpSystem.LazerVanilla => RELAX_VANILLA_PERFORMANCE_CALCULATION_VERSION,
                 ForkRelaxPpSystem.MosuPp => RELAX_MOSU_PP_PERFORMANCE_CALCULATION_VERSION,
+                ForkRelaxPpSystem.TazikPp => RELAX_TAZIK_PP_PERFORMANCE_CALCULATION_VERSION,
+                ForkRelaxPpSystem.MosuPpPrerelease => RELAX_PRERELEASE_PERFORMANCE_CALCULATION_VERSION,
                 _ => RELAX_PERFORMANCE_CALCULATION_VERSION,
             };
 
@@ -79,8 +95,17 @@ namespace osu.Game.Database
             return new RealmConfiguration(storage.GetFullPath("fork.realm", true))
             {
                 SchemaVersion = schema_version,
-                Schema = new[] { typeof(ForkBeatmapData), typeof(ForkScoreData), typeof(ForkSeasonalBackgroundData) },
+                Schema = new[] { typeof(ForkBeatmapData), typeof(ForkScoreData), typeof(ForkSeasonalBackgroundData), typeof(ForkBackgroundClassificationData) },
                 FallbackPipePath = tempPathLocation,
+                MigrationCallback = (migration, oldVersion) =>
+                {
+                    if (oldVersion < 14)
+                    {
+                        string backup = storage.GetFullPath("fork.before-ai-v14.realm", true);
+                        if (!File.Exists(backup))
+                            migration.OldRealm.WriteCopy(new RealmConfiguration(backup));
+                    }
+                },
             };
         }
 
@@ -96,6 +121,7 @@ namespace osu.Game.Database
                     relaxCache[data.BeatmapID] = new RelaxBeatmapData(data.RelaxStarRating, data.RelaxMaxPerformancePoints);
                     relaxVanillaCache[data.BeatmapID] = new RelaxBeatmapData(data.RelaxVanillaStarRating, data.RelaxVanillaMaxPerformancePoints);
                     relaxMosuPpCache[data.BeatmapID] = new RelaxBeatmapData(data.RelaxMosuPpStarRating, data.RelaxMosuPpMaxPerformancePoints);
+                    relaxTazikPpCache[data.BeatmapID] = new RelaxBeatmapData(data.RelaxTazikPpStarRating, data.RelaxTazikPpMaxPerformancePoints);
 
                     if (data.DodgeDifficultyVersion > 0 && data.DodgeStarRating >= 0)
                     {
@@ -118,6 +144,20 @@ namespace osu.Game.Database
                                     // Schema 9 initially stored nomod entries under the bare ruleset name.
                                     string key = entry.Key.Contains('|') ? entry.Key : createAdditionalInfoKey(entry.Key, "nomod");
                                     additionalInfoCache[(data.BeatmapID, key)] = entry.Value;
+                                    if (key == createAdditionalInfoKey(prerelease_cache_ruleset, prerelease_cache_mods)
+                                        && entry.Value.Version == RELAX_PRERELEASE_PERFORMANCE_CALCULATION_VERSION
+                                        && entry.Value.PerformancePoints is double pp && double.IsFinite(pp) && pp >= 0
+                                        && double.IsFinite(entry.Value.Stars) && entry.Value.Stars >= 0)
+                                    {
+                                        relaxPrereleaseCache[data.BeatmapID] = new RelaxBeatmapData(entry.Value.Stars, pp);
+                                        relaxPrereleaseVersions[data.BeatmapID] = entry.Value.Version;
+                                    }
+                                    else if (key == createAdditionalInfoKey("library-relax", prerelease_cache_mods)
+                                             && entry.Value.Version == RELAX_PRERELEASE_PERFORMANCE_CALCULATION_VERSION
+                                             && double.IsFinite(entry.Value.Stars) && entry.Value.Stars >= 0)
+                                    {
+                                        relaxPrereleaseCache.TryAdd(data.BeatmapID, new RelaxBeatmapData(entry.Value.Stars, 0));
+                                    }
                                 }
                             }
                         }
@@ -138,17 +178,58 @@ namespace osu.Game.Database
 
                     if (data.RelaxMosuPpPerformancePointsCalculated)
                         relaxMosuPpVersions[data.BeatmapID] = data.RelaxMosuPpPerformancePointsVersion;
+
+                    if (data.RelaxTazikPpPerformancePointsCalculated)
+                        relaxTazikPpVersions[data.BeatmapID] = data.RelaxTazikPpPerformancePointsVersion;
                 }
 
                 foreach (var data in realm.All<ForkScoreData>())
-                    tagCoopReplays[data.ScoreID] = data.TagCoopReplayJson;
+                {
+                    // Replay JSON can be several megabytes per score. It is only needed
+                    // for playback/export, never for startup or normal score listing.
+                    if (data.MosuTotalScore is long total) mosuScores[data.ScoreID] = total;
+                }
 
-                Logger.Log($"ForkDataStore: loaded {ppCache.Count} PP entries and {tagCoopReplays.Count} Tag Co-op replays from fork.realm");
+                // Filter inside Realm so ordinary scores need no payload allocation or
+                // disk lookup when ScoreInfo checks whether a replay extension exists.
+                foreach (var data in realm.All<ForkScoreData>().Where(s => s.TagCoopReplayJson != ""))
+                    tagCoopReplayIds[data.ScoreID] = 0;
+
+                Logger.Log($"ForkDataStore: loaded {ppCache.Count} PP entries; {tagCoopReplayIds.Count} Tag Co-op replays load on demand");
             }
             catch (Exception e)
             {
                 Logger.Log($"ForkDataStore: failed to load: {e.Message}", LoggingTarget.Database, LogLevel.Error);
             }
+        }
+
+        // Called only by the AI worker. Never preload the artwork cache at client startup.
+        public BackgroundClassification? GetBackgroundClassification(string hash, string modelVersion)
+        {
+            using var realm = Realm.GetInstance(getConfiguration());
+            var data = realm.Find<ForkBackgroundClassificationData>($"{modelVersion}:{hash}");
+            if (data == null)
+                return null;
+
+            var result = new BackgroundClassification(data.Drawings, data.Hentai, data.Neutral, data.Porn, data.Sexy);
+            return result.IsValid ? result : null;
+        }
+
+        public void SetBackgroundClassification(string hash, string modelVersion, BackgroundClassification result)
+        {
+            if (!isSha256(hash) || !result.IsValid)
+                throw new ArgumentException("Invalid background classification.");
+
+            using var realm = Realm.GetInstance(getConfiguration());
+            realm.Write(() => realm.Add(new ForkBackgroundClassificationData
+            {
+                Key = $"{modelVersion}:{hash}",
+                Drawings = result.Drawings,
+                Hentai = result.Hentai,
+                Neutral = result.Neutral,
+                Porn = result.Porn,
+                Sexy = result.Sexy,
+            }, update: true));
         }
 
         public double GetPP(Guid beatmapId) => ppCache.GetValueOrDefault(beatmapId, -1);
@@ -210,6 +291,21 @@ namespace osu.Game.Database
             return apiMods.Length == 0 ? "nomod" : JsonConvert.SerializeObject(apiMods, Formatting.None);
         }
 
+        /// <summary>
+        /// Distinguishes persisted RX display text for each client PP formula. MRX uses the
+        /// normal cache except when the prerelease is selected.
+        /// </summary>
+        public static string CreateAdditionalInfoModsKey(string ruleset, IEnumerable<Mod>? mods)
+        {
+            Mod[] selectedMods = mods?.ToArray() ?? Array.Empty<Mod>();
+            string modsKey = CreateModsKey(selectedMods);
+            ForkRelaxPpSystem system = RelaxPpSystemSelection.Current;
+            if (ruleset != "osu" || !selectedMods.Any(mod => mod is ModRelax
+                || (system == ForkRelaxPpSystem.MosuPpPrerelease && mod.Acronym == "MRX")))
+                return modsKey;
+            return $"{modsKey}|relax-pp:{system}:{GetRelaxCalculationVersion(system)}";
+        }
+
         private static string createAdditionalInfoKey(string ruleset, string modsKey)
             => $"{ruleset}|{modsKey}";
 
@@ -265,7 +361,11 @@ namespace osu.Game.Database
             }
         }
 
-        public readonly record struct AdditionalInfoData(string Checksum, int Version, double Stars, int MaxCombo, string Text);
+        public readonly record struct AdditionalInfoData(string Checksum, int Version, double Stars, int MaxCombo, string Text)
+        {
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+            public double? PerformancePoints { get; init; }
+        }
 
         public double GetRelaxStarRating(Guid beatmapId) => getRelaxCache().GetValueOrDefault(beatmapId).StarRating;
 
@@ -278,18 +378,28 @@ namespace osu.Game.Database
                && storedVersion == GetRelaxCalculationVersion(RelaxPpSystemSelection.Current);
 
         private ConcurrentDictionary<Guid, RelaxBeatmapData> getRelaxCache()
-            => RelaxPpSystemSelection.Current switch
+            => getRelaxCache(RelaxPpSystemSelection.Current);
+
+        private ConcurrentDictionary<Guid, RelaxBeatmapData> getRelaxCache(ForkRelaxPpSystem system)
+            => system switch
             {
                 ForkRelaxPpSystem.LazerVanilla => relaxVanillaCache,
                 ForkRelaxPpSystem.MosuPp => relaxMosuPpCache,
+                ForkRelaxPpSystem.TazikPp => relaxTazikPpCache,
+                ForkRelaxPpSystem.MosuPpPrerelease => relaxPrereleaseCache,
                 _ => relaxCache,
             };
 
         private ConcurrentDictionary<Guid, int> getRelaxVersions()
-            => RelaxPpSystemSelection.Current switch
+            => getRelaxVersions(RelaxPpSystemSelection.Current);
+
+        private ConcurrentDictionary<Guid, int> getRelaxVersions(ForkRelaxPpSystem system)
+            => system switch
             {
                 ForkRelaxPpSystem.LazerVanilla => relaxVanillaVersions,
                 ForkRelaxPpSystem.MosuPp => relaxMosuPpVersions,
+                ForkRelaxPpSystem.TazikPp => relaxTazikPpVersions,
+                ForkRelaxPpSystem.MosuPpPrerelease => relaxPrereleaseVersions,
                 _ => relaxVersions,
             };
 
@@ -307,7 +417,41 @@ namespace osu.Game.Database
                && !string.IsNullOrEmpty(beatmapChecksum)
                && string.Equals(data.BeatmapChecksum, beatmapChecksum, StringComparison.OrdinalIgnoreCase);
 
-        public string GetTagCoopReplay(Guid scoreId) => tagCoopReplays.GetValueOrDefault(scoreId, string.Empty);
+        public long? GetMosuTotalScore(Guid scoreId) => mosuScores.TryGetValue(scoreId, out long total) ? total : null;
+
+        public void SetMosuTotalScore(Guid scoreId, long total)
+        {
+            if (scoreId == Guid.Empty || total < 0) return;
+            using var realm = Realm.GetInstance(getConfiguration());
+            realm.Write(() =>
+            {
+                var entry = realm.Find<ForkScoreData>(scoreId) ?? realm.Add(new ForkScoreData { ScoreID = scoreId });
+                entry.MosuTotalScore = total;
+            });
+            mosuScores[scoreId] = total;
+        }
+
+        public string GetTagCoopReplay(Guid scoreId)
+        {
+            if (scoreId == Guid.Empty || !tagCoopReplayIds.ContainsKey(scoreId))
+                return string.Empty;
+
+            try
+            {
+                return tagCoopReplays.GetOrLoad(scoreId, () =>
+                {
+                    using var realm = Realm.GetInstance(getConfiguration());
+                    return realm.Find<ForkScoreData>(scoreId)?.TagCoopReplayJson ?? string.Empty;
+                });
+            }
+            catch (Exception e)
+            {
+                Logger.Log($"ForkDataStore: failed to read Tag Co-op replay for {scoreId}: {e.Message}", LoggingTarget.Database, LogLevel.Error);
+                return string.Empty;
+            }
+        }
+
+        internal long CachedTagCoopReplayBytes => tagCoopReplays.CachedBytes;
 
         public void SetTagCoopReplay(Guid scoreId, string json)
         {
@@ -315,9 +459,10 @@ namespace osu.Game.Database
                 return;
 
             if (string.IsNullOrEmpty(json))
-                tagCoopReplays.TryRemove(scoreId, out _);
+                tagCoopReplayIds.TryRemove(scoreId, out _);
             else
-                tagCoopReplays[scoreId] = json;
+                tagCoopReplayIds[scoreId] = 0;
+            tagCoopReplays.Set(scoreId, json);
 
             try
             {
@@ -330,7 +475,10 @@ namespace osu.Game.Database
                     if (string.IsNullOrEmpty(json))
                     {
                         if (existing != null)
-                            realm.Remove(existing);
+                        {
+                            if (existing.MosuTotalScore != null) existing.TagCoopReplayJson = string.Empty;
+                            else realm.Remove(existing);
+                        }
 
                         return;
                     }
@@ -362,8 +510,6 @@ namespace osu.Game.Database
                 {
                     foreach ((Guid scoreId, string json) in validReplays)
                     {
-                        tagCoopReplays[scoreId] = json;
-
                         var existing = realm.Find<ForkScoreData>(scoreId);
 
                         if (existing != null)
@@ -377,6 +523,14 @@ namespace osu.Game.Database
             {
                 Logger.Log($"ForkDataStore: failed to import Tag Co-op replays: {e.Message}", LoggingTarget.Database, LogLevel.Error);
                 throw;
+            }
+
+            // Never acquire the read-cache lock while holding a Realm write transaction:
+            // a concurrent cache miss can be opening Realm under that same cache lock.
+            foreach ((Guid scoreId, string json) in validReplays)
+            {
+                tagCoopReplayIds[scoreId] = 0;
+                tagCoopReplays.Set(scoreId, json);
             }
         }
 
@@ -454,12 +608,34 @@ namespace osu.Game.Database
             }
         }
 
-        public void SetRelaxData(Guid beatmapId, double starRating, double pp)
+        public bool HasRelaxDifficulty(Guid beatmapId, string checksum, int version)
+            => HasRelaxData(beatmapId) || TryGetAdditionalInfo(beatmapId, "library-relax", RelaxPpSystemSelection.Current.ToString(), checksum, version, out _);
+
+        public void SetRelaxDifficulty(Guid beatmapId, string checksum, int version, double stars)
+        {
+            SetRelaxData(beatmapId, stars, GetRelaxPP(beatmapId), false);
+            SetAdditionalInfo(beatmapId, "library-relax", RelaxPpSystemSelection.Current.ToString(),
+                new AdditionalInfoData(checksum, version, stars, 0, "relax-difficulty"));
+        }
+
+        public void SetRelaxData(Guid beatmapId, double starRating, double pp, bool ppCalculated = true)
         {
             ForkRelaxPpSystem system = RelaxPpSystemSelection.Current;
             int calculationVersion = GetRelaxCalculationVersion(system);
 
-            getRelaxCache()[beatmapId] = new RelaxBeatmapData(starRating, pp);
+            getRelaxCache(system)[beatmapId] = new RelaxBeatmapData(starRating, pp);
+
+            if (system == ForkRelaxPpSystem.MosuPpPrerelease)
+            {
+                // Library Relax PP, like the older fields, is keyed by the local beatmap ID.
+                if (ppCalculated)
+                {
+                    SetAdditionalInfo(beatmapId, prerelease_cache_ruleset, prerelease_cache_mods,
+                        new AdditionalInfoData(beatmapId.ToString("N"), calculationVersion, starRating, 0, "relax-performance") { PerformancePoints = pp });
+                    relaxPrereleaseVersions[beatmapId] = calculationVersion;
+                }
+                return;
+            }
 
             try
             {
@@ -475,30 +651,50 @@ namespace osu.Game.Database
                         realm.Add(existing);
                     }
 
-                    if (system == ForkRelaxPpSystem.MosuPp)
+                    if (system == ForkRelaxPpSystem.TazikPp)
+                    {
+                        existing.RelaxTazikPpStarRating = starRating;
+                        existing.RelaxTazikPpMaxPerformancePoints = pp;
+                        if (ppCalculated)
+                        {
+                            existing.RelaxTazikPpPerformancePointsCalculated = true;
+                            existing.RelaxTazikPpPerformancePointsVersion = calculationVersion;
+                        }
+                    }
+                    else if (system == ForkRelaxPpSystem.MosuPp)
                     {
                         existing.RelaxMosuPpStarRating = starRating;
                         existing.RelaxMosuPpMaxPerformancePoints = pp;
-                        existing.RelaxMosuPpPerformancePointsCalculated = true;
-                        existing.RelaxMosuPpPerformancePointsVersion = calculationVersion;
+                        if (ppCalculated)
+                        {
+                            existing.RelaxMosuPpPerformancePointsCalculated = true;
+                            existing.RelaxMosuPpPerformancePointsVersion = calculationVersion;
+                        }
                     }
                     else if (system == ForkRelaxPpSystem.LazerVanilla)
                     {
                         existing.RelaxVanillaStarRating = starRating;
                         existing.RelaxVanillaMaxPerformancePoints = pp;
-                        existing.RelaxVanillaPerformancePointsCalculated = true;
-                        existing.RelaxVanillaPerformancePointsVersion = calculationVersion;
+                        if (ppCalculated)
+                        {
+                            existing.RelaxVanillaPerformancePointsCalculated = true;
+                            existing.RelaxVanillaPerformancePointsVersion = calculationVersion;
+                        }
                     }
                     else
                     {
                         existing.RelaxStarRating = starRating;
                         existing.RelaxMaxPerformancePoints = pp;
-                        existing.RelaxPerformancePointsCalculated = true;
-                        existing.RelaxPerformancePointsVersion = calculationVersion;
+                        if (ppCalculated)
+                        {
+                            existing.RelaxPerformancePointsCalculated = true;
+                            existing.RelaxPerformancePointsVersion = calculationVersion;
+                        }
                     }
                 });
 
-                getRelaxVersions()[beatmapId] = calculationVersion;
+                if (ppCalculated)
+                    getRelaxVersions(system)[beatmapId] = calculationVersion;
             }
             catch (Exception e)
             {

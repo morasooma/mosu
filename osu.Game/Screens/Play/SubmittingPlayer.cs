@@ -13,6 +13,7 @@ using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Database;
 using osu.Game.Rulesets.UI;
+using osu.Game.Online.Spectator;
 using osu.Game.Scoring;
 using osu.Game.Screens.Ranking;
 
@@ -29,6 +30,9 @@ namespace osu.Game.Screens.Play
 
         [Resolved]
         private RealmAccess realm { get; set; } = null!;
+
+        [Resolved]
+        protected SpectatorClient SpectatorClient { get; private set; } = null!;
 
         protected bool OnlineRecordSendingDisabled => true;
 

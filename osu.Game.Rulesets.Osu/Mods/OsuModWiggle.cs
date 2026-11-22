@@ -22,12 +22,12 @@ namespace osu.Game.Rulesets.Osu.Mods
         public override string Acronym => "WG";
         public override IconUsage? Icon => OsuIcon.ModWiggle;
         public override ModType Type => ModType.Fun;
-        public override LocalisableString Description => "They just won't stay still...";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3743;
         public override Type[] IncompatibleMods => new[] { typeof(OsuModAutoplay), typeof(OsuModTransform), typeof(OsuModMagnetised), typeof(OsuModRepel), typeof(OsuModDepth) };
 
         private const int wiggle_duration = 100; // (ms) Higher = fewer wiggles
 
-        [SettingSource("Strength", "Multiplier applied to the wiggling strength.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3744), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3745))]
         public BindableDouble Strength { get; } = new BindableDouble(1)
         {
             MinValue = 0.1f,

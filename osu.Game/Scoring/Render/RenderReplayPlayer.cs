@@ -23,6 +23,8 @@ using osu.Framework.Platform;
 using osu.Framework.Screens;
 using osu.Framework.Graphics.Shaders;
 using osu.Game.Configuration;
+using osu.Game.Replays;
+using osu.Game.Rulesets.UI;
 using osu.Game.Extensions;
 using osu.Game;
 using osu.Game.Scoring;
@@ -34,10 +36,6 @@ using osuTK;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
-// Standalone public build note: High-performance asynchronous Veldrid texture readback
-// via GameHost.BufferedScreenshotRequest is an optional Mosu framework extension. Standalone public builds
-// fall back to upstream host.TakeScreenshotAsync() for frame capture.
-
 namespace osu.Game.Scoring.Render
 {
     /// <summary>
@@ -48,13 +46,14 @@ namespace osu.Game.Scoring.Render
     /// </summary>
     public partial class RenderReplayPlayer : ReplayPlayer
     {
-        private const double results_animation_display_duration = Player.RESULTS_DISPLAY_DELAY + 2500;
-        private const double forced_results_display_duration = 2500;
+        private const double results_animation_display_duration = Player.RESULTS_DISPLAY_DELAY + RenderResultsScreen.DISPLAY_DURATION;
+        private const double forced_results_display_duration = RenderResultsScreen.DISPLAY_DURATION;
         private const double simulation_update_rate = 240;
         private const double hitsound_capture_tail_duration = 1000;
         private const double render_music_volume = 1.0;
         private const int capture_pipeline_depth = 3;
         private const int frame_writer_queue_capacity = capture_pipeline_depth;
+        internal const int FRAME_BUFFER_COUNT = capture_pipeline_depth + frame_writer_queue_capacity + 1;
 
         private readonly int outputWidth;
         private readonly int outputHeight;
@@ -95,6 +94,10 @@ namespace osu.Game.Scoring.Render
         private ShaderManager shaders { get; set; } = null!;
 
         private FFmpegEncoder? ffmpeg;
+        private bool? captureIsBgra;
+        private bool? captureIsNv12;
+        private int captureBufferByteCount;
+        private readonly List<GameHost.BufferedScreenshotRequest> ownedFrameBuffers = new List<GameHost.BufferedScreenshotRequest>();
         private CancellationTokenSource? cts;
         private bool renderStarted;
         private double renderStartTime;
@@ -119,12 +122,18 @@ namespace osu.Game.Scoring.Render
         private string? hitsoundCapturePath;
         private Channel<FrameWriteRequest>? frameWriteChannel;
         private Task? frameWriterTask;
+        private Channel<GameHost.BufferedScreenshotRequest>? freeFrameBuffers;
         // Saved host Hz limits restored on dispose so we don't leave the host capped.
         private double savedMaxUpdateHz;
         private double savedMaxDrawHz;
         private readonly Stopwatch renderWallClock = new Stopwatch();
         private double totalFrameCaptureWallTimeMs;
         private double totalFrameQueueWriteWallTimeMs;
+        private double totalAudioCaptureWallTimeMs;
+        private double totalPipeWriteWallTimeMs;
+        private double totalGpuWaitWallTimeMs;
+        private double totalReadbackMapWallTimeMs;
+        private double totalReadbackCopyWallTimeMs;
         private long peakManagedBytes;
         private long peakWorkingSetBytes;
         private long peakPrivateBytes;
@@ -140,7 +149,7 @@ namespace osu.Game.Scoring.Render
                                   double? customStartTime = null, double? customEndTime = null, bool showResultsAfterCustomPeriod = false)
             : base(score, new PlayerConfiguration
             {
-                ShowLeaderboard = false,
+                ShowLeaderboard = true,
                 AllowUserInteraction = false,
                 ShowResults = true,
             })
@@ -353,13 +362,26 @@ namespace osu.Game.Scoring.Render
                 if (TotalFrames <= 0)
                     throw new InvalidOperationException("Replay render could not determine a valid frame count.");
 
-                await stabiliseInitialFrameAsync(token).ConfigureAwait(false);
+                if (hitsoundCapture != null && gameBase.Audio != null)
+                {
+                    Logger.Log("[RenderReplayPlayer] Flushing gameplay hitsound capture mixer before hitsound capture.",
+                        LoggingTarget.Runtime,
+                        LogLevel.Verbose);
+                    await gameBase.Audio.FlushMixerAsync(gameplayHitsoundRenderer.CaptureMixer ?? renderGame?.RenderSampleCaptureMixer ?? gameBase.Audio.SampleMixer).ConfigureAwait(false);
+                }
 
-                // Throttle the host to the output fps for the duration of the render.
+                captureBufferByteCount = await host.ConfigureVideoCaptureAsync(outputWidth, outputHeight, token)
+                                                   .WaitAsync(TimeSpan.FromSeconds(30), token).ConfigureAwait(false);
+                await stabiliseInitialFrameAsync(token).ConfigureAwait(false);
+                await host.SetVideoCaptureDrawOnDemandAsync(true).WaitAsync(TimeSpan.FromSeconds(30), token).ConfigureAwait(false);
+
+                // Keep deterministic update/audio work uncapped; offscreen draws are request-driven.
                 savedMaxUpdateHz = host.MaximumUpdateHz;
                 savedMaxDrawHz = host.MaximumDrawHz;
                 host.MaximumUpdateHz = double.MaxValue;
                 host.MaximumDrawHz = double.MaxValue;
+
+                var pendingCaptures = new Queue<GameHost.BufferedScreenshotRequest>(capture_pipeline_depth);
 
                 while (!token.IsCancellationRequested && frame < TotalFrames)
                 {
@@ -369,6 +391,24 @@ namespace osu.Game.Scoring.Render
                         break;
                     }
 
+                    while (pendingCaptures.Count >= capture_pipeline_depth)
+                    {
+                        GameHost.BufferedScreenshotRequest completedCapture = pendingCaptures.Dequeue();
+                        await completeSubmittedCaptureToBufferAsync(completedCapture, token).ConfigureAwait(false);
+
+                        if (frameWriterTask!.IsCompleted)
+                            await frameWriterTask.ConfigureAwait(false);
+
+                        if (!await writeFrameToChannelWithTimeoutAsync(frameWriteChannel!, completedCapture, token).ConfigureAwait(false))
+                        {
+                            cancelled = true;
+                            break;
+                        }
+                    }
+
+                    if (cancelled)
+                        break;
+
                     await showForcedResultsIfRequiredAsync(frame, token).ConfigureAwait(false);
 
                     await writeDebugSnapshotAsync(frame, getFrameTime(frame), token).ConfigureAwait(false);
@@ -376,14 +416,21 @@ namespace osu.Game.Scoring.Render
                     double previousFrameTime = frame == 0 ? renderStartTime : getFrameTime(frame - 1);
                     double previousSceneTime = frame == 0 ? getSceneTime(0) : getSceneTime(frame - 1);
 
-                    using Image<Rgba32> currentCapture = await advanceAndCaptureAsync(
+                    GameHost.BufferedScreenshotRequest? currentCapture = await advanceAndSubmitCaptureToBufferAsync(
                         previousFrameTime,
                         getFrameTime(frame),
                         previousSceneTime,
                         getSceneTime(frame),
                         token).ConfigureAwait(false);
 
-                    ffmpeg ??= createEncoder(currentCapture.Width, currentCapture.Height);
+                    bool isBgra = currentCapture?.IsBgra ?? false;
+                    bool isNv12 = currentCapture?.IsNv12 ?? false;
+                    if ((captureIsBgra.HasValue && captureIsBgra.Value != isBgra)
+                        || (captureIsNv12.HasValue && captureIsNv12.Value != isNv12))
+                        throw new InvalidOperationException("Capture pixel format changed during replay export.");
+                    captureIsBgra = isBgra;
+                    captureIsNv12 = isNv12;
+                    ffmpeg ??= createEncoder(outputWidth, outputHeight);
                     frameWriteChannel ??= Channel.CreateBounded<FrameWriteRequest>(new BoundedChannelOptions(frame_writer_queue_capacity)
                     {
                         SingleReader = true,
@@ -392,25 +439,34 @@ namespace osu.Game.Scoring.Render
                     });
                     frameWriterTask ??= Task.Run(() => frameWriterLoopAsync(frameWriteChannel.Reader, ffmpeg.InputStream, token), token);
 
-                    if (frameWriterTask.IsCompleted)
-                        await frameWriterTask.ConfigureAwait(false);
-
-                    FrameWriteRequest writeRequest = createFrameWriteRequest(currentCapture);
-                    if (!await writeFrameToChannelWithTimeoutAsync(frameWriteChannel, writeRequest, token).ConfigureAwait(false))
-                    {
-                        cancelled = true;
-                        break;
-                    }
+                    if (currentCapture != null)
+                        pendingCaptures.Enqueue(currentCapture);
 
                     await captureHitsoundAudioAsync(frame + 1, token).ConfigureAwait(false);
 
                     frame++;
 
-                    RenderedFrames = frame;
-                    OnProgress?.Invoke(frame, TotalFrames);
+                    int completedFrameCount = Math.Max(0, frame - pendingCaptures.Count);
+                    RenderedFrames = completedFrameCount;
+                    OnProgress?.Invoke(completedFrameCount, TotalFrames);
 
                     if (frame == 1 || frame % Math.Max(1, fps) == 0)
                         logMemoryUsage(frame, "capture-loop");
+                }
+
+                while (!token.IsCancellationRequested && pendingCaptures.Count > 0)
+                {
+                    GameHost.BufferedScreenshotRequest completedCapture = pendingCaptures.Dequeue();
+                    await completeSubmittedCaptureToBufferAsync(completedCapture, token).ConfigureAwait(false);
+
+                    if (frameWriterTask!.IsCompleted)
+                        await frameWriterTask.ConfigureAwait(false);
+
+                    if (!await writeFrameToChannelWithTimeoutAsync(frameWriteChannel!, completedCapture, token).ConfigureAwait(false))
+                    {
+                        cancelled = true;
+                        break;
+                    }
                 }
 
                 if (!token.IsCancellationRequested)
@@ -457,6 +513,8 @@ namespace osu.Game.Scoring.Render
 
                         try { ffmpeg?.InputStream.Close(); } catch { }
                         try { await frameWriterTask.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); } catch { }
+                        if (completedSuccessfully)
+                            postProcessingException = new TimeoutException("Timed out writing the final frames to FFmpeg.");
                     }
                     catch (OperationCanceledException)
                     {
@@ -467,6 +525,10 @@ namespace osu.Game.Scoring.Render
                         Logger.Log($"[RenderReplayPlayer] Frame writer completed with error during finalisation: {ex.Message}",
                             LoggingTarget.Runtime,
                             LogLevel.Verbose);
+                        if (completedSuccessfully)
+                            postProcessingException = ex is IOException && ffmpeg?.LastErrorLine is string encoderError
+                                ? new InvalidOperationException(encoderError, ex)
+                                : ex;
                     }
                 }
 
@@ -500,10 +562,43 @@ namespace osu.Game.Scoring.Render
                 }
 
                 Logger.Log("[RenderReplayPlayer] Stopping FFmpeg...", LoggingTarget.Runtime, LogLevel.Verbose);
-                ffmpeg?.Stop();
+                if (ffmpeg != null)
+                {
+                    try
+                    {
+                        if (completedSuccessfully && postProcessingException == null)
+                            await ffmpeg.FinishAsync().ConfigureAwait(false);
+                        else
+                            ffmpeg.Stop();
+                    }
+                    catch (Exception ex)
+                    {
+                        postProcessingException = ex;
+                        Logger.Error(ex, "[RenderReplayPlayer] FFmpeg did not finish encoding.");
+                    }
+                    finally
+                    {
+                        ffmpeg.Dispose();
+                    }
+                }
+                completedSuccessfully &= postProcessingException == null;
 
                 Logger.Log("[RenderReplayPlayer] Disposing hitsound capture...", LoggingTarget.Runtime, LogLevel.Verbose);
                 hitsoundCapture?.Dispose();
+
+                Logger.Log("[RenderReplayPlayer] Cleaning up frame buffers...", LoggingTarget.Runtime, LogLevel.Verbose);
+                // Prevent a queued update/draw capture from submitting again after cleanup on error or timeout.
+                cts.Cancel();
+                try
+                {
+                    await host.ReleaseVideoCaptureAsync(ownedFrameBuffers.ToArray()).WaitAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+                    ownedFrameBuffers.Clear();
+                    freeFrameBuffers = null;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log($"[RenderReplayPlayer] GPU capture cleanup failed: {ex.Message}", LoggingTarget.Runtime, LogLevel.Important);
+                }
 
                 Logger.Log("[RenderReplayPlayer] Logging final memory usage...", LoggingTarget.Runtime, LogLevel.Verbose);
                 logMemoryUsage(RenderedFrames, "capture-final");
@@ -545,21 +640,149 @@ namespace osu.Game.Scoring.Render
             }
         }
 
-        private static FrameWriteRequest createFrameWriteRequest(Image<Rgba32> image)
+        private async Task<GameHost.BufferedScreenshotRequest?> advanceAndSubmitCaptureToBufferAsync(double currentTime, double targetTime, double currentSceneTime, double targetSceneTime, CancellationToken token)
         {
-            int byteCount = checked(image.Width * image.Height * 4);
-            var buffer = new byte[byteCount];
+            token.ThrowIfCancellationRequested();
+            long startedAt = Stopwatch.GetTimestamp();
+            double gameplayDelta = targetTime - currentTime;
+            double sceneDelta = targetSceneTime - currentSceneTime;
 
-            image.ProcessPixelRows(accessor =>
+            double simulationStep = renderGameplayRate * 1000.0 / Math.Max(fps, renderSimulationUpdateRate);
+            int stepCount = Math.Abs(gameplayDelta) <= 0.0001 ? 1 : Math.Max(1, (int)Math.Ceiling(Math.Abs(gameplayDelta) / simulationStep));
+
+            int bufSize = captureBufferByteCount > 0 ? captureBufferByteCount : checked(outputWidth * outputHeight * 4);
+
+            freeFrameBuffers ??= CreateFreeFrameBufferChannel(bufSize, ownedFrameBuffers);
+
+            // Add a timeout to the buffer reservation. If the frame writer is stalled and no
+            // buffers have been returned to the pool, this would otherwise block forever.
+            GameHost.BufferedScreenshotRequest reservedRequest;
+            if (!freeFrameBuffers.Reader.TryRead(out reservedRequest!))
             {
-                for (int y = 0; y < image.Height; y++)
-                    MemoryMarshal.AsBytes(accessor.GetRowSpan(y)).CopyTo(buffer.AsSpan(y * image.Width * 4, image.Width * 4));
+                // Only create a timer when the pool really is empty. Cancel the channel read
+                // itself on timeout so it cannot silently consume a buffer returned later.
+                using var reservationCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                reservationCts.CancelAfter(TimeSpan.FromSeconds(30));
+                try
+                {
+                    reservedRequest = await freeFrameBuffers.Reader.ReadAsync(reservationCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                {
+                    Logger.Log("[RenderReplayPlayer] Buffer reservation timed out (frame writer stalled), aborting.",
+                        LoggingTarget.Runtime,
+                        LogLevel.Important);
+                    try { ffmpeg?.InputStream.Close(); } catch { }
+                    cts?.Cancel();
+                    throw new OperationCanceledException("Frame buffer reservation timed out.");
+                }
+            }
+
+            reservedRequest.ByteCount = bufSize;
+            reservedRequest.Immediate = false;
+
+            var tcs = new TaskCompletionSource<GameHost.BufferedScreenshotRequest?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            host.UpdateThread.Scheduler.Add(() =>
+            {
+                try
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (tcs.Task.IsCompleted)
+                        return;
+                    for (int step = 1; step <= stepCount; step++)
+                    {
+                        double progress = step / (double)stepCount;
+                        double stepTime = currentTime + gameplayDelta * progress;
+                        double stepSceneTime = currentSceneTime + sceneDelta * progress;
+                        renderGame?.SetRenderSceneTime(stepSceneTime);
+                        GameplayClockContainer.Seek(stepTime);
+                    }
+
+                    host.SubmitScreenshotToBufferAsync(reservedRequest, token).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            returnFrameBuffer(reservedRequest);
+                            tcs.TrySetException(t.Exception!);
+                        }
+                        else if (t.IsCanceled)
+                        {
+                            returnFrameBuffer(reservedRequest);
+                            tcs.TrySetCanceled();
+                        }
+                        else tcs.TrySetResult(t.GetResultSafely());
+                    }, TaskContinuationOptions.ExecuteSynchronously);
+                }
+                catch (Exception ex)
+                {
+                    returnFrameBuffer(reservedRequest);
+                    tcs.TrySetException(ex);
+                }
             });
 
-            return new FrameWriteRequest(buffer, byteCount);
+            GameHost.BufferedScreenshotRequest? result;
+            using (token.Register(() => tcs.TrySetCanceled()))
+            using (var captureTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token))
+            {
+                captureTimeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+                using (captureTimeoutCts.Token.Register(() => tcs.TrySetCanceled()))
+                    result = await tcs.Task.ConfigureAwait(false);
+            }
+
+            totalFrameCaptureWallTimeMs += Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
+            return result;
         }
 
-        private async Task<Image<Rgba32>> advanceAndCaptureAsync(double currentTime, double targetTime, double currentSceneTime, double targetSceneTime, CancellationToken token)
+        private async Task completeSubmittedCaptureToBufferAsync(GameHost.BufferedScreenshotRequest request, CancellationToken token)
+        {
+            long startedAt = Stopwatch.GetTimestamp();
+            (byte[] buffer, int byteCount) = await host.CompleteScreenshotToBufferAsync(request).ConfigureAwait(false);
+            int expectedByteCount = request.IsNv12 ? checked(outputWidth * outputHeight * 3 / 2) : checked(outputWidth * outputHeight * 4);
+            if (byteCount != expectedByteCount)
+                throw new InvalidOperationException("Replay frame readback failed or returned an unexpected frame size.");
+            request.ByteCount = byteCount;
+            totalGpuWaitWallTimeMs += request.GpuWaitMilliseconds;
+            totalReadbackMapWallTimeMs += request.MapMilliseconds;
+            totalReadbackCopyWallTimeMs += request.CopyMilliseconds;
+            if (!ReferenceEquals(buffer, request.Buffer) && byteCount > 0)
+                Buffer.BlockCopy(buffer, 0, request.Buffer, 0, byteCount);
+            totalFrameQueueWriteWallTimeMs += Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
+        }
+
+        internal static Channel<GameHost.BufferedScreenshotRequest> CreateFreeFrameBufferChannel(int requiredSize, ICollection<GameHost.BufferedScreenshotRequest>? ownedBuffers = null)
+        {
+            // Capture retains three requests before retiring the oldest. The writer must have
+            // separate buffers: sharing only three leaves capture waiting for its own pending
+            // readbacks after the first frame is handed to the writer, serialising the pipeline.
+            var channel = Channel.CreateBounded<GameHost.BufferedScreenshotRequest>(new BoundedChannelOptions(FRAME_BUFFER_COUNT)
+            {
+                SingleReader = true,
+                SingleWriter = true,
+                FullMode = BoundedChannelFullMode.Wait,
+            });
+
+            for (int i = 0; i < FRAME_BUFFER_COUNT; i++)
+            {
+                var request = new GameHost.BufferedScreenshotRequest
+                {
+                    Buffer = new byte[requiredSize],
+                    ByteCount = requiredSize,
+                    PreserveNativePixelFormat = true,
+                    UseVideoCapture = true,
+                };
+                ownedBuffers?.Add(request);
+                channel.Writer.TryWrite(request);
+            }
+            return channel;
+        }
+
+        private void returnFrameBuffer(GameHost.BufferedScreenshotRequest request)
+        {
+            freeFrameBuffers?.Writer.TryWrite(request);
+        }
+
+                private async Task<Image<Rgba32>> advanceAndCaptureAsync(double currentTime, double targetTime, double currentSceneTime, double targetSceneTime, CancellationToken token)
         {
             long startedAt = Stopwatch.GetTimestamp();
             double gameplayDelta = targetTime - currentTime;
@@ -621,83 +844,23 @@ namespace osu.Game.Scoring.Render
 
         private async Task stabiliseInitialFrameAsync(CancellationToken token)
         {
-            // When a custom trim start is set (e.g. 102s into the beatmap), the game needs to
-            // process ALL hit objects from the beginning so combo/score/accuracy counters are
-            // correct at the trim point. We do this by pumping Update ticks (without screenshot
-            // capture) from leadInTime to renderStartTime. This is fast because each tick is
-            // just a CPU-side game state update — no GPU readback or encoding.
-            double seekTarget = renderStartTime;
+            // Process every replay frame before the trim point, without submitting screenshots.
+            // Completing a task on the host scheduler only confirms the seek was requested, not
+            // that the ruleset subtree has consumed it. Observe the clock after children update.
+            double catchUpTime = GetInitialCatchUpTime(DrawableRuleset.FrameStableClock, score.Replay!, renderStartTime);
+            await WaitForInitialCatchUpAsync(catchUpTime, advanceInitialCatchUpAsync, token, TimeSpan.FromMinutes(2)).ConfigureAwait(false);
 
-            if (Math.Abs(seekTarget - GameplayClockContainer.StartTime) > 2000)
-            {
-                Logger.Log($"[RenderReplayPlayer] Fast catch-up from {GameplayClockContainer.StartTime:F0} ms to {seekTarget:F0} ms (no screenshot capture).",
-                    LoggingTarget.Runtime,
-                    LogLevel.Verbose);
+            Logger.Log($"[RenderReplayPlayer] Catch-up completed at {catchUpTime:F3} ms before capture at {renderStartTime:F3} ms.",
+                LoggingTarget.Runtime,
+                LogLevel.Verbose);
 
-                // Seek once to the target. The FrameStableClock will process time in ~16ms steps
-                // per Update tick. We pump empty Update ticks (no screenshot capture) and wait
-                // for the clock to converge.
-                var seekTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                host.UpdateThread.Scheduler.Add(() =>
-                {
-                    GameplayClockContainer.Seek(seekTarget);
-                    seekTcs.TrySetResult();
-                });
-                using (token.Register(() => seekTcs.TrySetCanceled()))
-                    await seekTcs.Task.ConfigureAwait(false);
-
-                int catchupTicks = 0;
-                int maxTicks = 100000;
-                double lastFrameStableTime = double.MinValue;
-
-                while (catchupTicks < maxTicks && !token.IsCancellationRequested)
-                {
-                    var tickTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-                    host.UpdateThread.Scheduler.Add(() =>
-                    {
-                        GameplayClockContainer.Seek(seekTarget);
-                        tickTcs.TrySetResult();
-                    });
-
-                    using (token.Register(() => tickTcs.TrySetCanceled()))
-                        await tickTcs.Task.ConfigureAwait(false);
-
-                    catchupTicks++;
-
-                    // Check the FrameStableClock (not GameplayClockContainer) — it lags behind
-                    // the seek target while processing hit objects in ~16ms steps per Update tick.
-                    double frameStableTime = DrawableRuleset?.FrameStableClock?.CurrentTime ?? 0;
-                    if (Math.Abs(frameStableTime - seekTarget) < renderFrameStep)
-                    {
-                        Logger.Log($"[RenderReplayPlayer] Catch-up converged after {catchupTicks} ticks (frameStable={frameStableTime:F0} ms).",
-                            LoggingTarget.Runtime,
-                            LogLevel.Verbose);
-                        break;
-                    }
-
-                    // Safety: if the frame-stable clock stopped advancing, abort to avoid infinite loop.
-                    if (Math.Abs(frameStableTime - lastFrameStableTime) < 0.01 && catchupTicks > 100)
-                    {
-                        Logger.Log($"[RenderReplayPlayer] Catch-up clock stalled at {frameStableTime:F0} ms after {catchupTicks} ticks.",
-                            LoggingTarget.Runtime,
-                            LogLevel.Important);
-                        break;
-                    }
-
-                    lastFrameStableTime = frameStableTime;
-                }
-
-                if (catchupTicks >= maxTicks)
-                    Logger.Log($"[RenderReplayPlayer] Catch-up did not converge after {maxTicks} ticks.",
-                        LoggingTarget.Runtime,
-                        LogLevel.Important);
-            }
-
-            // Pump a few ordinary screenshots to let the scene settle visually before capture.
+            // Pump a few screenshot frames to let the scene settle visually before capture.
             for (int i = 0; i < 10; i++)
             {
-                using Image<Rgba32> _ = await advanceAndCaptureAsync(renderStartTime, renderStartTime, 0, 0, token).ConfigureAwait(false);
+                GameHost.BufferedScreenshotRequest req = await advanceAndSubmitCaptureToBufferAsync(renderStartTime, renderStartTime, 0, 0, token).ConfigureAwait(false)
+                                                         ?? throw new InvalidOperationException("Failed to submit a settling frame for buffered capture.");
+                await completeSubmittedCaptureToBufferAsync(req, token).ConfigureAwait(false);
+                returnFrameBuffer(req);
             }
 
             var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -718,12 +881,99 @@ namespace osu.Game.Scoring.Render
             // FlushMixerAsync only resets the read position to 0 but does NOT clear the buffer data,
             // so hitsounds from the catch-up phase would still be readable via ChannelGetData.
             // We must read and discard everything that's in the buffer.
+            if (hitsoundCapture != null && gameBase.Audio != null)
+            {
+                Logger.Log("[RenderReplayPlayer] Draining hitsound mixer after stabilisation (pre-capture).",
+                    LoggingTarget.Runtime,
+                    LogLevel.Verbose);
+                await drainMixerAsync(gameBase.Audio, gameplayHitsoundRenderer.CaptureMixer ?? renderGame?.RenderSampleCaptureMixer ?? gameBase.Audio.SampleMixer).ConfigureAwait(false);
+            }
+        }
+
+        private async Task<double> advanceInitialCatchUpAsync(CancellationToken token)
+        {
+            var tcs = new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            host.UpdateThread.Scheduler.Add(() =>
+            {
+                if (token.IsCancellationRequested)
+                    return;
+
+                GameplayClockContainer.Seek(renderStartTime);
+                ScheduleAfterChildren(() => tcs.TrySetResult(DrawableRuleset.FrameStableClock.CurrentTime));
+            });
+
+            return await tcs.Task.WaitAsync(token).ConfigureAwait(false);
+        }
+
+        internal static double GetInitialCatchUpTime(IFrameStableClock clock, Replay replay, double targetTime)
+        {
+            // Stable playback intentionally holds at the last recorded frame before the target.
+            // Old replays simulate automatic judgements between frames, so they must reach the
+            // actual target instead. Do not mistake a legitimate held frame for a stalled seek.
+            if ((clock as IHasReplayHandler)?.ReplayInputHandler?.UsesRecordedFrameTimes == true
+                && replay.LegacyClientVersion is not (> 0 and < 20190506)
+                && replay.Frames.LastOrDefault()?.Time > targetTime)
+                return replay.Frames.LastOrDefault(frame => frame.Time <= targetTime)?.Time ?? targetTime;
+
+            return targetTime;
+        }
+
+        internal static async Task WaitForInitialCatchUpAsync(double targetTime, Func<CancellationToken, Task<double>> advance,
+                                                              CancellationToken token, TimeSpan timeout)
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            timeoutCts.CancelAfter(timeout);
+            double currentTime = double.NaN;
+
+            try
+            {
+                do
+                {
+                    currentTime = await advance(timeoutCts.Token).WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+                } while (Math.Abs(currentTime - targetTime) > 0.001 || !double.IsFinite(currentTime));
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+                // Never encode a partially caught-up scene on a stalled or timed-out seek.
+                throw new TimeoutException($"Replay did not reach the render start (expected {targetTime:F3} ms, reached {currentTime:F3} ms).");
+            }
         }
 
         /// <summary>
         /// Reads and discards all data from the mixer buffer so that the next
         /// <see cref="RenderHitsoundCapture.CaptureFrameAsync"/> starts from a clean state.
         /// </summary>
+        private async Task drainMixerAsync(AudioManager audio, AudioMixer mixer)
+        {
+            // First flush to reset the read position to 0.
+            await audio.FlushMixerAsync(mixer).ConfigureAwait(false);
+
+            // Then read and discard everything in the buffer.
+            var drainBuffer = new float[44100 * 2];
+            int totalDrained = 0;
+            int maxIterations = 100;
+
+            for (int i = 0; i < maxIterations; i++)
+            {
+                int bytesRead = await audio.ReadMixerDataAsync(mixer, drainBuffer, 44100).ConfigureAwait(false);
+                if (bytesRead <= 0)
+                    break;
+
+                totalDrained += bytesRead;
+            }
+
+            // Flush again after draining to reset the read position for the real capture.
+            await audio.FlushMixerAsync(mixer).ConfigureAwait(false);
+
+            if (totalDrained > 0)
+            {
+                Logger.Log($"[RenderReplayPlayer] Drained {totalDrained} bytes of accumulated hitsound data from mixer.",
+                    LoggingTarget.Runtime,
+                    LogLevel.Verbose);
+            }
+        }
+
         // captureFrameAsync removed and integrated into advanceAndCaptureAsync.
 
         protected override void Dispose(bool isDisposing)
@@ -841,7 +1091,9 @@ namespace osu.Game.Scoring.Render
                 durationSeconds: renderAudioSourceDuration,
                 outputDurationSeconds: renderOutputDuration,
                 videoFrameCount: TotalFrames,
-                audioVolume: render_music_volume);
+                audioVolume: render_music_volume,
+                inputIsBgra: captureIsBgra ?? false,
+                inputIsNv12: captureIsNv12 ?? false);
         }
 
         private void resetCursorTrail() => DrawableRuleset?.Cursor?.GetType().GetMethod("ResetTrail")?.Invoke(DrawableRuleset.Cursor, null);
@@ -913,7 +1165,20 @@ namespace osu.Game.Scoring.Render
             hitsoundCapture = null;
             hitsoundCapturePath = null;
             activeOutputPath = outputPath;
-            Logger.Log("[RenderReplayPlayer] Gameplay hitsound export is unavailable with the stock framework; rendering video and music only.",
+
+            if (gameBase.Audio == null || !gameBase.Audio.UsingGlobalMixer.Value)
+            {
+                Logger.Log("[RenderReplayPlayer] Hitsound capture is unavailable because the sample mixer is not running as a decode stream.",
+                    LoggingTarget.Runtime,
+                    LogLevel.Verbose);
+                return;
+            }
+
+            hitsoundCapturePath = $"{outputPath}.hitsounds.wav";
+            activeOutputPath = $"{outputPath}.video.mkv";
+            hitsoundCapture = new RenderHitsoundCapture(gameBase.Audio, gameplayHitsoundRenderer.CaptureMixer ?? renderGame?.RenderSampleCaptureMixer ?? gameBase.Audio.SampleMixer, hitsoundCapturePath, fps);
+
+            Logger.Log($"[RenderReplayPlayer] Capturing gameplay hitsounds to {hitsoundCapturePath} using {(gameplayHitsoundRenderer.CaptureMixer != null ? "gameplay hitsound renderer mixer" : renderGame?.RenderSampleCaptureMixer != null ? "dedicated render sample mixer" : "global sample mixer")}",
                 LoggingTarget.Runtime,
                 LogLevel.Verbose);
         }
@@ -928,7 +1193,9 @@ namespace osu.Game.Scoring.Render
             if (cappedFrameIndexExclusive <= 0)
                 return;
 
+            long startedAt = Stopwatch.GetTimestamp();
             await hitsoundCapture.CaptureFrameAsync(cappedFrameIndexExclusive, token).ConfigureAwait(false);
+            totalAudioCaptureWallTimeMs += Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
         }
 
         private int getHitsoundCaptureFrameLimit()
@@ -946,7 +1213,7 @@ namespace osu.Game.Scoring.Render
                     Logger.Log($"[RenderReplayPlayer] No hitsound capture; applying user music volume ({userMusicVolume:0.###}) to output.",
                         LoggingTarget.Runtime,
                         LogLevel.Verbose);
-                    FFmpegPostProcessor.ApplyMusicVolume(outputPath, outputPath, userMusicVolume);
+                    FFmpegPostProcessor.ApplyMusicVolume(outputPath, outputPath, userMusicVolume, encoderName == RenderEncodingSelector.CompactEncoder);
                 }
                 return;
             }
@@ -993,7 +1260,7 @@ namespace osu.Game.Scoring.Render
 
                 if (hitsoundCapture != null)
                 {
-                    Logger.Log($"[RenderReplayPlayer] Hitsound capture stats: requestedFrames={hitsoundCapture.TotalRequestedSampleFrames}, readFrames={hitsoundCapture.TotalReadSampleFrames}, silentFrames={hitsoundCapture.TotalSilentSampleFrames}, readBytes={hitsoundCapture.TotalReadBytes}, peakAmplitude={hitsoundCapture.PeakAmplitude:0.#####}, audible={hitsoundCapture.HasAudibleData}, recommendedGain={hitsoundCapture.RecommendedMixGain:0.###}, firstAudibleMs={(hitsoundCapture.FirstAudibleTimeMs?.ToString("0.###") ?? "n/a")}, lastAudibleMs={(hitsoundCapture.LastAudibleTimeMs?.ToString("0.###") ?? "n/a")}, firstTriggerVideoMs={(firstTriggerVideoTime?.ToString("0.###") ?? "n/a")}, lastTriggerVideoMs={(lastTriggerVideoTime?.ToString("0.###") ?? "n/a")}, triggerCount={(sampleTriggerRecorder?.TriggerCount.ToString() ?? "0")}, trimLeadingMs={hitsoundTrimLeadingMs:0.###}, placeAtMs={hitsoundPlacementMs:0.###}, playDurationMs={(hitsoundPlayDurationMs?.ToString("0.###") ?? "auto")}, mixDurationMs={(hitsoundMixDurationMs?.ToString("0.###") ?? "auto")}",
+                    Logger.Log($"[RenderReplayPlayer] Hitsound capture stats: requestedFrames={hitsoundCapture.TotalRequestedSampleFrames}, readFrames={hitsoundCapture.TotalReadSampleFrames}, silentFrames={hitsoundCapture.TotalSilentSampleFrames}, readBytes={hitsoundCapture.TotalReadBytes}, peakAmplitude={hitsoundCapture.PeakAmplitude:0.#####}, audible={hitsoundCapture.HasAudibleData}, recommendedGain={hitsoundCapture.RecommendedMixGain:0.###}, firstAudibleMs={(hitsoundCapture.FirstAudibleTimeMs?.ToString("0.###") ?? "n/a")}, lastAudibleMs={(hitsoundCapture.LastAudibleTimeMs?.ToString("0.###") ?? "n/a")}, firstTriggerVideoMs={(firstTriggerVideoTime?.ToString("0.###") ?? "n/a")}, lastTriggerVideoMs={(lastTriggerVideoTime?.ToString("0.###") ?? "n/a")}, triggerCount={(sampleTriggerRecorder?.TriggerCount.ToString() ?? "0")}, missingSamples={gameplayHitsoundRenderer.MissingSampleCount}, trimLeadingMs={hitsoundTrimLeadingMs:0.###}, placeAtMs={hitsoundPlacementMs:0.###}, playDurationMs={(hitsoundPlayDurationMs?.ToString("0.###") ?? "auto")}, mixDurationMs={(hitsoundMixDurationMs?.ToString("0.###") ?? "auto")}",
                         LoggingTarget.Runtime,
                         hitsoundCapture.HasAudibleData ? LogLevel.Verbose : LogLevel.Important);
                 }
@@ -1016,7 +1283,8 @@ namespace osu.Game.Scoring.Render
                         hitsoundTrimLeadingMs,
                         hitsoundPlacementMs,
                         hitsoundPlayDurationMs,
-                        userMusicVolume);
+                        userMusicVolume,
+                        encoderName == RenderEncodingSelector.CompactEncoder);
 
                     if (activeOutputPath != outputPath && File.Exists(activeOutputPath))
                         File.Delete(activeOutputPath);
@@ -1026,21 +1294,22 @@ namespace osu.Game.Scoring.Render
                 }
                 else if (activeOutputPath != outputPath && File.Exists(activeOutputPath))
                 {
-                    // No audible hitsounds captured. Apply the user's music volume to the intermediate video.
-                    if (!string.IsNullOrWhiteSpace(audioPath) && Math.Abs(userMusicVolume - 1.0) > 0.001)
-                    {
-                        Logger.Log($"[RenderReplayPlayer] No audible hitsounds; applying user music volume ({userMusicVolume:0.###}) to final output.",
-                            LoggingTarget.Runtime,
-                            LogLevel.Verbose);
-                        FFmpegPostProcessor.ApplyMusicVolume(activeOutputPath, outputPath, userMusicVolume);
-                    }
-                    else
-                    {
-                        if (File.Exists(outputPath))
-                            File.Delete(outputPath);
-                        File.Move(activeOutputPath, outputPath);
-                    }
+                    // No audible hitsounds captured. The intermediate is a Matroska file with PCM
+                    // audio — remux it into a real MP4 (applying the user's music volume in the
+                    // same pass). A bare rename leaves a mislabelled .mkv that most players
+                    // render without any audio.
+                    Logger.Log($"[RenderReplayPlayer] No audible hitsounds; remuxing intermediate into final MP4 (musicVolume={userMusicVolume:0.###}).",
+                        LoggingTarget.Runtime,
+                        LogLevel.Verbose);
+                    FFmpegPostProcessor.RemuxToMp4(activeOutputPath, outputPath, !string.IsNullOrWhiteSpace(audioPath), userMusicVolume,
+                        encoderName == RenderEncodingSelector.CompactEncoder);
+
+                    if (File.Exists(activeOutputPath))
+                        File.Delete(activeOutputPath);
                 }
+
+                if (hitsoundCapturePath != null && File.Exists(hitsoundCapturePath))
+                    File.Delete(hitsoundCapturePath);
             }
             catch (Exception ex)
             {
@@ -1115,7 +1384,9 @@ namespace osu.Game.Scoring.Render
                 {
                     using var writeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
                     writeCts.CancelAfter(5000);
-                    await stream.WriteAsync(request.Buffer.AsMemory(0, request.ByteCount), writeCts.Token).ConfigureAwait(false);
+                    long startedAt = Stopwatch.GetTimestamp();
+                    await stream.WriteAsync(request.Request.Buffer.AsMemory(0, request.Request.ByteCount), writeCts.Token).ConfigureAwait(false);
+                    totalPipeWriteWallTimeMs += Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
                 }
                 catch (OperationCanceledException)
                 {
@@ -1140,10 +1411,14 @@ namespace osu.Game.Scoring.Render
 
                     throw new ObjectDisposedException("FFmpeg pipe was disposed unexpectedly.", ex);
                 }
+                finally
+                {
+                    returnFrameBuffer(request.Request);
+                }
             }
         }
 
-        private readonly record struct FrameWriteRequest(byte[] Buffer, int ByteCount);
+        private readonly record struct FrameWriteRequest(GameHost.BufferedScreenshotRequest Request);
 
         /// <summary>
         /// Writes a frame to the channel with a hard timeout. If the frame writer is stuck
@@ -1151,13 +1426,20 @@ namespace osu.Game.Scoring.Render
         /// This method detects the stall, force-closes FFmpeg's stdin to unblock the writer,
         /// and returns false so the caller can abort the render gracefully.
         /// </summary>
-        private async Task<bool> writeFrameToChannelWithTimeoutAsync(Channel<FrameWriteRequest> channel, FrameWriteRequest capture, CancellationToken token)
+        private async Task<bool> writeFrameToChannelWithTimeoutAsync(Channel<FrameWriteRequest> channel, GameHost.BufferedScreenshotRequest capture, CancellationToken token)
         {
-            long startedAt = Stopwatch.GetTimestamp();
-            ValueTask writeTask = channel.Writer.WriteAsync(capture, token);
-            Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(30), token);
+            token.ThrowIfCancellationRequested();
+            if (channel.Writer.TryWrite(new FrameWriteRequest(capture)))
+                return true;
 
-            if (await Task.WhenAny(writeTask.AsTask(), timeoutTask).ConfigureAwait(false) == timeoutTask)
+            using var writeCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            writeCts.CancelAfter(TimeSpan.FromSeconds(30));
+            try
+            {
+                await channel.Writer.WriteAsync(new FrameWriteRequest(capture), writeCts.Token).ConfigureAwait(false);
+                return true;
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
                 Logger.Log("[RenderReplayPlayer] Channel write timed out (frame writer stalled), force-closing FFmpeg stdin.",
                     LoggingTarget.Runtime,
@@ -1167,11 +1449,9 @@ namespace osu.Game.Scoring.Render
 
                 try { await frameWriterTask!.ConfigureAwait(false); } catch { }
 
+                returnFrameBuffer(capture);
                 return false;
             }
-
-            totalFrameQueueWriteWallTimeMs += Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
-            return true;
         }
 
         private void writeDebugSummary(bool completedSuccessfully, bool cancelled, Exception? postProcessingException)
@@ -1208,6 +1488,15 @@ namespace osu.Game.Scoring.Render
                     averageAdvanceAndCaptureWallTimeMs = RenderedFrames > 0 ? totalFrameCaptureWallTimeMs / RenderedFrames : 0,
                     averageQueueWriteWallTimeMs = RenderedFrames > 0 ? totalFrameQueueWriteWallTimeMs / RenderedFrames : 0,
                     frameWriterQueueCapacity = frame_writer_queue_capacity,
+                    captureBufferByteCount,
+                    cpuCapturePoolBytes = (long)captureBufferByteCount * FRAME_BUFFER_COUNT,
+                    hostUpdateCount = host.VideoCaptureFrameCounts.Updates,
+                    hostDrawCount = host.VideoCaptureFrameCounts.Draws,
+                    averageAudioCaptureWallTimeMs = RenderedFrames > 0 ? totalAudioCaptureWallTimeMs / RenderedFrames : 0,
+                    averagePipeWriteWallTimeMs = RenderedFrames > 0 ? totalPipeWriteWallTimeMs / RenderedFrames : 0,
+                    averageGpuWaitWallTimeMs = RenderedFrames > 0 ? totalGpuWaitWallTimeMs / RenderedFrames : 0,
+                    averageReadbackMapWallTimeMs = RenderedFrames > 0 ? totalReadbackMapWallTimeMs / RenderedFrames : 0,
+                    averageReadbackCopyWallTimeMs = RenderedFrames > 0 ? totalReadbackCopyWallTimeMs / RenderedFrames : 0,
                 },
                 memory = new
                 {

@@ -57,12 +57,9 @@ Morasooma is a very configurable game, and diving straight into the settings can
         /// <summary>
         /// "Some new defaults for game behaviours have been implemented, with the aim of improving the game experience and making it more accessible to everyone.
         ///
-        /// We recommend you give the new defaults a try, but if you&#39;d like to have things feel more like classic versions of osu!, you can easily apply some sane defaults below."
+        /// We recommend you give the new defaults a try, but if you&#39;d like a more classic feel, you can apply the classic defaults below."
         /// </summary>
-        public static LocalisableString BehaviourDescription => new TranslatableString(getKey(@"behaviour_description"),
-            @"Some new defaults for game behaviours have been implemented, with the aim of improving the game experience and making it more accessible to everyone.
-
-We recommend you give the new defaults a try, but if you'd like to have things feel more like classic versions of osu!, you can easily apply some sane defaults below.");
+        public static LocalisableString BehaviourDescription => ClientBrandingStrings.ClassicBehaviour;
 
         /// <summary>
         /// "New defaults"

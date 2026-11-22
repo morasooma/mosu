@@ -413,7 +413,13 @@ namespace osu.Game.Overlays.SkinEditor
                 },
             };
 
-            // If the new target has a ruleset, let's show ruleset-specific items at the top, and the rest below.
+            componentsSidebar.Add(new SkinComponentToolbox(skinComponentsContainer, null, morasoomaOnly: true)
+            {
+                RequestPlacement = requestPlacement
+            });
+
+            // Keep native additions immediately below the working layer, before standard components.
+            // If the new target has a ruleset, show ruleset-specific items before the remaining standard items.
             if (target.NewValue.Ruleset != null)
             {
                 componentsSidebar.Add(new SkinComponentToolbox(skinComponentsContainer, target.NewValue.Ruleset)

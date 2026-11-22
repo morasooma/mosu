@@ -3,7 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
@@ -15,9 +19,13 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Platform;
 using osu.Framework.Testing;
 using osu.Game.Beatmaps;
+using osu.Game.Database;
 using osu.Game.Graphics.Cursor;
 using osu.Game.Graphics.UserInterface;
+using osu.Game.Online.API;
+using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Online.Placeholders;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Overlays;
 using osu.Game.Rulesets;
@@ -36,6 +44,7 @@ namespace osu.Game.Tests.Visual.SongSelect
 {
     public partial class TestSceneBeatmapLeaderboardWedge : SongSelectComponentsTestScene
     {
+        protected override bool UseFreshStoragePerRun => true;
         [Cached]
         private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Aquamarine);
 
@@ -56,6 +65,9 @@ namespace osu.Game.Tests.Visual.SongSelect
             dependencies.Cache(beatmapManager = new BeatmapManager(LocalStorage, Realm, null, dependencies.Get<AudioManager>(), Resources, dependencies.Get<GameHost>(), Beatmap.Default));
             dependencies.Cache(scoreManager = new ScoreManager(rulesetStore, () => beatmapManager, LocalStorage, Realm, API));
             dependencies.Cache(leaderboardManager = new LeaderboardManager());
+            // Upload/export and metadata reloads must use this fixture's storage and no real API.
+            dependencies.CacheAs<Storage>(LocalStorage);
+            dependencies.CacheAs<IBeatmapUpdater>(Moq.Mock.Of<IBeatmapUpdater>());
 
             Dependencies.Cache(Realm);
 
@@ -107,10 +119,130 @@ namespace osu.Game.Tests.Visual.SongSelect
             base.SetUpSteps();
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestUploadButtonStillAppearsAfterReloadAndUsesLegacyPostContract(bool successful)
+        {
+            UploadServerBeatmapSetRequest? upload = null;
+            APIBeatmapSet published = new APIBeatmapSet { OnlineID = 2_000_000_000, Status = BeatmapOnlineStatus.Loved,
+                Author = new APIUser { Id = 1, Username = "TestBot" }, Tags = "mosu-exclusive" };
+            bool downloaded = false;
+            string canonicalFilename = Path.Combine(Path.GetTempPath(), $"mosu-publication-ui-{Guid.NewGuid():N}.osz");
+            setScope(BeatmapLeaderboardScope.Global);
+            AddStep("prepare unpublished map and local API", () =>
+            {
+                // Other cases in this scene intentionally log out of the shared dummy API.
+                ((DummyAPIAccess)API).SetState(APIState.Online);
+                ((DummyAPIAccess)API).HandleRequest = request =>
+                {
+                    if (request is GetBeatmapRequest)
+                    {
+                        request.Fail(new APIException("Map is not published", new InvalidOperationException(), System.Net.HttpStatusCode.NotFound));
+                        return true;
+                    }
+                    if (request is DownloadBeatmapSetRequest download)
+                    {
+                        downloaded = download.Model.OnlineID == published.OnlineID && download.Mirror == DownloadMirror.Server;
+                        typeof(APIDownloadRequest).GetMethod("TriggerSuccess", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+                            null, new[] { typeof(string) }, null)!.Invoke(download, new object[] { canonicalFilename });
+                        return true;
+                    }
+                    if (request is not UploadServerBeatmapSetRequest publication)
+                        return false;
+                    upload = publication;
+                    if (successful)
+                        publication.TriggerSuccess(published);
+                    else
+                        publication.Fail(new InvalidOperationException("Controlled upload rejection"));
+                    return true;
+                };
+                beatmapManager.Import(TestResources.GetQuickTestBeatmapForImport()).WaitSafely();
+                var set = beatmapManager.GetAllUsableBeatmapSets().First();
+                Realm.Write(r =>
+                {
+                    var managed = r.Find<BeatmapSetInfo>(set.ID)!;
+                    managed.OnlineID = -1;
+                    foreach (var map in managed.Beatmaps)
+                        map.OnlineID = -1;
+                });
+                var mapId = set.Beatmaps.First().ID;
+                Beatmap.Value = beatmapManager.GetWorkingBeatmap(beatmapManager.QueryBeatmap(b => b.ID == mapId)!);
+                if (successful)
+                    createCanonicalArchive(set, published, canonicalFilename);
+                leaderboard.SetState(LeaderboardState.BeatmapUnavailable);
+            });
+            AddUntilStep("only reload is initially offered", () => unavailableButtons().Length, () => Is.EqualTo(1));
+            AddStep("reload map metadata", () => unavailableButtons().Single().TriggerClick());
+            AddUntilStep("upload appears alongside reload", () => unavailableButtons().Length, () => Is.EqualTo(2));
+            AddStep("click upload to server", () => unavailableButtons().Last().TriggerClick());
+            AddUntilStep("legacy publication POST requested", () => upload != null);
+            AddAssert("no set or revision required for leaderboard upload", () => upload!.BeatmapSetID == null
+                && upload.BaseRevision == null && upload.SubmissionTarget == null);
+            if (successful)
+            {
+                AddUntilStep("canonical server archive requested", () => downloaded);
+                AddUntilStep("canonical files imported and selected", () => Beatmap.Value.BeatmapInfo.OnlineID >= 2_000_000_000
+                    && Beatmap.Value.BeatmapSetInfo.OnlineID == published.OnlineID
+                    && Beatmap.Value.BeatmapInfo.MD5Hash == published.Beatmaps.Single(b => b.OnlineID == Beatmap.Value.BeatmapInfo.OnlineID).MD5Hash);
+            }
+            AddStep("remove own temporary archive", () => File.Delete(canonicalFilename));
+        }
+
+        private void createCanonicalArchive(BeatmapSetInfo set, APIBeatmapSet published, string filename)
+        {
+            using var exported = new MemoryStream();
+            Realm.Run(r => new LegacyBeatmapExporter(LocalStorage).ExportToStream(r.Find<BeatmapSetInfo>(set.ID)!, exported, null));
+            exported.Position = 0;
+            using var input = new ZipArchive(exported, ZipArchiveMode.Read);
+            using var output = new ZipArchive(File.Create(filename), ZipArchiveMode.Create);
+            int id = 2_000_000_000;
+            foreach (var entry in input.Entries)
+            {
+                using var source = entry.Open();
+                using var target = output.CreateEntry(entry.FullName).Open();
+                if (!entry.FullName.EndsWith(".osu", StringComparison.OrdinalIgnoreCase))
+                {
+                    source.CopyTo(target);
+                    continue;
+                }
+                using var reader = new StreamReader(source);
+                string text = reader.ReadToEnd();
+                int mapId = id++;
+                text = Regex.Replace(text, @"(?m)^BeatmapID:[^\r\n]*", $"BeatmapID:{mapId}");
+                text = Regex.Replace(text, @"(?m)^BeatmapSetID:[^\r\n]*", $"BeatmapSetID:{published.OnlineID}");
+                byte[] bytes = new UTF8Encoding(false).GetBytes(text);
+                target.Write(bytes);
+                string difficulty = Regex.Match(text, @"(?m)^Version:([^\r\n]*)").Groups[1].Value;
+                int mode = int.Parse(Regex.Match(text, @"(?m)^Mode:[ \t]*([0-3])").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+                published.Beatmaps = published.Beatmaps.Append(new APIBeatmap
+                {
+                    OnlineID = mapId, DifficultyName = difficulty, RulesetID = mode,
+                    Checksum = Convert.ToHexString(System.Security.Cryptography.MD5.HashData(bytes)).ToLowerInvariant(),
+                    Status = BeatmapOnlineStatus.Loved, BeatmapSet = published,
+                }).ToArray();
+            }
+        }
+
+        private OsuAnimatedButton[] unavailableButtons() => leaderboard.ChildrenOfType<Placeholder>()
+            .SelectMany(p => p.ChildrenOfType<OsuAnimatedButton>()).ToArray();
+
         [Test]
         public void TestPersonalBest()
         {
             AddStep(@"Show personal best", showPersonalBest);
+            AddUntilStep("personal best loaded asynchronously", () => leaderboard.ChildrenOfType<BeatmapLeaderboardScore>().Count(), () => Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void TestRapidPersonalBestReplacement()
+        {
+            AddStep("queue personal best then replace scores", () =>
+            {
+                showPersonalBest();
+                leaderboard.SetScores(Array.Empty<ScoreInfo>());
+            });
+            AddWaitStep("allow cancelled load to settle", 5);
+            AddAssert("no stale personal best card", () => leaderboard.ChildrenOfType<BeatmapLeaderboardScore>().Count(), () => Is.Zero);
         }
 
         [Test]
@@ -214,6 +346,42 @@ namespace osu.Game.Tests.Visual.SongSelect
 
             clearScores();
             checkDisplayedCount(0);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestManagedLocalCriteria(bool recycleBeforeQuery)
+        {
+            BeatmapInfo info = null!;
+            setScope(BeatmapLeaderboardScope.Local);
+            AddStep("import map", () =>
+            {
+                beatmapManager.Import(TestResources.GetQuickTestBeatmapForImport()).WaitSafely();
+                info = beatmapManager.GetAllUsableBeatmapSets().SelectMany(s => s.Beatmaps).First(b => b.Ruleset.OnlineID == 0);
+                Beatmap.Value = beatmapManager.GetWorkingBeatmap(info);
+            });
+            clearScores();
+            importMoreScores(() => info);
+            checkDisplayedCount(10);
+            AddStep("query using Update-owned models", () => Realm.Run(r =>
+            {
+                var managed = r.Find<BeatmapInfo>(info.ID)!;
+                Assert.That(managed.IsManaged, Is.True);
+                var criteria = new LeaderboardCriteria(managed, managed.Ruleset, BeatmapLeaderboardScope.Local, null);
+                var query = LeaderboardManager.LocalScoreQuery.FromCriteria(criteria);
+                Assert.That(LeaderboardManager.readLocalScores(r, query), Has.Length.EqualTo(10), $"{query}");
+                leaderboardManager.FetchWithCriteria(criteria, true);
+            }));
+            if (recycleBeforeQuery)
+                AddStep("recycle with snapshot queued", () =>
+                {
+                    using (Realm.BlockAllOperations("leaderboard managed criteria recycle")) { }
+                });
+            AddAssert("local criteria retained", () => leaderboardManager.CurrentCriteria?.Scope == BeatmapLeaderboardScope.Local);
+            AddUntilStep("detached snapshot returned", () => leaderboardManager.Scores.Value?.TopScores.Count, () => Is.EqualTo(10));
+            AddAssert("successful local query", () => leaderboardManager.Scores.Value?.FailState == null);
+            clearScores();
+            AddUntilStep("subscribed deletion updates snapshot", () => leaderboardManager.Scores.Value?.TopScores.Count, () => Is.Zero);
         }
 
         [TestCase(false)]

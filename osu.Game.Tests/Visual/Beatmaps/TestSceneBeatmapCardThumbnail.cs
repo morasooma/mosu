@@ -28,17 +28,30 @@ namespace osu.Game.Tests.Visual.Beatmaps
         public void TestThumbnailPreview()
         {
             BeatmapCardThumbnail thumbnail = null;
+            osu.Game.Tests.Visual.Components.TestScenePreviewTrackManager.TestPreviewTrackManager tracks = null;
 
             AddStep("create thumbnail", () =>
             {
+                // Exercise the actual PlayButton without depending on an online
+                // asset or making sound on the developer's machine.
+                tracks = new osu.Game.Tests.Visual.Components.TestScenePreviewTrackManager.TestPreviewTrackManager(new osu.Framework.Audio.AudioAdjustments());
                 var beatmapSet = CreateAPIBeatmapSet(Ruleset.Value);
                 beatmapSet.OnlineID = 241526; // ID hardcoded to ensure that the preview track exists online.
 
-                Child = thumbnail = new BeatmapCardThumbnail(beatmapSet, beatmapSet)
+                Child = new DependencyProvidingContainer
                 {
-                    Anchor = Anchor.Centre,
-                    Origin = Anchor.Centre,
-                    Size = new Vector2(200)
+                    RelativeSizeAxes = Axes.Both,
+                    CachedDependencies = new (System.Type, object)[] { (typeof(osu.Game.Audio.PreviewTrackManager), tracks) },
+                    Children = new Drawable[]
+                    {
+                        tracks,
+                        thumbnail = new BeatmapCardThumbnail(beatmapSet, beatmapSet)
+                        {
+                            Anchor = Anchor.Centre,
+                            Origin = Anchor.Centre,
+                            Size = new Vector2(200)
+                        }
+                    }
                 };
             });
             AddStep("enable dim", () => thumbnail.Dimmed.Value = true);
@@ -73,9 +86,16 @@ namespace osu.Game.Tests.Visual.Beatmaps
             AddAssert("button still visible", () => playButton.Alpha == 1);
 
             // The track plays in real-time, so we need to check for progress in increments to avoid timeout.
+            AddStep("seek virtual preview to 30%", () => ((osu.Game.Tests.Visual.Components.TestScenePreviewTrackManager.TestPreviewTrackManager.TestPreviewTrack)
+                tracks.CurrentTrack).Track.Seek(30000));
             AddUntilStep("progress > 0.25", () => thumbnail.ChildrenOfType<PlayButton>().Single().Progress.Value > 0.25);
+            AddStep("seek virtual preview to 60%", () => ((osu.Game.Tests.Visual.Components.TestScenePreviewTrackManager.TestPreviewTrackManager.TestPreviewTrack)
+                tracks.CurrentTrack).Track.Seek(60000));
             AddUntilStep("progress > 0.5", () => thumbnail.ChildrenOfType<PlayButton>().Single().Progress.Value > 0.5);
+            AddStep("seek virtual preview to 90%", () => ((osu.Game.Tests.Visual.Components.TestScenePreviewTrackManager.TestPreviewTrackManager.TestPreviewTrack)
+                tracks.CurrentTrack).Track.Seek(90000));
             AddUntilStep("progress > 0.75", () => thumbnail.ChildrenOfType<PlayButton>().Single().Progress.Value > 0.75);
+            AddStep("finish virtual preview", () => tracks.CurrentTrack.Stop());
 
             AddUntilStep("wait for track to end", () => !playButton.Playing.Value);
             AddUntilStep("button hidden", () => playButton.Alpha == 0);

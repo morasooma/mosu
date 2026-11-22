@@ -8,6 +8,7 @@ using System.Linq;
 using osu.Framework.Localisation;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Objects.Types;
+using osu.Game.Rulesets.Objects.Drawables;
 using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.Objects.Drawables;
 using osu.Game.Rulesets.Osu.Replays;
@@ -21,7 +22,7 @@ namespace osu.Game.Rulesets.Osu.Mods
 {
     public class OsuModRelax : ModRelax, IUpdatableByPlayfield, IApplicableToDrawableRuleset<OsuHitObject>, IApplicableToPlayer, IHasNoTimedInputs
     {
-        public override LocalisableString Description => @"You don't need to click. Give your clicking/tapping fingers a break from the heat of things.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3727;
 
         public override bool Ranked => true;
 
@@ -46,6 +47,7 @@ namespace osu.Game.Rulesets.Osu.Mods
 
         private bool hasReplay;
         private bool legacyReplay;
+        private readonly List<DrawableHitObject> aliveObjects = new List<DrawableHitObject>();
 
         public void ApplyToDrawableRuleset(DrawableRuleset<OsuHitObject> drawableRuleset)
         {
@@ -90,8 +92,11 @@ namespace osu.Game.Rulesets.Osu.Mods
 
             double time = playfield.Clock.CurrentTime;
 
-            foreach (var h in playfield.HitObjectContainer.AliveObjects.OfType<DrawableOsuHitObject>())
+            playfield.HitObjectContainer.CopyAliveObjectsTo(aliveObjects);
+            for (int i = 0; i < aliveObjects.Count; i++)
             {
+                if (aliveObjects[i] is not DrawableOsuHitObject h)
+                    continue;
                 // we are not yet close enough to the object.
                 if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol
                     ? time <= h.HitObject.StartTime - RELAX_LENIENCY
@@ -121,6 +126,9 @@ namespace osu.Game.Rulesets.Osu.Mods
                         break;
                 }
             }
+
+            // Do not retain pooled drawables beyond this update.
+            aliveObjects.Clear();
 
             if (requiresHit)
             {

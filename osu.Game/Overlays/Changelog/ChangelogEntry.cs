@@ -147,7 +147,7 @@ namespace osu.Game.Overlays.Changelog
 
         private void addGithubAuthorReference(LinkFlowContainer title, Color4 entryColour)
         {
-            title.AddText("by ", t =>
+            title.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3904, t =>
             {
                 t.Font = fontMedium;
                 t.Colour = entryColour;

@@ -1,0 +1,22 @@
+LAION CLAP Music — commercial-use-permitting model integration
+
+Original weights: laion/larger_clap_music
+https://huggingface.co/laion/larger_clap_music/tree/a0b4534a14f58e20944452dff00a22a06ce629d1
+Original publisher model-card licence: Apache-2.0.
+Authors: Yusong Wu, Ke Chen, Tianyu Zhang, Yuchen Hui, Taylor Berg-Kirkpatrick, Shlomo Dubnov, LAION and contributors.
+Paper: Large-scale Contrastive Language-Audio Pretraining with Feature Fusion and Keyword-to-Caption Augmentation (ICASSP 2023), https://arxiv.org/abs/2211.06687
+
+ONNX audio-only conversion: akashiclibrary-dev/larger_clap_music
+https://huggingface.co/akashiclibrary-dev/larger_clap_music/tree/81b7a6ed45111632f34135478cfb71617aec6a25
+Converter's model-card licence: Apache-2.0. Unchanged FP32 weights, audio/text towers split, no retraining.
+Audio ONNX SHA-256: 2ad6afdaddf2f38a72cc9ef737203baa23d60a6919b14f70b57e9bd7582be2d2
+Download size: 277439052 bytes. The client downloads only the audio tower, never the text tower.
+
+Mosu preprocessing follows Transformers CLAP's published 48 kHz / 1024 FFT / 480 hop / 64 Slaney mel / 50..14000 Hz settings.
+The included mel filter matrix is numerical preprocessing data, not learned model weights.
+Mosu changes: deterministic beginning/middle/end ten-second crops; average and L2-normalise 512-dimensional audio embeddings.
+No MERT graph, weights, derived centre or embeddings are used by this integration.
+Retain this notice and CLAP-Apache-2.0.txt when distributing the client/model.
+
+MathNet.Numerics 5.0.0 is used for FFT under the MIT licence; see MathNet-LICENSE.txt.
+These model licences do not grant rights to third-party music downloaded from mirrors.

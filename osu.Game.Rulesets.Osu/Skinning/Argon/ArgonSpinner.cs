@@ -67,7 +67,7 @@ namespace osu.Game.Rulesets.Osu.Skinning.Argon
                         {
                             Anchor = Anchor.TopCentre,
                             Origin = Anchor.TopCentre,
-                            Text = @"SPINS PER MINUTE",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5345,
                             Font = OsuFont.Default.With(size: 16, weight: FontWeight.SemiBold),
                             Y = 30
                         }
@@ -91,7 +91,7 @@ namespace osu.Game.Rulesets.Osu.Skinning.Argon
 
                 if (drawableSpinner.CurrentBonusScore == drawableSpinner.MaximumBonusScore)
                 {
-                    bonusCounter.Text = "MAX";
+                    bonusCounter.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5346;
                     bonusCounter.ScaleTo(1.5f).Then().ScaleTo(2.8f, 1000, Easing.OutQuint);
 
                     bonusCounter.FlashColour(Colour4.FromHex("FC618F"), 400);

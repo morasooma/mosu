@@ -133,7 +133,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                         title = new OsuSpriteText
                         {
                             Margin = new MarginPadding { Left = 24, Top = 18 },
-                            Text = "КАРТА МИРА",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4763,
                             Font = OsuFont.Default.With(size: 22, weight: FontWeight.Bold),
                             Colour = colours.Pink1,
                         },
@@ -166,7 +166,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                             Margin = new MarginPadding { Bottom = 16 },
                             Width = 240,
                             Height = 34,
-                            Text = "Закрыть (M)",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4764,
                             Action = Close,
                         },
                     },
@@ -182,11 +182,11 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
             reachable = Array.Empty<WarpPoint>();
             coins = null;
 
-            title.Text = "КАРТА МИРА";
-            closeButton.Text = "Закрыть (M)";
+            title.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4763;
+            closeButton.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4764;
             hint.Text = editing
-                ? "Перетащи комнату, чтобы задать её место на карте. Клик — открыть комнату. Не забудь сохранить мир."
-                : "Комнаты и переходы между ними. Перемещаться между комнатами можно варпами и проходами.";
+                ? global::osu.Game.Localisation.ClientTranslationStrings.J4765
+                : global::osu.Game.Localisation.ClientTranslationStrings.J4766;
 
             show(graph, currentRoomId, editing);
         }
@@ -194,8 +194,6 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
         /// <summary>
         /// Opens the map as the destination picker of a warp being stood on.
         /// </summary>
-        /// <param name="graph">The world graph.</param>
-        /// <param name="currentRoomId">The current room identifier.</param>
         /// <param name="reachableWarps">
         /// The warps this player has opened, minus the one they are standing on. Rooms holding none of
         /// them are drawn as context and cannot be travelled to.
@@ -208,13 +206,13 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
             reachable = reachableWarps;
             coins = balance;
 
-            title.Text = "СЕТЬ ВАРПОВ";
-            closeButton.Text = "Закрыть (E)";
+            title.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4754;
+            closeButton.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4767;
             hint.Text = reachableWarps.Count == 0
-                ? "Открытых варпов пока нет. Найди их в мире и открой на месте."
+                ? global::osu.Game.Localisation.ClientTranslationStrings.J4755
                 : balance == null
-                    ? "Выбери комнату с варпом. Баланс недоступен."
-                    : $"Выбери комнату с варпом. Монет: {balance.Value.ToString("N0", CultureInfo.CurrentCulture)}";
+                    ? global::osu.Game.Localisation.ClientTranslationStrings.J4768
+                    : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4769(balance.Value.ToString("N0", CultureInfo.CurrentCulture));
 
             show(graph, currentRoomId, editing: false);
         }
@@ -232,9 +230,9 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
             reachable = Array.Empty<WarpPoint>();
             coins = null;
 
-            title.Text = "КУДА ВЕДЁТ ПРОХОД";
-            closeButton.Text = "Отмена (M)";
-            hint.Text = $"Выбери комнату, в которую поведёт «{passageName}». Комната, в которой ты стоишь, тоже подходит.";
+            title.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4770;
+            closeButton.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4771;
+            hint.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4772(passageName);
 
             show(graph, currentRoomId, editing: false);
         }
@@ -253,9 +251,9 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
             reachable = Array.Empty<WarpPoint>();
             coins = null;
 
-            title.Text = "ОТКУДА СЮДА ПРИХОДЯТ";
-            closeButton.Text = "Отмена (M)";
-            hint.Text = $"Выбери комнату: все её проходы, ведущие в «{roomName}», будут выводить игрока в центр экрана.";
+            title.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4773;
+            closeButton.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4771;
+            hint.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4774(roomName);
 
             show(graph, currentRoomId, editing: false);
         }

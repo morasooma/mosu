@@ -49,16 +49,22 @@ namespace osu.Game.Graphics.UserInterface
         {
             set
             {
-                if (!value.Any())
+                // Own one snapshot: the callers often pass a deferred projection.
+                // Reusing it for normalization avoids enumerating that work for
+                // Any(), Max(), and Select(), and never mutates a caller's array.
+                float[] lengths = value.ToArray();
+                if (lengths.Length == 0)
                 {
                     bars.Clear();
                     Invalidate(Invalidation.DrawNode);
                     return;
                 }
 
-                float maxLength = MaxValue ?? value.Max();
+                float maxLength = MaxValue ?? lengths.Max();
+                for (int i = 0; i < lengths.Length; i++)
+                    lengths[i] = maxLength == 0 ? 0 : Math.Max(0f, lengths[i] / maxLength);
 
-                bars.SetLengths(value.Select(v => maxLength == 0 ? 0 : Math.Max(0f, v / maxLength)).ToArray());
+                bars.SetLengths(lengths);
 
                 animationStartTime = Clock.CurrentTime;
                 animationComplete = false;

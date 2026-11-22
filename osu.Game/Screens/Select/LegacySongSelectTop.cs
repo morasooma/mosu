@@ -68,8 +68,8 @@ namespace osu.Game.Screens.Select
         private Bindable<GroupMode> groupBindable = null!;
         private Bindable<SortMode> sortBindable = null!;
 
-        // las capas de la textura songselect-top (el default + la propia del skin). se rearman al
-        // cambiar de skin asi el panel se actualiza al toque en vez de mostrar el top del skin viejo hasta que salis.
+        // Rebuild on source changes without placing a default panel beneath the
+        // custom texture's deliberately transparent regions.
         private readonly List<Drawable> topLayers = new List<Drawable>();
 
         [BackgroundDependencyLoader]
@@ -99,7 +99,7 @@ namespace osu.Game.Screens.Select
                 // label Group + dropdown (stable: x = WidthScaled-140-118-sortLabelWidth). todo el
                 // cluster de la derecha tiene que entrar arriba del contorno azul del panel (~y78), asi
                 // que los dropdowns van bien arriba y los tabs se meten justo abajo.
-                label(@"Group", group_colour, x: -481),
+                label(global::osu.Game.Localisation.ClientTranslationStrings.J5170, group_colour, x: -481),
                 groupDropdown = new LegacyStableDropdown<GroupMode>
                 {
                     Anchor = Anchor.TopRight,
@@ -113,7 +113,7 @@ namespace osu.Game.Screens.Select
                     Current = { BindTarget = groupBindable },
                 },
                 // label Sort + dropdown (stable: x = WidthScaled-130).
-                label(@"Sort", sort_colour, x: -212),
+                label(global::osu.Game.Localisation.ClientTranslationStrings.J5171, sort_colour, x: -212),
                 sortDropdown = new LegacyStableDropdown<SortMode>
                 {
                     Anchor = Anchor.TopRight,
@@ -159,11 +159,8 @@ namespace osu.Game.Screens.Select
         }
 
         /// <summary>
-        /// rearma las dos capas apiladas del songselect-top, como stable:
-        ///   (atras) el top classic "default" bundleado, siempre; su panel opaco a la izquierda banca la
-        ///           info del beatmap asi se lee aunque el top propio del skin sea transparente ahi.
-        ///   (medio) el songselect-top PROPIO del skin, solo si trae uno (muchos skins no traen).
-        /// con su Depth mas alto quedan detras de la decoracion (Depth 2) y del chrome.
+        /// Uses the current skin source, falling back to classic only when the asset is absent.
+        /// Transparent custom artwork must not reveal an additional default top underneath.
         /// </summary>
         private void rebuildTopLayers()
         {
@@ -177,13 +174,10 @@ namespace osu.Game.Screens.Select
 
             // Stable keeps the asset in native skin coordinates. A 4:3 viewport samples the
             // first 1024 pixels, while wider viewports extend the texture's right edge.
-            var bundledTop = skins.DefaultClassicSkin.GetTexture(@"songselect-top", WrapMode.ClampToEdge, WrapMode.ClampToEdge);
-            var skinTop = skins.CurrentSkin.Value.GetTexture(@"songselect-top", WrapMode.ClampToEdge, WrapMode.ClampToEdge);
+            var texture = skin.GetTexture(@"songselect-top", WrapMode.ClampToEdge, WrapMode.ClampToEdge)
+                          ?? skins.DefaultClassicSkin.GetTexture(@"songselect-top", WrapMode.ClampToEdge, WrapMode.ClampToEdge);
 
-            topLayers.Add(topLayer(bundledTop, depth: 4));
-
-            if (skinTop != null && skins.CurrentSkin.Value != skins.DefaultClassicSkin)
-                topLayers.Add(topLayer(skinTop, depth: 3));
+            topLayers.Add(topLayer(texture, depth: 3));
 
             AddRangeInternal(topLayers);
         }
@@ -197,9 +191,9 @@ namespace osu.Game.Screens.Select
         }
 
         /// <summary>
-        /// una capa de textura songselect-top: full-width a su aspecto natural (pegada arriba), recortada
-        /// a la franja de 155px de stable asi una textura de skin alta/opaca no tapa la banda de controles.
-        /// mas <paramref name="depth"/> = mas atras, asi el backing default queda detras del propio del skin.
+        /// Draws songselect-top in native skin coordinates, clipped to stable's 155px
+        /// top band so oversized artwork cannot cover the controls below it.
+        /// Larger <paramref name="depth"/> values are behind other chrome.
         /// </summary>
         private Drawable topLayer(Texture? tex, float depth)
         {

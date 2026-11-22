@@ -55,7 +55,7 @@ namespace osu.Game.Online.API.Requests
             SourceBeatmapID = sourceBeatmapId;
         }
 
-        public static UploadServerBeatmapSetRequest CreateDodge(
+        public static UploadServerBeatmapSetRequest Create(
             byte[] beatmapArchive,
             string filename,
             BeatmapSubmissionTarget submissionTarget,
@@ -70,7 +70,7 @@ namespace osu.Game.Online.API.Requests
                 sourceBeatmapSetId,
                 sourceBeatmapId);
 
-        public static UploadServerBeatmapSetRequest UpdateDodge(
+        public static UploadServerBeatmapSetRequest Update(
             int beatmapSetId,
             int baseRevision,
             byte[] beatmapArchive,
@@ -86,6 +86,15 @@ namespace osu.Game.Online.API.Requests
                 submissionTarget,
                 sourceBeatmapSetId,
                 sourceBeatmapId);
+
+        // Preserve the existing Dodge factories for callers built against the original contract.
+        public static UploadServerBeatmapSetRequest CreateDodge(byte[] beatmapArchive, string filename,
+            BeatmapSubmissionTarget submissionTarget, int? sourceBeatmapSetId, int? sourceBeatmapId)
+            => Create(beatmapArchive, filename, submissionTarget, sourceBeatmapSetId, sourceBeatmapId);
+
+        public static UploadServerBeatmapSetRequest UpdateDodge(int beatmapSetId, int baseRevision, byte[] beatmapArchive,
+            string filename, BeatmapSubmissionTarget submissionTarget, int? sourceBeatmapSetId, int? sourceBeatmapId)
+            => Update(beatmapSetId, baseRevision, beatmapArchive, filename, submissionTarget, sourceBeatmapSetId, sourceBeatmapId);
 
         protected override WebRequest CreateWebRequest()
         {

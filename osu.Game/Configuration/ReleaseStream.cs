@@ -9,7 +9,7 @@ namespace osu.Game.Configuration
     {
         Lazer,
 
-        [Description("Dev Build")]
+        [Description("Dev Build"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3227))]
         DevBuild
     }
 }

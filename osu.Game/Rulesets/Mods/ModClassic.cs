@@ -15,7 +15,7 @@ namespace osu.Game.Rulesets.Mods
 
         public override IconUsage? Icon => OsuIcon.ModClassic;
 
-        public override LocalisableString Description => "Feeling nostalgic?";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4199;
 
         public override ModType Type => ModType.Conversion;
 

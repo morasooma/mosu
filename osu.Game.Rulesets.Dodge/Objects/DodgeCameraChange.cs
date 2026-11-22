@@ -9,6 +9,16 @@ using osuTK;
 
 namespace osu.Game.Rulesets.Dodge.Objects
 {
+    public enum DodgeCameraMode
+    {
+        [osu.Framework.Localisation.LocalisableDescription(typeof(Localisation.DodgeEditorStrings), nameof(Localisation.DodgeEditorStrings.CameraScrollMode))]
+        Scroll,
+        [osu.Framework.Localisation.LocalisableDescription(typeof(Localisation.DodgeEditorStrings), nameof(Localisation.DodgeEditorStrings.TriggerCameraFollow))]
+        FollowPlayer,
+        [osu.Framework.Localisation.LocalisableDescription(typeof(Localisation.DodgeEditorStrings), nameof(Localisation.DodgeEditorStrings.TriggerCameraFixed))]
+        Fixed,
+    }
+
     /// <summary>
     /// Scrolls the playfield contents to imitate field movement.
     /// The arrow from <see cref="Position"/> to <see cref="EndPosition"/> defines a vector:
@@ -19,7 +29,7 @@ namespace osu.Game.Rulesets.Dodge.Objects
     /// Offsets accumulate across changes. Live objects drift with the scroll from
     /// their own spawn time, so newly-spawned objects always appear where they were placed.
     /// </summary>
-    public class DodgeCameraChange : DodgeHitObject, IHasDuration, IHasPosition
+    public class DodgeCameraChange : DodgeHitObject, IHasDuration, IHasPosition, osu.Game.Rulesets.Edit.IEditorTimelineEndTimeAdjustable
     {
         public DodgeCameraChange()
         {
@@ -45,6 +55,8 @@ namespace osu.Game.Rulesets.Dodge.Objects
         /// </summary>
         public bool Continuous { get; set; }
 
+        public DodgeCameraMode Mode { get; set; }
+
         /// <summary>
         /// Controls how progress is distributed over <see cref="Duration"/> for a bounded change.
         /// This is ignored while <see cref="Continuous"/> is enabled.
@@ -63,7 +75,17 @@ namespace osu.Game.Rulesets.Dodge.Objects
             set => Position = new Vector2(X, value);
         }
 
-        public double Duration { get; set; }
+        private double duration;
+
+        public double Duration
+        {
+            get => Mode == DodgeCameraMode.Scroll ? duration : 0;
+            set => duration = double.IsFinite(value) ? System.Math.Max(0, value) : 0;
+        }
+
+        public bool CanAdjustEditorTimelineEndTime => Mode == DodgeCameraMode.Scroll;
+
+        public void SetEditorTimelineEndTime(double endTime) => Duration = endTime - StartTime;
 
         [JsonIgnore]
         public double EndTime

@@ -10,6 +10,7 @@ using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Pooling;
+using osu.Framework.Graphics.Sprites;
 using osu.Framework.Testing;
 using osu.Game.Configuration;
 using osu.Game.Rulesets.Judgements;
@@ -20,6 +21,7 @@ using osu.Game.Skinning;
 
 namespace osu.Game.Rulesets.Osu.Tests
 {
+    [HeadlessTest]
     public partial class TestSceneDrawableJudgement : OsuSkinnableTestScene
     {
         [Resolved]
@@ -61,6 +63,10 @@ namespace osu.Game.Rulesets.Osu.Tests
             AddUntilStep("judgements shown", () => activeJudgements().Any());
             AddAssert("hit lighting created", () => activeJudgements().Any(judgement => judgement.Lighting != null));
             AddAssert("hit lighting has transforms", () => activeJudgements().Any(judgement => judgement.Lighting?.Transforms.Any() == true));
+            AddAssert("Morasooma and Classic lighting retain the former gameplay footprint", () =>
+                CreatedDrawables.Where((_, index) => index is 3 or 5)
+                    .SelectMany(d => d.ChildrenOfType<TestDrawableOsuJudgement>())
+                    .All(j => j.Lighting?.Drawable is Sprite { Texture.Width: 184, Texture.Height: 184 }));
         }
 
         [Test]

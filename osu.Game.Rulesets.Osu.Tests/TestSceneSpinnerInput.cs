@@ -288,7 +288,28 @@ namespace osu.Game.Rulesets.Osu.Tests
             AddAssert($"spinner is {(shouldBeHit ? "hit" : "missed")}", () => judgementResults.Single(r => r.HitObject is Spinner).IsHit, () => Is.EqualTo(shouldBeHit));
         }
 
-        private void loadPlayer(List<ReplayFrame> frames)
+        [Test]
+        public void TestStableRelaxSpinner()
+        {
+            var frames = new List<ReplayFrame>();
+            for (double t = 0; t <= time_spinner_end + 100; t += 8)
+            {
+                double angle = t / 1000 * Math.PI * 12;
+                frames.Add(new OsuReplayFrame(t, new Vector2(centre_x + (float)Math.Cos(angle) * 100, centre_y + (float)Math.Sin(angle) * 100)));
+            }
+            AddStep("select relax", () => SelectedMods.Value = new Mod[] { new OsuModRelax() });
+            loadPlayer(frames, stableRelax: true);
+            AddUntilStep("wait for spinner", () => currentPlayer.ChildrenOfType<DrawableSpinner>().Any());
+            AddStep("enable stable spinner", () =>
+            {
+                var spinner = currentPlayer.ChildrenOfType<DrawableSpinner>().Single();
+                spinner.Result.StableState = new osu.Game.Rulesets.Osu.Scoring.StableSpinnerState(spinner.HitObject.Duration, 5);
+            });
+            AddUntilStep("wait for completion", () => currentPlayer.ScoreProcessor.HasCompleted.Value);
+            assertSpinnerHit(true);
+        }
+
+        private void loadPlayer(List<ReplayFrame> frames, bool stableRelax = false)
         {
             AddStep("load player", () =>
             {
@@ -310,7 +331,15 @@ namespace osu.Game.Rulesets.Osu.Tests
                     },
                 });
 
-                var p = new ScoreAccessibleReplayPlayer(new Score { Replay = new Replay { Frames = frames } });
+                var p = new ScoreAccessibleReplayPlayer(new Score
+                {
+                    Replay = new Replay { Frames = frames },
+                    ScoreInfo = new ScoreInfo
+                    {
+                        IsLegacyScore = stableRelax,
+                        Mods = stableRelax ? new Mod[] { new OsuModRelax() } : Array.Empty<Mod>(),
+                    },
+                });
 
                 p.OnLoadComplete += _ =>
                 {

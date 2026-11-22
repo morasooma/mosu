@@ -124,7 +124,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Participants
             if (!slot.IsEmpty && client.LocalUser?.Equals(slot.User) == true && !roomLocked)
             {
                 clickableContent.Action = changeTeam;
-                clickableContent.TooltipText = "Change team";
+                clickableContent.TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5004;
             }
             else
             {

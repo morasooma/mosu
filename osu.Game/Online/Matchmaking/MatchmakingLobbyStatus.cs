@@ -39,5 +39,8 @@ namespace osu.Game.Online.Matchmaking
 
         [Key(5)]
         public int RandomModsQueueCount { get; set; }
+
+        [Key(6)]
+        public RankedPlayActiveMatch[] ActiveMatches { get; set; } = [];
     }
 }

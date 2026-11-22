@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions;
+using osu.Framework.Logging;
 using osu.Game.Beatmaps;
 using osu.Game.Online.Multiplayer;
 using Realms;
@@ -24,6 +25,8 @@ namespace osu.Game.Database
         private IDisposable? realmSubscription;
 
         private OperationArgs? pendingOperation;
+        private readonly Dictionary<int, BeatmapSetInfo> pendingModifiedSets = new Dictionary<int, BeatmapSetInfo>();
+        private readonly Queue<(int[] Deleted, KeyValuePair<int, BeatmapSetInfo>[] Inserted, KeyValuePair<int, BeatmapSetInfo>[] Modified)> pendingChanges = new();
 
         [Resolved]
         private RealmAccess realm { get; set; } = null!;
@@ -44,6 +47,9 @@ namespace osu.Game.Database
         [Resolved(CanBeNull = true)]
         private OsuGame? game { get; set; }
 
+        [Resolved]
+        private BeatmapManager beatmapManager { get; set; } = null!;
+
         private const int stable_sets_per_frame = 25;
 
         private readonly List<BeatmapSetInfo> activeStableSets = new List<BeatmapSetInfo>();
@@ -57,16 +63,7 @@ namespace osu.Game.Database
         [BackgroundDependencyLoader]
         private void load()
         {
-            if (config.Get<bool>(osu.Game.Configuration.OsuSetting.ForkUseStableDirectoryDirectly))
-            {
-                var stableStorage = game?.GetStorageForStableInstall();
-                if (stableStorage != null)
-                {
-                    var result = new StableBeatmapProvider(rulesets).GetBeatmaps(stableStorage);
-                    StablePathManager.Replace(result.BeatmapPaths, result.AudioPaths, result.BeatmapSets);
-                    activeStableSets.AddRange(result.BeatmapSets);
-                }
-            }
+            beatmapManager.StableHistory.Changed += stableHistoryChanged;
 
             realmSubscription = realm.RegisterForNotifications(r => r.All<BeatmapSetInfo>().Where(s => !s.DeletePending && !s.Protected), beatmapSetsChanged);
 
@@ -78,6 +75,11 @@ namespace osu.Game.Database
                 if (config.Get<bool>(osu.Game.Configuration.OsuSetting.ForkUseStableDirectoryDirectly))
                     Schedule(reloadStableBeatmaps);
             });
+
+            // The local library and setting observers must be ready before touching the stable
+            // install. Slow/unavailable disks must not hold GetBeatmapSets() or prevent disabling
+            // stable access while a scan is still in flight.
+            Schedule(reloadStableBeatmaps);
         }
 
         private void reloadStableBeatmaps()
@@ -93,16 +95,21 @@ namespace osu.Game.Database
                 return;
             }
 
-            var stableStorage = game?.GetStorageForStableInstall();
-            if (stableStorage == null)
+            Task.Run(() =>
             {
-                beginStableReplacement(new StableBeatmapLoadResult([], new Dictionary<Guid, string>(), new Dictionary<Guid, string>()));
-                return;
-            }
-
-            Task.Run(() => new StableBeatmapProvider(rulesets).GetBeatmaps(stableStorage, cancellationToken), cancellationToken)
+                // Install discovery also performs filesystem/registry access. Keep it off Update,
+                // and check cancellation again if the OS call outlives a settings change.
+                var stableStorage = game?.GetStorageForStableInstall();
+                cancellationToken.ThrowIfCancellationRequested();
+                return stableStorage == null
+                    ? new StableBeatmapLoadResult([], new Dictionary<Guid, string>(), new Dictionary<Guid, string>())
+                    : new StableBeatmapProvider(rulesets).GetBeatmaps(stableStorage, cancellationToken);
+            }, cancellationToken)
                 .ContinueWith(task =>
                 {
+                    if (task.IsFaulted)
+                        Logger.Error(task.Exception!, "Failed to load stable beatmaps; the local library remains available.");
+
                     if (task.IsCompletedSuccessfully && !cancellationToken.IsCancellationRequested)
                     {
                         var result = task.GetResultSafely();
@@ -114,6 +121,25 @@ namespace osu.Game.Database
                     }
                 }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
+
+        private void stableHistoryChanged(Guid id) => Schedule(() =>
+        {
+            lock (detachedBeatmapSets)
+            {
+                int index = activeStableSets.FindIndex(s => s.Beatmaps.Any(b => b.ID == id));
+                if (index < 0)
+                    return;
+
+                // Publish a new model so carousel filtering observes the changed timestamp.
+                // Mutating the old item in place would make the old/new values compare equal.
+                var updated = RealmObjectCloner.Detach(activeStableSets[index]);
+                foreach (var beatmap in updated.Beatmaps)
+                    beatmapManager.StableHistory.Apply(beatmap);
+
+                activeStableSets[index] = updated;
+                detachedBeatmapSets[realmSetCount + index] = updated;
+            }
+        });
 
         private void beginStableReplacement(StableBeatmapLoadResult result)
         {
@@ -183,15 +209,37 @@ namespace osu.Game.Database
             }
 
 
-            // Queue one atomic snapshot per Realm notification. Applying individual index operations
-            // across multiple queued notifications is unsafe because all ChangeSet indices are relative
-            // to the collection state for their own notification.
-            // Only the newest complete snapshot matters. Replacing the pending snapshot also prevents
-            // multiple detached copies of a large library from accumulating between update frames.
-            Interlocked.Exchange(ref pendingOperation, new OperationArgs
+            // Realm indices describe successive collection versions. Preserve notification order
+            // and detach only changed sets, never the whole library for an import.
+            if (changes.Moves.Length == 0 && pendingOperation == null)
             {
-                BeatmapSets = sender.Detach(),
-            });
+                pendingChanges.Enqueue((changes.DeletedIndices.OrderDescending().ToArray(),
+                    changes.InsertedIndices.Order().Select(index => new KeyValuePair<int, BeatmapSetInfo>(index, sender[index].Detach())).ToArray(),
+                    changes.NewModifiedIndices.Select(index => new KeyValuePair<int, BeatmapSetInfo>(index, sender[index].Detach())).ToArray()));
+                Logger.Log($"MOSU_REALM_BEATMAP_CHANGE path=incremental inserted={changes.InsertedIndices.Length} deleted={changes.DeletedIndices.Length} modified={changes.NewModifiedIndices.Length}", LoggingTarget.Performance);
+                return;
+            }
+
+            pendingChanges.Clear();
+            // Playing a beatmap writes LastPlayed, which normally modifies just one set. Detaching
+            // every set (and rebuilding the entire carousel) for that single notification blocks
+            // Update during the first gameplay frame. Keep structural changes as full snapshots.
+            // The callback and Update() both run on the update thread; pending modifications are
+            // applied after a pending full snapshot, and a newer full snapshot supersedes them.
+            if (changes.InsertedIndices.Length == 0 && changes.DeletedIndices.Length == 0
+                && changes.Moves.Length == 0 && changes.NewModifiedIndices.Length is > 0 and <= 8)
+            {
+                foreach (int index in changes.NewModifiedIndices)
+                    pendingModifiedSets[index] = sender[index].Detach();
+
+                Logger.Log($"MOSU_REALM_BEATMAP_CHANGE path=partial modified={changes.NewModifiedIndices.Length}", LoggingTarget.Performance);
+                return;
+            }
+
+            Logger.Log($"MOSU_REALM_BEATMAP_CHANGE path=full inserted={changes.InsertedIndices.Length} "
+                       + $"deleted={changes.DeletedIndices.Length} modified={changes.NewModifiedIndices.Length}", LoggingTarget.Performance);
+            pendingOperation = new OperationArgs { BeatmapSets = sender.Detach() };
+            pendingModifiedSets.Clear();
         }
 
         protected override void Update()
@@ -206,19 +254,53 @@ namespace osu.Game.Database
 
             // Every operation is a complete Realm snapshot, so intermediate snapshots are stale as
             // soon as a newer one is available. Atomically consume only the latest snapshot.
-            var operation = Interlocked.Exchange(ref pendingOperation, null);
+            var operation = pendingOperation;
+            pendingOperation = null;
 
-            if (operation == null)
+            if (operation == null && pendingModifiedSets.Count == 0 && pendingChanges.Count == 0)
                 return;
 
             lock (detachedBeatmapSets)
             {
-                // Publish the full snapshot as one collection change. Inserting each set separately
-                // causes consumers such as BeatmapCarousel to enqueue one scheduler task per set
-                // (tens of thousands for large libraries). Replace only the Realm-owned prefix so
-                // directly loaded stable sets remain intact.
-                detachedBeatmapSets.ReplaceRange(0, realmSetCount, operation.BeatmapSets);
-                realmSetCount = operation.BeatmapSets.Count;
+                if (operation != null)
+                {
+                    // Publish structural changes as one collection change, preserving stable sets.
+                    detachedBeatmapSets.ReplaceRange(0, realmSetCount, operation.BeatmapSets);
+                    realmSetCount = operation.BeatmapSets.Count;
+                }
+
+                while (pendingChanges.TryDequeue(out var change))
+                {
+                    foreach (int index in change.Deleted)
+                    {
+                        detachedBeatmapSets.RemoveAt(index);
+                        realmSetCount--;
+                    }
+
+                    foreach (var pair in change.Inserted)
+                    {
+                        detachedBeatmapSets.Insert(pair.Key, pair.Value);
+                        realmSetCount++;
+                    }
+
+                    foreach (var pair in change.Modified)
+                        detachedBeatmapSets[pair.Key] = pair.Value;
+                }
+
+                // Check the whole batch before applying any updates. A preceding structural change
+                // must not leave a partially updated source if indices no longer match.
+                if (pendingModifiedSets.Any(pair => (uint)pair.Key >= (uint)realmSetCount || detachedBeatmapSets[pair.Key].ID != pair.Value.ID))
+                {
+                    pendingOperation = new OperationArgs { BeatmapSets = realm.Realm.All<BeatmapSetInfo>()
+                        .Where(s => !s.DeletePending && !s.Protected).Detach() };
+                }
+                else
+                {
+                    foreach (var (index, updated) in pendingModifiedSets)
+                        detachedBeatmapSets[index] = updated;
+                }
+
+                pendingModifiedSets.Clear();
             }
         }
 
@@ -252,7 +334,11 @@ namespace osu.Game.Database
 
                 int insertionIndex = realmSetCount + activeStableSets.Count;
                 foreach (var set in batch)
+                {
+                    foreach (var beatmap in set.Beatmaps)
+                        beatmapManager.StableHistory.Apply(beatmap);
                     detachedBeatmapSets.Insert(insertionIndex++, set);
+                }
 
                 activeStableSets.AddRange(batch);
             }
@@ -266,11 +352,18 @@ namespace osu.Game.Database
 
         protected override void Dispose(bool isDisposing)
         {
+            // Drawable.Dispose() may be called again during shutdown. The base implementation
+            // guards its own cleanup, but does not prevent this override from running again.
+            if (IsDisposed)
+                return;
+
             base.Dispose(isDisposing);
 
             loaded.Set();
             loaded.Dispose();
             realmSubscription?.Dispose();
+            if (beatmapManager != null)
+                beatmapManager.StableHistory.Changed -= stableHistoryChanged;
             stableReloadCancellation?.Cancel();
             stableReloadCancellation?.Dispose();
         }

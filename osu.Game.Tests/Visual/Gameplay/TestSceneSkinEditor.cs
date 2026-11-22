@@ -12,6 +12,7 @@ using osu.Framework.Extensions;
 using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input;
 using osu.Framework.Testing;
@@ -23,6 +24,7 @@ using osu.Game.Overlays.SkinEditor;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Screens.Edit;
+using osu.Game.Screens.Edit.Components;
 using osu.Game.Screens.Play.HUD;
 using osu.Game.Skinning;
 using osu.Game.Skinning.Components;
@@ -302,6 +304,189 @@ namespace osu.Game.Tests.Visual.Gameplay
             AddAssert("Ensure components are now back-most in original order", () => targetContainer.Components.Take(3).ToArray(), () => Is.EqualTo(originalOrder));
             AddStep("Send to back again", () => skinEditor.SendSelectionToBack());
             AddAssert("Ensure components are still back-most in original order", () => targetContainer.Components.Take(3).ToArray(), () => Is.EqualTo(originalOrder));
+        }
+
+        [Test]
+        public void TestBeatmapDifficultyPlacementAndReload()
+        {
+            AddAssert("not inserted into default HUD", () => !globalHUDTarget.Components.OfType<BeatmapDifficultyDisplay>().Any());
+            AddUntilStep("difficulty pill in Morasooma toolbox", () => skinEditor.ChildrenOfType<SkinComponentToolbox>()
+                .Any(t => t.MorasoomaOnly && t.ChildrenOfType<BeatmapDifficultyDisplay>().Any()));
+            AddStep("place difficulty pill", () => skinEditor.ChildrenOfType<SkinComponentToolbox.ToolboxComponentButton>()
+                .Single(b => b.ChildrenOfType<BeatmapDifficultyDisplay>().Any()).RequestPlacement?.Invoke(typeof(BeatmapDifficultyDisplay)));
+            AddUntilStep("pill selected", () => skinEditor.SelectedComponents.OfType<BeatmapDifficultyDisplay>().Any());
+            AddStep("save skin", () => skinEditor.Save());
+            AddStep("reload HUD", () => globalHUDTarget.Reload());
+            AddUntilStep("pill restored", () => globalHUDTarget.ComponentsLoaded && globalHUDTarget.Components.OfType<BeatmapDifficultyDisplay>().Count() == 1);
+        }
+
+        [Test]
+        public void TestScrollingKeyCounterPlacementAndReload()
+        {
+            ScrollingKeyCounterDisplay placed = null!;
+
+            AddAssert("not added to the default layout", () => !globalHUDTarget.Components.OfType<ScrollingKeyCounterDisplay>().Any());
+            AddUntilStep("scrolling counter available in toolbox", () => skinEditor.ChildrenOfType<SkinComponentToolbox.ToolboxComponentButton>()
+                .Any(b => b.ChildrenOfType<ScrollingKeyCounterDisplay>().Any()));
+            AddStep("choose scrolling counter from toolbox", () =>
+            {
+                var button = skinEditor.ChildrenOfType<SkinComponentToolbox.ToolboxComponentButton>()
+                                       .Single(b => b.ChildrenOfType<ScrollingKeyCounterDisplay>().Any());
+                button.RequestPlacement?.Invoke(typeof(ScrollingKeyCounterDisplay));
+            });
+            AddUntilStep("new component selected", () => skinEditor.SelectedComponents.OfType<ScrollingKeyCounterDisplay>().Any());
+            AddStep("keep placed counter", () => placed = skinEditor.SelectedComponents.OfType<ScrollingKeyCounterDisplay>().Single());
+            AddUntilStep("gameplay keys loaded", () => placed.ChildrenOfType<ScrollingKeyCounter>().Any());
+            AddUntilStep("vertical resize handle enabled", () => skinEditor.ChildrenOfType<SkinSelectionScaleHandler>().Single().CanScaleY.Value);
+            AddStep("stretch vertically with editor handle", () =>
+            {
+                var handler = skinEditor.ChildrenOfType<SkinSelectionScaleHandler>().Single();
+                handler.Begin();
+                handler.Update(new Vector2(1, 2), adjustAxis: Axes.Y);
+                handler.Commit();
+                placed.ScrollSpeed.Value = 180;
+            });
+            AddAssert("editor handle changes height only", () => placed.Height == 450 && placed.Scale == Vector2.One);
+            AddAssert("speed included in settings", () => placed.CreateSerialisedInfo().Settings.ContainsKey("scroll_speed"));
+            AddStep("save skin", () => skinEditor.Save());
+            AddStep("reload layout", () => globalHUDTarget.Reload());
+            AddUntilStep("layout reloaded", () => globalHUDTarget.ComponentsLoaded);
+            AddAssert("scrolling counter restored", () => globalHUDTarget.Components.OfType<ScrollingKeyCounterDisplay>().Count(), () => Is.EqualTo(1));
+            AddUntilStep("restored gameplay keys loaded", () => globalHUDTarget.Components.OfType<ScrollingKeyCounterDisplay>().Single()
+                .ChildrenOfType<ScrollingKeyCounter>().Any());
+            AddAssert("height and speed survive skin save", () =>
+            {
+                var restored = globalHUDTarget.Components.OfType<ScrollingKeyCounterDisplay>().Single();
+                return restored.Height == 450 && restored.ScrollSpeed.Value == 180;
+            });
+        }
+
+        [Test]
+        public void TestPerComponentFontSaveAndReload()
+        {
+            ArgonScoreCounter score = null!;
+            AddStep("add score counter", () =>
+            {
+                globalHUDTarget.Add(score = new ArgonScoreCounter());
+                skinEditor.SelectedComponents.Clear();
+                skinEditor.SelectedComponents.Add(score);
+            });
+            AddUntilStep("font control present", () => skinEditor.ChildrenOfType<SkinSettingsToolbox>()
+                .Any(s => s.Component == score && s.FontControl != null));
+            AddStep("choose font in editor", () => skinEditor.ChildrenOfType<SkinSettingsToolbox>()
+                .Single(s => s.Component == score).FontControl!.Current.Value = "Inter");
+            AddUntilStep("all numeric glyphs use selected font", () => score.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>()
+                .Any() && score.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().All(t => t.Font.Family == "Inter"));
+            AddStep("save font", () => skinEditor.Save());
+            AddStep("read separate font file", () =>
+            {
+                var saved = skins.CurrentSkinInfo.Value.PerformRead(s => skins.GetSkin(s));
+                Assert.That(saved.CustomFontInfo.Overrides.Any(o => o.FontFamily == "Inter"), Is.True);
+            });
+            AddStep("reload layout", () => globalHUDTarget.Reload());
+            AddUntilStep("counter restored", () => globalHUDTarget.ComponentsLoaded && globalHUDTarget.Components.OfType<ArgonScoreCounter>()
+                .Any(c => SkinComponentFont.For(c).Family.Value == "Inter"));
+            AddUntilStep("restored counter renders selected font", () => globalHUDTarget.Components.OfType<ArgonScoreCounter>()
+                .First(c => SkinComponentFont.For(c).Family.Value == "Inter").ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().All(t => t.Font.Family == "Inter"));
+        }
+
+        [Test]
+        public void TestPerElementCornerRadiusSaveAndReload()
+        {
+            BlurredBeatmapBackground panel = null!;
+            ArgonWedgePiece wedge = null!;
+            TextElement text = null!;
+            AddStep("add rounded components", () =>
+            {
+                globalHUDTarget.Add(panel = new BlurredBeatmapBackground());
+                globalHUDTarget.Add(wedge = new ArgonWedgePiece());
+                globalHUDTarget.Add(text = new TextElement());
+                skinEditor.SelectedComponents.Clear();
+                skinEditor.SelectedComponents.Add(panel);
+            });
+            AddUntilStep("corner radius slider present", () => skinEditor.ChildrenOfType<SkinSettingsToolbox>()
+                .Any(s => s.Component == panel && s.CornerRadiusControl != null));
+            AddStep("change radius through editor control", () => skinEditor.ChildrenOfType<SkinSettingsToolbox>()
+                .Single(s => s.Component == panel).CornerRadiusControl!.Current.Value = 28);
+            AddAssert("panel rounding applied", () => panel.CornerRadius, () => Is.EqualTo(28));
+            AddStep("set independent radii", () =>
+            {
+                SkinComponentGeometry.For(wedge).Radius.Value = 0;
+                SkinComponentGeometry.For(text).Radius.Value = 12;
+            });
+            AddAssert("wedge now square", () => wedge.CornerRadius, () => Is.Zero);
+            AddAssert("text layout is not given an unrelated outer mask", () => !text.Masking);
+            AddStep("undo radius with snapshot", () =>
+            {
+                using var original = new BlurredBeatmapBackground();
+                panel.ApplySerialisedInfo(original.CreateSerialisedInfo());
+            });
+            AddAssert("original rounding restored", () => panel.CornerRadius, () => Is.EqualTo(8));
+            AddStep("set radius again and save", () =>
+            {
+                SkinComponentGeometry.For(panel).Radius.Value = 28;
+                skinEditor.Save();
+            });
+            AddAssert("fork geometry stored separately", () => skins.CurrentSkin.Value.MosuSettings.ComponentGeometry.Any(o => o.Radius == 28));
+            AddStep("read saved skin files from storage", () =>
+            {
+                var savedSkin = skins.CurrentSkinInfo.Value.PerformRead(s => skins.GetSkin(s));
+                Assert.That(savedSkin.MosuSettings.ComponentGeometry.Any(o => o.Radius == 28), Is.True);
+                Assert.That(savedSkin.MosuSettings.ComponentGeometry.Any(o => o.Radius == 0), Is.True);
+            });
+            AddStep("reload saved geometry", () => globalHUDTarget.Reload());
+            AddUntilStep("rounded panel loaded", () => globalHUDTarget.ComponentsLoaded && globalHUDTarget.Components.OfType<BlurredBeatmapBackground>().Any());
+            AddAssert("panel radius restored", () => globalHUDTarget.Components.OfType<BlurredBeatmapBackground>().Single().CornerRadius, () => Is.EqualTo(28));
+            AddAssert("square wedge restored", () => globalHUDTarget.Components.OfType<ArgonWedgePiece>().Last().CornerRadius, () => Is.Zero);
+        }
+
+        [Test]
+        public void TestMorasoomaComponentsSection()
+        {
+            AddUntilStep("native components loaded", () => skinEditor.ChildrenOfType<SkinComponentToolbox>()
+                .Any(t => t.MorasoomaOnly && t.ChildrenOfType<BlurredBeatmapBackground>().Any()));
+            AddAssert("native section is first toolbox", () => skinEditor.ChildrenOfType<SkinComponentToolbox>().First().MorasoomaOnly);
+            AddAssert("native section follows working layer", () =>
+            {
+                var firstToolbox = skinEditor.ChildrenOfType<SkinComponentToolbox>().First();
+                return ((FillFlowContainer<EditorSidebarSection>)firstToolbox.Parent!).Children.First() is EditorSidebarSection and not SkinComponentToolbox;
+            });
+            AddAssert("no native components in standard toolbox", () => skinEditor.ChildrenOfType<SkinComponentToolbox>()
+                .Where(t => !t.MorasoomaOnly).All(t => !t.ChildrenOfType<BlurredBeatmapBackground>().Any()
+                    && !t.ChildrenOfType<ScrollingKeyCounterDisplay>().Any()));
+            AddAssert("only native components in native toolbox", () => skinEditor.ChildrenOfType<SkinComponentToolbox>()
+                .Where(t => t.MorasoomaOnly).All(t => !t.ChildrenOfType<ArgonAccuracyCounter>().Any()));
+        }
+
+        [Test]
+        public void TestBlurredBeatmapBackgroundPlacementAndReload()
+        {
+            BlurredBeatmapBackground placed = null!;
+
+            AddAssert("background not in default layout", () => !globalHUDTarget.Components.OfType<BlurredBeatmapBackground>().Any());
+            AddUntilStep("blurred background available in toolbox", () => skinEditor.ChildrenOfType<SkinComponentToolbox.ToolboxComponentButton>()
+                .Any(b => b.ChildrenOfType<BlurredBeatmapBackground>().Any()));
+            AddStep("choose blurred background", () =>
+            {
+                var button = skinEditor.ChildrenOfType<SkinComponentToolbox.ToolboxComponentButton>()
+                                       .Single(b => b.ChildrenOfType<BlurredBeatmapBackground>().Any());
+                button.RequestPlacement?.Invoke(typeof(BlurredBeatmapBackground));
+            });
+            AddUntilStep("background selected", () => skinEditor.SelectedComponents.OfType<BlurredBeatmapBackground>().Any());
+            AddStep("resize background and send behind HUD", () =>
+            {
+                placed = skinEditor.SelectedComponents.OfType<BlurredBeatmapBackground>().Single();
+                placed.Size = new Vector2(520, 130);
+                skinEditor.SendSelectionToBack();
+            });
+            AddAssert("background behind other elements", () => globalHUDTarget.Components.First(), () => Is.SameAs(placed));
+            AddAssert("no new settings", () => placed.CreateSerialisedInfo().Settings, () => Is.Empty);
+            AddUntilStep("samples actual player background", () => placed.HasBackground);
+            AddStep("save skin with background", () => skinEditor.Save());
+            AddStep("reload saved layout", () => globalHUDTarget.Reload());
+            AddUntilStep("saved background loaded", () => globalHUDTarget.ComponentsLoaded && globalHUDTarget.Components.OfType<BlurredBeatmapBackground>().Any());
+            AddAssert("background size restored", () => globalHUDTarget.Components.OfType<BlurredBeatmapBackground>().Single().Size, () => Is.EqualTo(new Vector2(520, 130)));
+            AddAssert("background layer order restored", () => globalHUDTarget.Components.First(), () => Is.TypeOf<BlurredBeatmapBackground>());
         }
 
         [Test]

@@ -96,6 +96,9 @@ namespace osu.Game.Overlays.Chat
         [Resolved]
         private IDialogOverlay? dialogOverlay { get; set; }
 
+        [Resolved]
+        private osu.Game.Online.Metadata.MetadataClient metadata { get; set; } = null!;
+
         private readonly APIUser user;
         private readonly OsuSpriteText drawableText;
 
@@ -201,7 +204,7 @@ namespace osu.Game.Overlays.Chat
 
                     items.Add(new OsuMenuItem(ContextMenuStrings.SpectatePlayer, MenuItemType.Standard, () =>
                     {
-                        performer?.PerformFromScreen(s => s.Push(new SoloSpectatorScreen(user)));
+                        performer?.PerformFromScreen(s => s.Push(osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.RankedPlaySpectatorLoader.Create(user, metadata)));
                     }));
 
                     if (multiplayerClient?.Room?.Users.All(u => u.UserID != user.Id) == true)

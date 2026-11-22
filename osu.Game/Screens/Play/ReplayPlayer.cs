@@ -34,6 +34,7 @@ namespace osu.Game.Screens.Play
         public const double BASE_SEEK_AMOUNT = 1000;
 
         private readonly Func<IBeatmap, IReadOnlyList<Mod>, Score> createScore;
+        private osu.Game.Rulesets.Scoring.Legacy.ILegacyScoreV1Processor? stableReplayScore;
 
         [Cached(typeof(IGameplayLeaderboardProvider))]
         private readonly SoloGameplayLeaderboardProvider leaderboardProvider = new SoloGameplayLeaderboardProvider();
@@ -43,6 +44,12 @@ namespace osu.Game.Screens.Play
             Score == null ? null : new UserActivity.WatchingReplay(Score.ScoreInfo);
 
         private bool isAutoplayPlayback => GameplayState.Mods.OfType<ModAutoplay>().Any();
+
+        [Resolved]
+        private osu.Game.Online.API.IAPIProvider replayViewApi { get; set; } = null!;
+
+        private bool replayViewReported;
+        private double replayViewPlaybackTime;
 
         private double? lastFrameTime;
 
@@ -86,7 +93,8 @@ namespace osu.Game.Screens.Play
         /// Add a settings group to the HUD overlay. Intended to be used by rulesets to add replay-specific settings.
         /// </summary>
         /// <param name="settings">The settings group to be shown.</param>
-        public void AddSettings(PlayerSettingsGroup settings) => Schedule(() => ReplayOverlay.Settings.Add(settings));
+        public void AddSettings(PlayerSettingsGroup settings) => Schedule(() =>
+            LoadComponentAsync(settings, loaded => ReplayOverlay.Settings.Add(loaded)));
 
         [BackgroundDependencyLoader]
         private void load(OsuConfigManager config)
@@ -119,13 +127,13 @@ namespace osu.Game.Screens.Play
             }
 
             OsuTextFlowContainer message = new OsuTextFlowContainer(cp => cp.Font = OsuFont.Style.Body) { AutoSizeAxes = Axes.Both };
-            message.AddText(tagCoopReplay?.Players.Count > 0 ? "Watching Tag Co-op: " : "Watching ");
+            message.AddText(tagCoopReplay?.Players.Count > 0 ? global::osu.Game.Localisation.ClientTranslationStrings.J5067 : global::osu.Game.Localisation.ClientTranslationStrings.J5068);
             message.AddText(tagCoopReplay?.Players.Count > 0
                 ? string.Join(", ", tagCoopReplay.Players.Select(player => player.Username))
                 : Score.ScoreInfo.User.Username, s => s.Font = s.Font.With(weight: FontWeight.SemiBold));
-            message.AddText(" play ");
+            message.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5069);
             message.AddText(Beatmap.Value.BeatmapInfo.GetDisplayTitleRomanisable(), s => s.Font = s.Font.With(weight: FontWeight.SemiBold));
-            message.AddText(" on ");
+            message.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5070);
             message.AddArbitraryDrawable(new PlayedOnText(Score.ScoreInfo.Date, false)
             {
                 Font = OsuFont.Style.Body.With(weight: FontWeight.SemiBold),
@@ -177,7 +185,70 @@ namespace osu.Game.Screens.Play
             lastFrameTime = Score.Replay.Frames.LastOrDefault()?.Time;
         }
 
-        protected override Score CreateScore(IBeatmap beatmap) => createScore(beatmap, Mods.Value);
+        protected override void LoadComplete()
+        {
+            if (LoadedBeatmapSuccessfully && osu.Game.Online.MosuServerEnvironment.UsesStableProtocol
+                && Ruleset.Value.CreateInstance() is osu.Game.Rulesets.Scoring.Legacy.IHasLegacyScoreV1Processor factory)
+            {
+                stableReplayScore = factory.CreateLegacyScoreV1Processor(Beatmap.Value, GameplayState.Beatmap, Mods.Value);
+                ScoreProcessor.LegacyTotalScoreSource = () => stableReplayScore.TotalScore;
+                ScoreProcessor.NewJudgement += result =>
+                {
+                    stableReplayScore.ApplyResult(result);
+                    refreshStableReplayScore();
+                };
+                ScoreProcessor.JudgementReverted += result =>
+                {
+                    stableReplayScore.RevertResult(result);
+                    refreshStableReplayScore();
+                };
+            }
+            base.LoadComplete();
+        }
+
+        private void refreshStableReplayScore()
+        {
+            ScoreProcessor.RefreshLegacyTotalScore();
+            if (stableReplayScore?.CurrentCombo is int combo)
+                ScoreProcessor.Combo.Value = combo;
+            if (stableReplayScore?.MaximumCombo is int maximumCombo)
+                ScoreProcessor.HighestCombo.Value = maximumCombo;
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+
+            if (replayViewReported || !LoadedBeatmapSuccessfully || !this.IsCurrentScreen()
+                || isAutoplayPlayback || Score.ScoreInfo.OnlineID <= 0
+                || !GameplayClockContainer.IsRunning || GameplayClockContainer.CurrentTime < 0)
+                return;
+
+            // Count actual active playback, not downloads, loading screens, pauses or seeks.
+            replayViewPlaybackTime += Time.Elapsed;
+            if (replayViewPlaybackTime < 1000 || !replayViewApi.IsLoggedIn)
+                return;
+
+            replayViewReported = true;
+            replayViewApi.Queue(new osu.Game.Online.API.Requests.RecordReplayViewRequest(Score.ScoreInfo.OnlineID));
+        }
+
+        protected override Score CreateScore(IBeatmap beatmap)
+        {
+            var score = createScore(beatmap, Mods.Value);
+            if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol && score.ScoreInfo.LegacyTotalScore.HasValue)
+            {
+                score = new Score { ScoreInfo = score.ScoreInfo.DeepClone(), Replay = score.Replay };
+            }
+            return score;
+        }
+
+        protected override Task PrepareScoreForResultsAsync(Score score)
+        {
+            if (stableReplayScore != null)
+                stableReplayScore.PrepareScoreForSubmission(score.ScoreInfo);
+            return base.PrepareScoreForResultsAsync(score);
+        }
 
         // Don't re-import replay scores as they're already present in the database.
         protected override Task ImportScore(Score score) => Task.CompletedTask;

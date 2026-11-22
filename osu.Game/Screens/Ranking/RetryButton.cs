@@ -7,6 +7,8 @@ using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Game.Graphics;
 using osu.Game.Graphics.UserInterface;
+using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Screens.Play;
 using osuTK;
 
@@ -18,6 +20,12 @@ namespace osu.Game.Screens.Ranking
 
         [Resolved]
         private Player? player { get; set; }
+
+        [Resolved]
+        private OverlayColourProvider colourProvider { get; set; } = null!;
+
+        [Resolved]
+        private OsuColour colours { get; set; } = null!;
 
         public RetryButton()
         {
@@ -41,19 +49,33 @@ namespace osu.Game.Screens.Ranking
         }
 
         [BackgroundDependencyLoader]
-        private void load(OsuColour colours)
+        private void load()
         {
-            background.Colour = colours.Green;
+            updateColours();
 
             if (player != null)
             {
-                TooltipText = player is ReplayPlayer ? "replay" : "retry";
+                TooltipText = player is ReplayPlayer ? global::osu.Game.Localisation.ClientTranslationStrings.J5113 : global::osu.Game.Localisation.ClientTranslationStrings.J5114;
                 Action = () => player.Restart();
             }
             else
             {
-                TooltipText = "retry";
+                TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5114;
             }
+        }
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+            colourProvider.PaletteVersion.BindValueChanged(_ => updateColours());
+        }
+
+        private void updateColours()
+        {
+            background.Colour = OverlayColourProvider.GetEffectiveContextColour(
+                ThemeSurfaceContext.Results,
+                SurfaceColourRole.Accent,
+                colours.Green);
         }
     }
 }

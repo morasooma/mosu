@@ -147,7 +147,8 @@ namespace osu.Game.Overlays.Chat.ChannelList
             if (Channel.Type != ChannelType.PM)
                 return null;
 
-            return new UpdateableAvatar(Channel.Users.First(), isInteractive: false)
+            // PM participant information may be unavailable when the delayed content is loaded.
+            return new UpdateableAvatar(Channel.Users.FirstOrDefault(), isInteractive: false)
             {
                 Size = new Vector2(20),
                 Margin = new MarginPadding { Right = 5 },

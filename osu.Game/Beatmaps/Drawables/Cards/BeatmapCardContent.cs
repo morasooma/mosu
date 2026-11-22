@@ -1,6 +1,9 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
+using System.Threading;
+using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
@@ -10,6 +13,7 @@ using osu.Framework.Graphics.Shapes;
 using osu.Framework.Threading;
 using osu.Game.Graphics.Containers;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 
 namespace osu.Game.Beatmaps.Drawables.Cards
@@ -26,6 +30,29 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             set => dropdownScroll.Child = value;
         }
 
+        /// <summary>
+        /// Constructs expanded content only when requested. Once loaded it is
+        /// retained for this card's lifetime, so scrolling/re-hovering does not
+        /// rebuild the difficulty rows or their links and ruleset icons.
+        /// </summary>
+        public Func<Drawable>? ExpandedContentFactory { private get; set; }
+
+        private CancellationTokenSource expandedLoadCancellation = new CancellationTokenSource();
+
+        internal void ResetModel()
+        {
+            expandedLoadCancellation.Cancel();
+            expandedLoadCancellation.Dispose();
+            expandedLoadCancellation = new CancellationTokenSource();
+            scheduledExpandedChange?.Cancel();
+            expandedLoadStarted = false;
+            dropdownScroll.Clear();
+            if (!expanded.Disabled)
+                expanded.Value = false;
+            FinishTransforms(true);
+        }
+        private bool expandedLoadStarted;
+
         public IBindable<bool> Expanded => expanded;
 
         private readonly BindableBool expanded = new BindableBool();
@@ -37,6 +64,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         private readonly OsuScrollContainer dropdownScroll;
         private readonly Container borderContainer;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<float>? cardRadius;
 
         public BeatmapCardContent(float height)
         {
@@ -110,6 +138,14 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                 background.Colour = colourProvider.Background2;
                 borderContainer.BorderColour = colourProvider.Highlight1;
             }, true);
+
+            cardRadius = colourProvider.GetRadiusBindable(GeometryRole.Card, BeatmapCard.CORNER_RADIUS);
+            cardRadius.BindValueChanged(r =>
+            {
+                content.CornerRadius = r.NewValue;
+                bodyContent.CornerRadius = r.NewValue;
+                borderContainer.CornerRadius = r.NewValue;
+            }, true);
         }
 
         protected override void LoadComplete()
@@ -117,6 +153,14 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             base.LoadComplete();
             Expanded.BindValueChanged(_ => updateState(), true);
             FinishTransforms(true);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            expandedLoadCancellation.Cancel();
+            scheduledExpandedChange?.Cancel();
+            base.Dispose(isDisposing);
+            expandedLoadCancellation.Dispose();
         }
 
         private ScheduledDelegate? scheduledExpandedChange;
@@ -139,6 +183,24 @@ namespace osu.Game.Beatmaps.Drawables.Cards
 
         private void updateState()
         {
+            if (Expanded.Value && !expandedLoadStarted && ExpandedContentFactory != null)
+            {
+                expandedLoadStarted = true;
+                var factory = ExpandedContentFactory;
+                ExpandedContentFactory = null;
+                var token = expandedLoadCancellation.Token;
+                LoadComponentAsync(factory(), loaded =>
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        loaded.Dispose();
+                        return;
+                    }
+                    dropdownScroll.Child = loaded;
+                    updateState();
+                }, expandedLoadCancellation.Token);
+            }
+
             // Scale value is intentionally chosen to fit in the spacing of listing displays, as to not overlap horizontally with adjacent cards.
             // This avoids depth issues where a hovered (scaled) card to the right of another card would be beneath the card to the left.
             this.ScaleTo(Expanded.Value ? 1.03f : 1, 500, Easing.OutQuint);
@@ -146,7 +208,9 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             if (Expanded.Value)
             {
                 background.FadeIn(BeatmapCard.TRANSITION_DURATION, Easing.OutQuint);
-                dropdownContent.FadeIn(BeatmapCard.TRANSITION_DURATION, Easing.OutQuint);
+                // Do not expose an empty dropdown while its first load is pending.
+                if (dropdownScroll.Any())
+                    dropdownContent.FadeIn(BeatmapCard.TRANSITION_DURATION, Easing.OutQuint);
                 borderContainer.FadeIn(BeatmapCard.TRANSITION_DURATION, Easing.OutQuint);
             }
             else

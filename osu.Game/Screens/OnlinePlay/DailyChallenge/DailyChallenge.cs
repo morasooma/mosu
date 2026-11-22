@@ -27,6 +27,7 @@ using osu.Game.Graphics.Cursor;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
+using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Metadata;
@@ -68,6 +69,11 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
         private DailyChallengeScoreBreakdown breakdown = null!;
         private DailyChallengeTotalsDisplay totals = null!;
         private DailyChallengeEventFeed feed = null!;
+        private PurpleRoundedButton proposeButton = null!;
+        private PurpleRoundedButton proposalsButton = null!;
+        private OsuSpriteText proposalQuota = null!;
+        private GetDailyChallengeProposalStatusRequest? proposalStatusRequest;
+        private int proposalStatusGeneration;
 
         [Cached]
         private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Plum);
@@ -270,7 +276,15 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
                                         }
                                     }
                                 ],
-                                null,
+                                [
+                                    proposalQuota = new TruncatingSpriteText
+                                    {
+                                        RelativeSizeAxes = Axes.X,
+                                        Anchor = Anchor.CentreLeft,
+                                        Origin = Anchor.CentreLeft,
+                                        Font = OsuFont.Default.With(size: 14),
+                                    }
+                                ],
                                 [
                                     new Container
                                     {
@@ -322,7 +336,7 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
                 ShowPresets = true,
             });
 
-            if (playlistItem.AllowedMods.Any())
+            if (playlistItem.AllowedMods.Any() || playlistItem.Freestyle)
             {
                 footerButtons.Insert(-1, new UserModSelectButton
                 {
@@ -335,8 +349,22 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
                 });
 
                 var rulesetInstance = rulesets.GetRuleset(playlistItem.RulesetID)!.CreateInstance();
-                var allowedMods = playlistItem.AllowedMods.Select(m => m.ToMod(rulesetInstance));
+                var allowedMods = Utils.ModUtils.EnumerateUserSelectableFreeMods(MatchType.Playlists, playlistItem.RequiredMods,
+                    playlistItem.AllowedMods, playlistItem.Freestyle, rulesetInstance);
                 userModsSelectOverlay.IsValidMod = leaderboard.IsValidMod = m => allowedMods.Any(a => a.GetType() == m.GetType());
+            }
+
+            if (MosuServerEnvironment.IsMosuServerUrl(MosuServerEnvironment.ActiveApiUrl))
+            {
+                footerButtons.Add(proposeButton = new PurpleRoundedButton
+                {
+                    Text = DailyChallengeProposalStrings.Propose,
+                    Anchor = Anchor.Centre, Origin = Anchor.Centre,
+                    Width = 220, RelativeSizeAxes = Axes.Y, Height = 1,
+                    Enabled = { Value = false },
+                    Action = () => this.Push(new DailyChallengeProposalSongSelect()),
+                });
+                proposalQuota.Text = DailyChallengeProposalStrings.Loading;
             }
 
             metadataClient.MultiplayerRoomScoreSet += onRoomScoreSet;
@@ -438,7 +466,18 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
                 RelativeSizeAxes = Axes.X,
                 Height = Header.HEIGHT,
                 Padding = new MarginPadding { Left = WaveOverlayContainer.WIDTH_PADDING },
-                Child = titleFlow,
+                Children = new Drawable[]
+                {
+                    titleFlow,
+                    proposalsButton = new PurpleRoundedButton
+                    {
+                        Text = DailyChallengeProposalStrings.Requests,
+                        Anchor = Anchor.CentreRight, Origin = Anchor.CentreRight,
+                        Margin = new MarginPadding { Right = WaveOverlayContainer.WIDTH_PADDING },
+                        Width = 160, Height = 32, Alpha = 0, Enabled = { Value = false },
+                        Action = () => this.Push(new DailyChallengeProposalsScreen()),
+                    },
+                },
             };
         }
 
@@ -516,12 +555,16 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
             userModsSelectOverlay.SelectedItem.Value = playlistItem;
 
             TrySetDailyChallengeBeatmap(this, beatmapManager, rulesets, musicController, playlistItem);
+            refreshProposalStatus();
         }
 
         public override void OnResuming(ScreenTransitionEvent e)
         {
             base.OnResuming(e);
-            startLoopingTrack(this, musicController);
+            // Song select shares the screen beatmap/ruleset bindables. Restore the actual daily item,
+            // not the proposal the user was just browsing, before restoring its required mods.
+            TrySetDailyChallengeBeatmap(this, beatmapManager, rulesets, musicController, playlistItem);
+            refreshProposalStatus();
             // re-apply mods as they may have been changed by a child screen
             // (one known instance of this is showing a replay).
             updateMods();
@@ -555,7 +598,9 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
             if (!screen.IsCurrentScreen())
                 return;
 
-            var beatmap = beatmaps.QueryOnlineBeatmapId(item.Beatmap.OnlineID);
+            // Availability verifies the downloaded file's checksum before background metadata
+            // processing has necessarily populated OnlineMD5Hash. Resolve that same revision.
+            var beatmap = beatmaps.QueryOnlineBeatmapId(item.Beatmap.OnlineID, item.Beatmap.MD5Hash);
 
             screen.Beatmap.Value = beatmaps.GetWorkingBeatmap(beatmap); // this will gracefully fall back to dummy beatmap if missing locally.
             screen.Ruleset.Value = rulesets.GetRuleset(item.RulesetID);
@@ -592,8 +637,42 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
             Mods.Value = userMods.Value.Concat(playlistItem.RequiredMods.Select(m => m.ToMod(Ruleset.Value.CreateInstance()))).ToList();
         }
 
+        private void refreshProposalStatus()
+        {
+            if (!MosuServerEnvironment.IsMosuServerUrl(MosuServerEnvironment.ActiveApiUrl)) return;
+            int generation = ++proposalStatusGeneration;
+            proposalStatusRequest?.Cancel();
+            proposeButton.Enabled.Value = false;
+            proposalsButton.Enabled.Value = false;
+            proposalStatusRequest = new GetDailyChallengeProposalStatusRequest();
+            proposalStatusRequest.Success += value => Schedule(() =>
+            {
+                if (generation != proposalStatusGeneration) return;
+                proposeButton.Enabled.Value = value.CanSubmit;
+                proposalsButton.Alpha = value.CanManage ? 1 : 0;
+                proposalsButton.Enabled.Value = value.CanManage;
+                proposalQuota.Text = value.CanManage ? DailyChallengeProposalStrings.StaffQuota
+                    : DailyChallengeProposalStrings.Quota(value.SubmittedToday, value.DailyLimit);
+            });
+            proposalStatusRequest.Failure += exception => Schedule(() =>
+            {
+                if (generation == proposalStatusGeneration && exception is not OperationCanceledException)
+                    proposalQuota.Text = DailyChallengeProposalStrings.Failed;
+            });
+            API.Queue(proposalStatusRequest);
+        }
+
         private void startPlay()
         {
+            // Re-resolve immediately before PlayerLoader snapshots the screen's bindables.
+            // An import may have completed while this screen was entering or suspended.
+            TrySetDailyChallengeBeatmap(this, beatmapManager, rulesets, musicController, playlistItem);
+            if (Beatmap.Value.BeatmapInfo.OnlineID != playlistItem.Beatmap.OnlineID
+                || (!string.IsNullOrEmpty(playlistItem.Beatmap.MD5Hash)
+                    && Beatmap.Value.BeatmapInfo.MD5Hash != playlistItem.Beatmap.MD5Hash))
+                return;
+
+            updateMods();
             sampleStart?.Play();
             this.Push(new PlayerLoader(() => new DailyChallengePlayer(room, playlistItem)
             {
@@ -605,6 +684,7 @@ namespace osu.Game.Screens.OnlinePlay.DailyChallenge
         {
             base.Dispose(isDisposing);
 
+            proposalStatusRequest?.Cancel();
             userModsSelectOverlayRegistration?.Dispose();
 
             if (metadataClient.IsNotNull())

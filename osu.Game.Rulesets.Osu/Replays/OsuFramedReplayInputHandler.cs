@@ -8,6 +8,7 @@ using osu.Framework.Input.StateChanges;
 using osu.Framework.Utils;
 using osu.Game.Replays;
 using osu.Game.Rulesets.Replays;
+using osu.Game.Rulesets.Osu.Scoring;
 
 namespace osu.Game.Rulesets.Osu.Replays
 {
@@ -17,10 +18,11 @@ namespace osu.Game.Rulesets.Osu.Replays
         private readonly bool ignoreReplayActionsWhenRelaxEnabled;
         private readonly bool legacyAutomaticJudgementsBetweenFrames;
         private OsuReplayFrame? lastButtonFrame;
-        public int StableButtons { get; private set; }
-        public int StablePreviousButtons { get; private set; }
-        public int StablePreviousButtons2 { get; private set; }
-        public int StableNewButtons { get; private set; }
+        internal StableButtonState StableButtonState { get; } = new StableButtonState();
+        public int StableButtons => StableButtonState.Buttons;
+        public int StablePreviousButtons => StableButtonState.PreviousButtons;
+        public int StablePreviousButtons2 => StableButtonState.PreviousButtons2;
+        public int StableNewButtons => StableButtonState.NewButtons;
 
         public bool IsRecordedGameplayFrame => !UsesRecordedFrameTimes || CurrentFrame == null
             || NextFrame == null || CurrentTime == CurrentFrame.Time;
@@ -59,13 +61,7 @@ namespace osu.Game.Rulesets.Osu.Replays
             {
                 int buttons = (CurrentFrame?.Actions.Contains(OsuAction.LeftButton) == true ? 1 : 0)
                               | (CurrentFrame?.Actions.Contains(OsuAction.RightButton) == true ? 2 : 0);
-                StableNewButtons = buttons & ~StableButtons;
-                if (buttons != StableButtons)
-                {
-                    StablePreviousButtons2 = StablePreviousButtons;
-                    StablePreviousButtons = StableButtons;
-                    StableButtons = buttons;
-                }
+                StableButtonState.Update(buttons);
                 lastButtonFrame = CurrentFrame;
             }
 

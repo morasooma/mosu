@@ -31,7 +31,7 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
             Pill.Background.Alpha = 1;
             Pill.Background.Colour = colours.Yellow;
 
-            TextFlow.Text = "Freestyle";
+            TextFlow.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4798;
             TextFlow.Colour = Color4.Black;
 
             room.PropertyChanged += onRoomPropertyChanged;

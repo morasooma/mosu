@@ -8,6 +8,7 @@ namespace osu.Game.Users
     public class CountryStatistics
     {
         [JsonProperty(@"code")]
+        [JsonConverter(typeof(RankingCountryCodeConverter))]
         public CountryCode Code;
 
         [JsonProperty(@"active_users")]

@@ -92,7 +92,7 @@ namespace osu.Game.Rulesets.Scoring
         }
 
         public static bool AffectsUnstableRate(HitEvent e) => AffectsUnstableRate(e.HitObject, e.Result);
-        public static bool AffectsUnstableRate(HitObject hitObject, HitResult result) => hitObject.HitWindows != HitWindows.Empty && result.IsHit();
+        public static bool AffectsUnstableRate(HitObject? hitObject, HitResult result) => (hitObject == null ? result.IsBasic() : hitObject.HitWindows != HitWindows.Empty) && result.IsHit();
 
         /// <summary>
         /// Data type returned by <see cref="HitEventExtensions.CalculateUnstableRate"/> which allows efficient incremental processing.

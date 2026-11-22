@@ -13,6 +13,17 @@ namespace osu.Game.Beatmaps
         WorkingBeatmap GetWorkingBeatmap(BeatmapInfo? beatmapInfo);
 
         /// <summary>
+        /// Resolve an immutable processing snapshot without reusing an interactive cache entry or refetching a newer revision.
+        /// </summary>
+        WorkingBeatmap GetWorkingBeatmapForCalculation(BeatmapInfo beatmapInfo) => GetWorkingBeatmap(beatmapInfo);
+
+        /// <summary>
+        /// Retrieves artwork for a carousel card without preparing a playable beatmap.
+        /// Custom caches may retain their normal resource lookup.
+        /// </summary>
+        WorkingBeatmap GetCarouselBackgroundBeatmap(BeatmapInfo? beatmapInfo) => GetWorkingBeatmap(beatmapInfo);
+
+        /// <summary>
         /// Invalidate a cache entry if it exists.
         /// </summary>
         /// <param name="beatmapSetInfo">The beatmap set info to invalidate any cached entries for.</param>

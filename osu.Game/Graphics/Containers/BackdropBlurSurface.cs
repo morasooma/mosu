@@ -22,12 +22,17 @@ namespace osu.Game.Graphics.Containers
         [Resolved(CanBeNull = true)]
         private IBackdropBlurSource? backdropSource { get; set; }
 
+        private const float min_underlay_alpha = 0.85f;
+
+        private readonly Box underlay;
         private readonly Box surfaceTint;
         private readonly Box dimVeil;
         private BufferedContainerView<Drawable>? backdropView;
         private IDisposable? consumerLease;
 
         private Color4 surfaceColour = Color4.Black;
+        private (bool GlassActive, Color4 Colour, double DimAmount)? appliedAppearance;
+        internal int AppearanceUpdateCount { get; private set; }
 
         public Color4 SurfaceColour
         {
@@ -39,11 +44,21 @@ namespace osu.Game.Graphics.Containers
             }
         }
 
+        public new float CornerRadius
+        {
+            get => base.CornerRadius;
+            set => base.CornerRadius = value;
+        }
+
         public BackdropBlurSurface()
         {
             RelativeSizeAxes = Axes.Both;
+            // The backdrop view uses the source's full-screen draw quad. Clip that view to
+            // this surface even with square corners, or it can paint over neighbouring UI
+            // (notably the settings controls beside the glass sidebar).
             Masking = true;
 
+            underlay = new Box { RelativeSizeAxes = Axes.Both };
             surfaceTint = new Box { RelativeSizeAxes = Axes.Both };
             dimVeil = new Box { RelativeSizeAxes = Axes.Both };
         }
@@ -54,12 +69,12 @@ namespace osu.Game.Graphics.Containers
             if (backdropSource != null)
             {
                 backdropView = backdropSource.CreateView();
-                consumerLease = backdropSource.Acquire(isActuallyVisible);
+                consumerLease = backdropSource.Acquire(() => OverlayTransparency.Enabled.Value && isActuallyVisible());
             }
 
             InternalChildren = backdropView == null
-                ? new Drawable[] { surfaceTint, dimVeil }
-                : new Drawable[] { backdropView, surfaceTint, dimVeil };
+                ? new Drawable[] { underlay, surfaceTint, dimVeil }
+                : new Drawable[] { underlay, backdropView, surfaceTint, dimVeil };
 
             updateAppearance();
         }
@@ -79,13 +94,22 @@ namespace osu.Game.Graphics.Containers
         private void updateAppearance()
         {
             bool glassActive = backdropView != null && OverlayTransparency.Enabled.Value && isActuallyVisible();
+            double dimAmount = OverlayTransparency.DimAmount.Value;
+            var appearance = (glassActive, surfaceColour, dimAmount);
+            if (appliedAppearance == appearance)
+                return;
+
+            appliedAppearance = appearance;
+            AppearanceUpdateCount++;
 
             if (backdropView != null)
                 backdropView.Alpha = glassActive ? 1 : 0;
 
+            underlay.Colour = surfaceColour.Opacity(Math.Max(surfaceColour.A, min_underlay_alpha));
+            underlay.Alpha = glassActive ? 1 : 0;
+
             surfaceTint.Colour = glassActive ? surfaceColour.Opacity(OverlayTransparency.SURFACE_ALPHA) : surfaceColour;
 
-            double dimAmount = OverlayTransparency.DimAmount.Value;
             dimVeil.Colour = dimAmount >= 0 ? Color4.Black : Color4.White;
             dimVeil.Alpha = glassActive ? (float)Math.Abs(dimAmount) : 0;
         }

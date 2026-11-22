@@ -150,11 +150,11 @@ namespace osu.Game.Skinning.Select
             {
                 usernameText.Text = currentUser?.Username ?? string.Empty;
                 infoText.Clear();
-                infoText.AddText($"Performance:{statistics.PP:N0}pp");
+                infoText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5364(statistics.PP));
                 infoText.NewLine();
-                infoText.AddText($"Accuracy:{statistics.DisplayAccuracy}");
+                infoText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5365(statistics.DisplayAccuracy));
                 infoText.NewLine();
-                infoText.AddText($"Lv{statistics.Level.Current}");
+                infoText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5366(statistics.Level.Current));
 
                 if (!statistics.GlobalRank.HasValue)
                     rankText.Hide();

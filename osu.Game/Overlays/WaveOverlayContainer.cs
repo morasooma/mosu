@@ -3,6 +3,7 @@
 
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics;
+using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 
 namespace osu.Game.Overlays
@@ -35,13 +36,13 @@ namespace osu.Game.Overlays
         protected override void PopIn()
         {
             Waves.Show();
-            this.FadeIn(100, Easing.OutQuint);
+            this.FadeIn(InterfaceAnimation.FadeDuration(100), Easing.OutQuint);
         }
 
         protected override void PopOut()
         {
             Waves.Hide();
-            this.FadeOut(WaveContainer.DISAPPEAR_DURATION, Easing.InQuint)
+            this.FadeOut(InterfaceAnimation.FadeDuration(WaveContainer.DISAPPEAR_DURATION), Easing.InQuint)
                 // base call is responsible for stopping preview tracks.
                 // delay it until the fade has concluded to ensure that nothing inside the overlay has triggered
                 // another preview track playback in the meantime, leaving an "orphaned" preview playing.

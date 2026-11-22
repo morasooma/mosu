@@ -9,16 +9,19 @@ using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Rulesets.Scoring;
+using osu.Game.Skinning;
 using osuTK;
 
 namespace osu.Game.Screens.Play.HUD
 {
     public partial class LongestComboCounter : ComboCounter
     {
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+
         [BackgroundDependencyLoader]
         private void load(OsuColour colours, ScoreProcessor scoreProcessor)
         {
-            Colour = colours.YellowLighter;
+            themeColours.Bind(action => Scheduler.Add(action), () => Colour = themeColours.GetColour(Overlays.OverlayColour.Content1, colours.YellowLighter));
             Current.BindTo(scoreProcessor.HighestCombo);
         }
 
@@ -63,14 +66,14 @@ namespace osu.Game.Screens.Play.HUD
                                     Anchor = Anchor.TopLeft,
                                     Origin = Anchor.TopLeft,
                                     Font = OsuFont.Numeric.With(size: 8),
-                                    Text = @"longest",
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5086,
                                 },
                                 new OsuSpriteText
                                 {
                                     Anchor = Anchor.TopLeft,
                                     Origin = Anchor.TopLeft,
                                     Font = OsuFont.Numeric.With(size: 8),
-                                    Text = @"combo",
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5087,
                                     Padding = new MarginPadding { Bottom = 3f }
                                 }
                             }

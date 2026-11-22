@@ -73,7 +73,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Hand
                                 Anchor = Anchor.TopCentre,
                                 Origin = Anchor.TopCentre,
                                 Size = new Vector2(90, 30),
-                                Text = "Play",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4939,
                                 TextSize = 14,
                                 LighterColour = Colour4.FromHex("87D8FA"),
                                 DarkerColour = Colour4.FromHex("72D5FF")

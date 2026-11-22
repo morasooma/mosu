@@ -462,7 +462,9 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
             private Box leftBox = null!;
             private Box rightBox = null!;
+            private Container trackContainer = null!;
             private Container defaultLine = null!;
+            private IBindable<float>? sliderRadius;
 
             private InnerSliderNub nub = null!;
             private IBindable<Colour4> themeColour = null!;
@@ -481,7 +483,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
                 Children = new Drawable[]
                 {
-                    new Container
+                    trackContainer = new Container
                     {
                         RelativeSizeAxes = Axes.Both,
                         Masking = true,
@@ -534,6 +536,9 @@ namespace osu.Game.Graphics.UserInterfaceV2
                 Current.BindDisabledChanged(_ => updateState(), true);
                 themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
                 themeColour.BindValueChanged(_ => updateState(), true);
+
+                sliderRadius = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Input, 5f);
+                sliderRadius.BindValueChanged(r => trackContainer.CornerRadius = r.NewValue, true);
 
                 Current.DefaultChanged += _ => updateDefaultValue();
                 updateDefaultValue();
@@ -633,7 +638,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
             protected override void UpdateValue(float value)
             {
-                nub.MoveToX(value, 250, Easing.OutElasticQuarter);
+                nub.MoveToX(value, InterfaceAnimation.MovementDuration(250), Easing.OutElasticQuarter);
                 defaultLine.ResizeHeightTo(Current.IsDefault ? 28 : 6, 250, Easing.OutElasticQuarter);
             }
 

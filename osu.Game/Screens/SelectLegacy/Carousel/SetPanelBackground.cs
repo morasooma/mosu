@@ -152,6 +152,36 @@ namespace osu.Game.Screens.SelectLegacy.Carousel
         public partial class PanelBeatmapBackground : Sprite
         {
             private readonly IWorkingBeatmap working;
+            private osu.Game.Graphics.Backgrounds.AI.BackgroundSafetyPresentation? safety;
+            private osu.Game.Graphics.Backgrounds.AI.BackgroundSafetyService? safetyService;
+            private OsuConfigManager? config;
+            private bool legacyLayout;
+            private osu.Framework.Graphics.Rendering.IRenderer? renderer;
+            private osu.Game.Graphics.Backgrounds.AI.StillLifeService? stillLife;
+
+            [BackgroundDependencyLoader]
+            private void load(osu.Game.Graphics.Backgrounds.AI.BackgroundSafetyService? safetyService = null, OsuConfigManager? config = null,
+                              osu.Framework.Graphics.Rendering.IRenderer? renderer = null, osu.Game.Graphics.Backgrounds.AI.StillLifeService? stillLife = null)
+            {
+                this.safetyService = safetyService;
+                this.stillLife = stillLife;
+                this.config = config;
+                this.renderer = renderer;
+                // Acquire a new store reference before replacing the parent's initial sprite texture.
+                UpdateTexture(legacyLayout);
+            }
+
+            protected override void Update()
+            {
+                base.Update();
+                safety?.Update();
+            }
+
+            protected override void Dispose(bool isDisposing)
+            {
+                safety?.Dispose();
+                base.Dispose(isDisposing);
+            }
 
             public PanelBeatmapBackground(IWorkingBeatmap working)
             {
@@ -166,9 +196,17 @@ namespace osu.Game.Screens.SelectLegacy.Carousel
             /// </summary>
             public void UpdateTexture(bool legacyLayout)
             {
-                Texture = legacyLayout
+                this.legacyLayout = legacyLayout;
+                var texture = legacyLayout
                     ? working.GetLegacyPreviewBackground() ?? working.GetPanelBackground()
                     : working.GetPanelBackground();
+                if (working is WorkingBeatmap beatmap && safetyService != null && config != null && renderer != null)
+                {
+                    safety?.Dispose();
+                    safety = new osu.Game.Graphics.Backgrounds.AI.BackgroundSafetyPresentation(this, texture, beatmap, safetyService, config, renderer, stillLife);
+                }
+                else
+                    Texture = texture;
             }
         }
     }

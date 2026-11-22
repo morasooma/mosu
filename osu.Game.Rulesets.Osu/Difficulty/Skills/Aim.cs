@@ -34,14 +34,37 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
         private readonly bool applyMappingAntiAbuse;
         private readonly bool isRelax;
+        private readonly bool isAutopilot;
+        private readonly bool isTouchDevice;
+        private readonly OsuModMagnetised? magnetised;
+        private readonly Aim? evaluationSource;
+        private DifficultyHitObject? evaluatedObject;
+        private double evaluatedSnap;
+        private double evaluatedAgility;
+        private double evaluatedFlow;
+        private double evaluatedAdjustedDifficulty;
+
+        // Owned by the two skills of a single calculator pass, never shared between maps
+        // or threads. Other callers keep completely independent evaluator behaviour.
+        internal Aim(Mod[] mods, bool applyMappingAntiAbuse, Aim evaluationSource)
+            : this(mods, false, applyMappingAntiAbuse)
+        {
+            this.evaluationSource = evaluationSource;
+        }
 
         public Aim(Mod[] mods, bool includeSliders, bool applyMappingAntiAbuse = true)
             : base(mods)
         {
             IncludeSliders = includeSliders;
             this.applyMappingAntiAbuse = applyMappingAntiAbuse;
-            isRelax = mods.Any(m => m is OsuModRelax or OsuModMosuRelax);
+            isRelax = mods.Any(m => m is OsuModRelax);
+            isAutopilot = mods.Any(m => m is OsuModAutopilot);
+            isTouchDevice = mods.Any(m => m is OsuModTouchDevice);
+            magnetised = mods.OfType<OsuModMagnetised>().FirstOrDefault();
         }
+
+        private double localDifficulty;
+        public override double LocalDifficulty => localDifficulty;
 
         private double currentStrain;
         private double maxEndTime;
@@ -66,7 +89,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
         protected override double StrainValueAt(DifficultyHitObject current)
         {
-            if (Mods.Any(m => m is OsuModAutopilot))
+            if (isAutopilot)
                 return 0;
 
             // Do not award additional aim strain for overlapping objects. This preserves
@@ -84,8 +107,13 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             currentStrain *= decay;
 
+            localDifficulty = 0;
             if (!isOverlapping)
-                currentStrain += calculateAdjustedDifficulty(current) * (1 - decay);
+            {
+                localDifficulty = calculateAdjustedDifficulty(current);
+                evaluatedAdjustedDifficulty = localDifficulty;
+                currentStrain += localDifficulty * (1 - decay);
+            }
             else
                 resetRelaxPatternState();
 
@@ -266,14 +294,41 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             const double skill_multiplier_agility = 2.35;
             const double skill_multiplier_flow = 242.0;
 
-            double snapDifficulty = SnapAimEvaluator.EvaluateDifficultyOf(current, IncludeSliders) * skill_multiplier_snap;
-            double agilityDifficulty = AgilityEvaluator.EvaluateDifficultyOf(current) * skill_multiplier_agility;
-            double flowDifficulty = FlowAimEvaluator.EvaluateDifficultyOf(current, IncludeSliders) * skill_multiplier_flow;
+            double snapDifficulty;
+            double agilityDifficulty;
+            double flowDifficulty;
+            var osuObject = (OsuDifficultyHitObject)current;
+            bool shared = evaluationSource != null && ReferenceEquals(evaluationSource.evaluatedObject, current);
+            // The slider switch only changes distances/travel bonuses. For circle transitions
+            // with exactly equal lazy/direct distances both evaluators execute identical maths.
+            // Check both distances rather than inferring equivalence from object kinds alone.
+            bool sameTravel = shared && current.BaseObject is not Slider && current.Previous()?.BaseObject is not Slider
+                              && BitConverter.DoubleToInt64Bits(osuObject.LazyJumpDistance) == BitConverter.DoubleToInt64Bits(osuObject.JumpDistance)
+                              && (current.Previous() is not OsuDifficultyHitObject previousForTravel
+                                  || BitConverter.DoubleToInt64Bits(previousForTravel.LazyJumpDistance) == BitConverter.DoubleToInt64Bits(previousForTravel.JumpDistance));
+            // Ordinary identical circle transitions share the complete local demand. RX
+            // keeps its own rolling pattern counters even when raw evaluator values match.
+            if (sameTravel && !isRelax)
+            {
+                evaluatedObject = current;
+                evaluatedSnap = evaluationSource!.evaluatedSnap;
+                evaluatedAgility = evaluationSource.evaluatedAgility;
+                evaluatedFlow = evaluationSource.evaluatedFlow;
+                return evaluationSource.evaluatedAdjustedDifficulty;
+            }
+
+            snapDifficulty = sameTravel ? evaluationSource!.evaluatedSnap : SnapAimEvaluator.EvaluateDifficultyOf(current, IncludeSliders) * skill_multiplier_snap;
+            agilityDifficulty = shared ? evaluationSource!.evaluatedAgility : AgilityEvaluator.EvaluateDifficultyOf(current) * skill_multiplier_agility;
+            flowDifficulty = sameTravel ? evaluationSource!.evaluatedFlow : FlowAimEvaluator.EvaluateDifficultyOf(current, IncludeSliders) * skill_multiplier_flow;
+            evaluatedObject = current;
+            evaluatedSnap = snapDifficulty;
+            evaluatedAgility = agilityDifficulty;
+            evaluatedFlow = flowDifficulty;
 
             double pointSpamPenalty = 1;
             double spacedStreamPenalty = 1;
 
-            if (Mods.Any(m => m is OsuModRelax or OsuModMosuRelax))
+            if (isRelax)
             {
                 var osuCurrent = (OsuDifficultyHitObject)current;
                 (bool isPointSpamTransition, bool isSpacedStreamTransition) = updateRelaxPatternState(osuCurrent);
@@ -313,9 +368,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             if (applyMappingAntiAbuse)
                 totalDifficulty *= CalculateLargeCirclePenalty(((OsuHitObject)current.BaseObject).Radius);
 
-            if (Mods.Any(m => m is OsuModMagnetised))
+            if (magnetised != null)
             {
-                float magnetisedStrength = Mods.OfType<OsuModMagnetised>().First().AttractionStrength.Value;
+                float magnetisedStrength = magnetised.AttractionStrength.Value;
                 totalDifficulty *= 1.0 - magnetisedStrength;
             }
 
@@ -351,14 +406,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
             double pSnap = calculateSnapFlowProbability(flowDifficulty / combinedSnapDifficulty);
             double pFlow = 1 - pSnap;
 
-            if (Mods.Any(m => m is OsuModTouchDevice))
+            if (isTouchDevice)
             {
                 // we don't adjust agility here since agility represents TD difficulty in a decent enough way
                 snapDifficulty = DiffUtils.Pow(snapDifficulty, 0.89);
                 combinedSnapDifficulty = DiffUtils.Norm(combined_snap_norm_exponent, snapDifficulty, agilityDifficulty);
             }
 
-            if (Mods.Any(m => m is OsuModRelax or OsuModMosuRelax))
+            if (isRelax)
             {
                 double rawPatternDifficulty = combinedSnapDifficulty * pSnap + flowDifficulty * pFlow;
                 double balancedPatternDifficulty = (combinedSnapDifficulty * pointSpamPenalty) * pSnap + flowDifficulty * pFlow;
@@ -384,7 +439,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
             double totalDifficulty = combinedSnapDifficulty * pSnap + flowDifficulty * pFlow;
 
-            if (Mods.Any(m => m is OsuModRelax or OsuModMosuRelax)
+            if (isRelax
                 && RelaxPpSystemSelection.Current != ForkRelaxPpSystem.LazerVanilla)
                 totalDifficulty *= spacedStreamPenalty;
 
@@ -597,12 +652,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         {
             double difficulty = 0;
             double time = 0;
+            double startWeight = DiffUtils.Pow(DecayWeight, time);
 
             var strains = getReducedStrainPeaks();
 
             // Difficulty is a continuous weighted sum of the sorted strains
-            foreach (StrainPeak strain in strains)
+            foreach (var entry in strains)
             {
+                StrainPeak strain = entry.Peak;
                 /* Weighting function can be thought of as:
                         b
                         ∫ DecayWeight^x dx
@@ -619,13 +676,13 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
                     This change makes it so that a map composed solely of MaxSectionLength chunks will have the exact same value when summed in this class and StrainSkill.
                     Doing this ensures the relationship between strain values and difficulty values remains the same between the two classes.
                 */
-                double startTime = time;
                 double endTime = time + strain.SectionLength / MaxSectionLength;
-
-                double weight = DiffUtils.Pow(DecayWeight, startTime) - DiffUtils.Pow(DecayWeight, endTime);
+                double endWeight = DiffUtils.Pow(DecayWeight, endTime);
+                double weight = startWeight - endWeight;
 
                 difficulty += strain.Value * weight;
                 time = endTime;
+                startWeight = endWeight;
             }
 
             return difficulty / (1 - DecayWeight);
@@ -635,17 +692,53 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
         /// Returns a sorted enumerable of strain peaks with the highest values reduced.
         /// </summary>
         /// <returns></returns>
-        private IEnumerable<StrainPeak> getReducedStrainPeaks()
+        // Section lengths are rounded to milliseconds. Reuse the exact original
+        // logarithm for each point in the fixed four-second attenuation interval.
+        private static readonly double[] reductionScales = createReductionScales();
+
+        private static double[] createReductionScales()
+        {
+            var scales = new double[4001];
+            for (int i = 0; i < scales.Length; i++)
+                scales[i] = Math.Log10(Interpolation.Lerp(1, 10, Math.Clamp((double)i / 4000, 0, 1)));
+            return scales;
+        }
+
+        private static double getReductionScale(double time)
+        {
+            if (time >= 0 && time <= 4000 && time == (int)time)
+                return reductionScales[(int)time];
+
+            // Preserve non-integral and non-finite behaviour for unusual callers.
+            return Math.Log10(Interpolation.Lerp(1, 10, Math.Clamp(time / 4000, 0, 1)));
+        }
+
+        private readonly List<StrainPeak> reductionScratch = new List<StrainPeak>();
+        private readonly List<(StrainPeak Peak, int Order)> sortedReductionScratch = new List<(StrainPeak, int)>();
+        private readonly List<(StrainPeak Peak, int Order)> mergedReductionScratch = new List<(StrainPeak, int)>();
+        private static readonly IComparer<(StrainPeak Peak, int Order)> reductionComparer = Comparer<(StrainPeak Peak, int Order)>.Create(static (a, b) =>
+        {
+            int result = b.Peak.Value.CompareTo(a.Peak.Value);
+            // LINQ's old ordering was stable. Equal strains may have different lengths.
+            return result != 0 ? result : a.Order.CompareTo(b.Order);
+        });
+
+        private List<(StrainPeak Peak, int Order)> getReducedStrainPeaks()
         {
             const int reduced_section_time = 4000;
             const double reduced_strain_baseline = 0.727;
 
             // Sections with 0 strain are excluded to avoid worst-case time complexity of the following sort (e.g. /b/2351871).
             // These sections will not contribute to the difficulty.
-            List<StrainPeak> strains = GetCurrentStrainPeaks()
-                                       .Where(p => p.Value > 0)
-                                       .ToList();
+            var strains = reductionScratch;
+            strains.Clear();
+            foreach (var peak in GetCurrentStrainPeaks())
+            {
+                if (peak.Value > 0)
+                    strains.Add(peak);
+            }
 
+            int originalCount = strains.Count;
             const int chunk_size = 20;
             double time = 0;
             int skipCount = 0;
@@ -658,7 +751,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
 
                 for (double addedTime = 0; addedTime < strain.SectionLength; addedTime += chunk_size)
                 {
-                    double scale = Math.Log10(Interpolation.Lerp(1, 10, Math.Clamp((time + addedTime) / reduced_section_time, 0, 1)));
+                    double scale = getReductionScale(time + addedTime);
 
                     // intentionally add at end and sort afterwards, should be cheaper.
                     strains.Add(new StrainPeak(
@@ -671,7 +764,34 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Skills
                 skipCount++;
             }
 
-            return strains.Skip(skipCount).OrderByDescending(p => p.Value);
+            // The untouched suffix is already sorted by VariableLengthStrainSkill.
+            // Only the newly attenuated chunks need sorting; merge without changing
+            // the old stable tie order (original peaks precede appended chunks).
+            sortedReductionScratch.Clear();
+            for (int i = Math.Max(skipCount, originalCount); i < strains.Count; i++)
+                sortedReductionScratch.Add((strains[i], i));
+            sortedReductionScratch.Sort(reductionComparer);
+
+            mergedReductionScratch.Clear();
+            int original = skipCount;
+            int chunk = 0;
+            while (original < originalCount && chunk < sortedReductionScratch.Count)
+            {
+                var unchanged = (Peak: strains[original], Order: original);
+                if (reductionComparer.Compare(unchanged, sortedReductionScratch[chunk]) <= 0)
+                {
+                    mergedReductionScratch.Add(unchanged);
+                    original++;
+                }
+                else
+                    mergedReductionScratch.Add(sortedReductionScratch[chunk++]);
+            }
+
+            for (; original < originalCount; original++)
+                mergedReductionScratch.Add((strains[original], original));
+            for (; chunk < sortedReductionScratch.Count; chunk++)
+                mergedReductionScratch.Add(sortedReductionScratch[chunk]);
+            return mergedReductionScratch;
         }
     }
 }

@@ -49,7 +49,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Card
                     [
                         new OsuSpriteText
                         {
-                            Text = "User Tags",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4930,
                             Font = OsuFont.GetFont(size: 18, weight: FontWeight.SemiBold),
                         },
                         tagFlow = new FillFlowContainer<DrawableUserTag>

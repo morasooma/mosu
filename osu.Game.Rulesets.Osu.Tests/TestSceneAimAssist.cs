@@ -95,6 +95,28 @@ namespace osu.Game.Rulesets.Osu.Tests
         }
 
         [Test]
+        public void TestStrongAssistFinishesAcquiredUndershootWithStationaryMouse()
+        {
+            Vector2 target = Vector2.Zero;
+            Vector2 stoppedPosition = Vector2.Zero;
+            configureAimAssist(strength: 0.92, fovRadius: 185, intentThreshold: -0.35, antiJitterMs: 0);
+            AddStep("place mouse outside recovery radius", () =>
+            {
+                target = hitCircle.ScreenSpaceDrawQuad.Centre;
+                InputManager.MoveMouseTo(target + new Vector2(150, 0));
+            });
+            AddStep("approach and stop short of hitbox", () =>
+            {
+                hitCircle.HitObject.StartTime = aimAssistController.Time.Current + 120;
+                stoppedPosition = target + new Vector2(60, 0);
+                InputManager.MoveMouseTo(stoppedPosition);
+            });
+            AddUntilStep("stationary cursor is brought inside hitbox", () =>
+                (osuInputManager.CurrentState.Mouse.Position - target).Length < aimAssistController.CurrentBaseTargetRadius);
+            AddAssert("physical cursor was not moved", () => osuInputManager.OriginalUserCursorPosition, () => Is.EqualTo(stoppedPosition));
+        }
+
+        [Test]
         public void TestAimAssistPullsVirtualCursorTowardsTarget()
         {
             Vector2 targetPosition = Vector2.Zero;

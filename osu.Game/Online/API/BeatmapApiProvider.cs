@@ -47,7 +47,7 @@ namespace osu.Game.Online.API
 
             bool usePrimary = request switch
             {
-                SearchBeatmapSetsRequest search => search.ServerExclusiveOnly,
+                SearchBeatmapSetsRequest search => search.ServerExclusiveOnly || search.CatalogueSource != BeatmapCatalogueSource.Official,
                 DownloadBeatmapSetRequest download => isServerExclusive(download.Model),
                 GetBeatmapSetRequest set => set.ID >= SERVER_EXCLUSIVE_ID_THRESHOLD,
                 GetBeatmapRequest beatmap => beatmap.ServerExclusive || beatmap.OnlineID >= SERVER_EXCLUSIVE_ID_THRESHOLD,
@@ -65,6 +65,13 @@ namespace osu.Game.Online.API
 
         public void Queue(APIRequest request)
         {
+            // Anonymous mirror transfers must not occupy the primary API's serial queue
+            // (or delay score/chat requests while a mirror times out).
+            if (request is SearchBeatmapSetsRequest { ServerExclusiveOnly: false, CatalogueSource: not BeatmapCatalogueSource.Official })
+            {
+                _ = primaryApi.PerformAsync(request);
+                return;
+            }
             var provider = SelectProvider(request);
 
             if (provider == OfficialApi)

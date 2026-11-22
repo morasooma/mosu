@@ -13,7 +13,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 {
     public partial class GameplayScreen : RankedPlaySubScreen
     {
-        public override LocalisableString StageHeading => "Gameplay";
+        public override LocalisableString StageHeading => global::osu.Game.Localisation.ClientTranslationStrings.J4909;
 
         [BackgroundDependencyLoader]
         private void load()
@@ -32,7 +32,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                     [
                         new OsuSpriteText
                         {
-                            Text = "Gameplay is in progress...",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4910,
                             Anchor = Anchor.TopCentre,
                             Origin = Anchor.TopCentre,
                             Font = OsuFont.GetFont(typeface: Typeface.TorusAlternate, size: 42, weight: FontWeight.Regular),

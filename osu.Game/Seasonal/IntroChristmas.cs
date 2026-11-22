@@ -24,17 +24,15 @@ namespace osu.Game.Seasonal
 {
     public partial class IntroChristmas : IntroScreen
     {
-        // nekodex - circle the halls
+        // Resolve only an already-installed local copy; no bundled archive or import.
         public const string CHRISTMAS_BEATMAP_SET_HASH = "7e26183e72a496f672c3a21292e6b469fdecd084d31c259ea10a31df5b46cd77";
 
         protected override string BeatmapHash => CHRISTMAS_BEATMAP_SET_HASH;
 
-        protected override string BeatmapFile => "christmas2024.osz";
+        protected override double ThemedIntroMusicStartTime => offset;
 
         private const double beat_length = 60000 / 172.0;
         private const double offset = 5924;
-
-        protected override string SeeyaSampleName => "Intro/Welcome/seeya";
 
         private TrianglesIntroSequence intro = null!;
 
@@ -51,15 +49,17 @@ namespace osu.Game.Seasonal
             {
                 PrepareMenuLoad();
 
-                var decouplingClock = new DecouplingFramedClock(UsingThemedIntro ? Track : null);
+                // Follow screen time, not audio or a separate real-time stopwatch.
+                var animationClock = new FramedOffsetClock(Clock, false) { Offset = -Clock.CurrentTime };
 
                 LoadComponentAsync(intro = new TrianglesIntroSequence(logo, () => FadeInBackground())
                 {
                     RelativeSizeAxes = Axes.Both,
-                    Clock = new InterpolatingFramedClock(decouplingClock),
+                    Clock = animationClock,
                     LoadMenu = LoadMenu
                 }, _ =>
                 {
+                    animationClock.Offset = -Clock.CurrentTime;
                     AddInternal(intro);
 
                     // There is a chance that the intro timed out before being displayed, and this scheduled callback could
@@ -69,12 +69,7 @@ namespace osu.Game.Seasonal
                     if (DidLoadMenu)
                         return;
 
-                    // If the user has requested no theme, fallback to the same intro voice and delay as IntroCircles.
-                    // The triangles intro voice and theme are combined which makes it impossible to use.
                     StartTrack();
-
-                    // no-op for the case of themed intro, no harm in calling for both scenarios as a safety measure.
-                    decouplingClock.Start();
                 });
             }
         }
@@ -83,7 +78,7 @@ namespace osu.Game.Seasonal
         {
             base.OnSuspending(e);
 
-            // important as there is a clock attached to a track which will likely be disposed before returning to this screen.
+            // Do not keep the completed intro animation alive behind the menu.
             intro.Expire();
         }
 
@@ -160,25 +155,25 @@ namespace osu.Game.Seasonal
                 using (BeginAbsoluteSequence(0))
                 {
                     using (BeginDelayedSequence(getTimeForBeat(-16)))
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome to Morasooma");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5336);
 
                     using (BeginDelayedSequence(getTimeForBeat(-15)))
                         welcomeText.FadeIn().OnComplete(t => t.Text = "");
 
                     using (BeginDelayedSequence(getTimeForBeat(-14)))
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "welcome to Morasooma");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5336);
 
                     using (BeginDelayedSequence(getTimeForBeat(-13)))
                         welcomeText.FadeIn().OnComplete(t => t.Text = "");
 
                     using (BeginDelayedSequence(getTimeForBeat(-12)))
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "merry christmas!");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5337);
 
                     using (BeginDelayedSequence(getTimeForBeat(-11)))
                         welcomeText.FadeIn().OnComplete(t => t.Text = "");
 
                     using (BeginDelayedSequence(getTimeForBeat(-10)))
-                        welcomeText.FadeIn().OnComplete(t => t.Text = "merry osumas!");
+                        welcomeText.FadeIn().OnComplete(t => t.Text = global::osu.Game.Localisation.ClientTranslationStrings.J5338);
 
                     using (BeginDelayedSequence(getTimeForBeat(-9)))
                     {

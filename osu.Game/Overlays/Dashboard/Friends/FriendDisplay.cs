@@ -207,7 +207,8 @@ namespace osu.Game.Overlays.Dashboard.Friends
             // There may be more than one active list in the container due to the delayed fade out.
             FriendsList? currentList = listContainer.SingleOrDefault(d => d.LifetimeEnd == double.MaxValue);
 
-            FriendsList newList = new FriendsList(userListToolbar.DisplayStyle.Value, apiFriends.Select(f => f.TargetUser!).ToArray())
+            // Relationship responses may omit the profile (for example after adding a friend).
+            FriendsList newList = new FriendsList(userListToolbar.DisplayStyle.Value, apiFriends.Select(f => f.TargetUser).OfType<APIUser>().ToArray())
             {
                 StatusFilter = { BindTarget = streamControl.Current },
                 SortCriteria = { BindTarget = userListToolbar.SortCriteria },

@@ -235,14 +235,14 @@ namespace osu.Game.Graphics.UserInterface
             double ratio = Math.Clamp(displayedFpsCount / activeAimDraw, 0, 1);
             counterDrawFPS.Colour = getColour(ratio);
 
-            counterDrawFPS.Text = $"{displayedFpsCount:#,0} fps";
+            counterDrawFPS.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3588(displayedFpsCount);
         }
 
         private void updateFrameTimeDisplay()
         {
             counterUpdateFrameTime.Text = displayedFrameTime < 5
-                ? $"{displayedFrameTime:N1} ms"
-                : $"{displayedFrameTime:N0} ms";
+                ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3589(displayedFrameTime)
+                : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3590(displayedFrameTime);
 
             double activeAimUpdate = (aimUpdateFPS > 0 && aimUpdateFPS < 2000) ? aimUpdateFPS : 2000;
             double ratio = Math.Clamp((1000 / displayedFrameTime) / activeAimUpdate, 0, 1);

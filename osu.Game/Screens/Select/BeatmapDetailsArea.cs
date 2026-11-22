@@ -2,10 +2,13 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Diagnostics;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Logging;
 using osu.Game.Graphics.Containers;
+using osu.Game.Performance.Debug;
 
 namespace osu.Game.Screens.Select
 {
@@ -23,6 +26,7 @@ namespace osu.Game.Screens.Select
 
         private Header header = null!;
         private Container contentContainer = null!;
+        private BeatmapMetadataWedge? preloadedMetadata;
 
         public BeatmapDetailsArea()
         {
@@ -52,13 +56,39 @@ namespace osu.Game.Screens.Select
                     Depth = 1f,
                 },
             };
+
+            // The first Details wedge costs tens of milliseconds to load when added on Update.
+            // Prepare its dependencies while the song-select screen is loading off-thread;
+            // LoadComplete and binding to the selected beatmap still happen when it is shown.
+            LoadComponent(preloadedMetadata = new BeatmapMetadataWedge());
         }
 
         protected override void LoadComplete()
         {
+            using var loading = PerformancePhaseLogger.Begin("BeatmapDetailsArea.LoadComplete");
             base.LoadComplete();
 
             header.Type.BindValueChanged(_ => updateDisplay(), true);
+        }
+
+        private int measuredInitialUpdateFrames;
+
+        public override bool UpdateSubTree()
+        {
+            if (!PerformancePhaseLogger.Enabled || measuredInitialUpdateFrames >= 3)
+                return base.UpdateSubTree();
+
+            measuredInitialUpdateFrames++;
+            long start = Stopwatch.GetTimestamp();
+            try
+            {
+                return base.UpdateSubTree();
+            }
+            finally
+            {
+                Logger.Log($"MOSU_SONG_SELECT_INITIAL_TREE component=BeatmapDetailsArea frame={measuredInitialUpdateFrames} "
+                           + $"elapsed_ms={Stopwatch.GetElapsedTime(start).TotalMilliseconds:F2}", LoggingTarget.Performance);
+            }
         }
 
         protected override void PopIn()
@@ -77,33 +107,46 @@ namespace osu.Game.Screens.Select
 
         private void updateDisplay()
         {
+            using var updating = PerformancePhaseLogger.Begin("BeatmapDetailsArea.UpdateDisplay");
             if (currentContent != null)
             {
                 currentContent.Hide();
                 currentContent.Expire();
             }
 
-            switch (header.Type.Value)
+            using (PerformancePhaseLogger.Begin("BeatmapDetailsArea.CreateContent", detail: header.Type.Value.ToString()))
             {
-                default:
-                case Header.Selection.Details:
-                    currentContent = new BeatmapMetadataWedge();
-                    break;
+                switch (header.Type.Value)
+                {
+                    default:
+                    case Header.Selection.Details:
+                        currentContent = preloadedMetadata ?? new BeatmapMetadataWedge();
+                        preloadedMetadata = null;
+                        break;
 
-                case Header.Selection.Ranking:
-                    currentContent = new BeatmapLeaderboardWedge
-                    {
-                        UseScorePanelOnlyInput = UseScorePanelOnlyInput,
-                        Scope = { BindTarget = header.Scope },
-                        Sorting = { BindTarget = header.Sorting },
-                        FilterBySelectedMods = { BindTarget = header.FilterBySelectedMods },
-                    };
-
-                    break;
+                    case Header.Selection.Ranking:
+                        currentContent = new BeatmapLeaderboardWedge
+                        {
+                            UseScorePanelOnlyInput = UseScorePanelOnlyInput,
+                            Scope = { BindTarget = header.Scope },
+                            Sorting = { BindTarget = header.Sorting },
+                            FilterBySelectedMods = { BindTarget = header.FilterBySelectedMods },
+                        };
+                        break;
+                }
             }
 
-            contentContainer.Add(currentContent);
-            currentContent.Show();
+            using (PerformancePhaseLogger.Begin("BeatmapDetailsArea.AttachContent"))
+            {
+                contentContainer.Add(currentContent);
+                currentContent.Show();
+            }
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            preloadedMetadata?.Dispose();
+            base.Dispose(isDisposing);
         }
 
         public void Refresh()

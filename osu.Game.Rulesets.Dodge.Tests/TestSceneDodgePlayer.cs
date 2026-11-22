@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
@@ -22,6 +23,7 @@ using osu.Framework.Timing;
 using osu.Framework.Utils;
 using osu.Game.Audio;
 using osu.Game.Beatmaps;
+using osu.Game.Graphics.Sprites;
 using osu.Game.Rulesets.Dodge.Beatmaps;
 using osu.Game.Rulesets.Dodge.Objects;
 using osu.Game.Rulesets.Dodge.Objects.Drawables;
@@ -141,6 +143,53 @@ namespace osu.Game.Rulesets.Dodge.Tests
             });
             AddUntilStep("wait for ruleset load", () => drawableRuleset.IsLoaded && drawableRuleset.Playfield.Player.IsLoaded);
             AddAssert("configured size applied", () => drawableRuleset.Playfield.Player.Size, () => Is.EqualTo(new Vector2(28)));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestMultiplayerControllerInitialisesLocalPlayer(bool hasWorldEvents)
+        {
+            var ruleset = new DodgeRuleset();
+            DrawableDodgeRuleset drawableRuleset = null!;
+            DodgeMultiplayerGameplayController controller = null!;
+
+            AddStep("create dodge ruleset", () =>
+            {
+                var beatmap = new Beatmap<DodgeHitObject>();
+
+                if (hasWorldEvents)
+                {
+                    beatmap.HitObjects.Add(new DodgeArenaChange
+                    {
+                        WorldSpace = true,
+                        StartTime = 1000,
+                        TargetPosition = new Vector2(64, 48),
+                        TargetSize = new Vector2(256, 192),
+                    });
+                }
+
+                Child = drawableRuleset = new DrawableDodgeRuleset(ruleset, beatmap, [])
+                {
+                    Clock = new FramedClock(new ManualClock { CurrentTime = 1500 }),
+                };
+            });
+            AddUntilStep("wait for player load", () => drawableRuleset.Playfield.Player.IsLoaded);
+            AddStep("create multiplayer controller before attaching it", () =>
+            {
+                controller = ruleset.CreateDodgeMultiplayerGameplayController(drawableRuleset, new DodgeMultiplayerGameplayConfiguration
+                {
+                    LocalUserId = 1,
+                    Usernames = new Dictionary<int, string> { [1] = "local" },
+                    PlayerColours = new Dictionary<int, Color4>(),
+                    IsBreakTime = new BindableBool(true),
+                });
+                drawableRuleset.Overlays.Add(controller);
+            });
+            AddUntilStep("local player label visible in break", () => controller.ChildrenOfType<DodgeMultiplayerPlayer>().Single().LabelAlpha == 1);
+            AddAssert("local player label shows the username before any ping response",
+                () => controller.ChildrenOfType<OsuSpriteText>().Single().Text.ToString(), () => Does.Contain("local"));
+            AddAssert("position uses the current arena", () => controller.LocalPlayerPosition,
+                () => Is.EqualTo(new Vector2(hasWorldEvents ? 0.75f : 0.5f)));
         }
 
         [Test]

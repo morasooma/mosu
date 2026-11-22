@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
-using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
@@ -77,9 +76,12 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
             }
         }
 
-        private partial class JudgementFlow : FillFlowContainer<HitErrorShape>
+        private partial class JudgementFlow : Container<HitErrorShape>
         {
-            public override IEnumerable<Drawable> FlowingChildren => base.FlowingChildren.Reverse();
+            // The icons have a fixed size. FlowContainer would invalidate its layout on every
+            // frame of their position animations, sorting and allocating an unchanged layout.
+            private readonly List<HitErrorShape> layoutChildren = new List<HitErrorShape>();
+            private bool layoutInvalid = true;
 
             public readonly Bindable<ShapeStyle> JudgementShape = new Bindable<ShapeStyle>();
 
@@ -90,9 +92,6 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
             public JudgementFlow()
             {
                 Width = drawable_judgement_size;
-                Direction = FillDirection.Vertical;
-                LayoutDuration = animation_duration;
-                LayoutEasing = Easing.OutQuint;
             }
 
             protected override void LoadComplete()
@@ -110,22 +109,76 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
 
             public void Push(HitErrorShape shape)
             {
+                layoutInvalid = true;
                 Add(shape);
                 removeExtraJudgements();
             }
 
             private void removeExtraJudgements()
             {
-                var remainingChildren = Children.Where(c => !c.IsRemoved);
+                int remaining = 0;
+                for (int i = 0; i < Children.Count; i++)
+                {
+                    if (!Children[i].IsRemoved)
+                        remaining++;
+                }
 
-                while (remainingChildren.Count() > JudgementCount.Value)
-                    remainingChildren.First().Remove();
+                for (int i = 0; remaining > JudgementCount.Value && i < Children.Count; i++)
+                {
+                    if (Children[i].IsRemoved)
+                        continue;
+
+                    Children[i].Remove();
+                    remaining--;
+                }
             }
 
             private void updateMetrics()
             {
                 Height = JudgementCount.Value * (drawable_judgement_size + JudgementSpacing.Value) - JudgementSpacing.Value;
-                Spacing = new Vector2(0, JudgementSpacing.Value);
+                layoutInvalid = true;
+            }
+
+            protected override void UpdateAfterChildren()
+            {
+                base.UpdateAfterChildren();
+
+                // Match the original newest-first flow, including fading-out icons until
+                // they cease to be present. Position/colour animations do not change membership.
+                int index = 0;
+                for (int i = AliveChildren.Count - 1; i >= 0; i--)
+                {
+                    var shape = AliveChildren[i];
+                    if (!shape.IsPresent)
+                        continue;
+
+                    if (index == layoutChildren.Count)
+                    {
+                        layoutChildren.Add(shape);
+                        layoutInvalid = true;
+                    }
+                    else if (layoutChildren[index] != shape)
+                    {
+                        layoutChildren[index] = shape;
+                        layoutInvalid = true;
+                    }
+
+                    index++;
+                }
+
+                if (index < layoutChildren.Count)
+                {
+                    layoutChildren.RemoveRange(index, layoutChildren.Count - index);
+                    layoutInvalid = true;
+                }
+
+                if (!layoutInvalid)
+                    return;
+
+                for (int i = 0; i < layoutChildren.Count; i++)
+                    layoutChildren[i].MoveToLayoutPosition(new Vector2(0, i * (drawable_judgement_size + JudgementSpacing.Value)));
+
+                layoutInvalid = false;
             }
         }
 
@@ -139,6 +192,16 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
             private ColourHitErrorMeter hitErrorMeter { get; set; } = null!;
 
             private Container content = null!;
+            private Vector2 layoutPosition;
+
+            internal void MoveToLayoutPosition(Vector2 position)
+            {
+                if (layoutPosition == position)
+                    return;
+
+                layoutPosition = position;
+                this.MoveTo(position, animation_duration, Easing.OutQuint);
+            }
 
             public HitErrorShape()
             {
@@ -160,7 +223,7 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
                     switch (shape.NewValue)
                     {
                         case ShapeStyle.Circle:
-                            content.Child = new Circle { RelativeSizeAxes = Axes.Both };
+                            content.Child = new FastCircle { RelativeSizeAxes = Axes.Both };
                             break;
 
                         case ShapeStyle.Square:
@@ -179,6 +242,7 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
             {
                 base.PrepareForUse();
 
+                layoutPosition = Vector2.Zero;
                 this.FadeInFromZero(animation_duration, Easing.OutQuint)
                     // On pool re-use, start flow animation from (0,0).
                     .MoveTo(Vector2.Zero);

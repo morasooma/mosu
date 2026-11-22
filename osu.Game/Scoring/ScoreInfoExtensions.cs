@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Game.Beatmaps;
+using osu.Game.Database;
 using osu.Game.Models;
 using osu.Game.Online;
 using osu.Game.Online.API.Requests.Responses;
@@ -33,7 +34,13 @@ namespace osu.Game.Scoring
                      .ThenBy(s => s.Date);
 
         public static long GetLeaderboardScore(this ScoreInfo score)
-            => MosuServerEnvironment.UsesStableProtocol ? score.LegacyTotalScore ?? score.TotalScore : score.TotalScore;
+        {
+            if (MosuServerEnvironment.UsesStableProtocol)
+                return score.LegacyTotalScore ?? score.TotalScore;
+            if (MosuServerEnvironment.IsThirdPartyServer)
+                return score.TotalScore;
+            return score.MosuTotalScore ?? ForkDataStore.Instance?.GetMosuTotalScore(score.ID) ?? score.TotalScore;
+        }
 
         /// <summary>
         /// Orders an array of <see cref="ScoreInfo"/>s by the selected <see cref="LeaderboardSortMode"/>.
@@ -46,16 +53,19 @@ namespace osu.Game.Scoring
             switch (leaderboardSortMode)
             {
                 case LeaderboardSortMode.Score:
-                    return scores.OrderByDescending(s => s.TotalScore);
+                    return scores.OrderByDescending(GetLeaderboardScore);
+
+                case LeaderboardSortMode.PP:
+                    return scores.OrderByDescending(s => s.PP ?? 0).ThenByDescending(GetLeaderboardScore);
 
                 case LeaderboardSortMode.Accuracy:
-                    return scores.OrderByDescending(s => s.Accuracy).ThenByDescending(s => s.TotalScore);
+                    return scores.OrderByDescending(s => s.Accuracy).ThenByDescending(GetLeaderboardScore);
 
                 case LeaderboardSortMode.MaxCombo:
-                    return scores.OrderByDescending(s => s.MaxCombo).ThenByDescending(s => s.TotalScore);
+                    return scores.OrderByDescending(s => s.MaxCombo).ThenByDescending(GetLeaderboardScore);
 
                 case LeaderboardSortMode.Misses:
-                    return scores.OrderBy(s => s.Statistics.GetValueOrDefault(HitResult.Miss, 0)).ThenByDescending(s => s.TotalScore);
+                    return scores.OrderBy(s => s.Statistics.GetValueOrDefault(HitResult.Miss, 0)).ThenByDescending(GetLeaderboardScore);
 
                 case LeaderboardSortMode.Date:
                     return scores.OrderByDescending(s => s.Date);

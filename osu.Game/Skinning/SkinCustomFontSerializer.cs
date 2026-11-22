@@ -43,6 +43,17 @@ namespace osu.Game.Skinning
                     });
                 }
 
+                else if (SkinComponentFont.GetOverride(drawables[i]) is string family)
+                {
+                    results.Add(new SkinCustomFontOverride
+                    {
+                        Container = container.ToString(),
+                        Ruleset = ruleset?.ShortName ?? "global",
+                        Path = path,
+                        FontFamily = family,
+                    });
+                }
+
                 if (drawables[i] is Container composite)
                     extractRecursive(container, ruleset, composite.Children.ToArray(), path.ToList(), results);
             }
@@ -61,6 +72,9 @@ namespace osu.Game.Skinning
                     fontComponent.CustomFontFamily.Value = fontOverride.FontFamily;
                     fontComponent.TextWeight.Value = fontOverride.TextWeight;
                 }
+
+                else if (fontOverride != null)
+                    SkinComponentFont.Restore(drawables[i], fontOverride.FontFamily);
 
                 if (drawables[i] is Container composite && infos[i].Children.Count > 0)
                     applyRecursive(fontInfo, container, ruleset, infos[i].Children, composite.Children.ToArray(), path);

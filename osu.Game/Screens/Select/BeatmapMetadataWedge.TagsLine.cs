@@ -233,6 +233,7 @@ namespace osu.Game.Screens.Select
 
                 private readonly string[] tags;
                 private readonly Action<string>? performSearch;
+                private IBindable<int>? paletteVersionBindable;
 
                 private LinkFlowContainer textFlow = null!;
 
@@ -246,6 +247,13 @@ namespace osu.Game.Screens.Select
                 private void load()
                 {
                     Background.Colour = Arrow.Colour = ColourProvider.Background4;
+
+                    paletteVersionBindable = ColourProvider.PaletteVersion.GetBoundCopy();
+                    paletteVersionBindable.BindValueChanged(_ =>
+                    {
+                        Background.FadeColour(ColourProvider.Background4, OverlayColourProvider.ThemeTransitionDuration(150), Easing.OutQuint);
+                        Arrow.FadeColour(ColourProvider.Background4, OverlayColourProvider.ThemeTransitionDuration(150), Easing.OutQuint);
+                    });
 
                     Child = textFlow = new LinkFlowContainer(t => t.Font = OsuFont.Style.Caption1)
                     {

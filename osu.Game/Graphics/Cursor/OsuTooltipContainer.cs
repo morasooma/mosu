@@ -12,7 +12,6 @@ using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Effects;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Localisation;
-using osu.Framework.Utils;
 using osu.Game.Graphics.Containers;
 using osu.Game.Overlays;
 
@@ -20,15 +19,33 @@ namespace osu.Game.Graphics.Cursor
 {
     public partial class OsuTooltipContainer : TooltipContainer
     {
+        private readonly TooltipPositionFilter positionFilter = new TooltipPositionFilter();
+        private Vector2 lastDrawSize;
+
         protected override ITooltip CreateTooltip() => new OsuTooltip();
+
+        protected override Vector2 FilterTooltipCursorPosition(Vector2 position)
+        {
+            if (DrawSize != lastDrawSize)
+            {
+                positionFilter.Reset();
+                lastDrawSize = DrawSize;
+            }
+
+            return positionFilter.Filter(position, Time.Current);
+        }
+
+        protected override void ResetTooltipPosition() => positionFilter.Reset();
 
         public OsuTooltipContainer(CursorContainer cursor)
             : base(cursor)
         {
         }
 
-        // Standalone public build note: Upstream ppy.osu.Framework TooltipContainer does not define
-        // a virtual CreateContentContainer() hook. Custom lifetime container override is bypassed here.
+        protected override Container CreateContentContainer() => new StableLifetimeContainer
+        {
+            RelativeSizeAxes = Axes.Both,
+        };
 
         protected override double AppearDelay => (1 - CurrentTooltip.Alpha) * base.AppearDelay; // reduce appear delay if the tooltip is already partly visible.
 
@@ -38,7 +55,6 @@ namespace osu.Game.Graphics.Cursor
 
             private readonly Box background;
             private readonly TextFlowContainer text;
-            private bool instantMovement = true;
             private IBindable<ThemeMode>? themeMode;
             private IBindable<Colour4>? themeColour;
 
@@ -53,8 +69,9 @@ namespace osu.Game.Graphics.Cursor
 
                 if (IsPresent)
                 {
-                    AutoSizeDuration = 250;
-                    background.FlashColour(OsuColour.Gray(0.4f), 1000, Easing.OutQuint);
+                    AutoSizeDuration = (float)InterfaceAnimation.MovementDuration(250);
+                    if (InterfaceAnimation.AllowDecorativeMovement)
+                        background.FlashColour(OsuColour.Gray(0.4f), 1000, Easing.OutQuint);
                 }
                 else
                     AutoSizeDuration = 0;
@@ -134,25 +151,13 @@ namespace osu.Game.Graphics.Cursor
 
             protected override void PopIn()
             {
-                instantMovement |= !IsPresent;
-                this.FadeIn(300, Easing.OutQuint);
+                this.FadeIn(InterfaceAnimation.FadeDuration(300), Easing.OutQuint);
             }
 
-            protected override void PopOut() => this.Delay(150).FadeOut(300, Easing.OutQuint);
+            protected override void PopOut() => this.Delay(InterfaceAnimation.FadeDuration(150)).FadeOut(InterfaceAnimation.FadeDuration(300), Easing.OutQuint);
 
-            public override void Move(Vector2 pos)
-            {
-                if (instantMovement)
-                {
-                    Position = pos;
-                    instantMovement = false;
-                }
-                else
-                {
-                    // This method is called every frame so we can do this safely here.
-                    Position = Interpolation.ValueAt(Time.Elapsed, Position, pos, 0, 120, Easing.OutQuint);
-                }
-            }
+            // The container stabilises the cursor anchor for all tooltip types.
+            public override void Move(Vector2 pos) => Position = pos;
         }
     }
 }

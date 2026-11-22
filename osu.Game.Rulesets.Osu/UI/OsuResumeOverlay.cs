@@ -26,7 +26,7 @@ namespace osu.Game.Rulesets.Osu.UI
 
         public override CursorContainer? LocalCursor => State.Value == Visibility.Visible ? localCursorContainer : null;
 
-        protected override LocalisableString Message => "Click the orange cursor to resume";
+        protected override LocalisableString Message => global::osu.Game.Localisation.ClientTranslationStrings.J5379;
 
         [Resolved]
         private DrawableRuleset? drawableRuleset { get; set; }

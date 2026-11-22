@@ -51,6 +51,12 @@ namespace osu.Game.Rulesets.Dodge.Objects
         /// Movement and approach-guide properties used by projectile objects.
         /// Arena changes intentionally ignore these movement properties.
         /// </summary>
+        [JsonIgnore]
+        public osu.Framework.Graphics.Primitives.RectangleF? WorldBounds { get; internal set; }
+
+        [JsonIgnore]
+        internal UI.DodgeArenaStateEvaluator? ArenaTimeline { get; set; }
+
         public DodgeMovementType MovementType { get; set; }
 
         public DodgeMovementEasing MovementEasing { get; set; }

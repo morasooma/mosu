@@ -185,6 +185,7 @@ namespace osu.Game.Rulesets.Scoring
         /// The total score multiplier.
         /// </summary>
         private double scoreMultiplier = 1;
+        private double originalScoreMultiplier = 1;
 
         public Dictionary<HitResult, int> MaximumStatistics
         {
@@ -400,6 +401,18 @@ namespace osu.Game.Rulesets.Scoring
         {
         }
 
+        /// <summary>
+        /// Optional native stable ScoreV1 source for the live score display. Accuracy
+        /// and judgement accounting remain owned by this processor.
+        /// </summary>
+        public Func<long>? LegacyTotalScoreSource { get; set; }
+
+        public void RefreshLegacyTotalScore()
+        {
+            if (LegacyTotalScoreSource != null)
+                TotalScore.Value = LegacyTotalScoreSource();
+        }
+
         private void updateScore()
         {
             Accuracy.Value = currentMaximumBaseScore > 0 ? currentBaseScore / currentMaximumBaseScore : 1;
@@ -410,7 +423,7 @@ namespace osu.Game.Rulesets.Scoring
             double accuracyProgress = maximumAccuracyJudgementCount > 0 ? (double)currentAccuracyJudgementCount / maximumAccuracyJudgementCount : 1;
 
             TotalScoreWithoutMods.Value = (long)Math.Round(ComputeTotalScore(comboProgress, accuracyProgress, currentBonusPortion));
-            TotalScore.Value = (long)Math.Round(TotalScoreWithoutMods.Value * scoreMultiplier);
+            TotalScore.Value = LegacyTotalScoreSource?.Invoke() ?? (long)Math.Round(TotalScoreWithoutMods.Value * scoreMultiplier);
         }
 
         private void updateRank()
@@ -432,8 +445,10 @@ namespace osu.Game.Rulesets.Scoring
             if (Beatmap.Value == null)
                 return;
 
-            var calculator = Ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(Beatmap.Value.BeatmapInfo.Difficulty, isRankedPlay: IsRankedPlay.Value));
-            scoreMultiplier = calculator.CalculateFor(Mods.Value);
+            var context = new ScoreMultiplierContext(Beatmap.Value.BeatmapInfo.Difficulty, isRankedPlay: IsRankedPlay.Value);
+            scoreMultiplier = Ruleset.CreateScoreMultiplierCalculator(context).CalculateFor(Mods.Value);
+            originalScoreMultiplier = Ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(
+                Beatmap.Value.BeatmapInfo.Difficulty, isRankedPlay: IsRankedPlay.Value, useOriginalMultipliers: true)).CalculateFor(Mods.Value);
         }
 
         protected virtual double ComputeTotalScore(double comboProgress, double accuracyProgress, double bonusPortion)
@@ -507,7 +522,10 @@ namespace osu.Game.Rulesets.Scoring
 
             // Populate total score after everything else.
             score.TotalScoreWithoutMods = TotalScoreWithoutMods.Value;
-            score.TotalScore = TotalScore.Value;
+            score.TotalScore = LegacyTotalScoreSource?.Invoke() ?? (long)Math.Round(TotalScoreWithoutMods.Value * originalScoreMultiplier);
+            if (LegacyTotalScoreSource != null)
+                score.LegacyTotalScore = score.TotalScore;
+            score.MosuTotalScore = TotalScore.Value;
         }
 
         /// <summary>

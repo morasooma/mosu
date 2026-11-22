@@ -47,7 +47,7 @@ namespace osu.Game.Rulesets.Osu.Edit
             new DrawableTernaryButton<OsuAction>
             {
                 Current = DistanceSnapToggle,
-                Description = "Distance Snap",
+                Description = global::osu.Game.Localisation.ClientTranslationStrings.J3282,
                 CreateIcon = () => new SpriteIcon { Icon = OsuIcon.EditorDistanceSnap },
                 Action = OsuAction.EditorToggleDistanceSnap,
                 Hotkey = new Hotkey(OsuRuleset.SHORT_NAME, Ruleset.EDITOR_VARIANT, (int)OsuAction.EditorToggleDistanceSnap),

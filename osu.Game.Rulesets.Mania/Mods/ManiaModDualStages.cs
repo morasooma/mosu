@@ -14,7 +14,7 @@ namespace osu.Game.Rulesets.Mania.Mods
     {
         public override string Name => "Dual Stages";
         public override string Acronym => "DS";
-        public override LocalisableString Description => @"Double the stages, double the fun!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3632;
         public override IconUsage? Icon => OsuIcon.ModDualStages;
         public override ModType Type => ModType.Conversion;
 

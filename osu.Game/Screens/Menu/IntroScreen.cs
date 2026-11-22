@@ -9,29 +9,22 @@ using System.Linq;
 using JetBrains.Annotations;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
-using osu.Framework.Audio.Sample;
 using osu.Framework.Audio.Track;
 using osu.Framework.Bindables;
-using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Screens;
 using osu.Framework.Utils;
-using osu.Game.Audio;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Database;
-using osu.Game.Extensions;
 using osu.Game.Localisation;
-using osu.Game.Online.API;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Overlays.Volume;
-using osu.Game.Rulesets;
 using osu.Game.Screens.Backgrounds;
-using osu.Game.Skinning;
+using osu.Game.Seasonal;
 using osuTK;
 using osuTK.Graphics;
-using Realms;
 
 namespace osu.Game.Screens.Menu
 {
@@ -42,31 +35,22 @@ namespace osu.Game.Screens.Menu
         /// </summary>
         public bool DidLoadMenu { get; private set; }
 
-        /// <summary>
-        /// A hash used to find the associated beatmap if already imported.
-        /// </summary>
+        // These identities only resolve existing local maps. No archives are distributed or imported.
+        internal static bool IsKnownIntroBeatmap(string hash) => hash is
+            IntroCircles.BEATMAP_SET_HASH or IntroWelcome.BEATMAP_SET_HASH or IntroTriangles.BEATMAP_SET_HASH or IntroChristmas.CHRISTMAS_BEATMAP_SET_HASH;
+
         protected abstract string BeatmapHash { get; }
 
-        /// <summary>
-        /// A source file to use as an import source if the intro beatmap is not yet present.
-        /// Should be within the "Tracks" namespace of game resources.
-        /// </summary>
-        protected abstract string BeatmapFile { get; }
+        protected bool UsingThemedIntro { get; private set; }
 
-        protected IBindable<bool> MenuVoice { get; private set; }
-
-        protected IBindable<bool> MenuMusic { get; private set; }
+        // Keep the already-removed voice beginnings muted in local legacy tracks too.
+        protected virtual double ThemedIntroMusicStartTime => 0;
 
         private WorkingBeatmap initialBeatmap;
 
         protected ITrack Track { get; private set; }
 
         private const int exit_delay = 3000;
-
-        private SkinnableSound skinnableSeeya;
-        private ISample seeya;
-
-        protected virtual string SeeyaSampleName => "Intro/seeya";
 
         protected override bool PlayExitSound => false;
 
@@ -75,22 +59,12 @@ namespace osu.Game.Screens.Menu
         private OsuScreen nextScreen;
 
         [Resolved]
-        private AudioManager audio { get; set; }
-
-        [Resolved]
         private MusicController musicController { get; set; }
 
         [CanBeNull]
         private readonly Func<OsuScreen> createNextScreen;
 
-        [Resolved]
-        private RulesetStore rulesets { get; set; }
-
-        /// <summary>
-        /// Whether the <see cref="Track"/> is provided by osu! resources, rather than a user beatmap.
-        /// Only valid during or after <see cref="LogoArriving"/>.
-        /// </summary>
-        protected bool UsingThemedIntro { get; private set; }
+        private bool usingSilentIntro;
 
         protected override BackgroundScreen CreateBackground() => new BackgroundScreenDefault
         {
@@ -108,31 +82,22 @@ namespace osu.Game.Screens.Menu
         private BeatmapManager beatmaps { get; set; }
 
         [BackgroundDependencyLoader]
-        private void load(OsuConfigManager config, Framework.Game game, RealmAccess realm, IAPIProvider api)
+        private void load(OsuConfigManager config, AudioManager audio, RealmAccess realm)
         {
             // prevent user from changing beatmap while the intro is still running.
             beatmap = Beatmap.BeginLease(false);
 
-            MenuVoice = config.GetBindable<bool>(OsuSetting.MenuVoice);
-            MenuMusic = config.GetBindable<bool>(OsuSetting.MenuMusic);
-
-            if (api.LocalUser.Value.IsSupporter)
-                AddInternal(skinnableSeeya = new SkinnableSound(new SampleInfo(SeeyaSampleName)));
-            else
-                seeya = audio.Samples.Get(SeeyaSampleName);
-
-            // if the user has requested not to play theme music, we should attempt to find a random beatmap from their collection.
-            if (!MenuMusic.Value)
+            // Preserve the choice between a personal random track and an installed theme.
+            if (!config.Get<bool>(OsuSetting.MenuMusic))
             {
                 realm.Run(r =>
                 {
-                    var usableBeatmapSets = r.All<BeatmapSetInfo>().Where(s => !s.DeletePending && !s.Protected).AsRealmCollection();
+                    var usableBeatmapSets = r.All<BeatmapSetInfo>().Where(s => !s.DeletePending && !s.Protected)
+                                            .AsEnumerable().Where(s => !IsKnownIntroBeatmap(s.Hash)).ToArray();
 
-                    int setCount = usableBeatmapSets.Count;
-
-                    if (setCount > 0)
+                    if (usableBeatmapSets.Length > 0)
                     {
-                        var found = usableBeatmapSets[RNG.Next(0, setCount - 1)].Beatmaps.FirstOrDefault();
+                        var found = usableBeatmapSets[RNG.Next(usableBeatmapSets.Length)].Beatmaps.FirstOrDefault();
 
                         if (found != null)
                             initialBeatmap = beatmaps.GetWorkingBeatmap(found);
@@ -140,50 +105,38 @@ namespace osu.Game.Screens.Menu
                 });
             }
 
-            // we generally want a song to be playing on startup, so use the intro music even if a user has specified not to if no other track is available.
             if (initialBeatmap == null)
             {
-                // Intro beatmaps are generally made using the osu! ruleset.
-                // It might not be present in test projects for other rulesets.
-                bool osuRulesetPresent = rulesets.GetRuleset(0) != null;
-
-                if (!loadThemedIntro() && osuRulesetPresent)
+                string hash = BeatmapHash;
+                var existing = beatmaps.QueryBeatmapSet(s => !s.DeletePending && s.Hash == hash);
+                existing?.PerformRead(set =>
                 {
-                    // if we detect that the theme track or beatmap is unavailable this is either first startup or things are in a bad state.
-                    // this could happen if a user has nuked their files store. for now, reimport to repair this.
-                    var import = beatmaps.Import(new ImportTask(game.Resources.GetStream($"Tracks/{BeatmapFile}"), BeatmapFile)).GetResultSafely();
+                    foreach (var info in set.Beatmaps)
+                    {
+                        if (info.Path == null || string.IsNullOrEmpty(info.Metadata.AudioFile))
+                            continue;
 
-                    import?.PerformWrite(b => b.Protected = true);
+                        var working = beatmaps.GetWorkingBeatmap(info);
+                        string audioPath = set.GetPathForFile(info.Metadata.AudioFile);
+                        string mapPath = set.GetPathForFile(info.Path);
+                        if (audioPath == null || mapPath == null)
+                            continue;
 
-                    loadThemedIntro();
-                }
-            }
+                        using var audioFile = working.GetStream(audioPath);
+                        using var mapFile = working.GetStream(mapPath);
+                        if (audioFile == null || audioFile.Length == 0 || mapFile == null || mapFile.Length == 0)
+                            continue;
 
-            bool loadThemedIntro()
-            {
-                var setInfo = beatmaps.QueryBeatmapSet(b => b.Protected && b.Hash == BeatmapHash);
-
-                if (setInfo == null)
-                    return false;
-
-                setInfo.PerformRead(s =>
-                {
-                    if (s.Beatmaps.Count == 0)
-                        return;
-
-                    var working = beatmaps.GetWorkingBeatmap(s.Beatmaps.First());
-
-                    // Ensure files area actually present on disk.
-                    // This is to handle edge cases like users deleting files outside the game and breaking the world.
-                    if (!hasAllFiles(working))
-                        return;
-
-                    initialBeatmap = working;
+                        initialBeatmap = working;
+                        UsingThemedIntro = true;
+                        break;
+                    }
                 });
-
-                return UsingThemedIntro = initialBeatmap != null;
             }
 
+            // Missing/deleted local entries never trigger a download, import or repair.
+            usingSilentIntro = initialBeatmap == null;
+            initialBeatmap ??= new DummyWorkingBeatmap(audio, null);
             AddInternal(new GlobalScrollAdjustsVolume());
         }
 
@@ -195,20 +148,6 @@ namespace osu.Game.Screens.Menu
 
         [Resolved]
         private INotificationOverlay notifications { get; set; }
-
-        private bool hasAllFiles(WorkingBeatmap working)
-        {
-            foreach (var f in working.BeatmapSetInfo.Files)
-            {
-                using (var str = working.GetStream(f.File.GetStoragePath()))
-                {
-                    if (str == null)
-                        return false;
-                }
-            }
-
-            return true;
-        }
 
         private void ensureEventuallyArrivingAtMenu()
         {
@@ -241,7 +180,7 @@ namespace osu.Game.Screens.Menu
 
             ApplyToBackground(b => b.FadeColour(Color4.Black, 100));
 
-            double fadeOutTime = exit_delay;
+            const double fade_out_time = 500;
 
             var track = musicController.CurrentTrack;
 
@@ -249,36 +188,11 @@ namespace osu.Game.Screens.Menu
             track.Looping = false;
             Beatmap.Disabled = true;
 
-            // we also handle the exit transition.
-            if (MenuVoice.Value)
-            {
-                if (skinnableSeeya != null)
-                {
-                    // resuming a screen (i.e. calling OnResume) happens before the screen itself becomes alive,
-                    // therefore skinnable samples may not be updated yet with the recently selected skin.
-                    // schedule after children to ensure skinnable samples have processed skin changes before playing.
-                    ScheduleAfterChildren(() => skinnableSeeya.Play());
-                }
-                else
-                    seeya.Play();
-
-                // if playing the outro voice, we have more time to have fun with the background track.
-                // initially fade to almost silent then ramp out over the remaining time.
-                const double initial_fade = 200;
-                track
-                    .VolumeTo(0.03f, initial_fade).Then()
-                    .VolumeTo(0, fadeOutTime - initial_fade, Easing.In);
-            }
-            else
-            {
-                fadeOutTime = 500;
-
-                // if outro voice is turned off, just do a simple fade out.
-                track.VolumeTo(0, fadeOutTime, Easing.Out);
-            }
+            // No upstream outro voice; just fade out the music.
+            track.VolumeTo(0, fade_out_time, Easing.Out);
 
             //don't want to fade out completely else we will stop running updates.
-            Game.FadeTo(0.01f, fadeOutTime).OnComplete(_ => this.Exit());
+            Game.FadeTo(0.01f, fade_out_time).OnComplete(_ => this.Exit());
 
             base.OnResuming(e);
         }
@@ -304,7 +218,7 @@ namespace osu.Game.Screens.Menu
         {
             var drawableTrack = musicController.CurrentTrack;
 
-            if (!UsingThemedIntro)
+            if (!usingSilentIntro && !UsingThemedIntro)
             {
                 initialBeatmap?.PrepareTrackForPreview(false, -2600);
 
@@ -328,14 +242,25 @@ namespace osu.Game.Screens.Menu
 
             if (!resuming)
             {
-                // generally this can never be null
-                // an exception is running ruleset tests, where the osu! ruleset may not be present (causing importing the intro to fail).
-                if (initialBeatmap != null)
-                    beatmap.Value = initialBeatmap;
+                beatmap.Value = initialBeatmap;
                 Track = beatmap.Value.Track;
+                // MusicController loads a fresh track on the beatmap change. Set
+                // looping on that instance, not the dummy's constructor-time track.
+                // Silence must not finish and advance the user's playlist.
+                if (usingSilentIntro)
+                    Track.Looping = true;
 
                 // ensure the track starts at maximum volume
                 musicController.CurrentTrack.FinishTransforms();
+
+                if (UsingThemedIntro && ThemedIntroMusicStartTime > 0)
+                {
+                    var drawableTrack = musicController.CurrentTrack;
+                    double musicStartTime = ThemedIntroMusicStartTime;
+                    var voiceVolume = new BindableDouble(0);
+                    drawableTrack.AddAdjustment(AdjustableProperty.Volume, voiceVolume);
+                    drawableTrack.OnUpdate += _ => voiceVolume.Value = drawableTrack.CurrentTime < musicStartTime ? 0 : 1;
+                }
 
                 logo.MoveTo(new Vector2(0.5f));
                 logo.ScaleTo(Vector2.One);

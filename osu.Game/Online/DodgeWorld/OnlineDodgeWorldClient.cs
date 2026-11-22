@@ -74,33 +74,11 @@ namespace osu.Game.Online.DodgeWorld
             IsConnected.BindTo(connector.IsConnected);
         }
 
-        protected override async Task<DodgeWorldRoomJoin> JoinRoomInternal(string roomId, DodgeWorldPlayerState state)
-        {
-            HubConnection? conn = activeConnection;
+        // The source build keeps the world editor/local preview, not live world state uploads.
+        protected override Task<DodgeWorldRoomJoin> JoinRoomInternal(string roomId, DodgeWorldPlayerState state)
+            => Task.FromResult(new DodgeWorldRoomJoin());
 
-            if (conn == null)
-                return new DodgeWorldRoomJoin();
-
-            return await conn.InvokeAsync<DodgeWorldRoomJoin>(nameof(IDodgeWorldServer.JoinRoom), roomId, state).ConfigureAwait(false);
-        }
-
-        protected override async Task AttackInternal(Vector2 direction)
-        {
-            HubConnection? conn = activeConnection;
-
-            if (conn == null)
-                return;
-
-            try
-            {
-                await conn.SendAsync(nameof(IDodgeWorldServer.Attack), direction.X, direction.Y).ConfigureAwait(false);
-            }
-            catch (InvalidOperationException exception)
-            {
-                Logger.Log($"{nameof(OnlineDodgeWorldClient)} send of '{nameof(IDodgeWorldServer.Attack)}' failed: {exception.Message}",
-                    LoggingTarget.Network);
-            }
-        }
+        protected override Task AttackInternal(Vector2 direction) => Task.CompletedTask;
 
         protected override async Task LeaveRoomInternal()
         {
@@ -120,24 +98,7 @@ namespace osu.Game.Online.DodgeWorld
             }
         }
 
-        protected override async Task UpdateStateInternal(DodgeWorldPlayerState state)
-        {
-            HubConnection? conn = activeConnection;
-
-            if (conn == null)
-                return;
-
-            try
-            {
-                // Sent rather than invoked: a position is worthless by the time a round trip confirms it.
-                await conn.SendAsync(nameof(IDodgeWorldServer.UpdateState), state).ConfigureAwait(false);
-            }
-            catch (InvalidOperationException exception)
-            {
-                Logger.Log($"{nameof(OnlineDodgeWorldClient)} send of '{nameof(IDodgeWorldServer.UpdateState)}' failed: {exception.Message}",
-                    LoggingTarget.Network);
-            }
-        }
+        protected override Task UpdateStateInternal(DodgeWorldPlayerState state) => Task.CompletedTask;
 
         public override async Task Reconnect()
         {

@@ -77,17 +77,17 @@ namespace osu.Game.Rulesets.Osu.Edit
                 toleranceSlider = new ExpandableSlider<int>
                 {
                     Current = displayTolerance,
-                    ExpandedLabelText = "Control point spacing",
+                    ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3286,
                 },
                 cornerThresholdSlider = new ExpandableSlider<int>
                 {
                     Current = displayCornerThreshold,
-                    ExpandedLabelText = "Corner bias",
+                    ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3287,
                 },
                 circleThresholdSlider = new ExpandableSlider<int>
                 {
                     Current = displayCircleThreshold,
-                    ExpandedLabelText = "Perfect curve bias"
+                    ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3288
                 }
             };
         }

@@ -13,6 +13,6 @@ namespace osu.Game.Rulesets.Mania.Mods
         public override string Name => "Six Keys";
         public override string Acronym => "6K";
         public override IconUsage? Icon => OsuIcon.ModSixKeys;
-        public override LocalisableString Description => @"Play with six keys.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3644;
     }
 }

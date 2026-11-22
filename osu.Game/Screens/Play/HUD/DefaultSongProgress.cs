@@ -31,6 +31,8 @@ namespace osu.Game.Screens.Play.HUD
         private readonly DefaultSongProgressGraph graph;
         private readonly SongProgressInfo info;
         private readonly Container content;
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+        private Colour4 defaultFillColour;
 
         [SettingSource(typeof(SongProgressStrings), nameof(SongProgressStrings.ShowGraph), nameof(SongProgressStrings.ShowGraphDescription))]
         public Bindable<bool> ShowGraph { get; } = new BindableBool(true);
@@ -86,7 +88,7 @@ namespace osu.Game.Screens.Play.HUD
         [BackgroundDependencyLoader]
         private void load(OsuColour colours)
         {
-            graph.FillColour = bar.FillColour = colours.BlueLighter;
+            graph.FillColour = bar.FillColour = defaultFillColour = colours.BlueLighter;
 
             // see comment in ArgonHealthDisplay.cs regarding RelativeSizeAxes
             float previousWidth = Width;
@@ -99,7 +101,16 @@ namespace osu.Game.Screens.Play.HUD
             Interactive.BindValueChanged(_ => updateBarVisibility(), true);
             ShowGraph.BindValueChanged(_ => updateGraphVisibility(), true);
             ShowTime.BindValueChanged(_ => updateTimeVisibility(), true);
-            AccentColour.BindValueChanged(_ => Colour = AccentColour.Value, true);
+            void updateColours()
+            {
+                Colour = AccentColour.Value;
+                graph.FillColour = bar.FillColour = AccentColour.IsDefault
+                    ? themeColours.GetColour(Overlays.OverlayColour.Highlight1, defaultFillColour) : defaultFillColour;
+                info.TextColour = AccentColour.IsDefault
+                    ? themeColours.GetColour(Overlays.OverlayColour.Content1, defaultFillColour) : defaultFillColour;
+            }
+            AccentColour.BindValueChanged(_ => updateColours());
+            themeColours.Bind(action => Scheduler.Add(action), updateColours);
 
             base.LoadComplete();
         }

@@ -183,7 +183,11 @@ namespace osu.Game.Screens.Edit.Timing
                             s.Anchor = Anchor.CentreRight;
                             s.Origin = Anchor.CentreRight;
                             s.Width = 0.5f;
-                            s.Action = change => Current.Value += change;
+                            s.Action = change =>
+                            {
+                                if (!Current.Disabled)
+                                    Current.Value += change;
+                            };
                         })
                     },
                 },
@@ -206,6 +210,7 @@ namespace osu.Game.Screens.Edit.Timing
             TextBox.OnCommit += textCommitted;
 
             currentLanguage.BindValueChanged(_ => Schedule(updateValueDisplay));
+            current.BindDisabledChanged(_ => updateState());
             current.BindValueChanged(_ =>
             {
                 updateState();

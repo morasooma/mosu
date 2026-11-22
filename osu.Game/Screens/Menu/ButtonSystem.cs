@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
@@ -168,7 +168,7 @@ namespace osu.Game.Screens.Menu
                 Padding = new MarginPadding { Left = WEDGE_WIDTH }
             });
             buttonsMulti.Add(new MainMenuButton(ButtonSystemStrings.RankedPlay, @"button-daily-select", FontAwesome.Solid.Crown, new Color4(94, 63, 186, 255), onRankedPlay, Key.R));
-            buttonsMulti.Add(new MainMenuButton("dodge world", @"button-daily-select", FontAwesome.Solid.Globe, new Color4(122, 72, 214, 255), onDodgeWorld, Key.W));
+            buttonsMulti.Add(new MainMenuButton(global::osu.Game.Localisation.ClientTranslationStrings.J4353, @"button-daily-select", FontAwesome.Solid.Globe, new Color4(122, 72, 214, 255), onDodgeWorld, Key.W));
             // disabled for now to give ranked play space.
             // buttonsMulti.Add(new MainMenuButton(ButtonSystemStrings.QuickPlay, @"button-daily-select", FontAwesome.Solid.Bolt, new Color4(94, 63, 186, 255), onQuickPlay, Key.Q));
             buttonsMulti.ForEach(b => b.VisibleState = ButtonSystemState.Multi);
@@ -483,8 +483,8 @@ namespace osu.Game.Screens.Menu
                         game?.Toolbar.Hide();
 
                         logo?.ClearTransforms(targetMember: nameof(Position));
-                        logo?.MoveTo(new Vector2(0.5f), 800, Easing.OutExpo);
-                        logo?.ScaleTo(1, 800, Easing.OutExpo);
+                        logo?.MoveTo(new Vector2(0.5f), InterfaceAnimation.TransitionDuration(800), InterfaceAnimation.TransitionEasing(Easing.OutExpo));
+                        logo?.ScaleTo(1, InterfaceAnimation.TransitionDuration(800), InterfaceAnimation.TransitionEasing(Easing.OutExpo));
                     }, buttonArea.Alpha * 150);
 
                     if (lastState == ButtonSystemState.TopLevel)
@@ -503,10 +503,10 @@ namespace osu.Game.Screens.Menu
 
                             bool impact = logo.Scale.X > 0.6f;
 
-                            logo.ScaleTo(0.5f, 200, Easing.In);
+                            logo.ScaleTo(0.5f, InterfaceAnimation.TransitionDuration(200), InterfaceAnimation.TransitionEasing(Easing.In));
 
                             logoTracking?.Dispose();
-                            logoTracking = logoTrackingContainer.StartTracking(logo, 200, Easing.In);
+                            logoTracking = logoTrackingContainer.StartTracking(logo, 200, InterfaceAnimation.TransitionEasing(Easing.In));
 
                             logoDelayedAction?.Cancel();
                             logoDelayedAction = Scheduler.AddDelayed(() =>
@@ -524,7 +524,7 @@ namespace osu.Game.Screens.Menu
                             logoTracking?.Dispose();
                             logoTracking = logoTrackingContainer.StartTracking(logo, 0, Easing.In);
 
-                            logo.ScaleTo(0.5f, 200, Easing.OutQuint);
+                            logo.ScaleTo(0.5f, InterfaceAnimation.TransitionDuration(200), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
                             break;
                     }
 
@@ -532,7 +532,9 @@ namespace osu.Game.Screens.Menu
 
                 case ButtonSystemState.EnteringMode:
                     logoTracking?.Dispose();
-                    logoTracking = logoTrackingContainer.StartTracking(logo, lastState == ButtonSystemState.Initial ? MainMenu.FADE_OUT_DURATION : 0, Easing.InSine);
+                    logoTracking = logoTrackingContainer.StartTracking(logo,
+                        lastState == ButtonSystemState.Initial ? (InterfaceAnimation.UseEnhancedMotion ? InterfaceAnimation.TransitionDuration(MainMenu.FADE_OUT_DURATION) : MainMenu.FADE_OUT_DURATION) : 0,
+                        InterfaceAnimation.TransitionEasing(Easing.InSine));
                     break;
             }
         }

@@ -12,7 +12,6 @@ using osu.Framework.Bindables;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
-using osu.Framework.Graphics.Effects;
 using osu.Framework.Input.Events;
 using osu.Game.Beatmaps;
 using osu.Game.Database;
@@ -138,9 +137,10 @@ namespace osu.Game.Screens.Ranking.Statistics
                 {
                     container = new FillFlowContainer
                     {
-                        RelativeSizeAxes = Axes.Both,
-                        Anchor = Anchor.Centre,
-                        Origin = Anchor.Centre,
+                        RelativeSizeAxes = Axes.X,
+                        AutoSizeAxes = Axes.Y,
+                        Anchor = Anchor.TopCentre,
+                        Origin = Anchor.TopCentre,
                         Direction = FillDirection.Vertical,
                         Children = new Drawable[]
                         {
@@ -162,9 +162,8 @@ namespace osu.Game.Screens.Ranking.Statistics
                     FillFlowContainer flow;
                     container = flow = new FillFlowContainer
                     {
-                        Alpha = 0,
-                        Anchor = Anchor.Centre,
-                        Origin = Anchor.Centre,
+                        Anchor = Anchor.TopCentre,
+                        Origin = Anchor.TopCentre,
                         RelativeSizeAxes = Axes.X,
                         AutoSizeAxes = Axes.Y,
                         Direction = FillDirection.Full,
@@ -213,7 +212,17 @@ namespace osu.Game.Screens.Ranking.Statistics
                     }
                 }
 
-                LoadComponentAsync(container, d =>
+                // Preserve the original vertical centring while the statistics fit.
+                // Clamp the offset at zero only when extra sections exceed the viewport.
+                var scroll = new OsuScrollContainer
+                {
+                    Alpha = 0,
+                    RelativeSizeAxes = Axes.Both,
+                    Child = container,
+                };
+                scroll.OnUpdate += _ => container.Y = System.Math.Max(0, (scroll.DrawHeight - container.DrawHeight) / 2);
+
+                LoadComponentAsync(scroll, d =>
                 {
                     if (Score.Value?.Equals(newScore) != true)
                         return;
@@ -253,7 +262,7 @@ namespace osu.Game.Screens.Ranking.Statistics
 
             if (newScore.BeatmapInfo != null && ManiaBeatmapSummary.Create(newScore.BeatmapInfo, newScore.Ruleset, newScore.Mods) is ManiaBeatmapSummary maniaSummary)
             {
-                yield return new StatisticItem("Mania Overview", () => new ManiaBeatmapOverview(maniaSummary)
+                yield return new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5137, () => new ManiaBeatmapOverview(maniaSummary)
                 {
                     RelativeSizeAxes = Axes.X,
                     Anchor = Anchor.Centre,
@@ -270,7 +279,7 @@ namespace osu.Game.Screens.Ranking.Statistics
                 && newScore.OnlineID > 0
                 && newScore.OnlineID == AchievedScore.OnlineID)
             {
-                yield return new StatisticItem("Overall Ranking", () => new OverallRanking(newScore)
+                yield return new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5139, () => new OverallRanking(newScore)
                 {
                     RelativeSizeAxes = Axes.X,
                     Anchor = Anchor.Centre,
@@ -304,7 +313,7 @@ namespace osu.Game.Screens.Ranking.Statistics
 
                 if (preventTaggingReason == null)
                 {
-                    yield return new StatisticItem("Beatmap tags", () => new UserTagControl(newScore.BeatmapInfo)
+                    yield return new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5144, () => new UserTagControl(newScore.BeatmapInfo)
                     {
                         Writable = true,
                         RelativeSizeAxes = Axes.X,
@@ -314,7 +323,7 @@ namespace osu.Game.Screens.Ranking.Statistics
                 }
                 else
                 {
-                    yield return new StatisticItem("Beatmap tags", () => new Container
+                    yield return new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5144, () => new Container
                     {
                         Children = new Drawable[]
                         {
@@ -330,20 +339,13 @@ namespace osu.Game.Screens.Ranking.Statistics
                                 Anchor = Anchor.Centre,
                                 Origin = Anchor.Centre,
                                 AutoSizeAxes = Axes.Both,
-                                Masking = true,
-                                EdgeEffect = new EdgeEffectParameters
-                                {
-                                    Radius = 60,
-                                    Roundness = 8,
-                                    Colour = OsuColour.Gray(0.18f),
-                                    Type = EdgeEffectType.Shadow,
-                                },
                                 Children = new Drawable[]
                                 {
                                     new OsuTextFlowContainer(cp => cp.Font = OsuFont.GetFont(size: StatisticItem.FONT_SIZE, weight: FontWeight.SemiBold))
                                     {
                                         AutoSizeAxes = Axes.Both,
                                         Text = preventTaggingReason,
+                                        Colour = colourProvider.Content1,
                                     },
                                 }
                             },

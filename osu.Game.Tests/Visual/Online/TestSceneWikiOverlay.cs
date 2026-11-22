@@ -11,9 +11,12 @@ using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Overlays;
+using osu.Game.Overlays.Wiki;
+using osu.Game.Overlays.Wiki.Markdown;
 
 namespace osu.Game.Tests.Visual.Online
 {
+    [HeadlessTest]
     public partial class TestSceneWikiOverlay : OsuTestScene
     {
         private DummyAPIAccess dummyAPI => (DummyAPIAccess)API;
@@ -28,6 +31,28 @@ namespace osu.Game.Tests.Visual.Online
         {
             setUpWikiResponse(responseMainPage);
             AddStep("Show main page", () => wiki.ShowPage());
+        }
+
+        [TestCase("# Mosu\n\nWelcome to the Mosu help centre.")]
+        [TestCase("")]
+        [TestCase("<div class=\"wiki-main-page__panels\"># Mosu</div>")]
+        public void TestMainPageWithoutLegacyPanels(string markdown)
+        {
+            var response = responseMainPage;
+            response.Markdown = markdown;
+            setUpWikiResponse(response);
+            AddStep("show Markdown main page", () => wiki.ShowPage());
+            AddUntilStep("Markdown content loaded", () => wiki.ChildrenOfType<WikiMarkdownContainer>().Any(c => c.IsLoaded && c.Text == markdown));
+        }
+
+        [Test]
+        public void TestSinglePanelWithoutBlurb()
+        {
+            var response = responseMainPage;
+            response.Markdown = "<div class=\"wiki-main-page-panel\"># Mosu</div>";
+            setUpWikiResponse(response);
+            AddStep("show single panel", () => wiki.ShowPage());
+            AddUntilStep("single panel loaded", () => wiki.ChildrenOfType<WikiPanelContainer>().Count(c => c.IsLoaded) == 1);
         }
 
         [Test]

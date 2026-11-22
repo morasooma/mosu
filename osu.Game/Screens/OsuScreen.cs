@@ -158,6 +158,8 @@ namespace osu.Game.Screens
         [CanBeNull]
         private BackgroundScreen background;
 
+        protected bool HasBackground => background != null;
+
         [Resolved(canBeNull: true)]
         [CanBeNull]
         private BackgroundScreenStack backgroundStack { get; set; }

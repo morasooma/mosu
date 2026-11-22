@@ -50,6 +50,8 @@ namespace osu.Game.Online.API
 
             if (Response == null)
                 TriggerFailure(new ArgumentNullException(nameof(Response)));
+            else
+                ServerExclusiveBeatmapResources.ResolveResponse(Response, API!.Endpoints);
         }
 
         internal void TriggerSuccess(T result)

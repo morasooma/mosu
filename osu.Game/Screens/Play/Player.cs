@@ -38,6 +38,8 @@ using osu.Game.IO.Archives;
 using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Overlays;
+using osu.Game.Performance.Debug;
+using osu.Game.Performance;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Judgements;
 using osu.Game.Rulesets.Mods;
@@ -77,7 +79,7 @@ namespace osu.Game.Screens.Play
 
         protected override bool PlayExitSound => !isRestarting;
 
-        protected override UserActivity InitialActivity => new UserActivity.InSoloGame(Beatmap.Value.BeatmapInfo, Ruleset.Value);
+        protected override UserActivity InitialActivity => new UserActivity.InSoloGame(Beatmap.Value.BeatmapInfo, Ruleset.Value).WithMods(Mods.Value);
 
         public override float BackgroundParallaxAmount => 0.1f;
 
@@ -215,7 +217,7 @@ namespace osu.Game.Screens.Play
         /// Whether failing should be allowed.
         /// By default, this checks whether all selected mods allow failing.
         /// </summary>
-        protected virtual bool CheckModsAllowFailure() => GameplayState.Mods.OfType<IApplicableFailOverride>().All(m => m.PerformFail());
+        protected virtual bool CheckModsAllowFailure() => !IsPracticeSession && GameplayState.Mods.OfType<IApplicableFailOverride>().All(m => m.PerformFail());
 
         public readonly PlayerConfiguration Configuration;
 
@@ -245,6 +247,7 @@ namespace osu.Game.Screens.Play
 
         protected override void LoadComplete()
         {
+            using var phase = PerformancePhaseLogger.Begin("Player.LoadComplete");
             base.LoadComplete();
 
             if (!LoadedBeatmapSuccessfully)
@@ -303,7 +306,11 @@ namespace osu.Game.Screens.Play
             if (game != null)
                 gameActive.BindTo(game.IsActive);
 
-            DrawableRuleset = ruleset.CreateDrawableRulesetWith(playableBeatmap, gameplayMods);
+            // Local presentation mods must never enter GameplayState, ScoreInfo, or global Mods.
+            localVisualMods = CreateLocalVisualMods(ruleset, gameplayMods);
+            foreach (var mod in localVisualMods.OfType<IApplicableToBeatmap>())
+                mod.ApplyToBeatmap(playableBeatmap);
+            DrawableRuleset = ruleset.CreateDrawableRulesetWith(playableBeatmap, gameplayMods.Concat(localVisualMods).ToArray());
             dependencies.CacheAs(DrawableRuleset);
 
             if (DrawableRuleset is IPositionalMissProvider positionalMissProvider)
@@ -316,6 +323,8 @@ namespace osu.Game.Screens.Play
             ScoreProcessor.Mods.Value = gameplayMods;
             ScoreProcessor.IsRankedPlay.Value = IsRankedPlaySession;
             ScoreProcessor.ApplyBeatmap(playableBeatmap);
+            foreach (var mod in localVisualMods.OfType<IApplicableToScoreProcessor>())
+                mod.ApplyToScoreProcessor(ScoreProcessor);
 
             dependencies.CacheAs(ScoreProcessor);
 
@@ -329,6 +338,14 @@ namespace osu.Game.Screens.Play
             {
                 GameplayClockContainer = CreateGameplayClockContainer(Beatmap.Value, DrawableRuleset.GameplayStartTime),
             };
+
+            if (GameplayClockContainer is MasterGameplayClockContainer skipClock)
+                skipClock.UsePlayableBeatmapForSkipping(playableBeatmap);
+
+            if (GameplayClockContainer is MasterGameplayClockContainer masterClock
+                && gameplayMods.OfType<ModSegmentRate>().FirstOrDefault(m => m.BakedTiming.Value) is ModSegmentRate bakedRate)
+                masterClock.UseSegmentBeatmapTiming(bakedRate, playableBeatmap);
+
 
             AddInternal(screenSuspension = new ScreenSuspensionHandler(GameplayClockContainer));
 
@@ -371,7 +388,7 @@ namespace osu.Game.Screens.Play
             // needs to exist in frame stable content, but is used by underlay layers so make sure assigned early.
             breakTracker = new BreakTracker(DrawableRuleset.GameplayStartTime, ScoreProcessor)
             {
-                Breaks = Beatmap.Value.Beatmap.Breaks
+                Breaks = playableBeatmap.Breaks
             };
 
             // load the skinning hierarchy first.
@@ -397,6 +414,7 @@ namespace osu.Game.Screens.Play
                 {
                     SaveReplay = Configuration.AllowUserInteraction ? async () => await prepareAndImportScoreAsync(true).ConfigureAwait(false) : null,
                     OnRetry = Configuration.AllowUserInteraction ? () => Restart() : null,
+                    OnPracticeContinue = PracticeAvailable ? ContinuePracticeAfterFailure : null,
                     OnQuit = () => PerformExitWithConfirmation(),
                 },
             });
@@ -474,7 +492,8 @@ namespace osu.Game.Screens.Play
             // A pause is a safe window in which an inflated exclusive queue can be reset.
             GameplayClockContainer.IsPaused.BindValueChanged(paused =>
             {
-                // Standalone public build note: AudioThread.AllowLatencyRepair is an optional Mosu framework extension.
+                if (gameHost.AudioThread != null)
+                    gameHost.AudioThread.AllowLatencyRepair.Value = paused.NewValue;
             });
 
             DrawableRuleset.NewResult += r =>
@@ -513,12 +532,19 @@ namespace osu.Game.Screens.Play
             IsBreakTime.BindTo(breakTracker.IsBreakTime);
             IsBreakTime.BindValueChanged(onBreakTimeChanged, true);
             breakTracker.CurrentBreak.BindValueChanged(onCurrentBreakChanged);
+
+            // Compile first-use gameplay bodies during the existing background load, not
+            // by running a fake game frame (which would play audio or mutate judgement state).
+            GameplayJitPrewarmer.Prepare(ruleset, DrawableRuleset, HUDOverlay, cancellationToken,
+                GetType(), GameplayClockContainer.GetType(), ScoreProcessor.GetType(), HealthProcessor.GetType());
         }
 
         protected virtual GameplayClockContainer CreateGameplayClockContainer(WorkingBeatmap beatmap, double gameplayStart) => new MasterGameplayClockContainer(beatmap, gameplayStart);
 
         private Drawable createUnderlayComponents(WorkingBeatmap working)
         {
+            var skinUnderlay = new GameplaySkinUnderlay();
+            dependencies.CacheAs(skinUnderlay);
             var container = new Container
             {
                 RelativeSizeAxes = Axes.Both,
@@ -535,6 +561,7 @@ namespace osu.Game.Screens.Play
                         Alpha = working.Beatmap.LetterboxInBreaks ? 1 : 0,
                     },
                     new KiaiGameplayFountains(),
+                    skinUnderlay,
                 },
             };
 
@@ -657,7 +684,9 @@ namespace osu.Game.Screens.Play
 
         protected virtual SkipOverlay CreateSkipOverlay(double startTime) => new SkipOverlay(startTime);
 
-        protected virtual SkipOverlay CreateBreakSkipOverlay(BreakPeriod breakPeriod) => new SkipOverlay(breakPeriod.EndTime);
+        protected double GetBreakSkipTarget(BreakPeriod breakPeriod) => GameplaySkipTiming.GetBreakTarget(GameplayState.Beatmap, breakPeriod);
+
+        protected virtual SkipOverlay CreateBreakSkipOverlay(BreakPeriod breakPeriod) => new SkipOverlay(GetBreakSkipTarget(breakPeriod) + MasterGameplayClockContainer.MINIMUM_SKIP_TIME);
 
         private void onCurrentBreakChanged(ValueChangedEvent<BreakPeriod> currentBreak)
         {
@@ -668,7 +697,7 @@ namespace osu.Game.Screens.Play
             BreakPeriod breakPeriod = currentBreak.NewValue;
 
             if (breakPeriod == null
-                || breakPeriod.Duration < MasterGameplayClockContainer.MINIMUM_BREAK_DURATION_FOR_SKIP
+                || GetBreakSkipTarget(breakPeriod) <= GameplayClockContainer.CurrentTime
                 || !MosuServerEnvironment.SupportsBreakSkipping
                 || !Configuration.AllowSkipping
                 || !Configuration.AllowUserInteraction
@@ -757,6 +786,10 @@ namespace osu.Game.Screens.Play
                     Scheduler.AddOnce(updatePauseOnFocusLostState);
             }
         }
+
+        private Mod[] localVisualMods = Array.Empty<Mod>();
+
+        protected virtual Mod[] CreateLocalVisualMods(Ruleset currentRuleset, IReadOnlyList<Mod> gameplayMods) => Array.Empty<Mod>();
 
         private IBeatmap loadPlayableBeatmap(Mod[] gameplayMods, CancellationToken cancellationToken)
         {
@@ -1159,7 +1192,10 @@ namespace osu.Game.Screens.Play
 
                 try
                 {
-                    await ImportScore(scoreCopy).ConfigureAwait(false);
+                    if (!IsPracticeSession)
+                        await ImportScore(scoreCopy).ConfigureAwait(false);
+                    if (!MosuServerEnvironment.IsThirdPartyServer && scoreCopy.ScoreInfo.MosuTotalScore is long mosuTotal)
+                        ForkDataStore.Instance?.SetMosuTotalScore(scoreCopy.ScoreInfo.ID, mosuTotal);
                 }
                 catch (Exception ex)
                 {
@@ -1204,6 +1240,7 @@ namespace osu.Game.Screens.Play
             Debug.Assert(!GameplayState.HasQuit);
 
             GameplayState.HasFailed = true;
+            practiceFailureTime = GameplayClockContainer.CurrentTime;
 
             updateGameplayState();
 
@@ -1215,7 +1252,12 @@ namespace osu.Game.Screens.Play
 
             bool restartOnFail = GameplayState.Mods.OfType<IApplicableFailOverride>().Any(m => m.RestartOnFail);
             if (!restartOnFail)
-                failAnimationContainer.Start();
+            {
+                if (PracticeAvailable)
+                    GameplayClockContainer.Stop();
+                else
+                    failAnimationContainer.Start();
+            }
 
             // Failures can be triggered either by a judgement, or by a mod.
             //
@@ -1230,6 +1272,8 @@ namespace osu.Game.Screens.Play
 
                 if (restartOnFail)
                     Restart(true);
+                else if (PracticeAvailable)
+                    onFailComplete();
             });
         }
 
@@ -1317,7 +1361,9 @@ namespace osu.Game.Screens.Play
         {
             if (!canResume) return;
 
-            // Standalone public build note: AudioThread.FlushExclusiveQueueNow is an optional Mosu framework extension.
+            // Drop any accumulated exclusive queue while the resume countdown masks the
+            // short discontinuity, so gameplay resumes at the device's latency floor.
+            gameHost.AudioThread?.FlushExclusiveQueueNow();
 
             IsResuming = true;
             PauseOverlay.Hide();
@@ -1345,9 +1391,12 @@ namespace osu.Game.Screens.Play
 
         public override void OnEntering(ScreenTransitionEvent e)
         {
+            using var phase = PerformancePhaseLogger.Begin("Player.OnEntering", gameHost,
+                $"beatmap_id={Beatmap.Value.BeatmapInfo.OnlineID} retry={RestartCount}");
+
             base.OnEntering(e);
 
-            // Standalone public build note: FreezeDetector is an optional Mosu framework extension.
+            osu.Framework.Statistics.FreezeDetector.IsEnabled = true;
 
             if (!LoadedBeatmapSuccessfully)
                 return;
@@ -1356,7 +1405,7 @@ namespace osu.Game.Screens.Play
 
             useInstantGameplayStart = shouldUseInstantGameplayStart();
 
-            if (useInstantGameplayStart)
+            if (useInstantGameplayStart || !InterfaceAnimation.AllowDecorativeMovement)
             {
                 ClearTransforms();
                 Alpha = 1;
@@ -1369,7 +1418,7 @@ namespace osu.Game.Screens.Play
                     .ScaleTo(0.7f)
                     .ScaleTo(1, 750, Easing.OutQuint)
                     .Delay(250)
-                    .FadeIn(250);
+                    .FadeIn(InterfaceAnimation.FadeDuration(250));
             }
 
             ApplyToBackground(b =>
@@ -1393,7 +1442,7 @@ namespace osu.Game.Screens.Play
 
             storyboardReplacesBackground.Value = GameplayState.Storyboard.ReplacesBackground && GameplayState.Storyboard.HasDrawable;
 
-            foreach (var mod in GameplayState.Mods.OfType<IApplicableToPlayer>())
+            foreach (var mod in GameplayState.Mods.Concat(localVisualMods).OfType<IApplicableToPlayer>())
                 mod.ApplyToPlayer(this);
 
             foreach (var mod in GameplayState.Mods.OfType<IApplicableToHUD>())
@@ -1410,10 +1459,48 @@ namespace osu.Game.Screens.Play
 
             updateGameplayState();
 
-            GameplayClockContainer.FadeInFromZero(useInstantGameplayStart ? 0 : 750, Easing.OutQuint);
+            GameplayClockContainer.FadeInFromZero(useInstantGameplayStart ? 0 : InterfaceAnimation.FadeDuration(750), Easing.OutQuint);
 
-            StartGameplay();
-            OnGameplayStarted?.Invoke();
+            using (PerformancePhaseLogger.Begin("Player.StartGameplay", gameHost,
+                       $"beatmap_id={Beatmap.Value.BeatmapInfo.OnlineID} retry={RestartCount}"))
+            {
+                StartGameplay();
+                OnGameplayStarted?.Invoke();
+            }
+        }
+
+        private long initialUpdateWindowStart;
+        private bool initialUpdateWindowExpired;
+        private int initialUpdateFrameIndex;
+
+        public override bool UpdateSubTree()
+        {
+            if (!PerformancePhaseLogger.Enabled || initialUpdateWindowExpired)
+                return base.UpdateSubTree();
+
+            if (initialUpdateWindowStart == 0)
+                initialUpdateWindowStart = Stopwatch.GetTimestamp();
+            else if (Stopwatch.GetElapsedTime(initialUpdateWindowStart).TotalMilliseconds > 1000)
+            {
+                initialUpdateWindowExpired = true;
+                return base.UpdateSubTree();
+            }
+
+            int frame = ++initialUpdateFrameIndex;
+            long start = Stopwatch.GetTimestamp();
+            try
+            {
+                return base.UpdateSubTree();
+            }
+            finally
+            {
+                double elapsedMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+                if (frame <= 3 || elapsedMs > 8)
+                {
+                    Logger.Log($"MOSU_PLAYER_INITIAL_UPDATE frame={frame} "
+                               + $"elapsed_ms={elapsedMs:F2}", LoggingTarget.Performance);
+                }
+            }
         }
 
         protected override void Update()
@@ -1425,6 +1512,7 @@ namespace osu.Game.Screens.Play
 
             updateFrameStablePlaybackForCurrentRate();
             updateSpecialGameplayRateProgression();
+            UpdatePracticeInput();
         }
 
         /// <summary>
@@ -1455,9 +1543,12 @@ namespace osu.Game.Screens.Play
                 GameplayClockContainer.TreatNegativeRateAsRewinding = true;
             }
 
+            if (IsPracticeSession && PracticeStartTime.HasValue)
+                startTime = PracticeStartTime.Value;
+
             GameplayClockContainer.Reset(time: startTime, startClock: true);
 
-            if (specialGameplayRateMode == SpecialGameplayRateMode.None && !useInstantGameplayStart && (Configuration.AutomaticallySkipIntro || !string.IsNullOrEmpty(GameplayPerformanceSnapshot.BenchmarkId)))
+            if (!IsPracticeSession && specialGameplayRateMode == SpecialGameplayRateMode.None && !useInstantGameplayStart && (Configuration.AutomaticallySkipIntro || !string.IsNullOrEmpty(GameplayPerformanceSnapshot.BenchmarkId)))
                 SkipIntroOverlay.SkipWhenReady();
         }
 
@@ -1567,7 +1658,8 @@ namespace osu.Game.Screens.Play
 
         public override bool OnExiting(ScreenExitEvent e)
         {
-            // Standalone public build note: FreezeDetector is an optional Mosu framework extension.
+
+            osu.Framework.Statistics.FreezeDetector.IsEnabled = false;
 
             screenSuspension?.RemoveAndDisposeImmediately();
 
@@ -1675,17 +1767,21 @@ namespace osu.Game.Screens.Play
 
             if (this.IsCurrentScreen())
             {
-                ApplyToBackground(b =>
+                // The stack makes the player current before OnEntering attaches its background.
+                if (HasBackground)
                 {
-                    b.IgnoreUserSettings.Value = true;
-
-                    // May be null if the load never completed.
-                    if (breakTracker != null)
+                    ApplyToBackground(b =>
                     {
-                        b.IsBreakTime.UnbindFrom(breakTracker.IsBreakTime);
-                        b.IsBreakTime.Value = false;
-                    }
-                });
+                        b.IgnoreUserSettings.Value = true;
+
+                        // May be null if the load never completed.
+                        if (breakTracker != null)
+                        {
+                            b.IsBreakTime.UnbindFrom(breakTracker.IsBreakTime);
+                            b.IsBreakTime.Value = false;
+                        }
+                    });
+                }
 
                 storyboardReplacesBackground.Value = false;
             }
@@ -1725,7 +1821,7 @@ namespace osu.Game.Screens.Play
 
             public override string Name => @"Forced AR";
             public override string Acronym => @"FAR";
-            public override LocalisableString Description => @"Applies a fork-configured approach rate.";
+            public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J5065;
             public override ModType Type => ModType.System;
             public override bool UserPlayable => false;
 

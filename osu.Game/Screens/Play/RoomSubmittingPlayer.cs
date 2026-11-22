@@ -25,5 +25,7 @@ namespace osu.Game.Screens.Play
         {
             Room = room;
             PlaylistItem = playlistItem;
-        }    }
+        }
+
+    }
 }

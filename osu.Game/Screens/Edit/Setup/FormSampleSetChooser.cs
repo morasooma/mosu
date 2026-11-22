@@ -118,7 +118,7 @@ namespace osu.Game.Screens.Edit.Setup
                 {
                     RelativeSizeAxes = Axes.None,
                     Width = 250,
-                    Label = "Sample set index",
+                    Label = global::osu.Game.Localisation.ClientTranslationStrings.J4320,
                     Current = { Value = (currentLargestIndex + 1).ToString(CultureInfo.InvariantCulture) }
                 };
                 numberBox.OnCommit += (_, _) =>

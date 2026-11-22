@@ -16,9 +16,12 @@ namespace osu.Game.Overlays.Profile.Sections.Recent
         private readonly string slug;
         private readonly Sprite sprite;
 
-        public MedalIcon(string slug)
+        private readonly string? coverUrl;
+
+        public MedalIcon(string slug, string? coverUrl = null)
         {
             this.slug = slug;
+            this.coverUrl = coverUrl;
 
             Child = sprite = new Sprite
             {
@@ -31,7 +34,8 @@ namespace osu.Game.Overlays.Profile.Sections.Recent
         [BackgroundDependencyLoader]
         private void load(LargeTextureStore textures)
         {
-            if (MorasoomaMedalAssets.Resolve(slug) is { } resource)
+            string? resource = MorasoomaMedalAssets.Resolve(slug, coverUrl);
+            if (resource != null)
                 sprite.Texture = textures.Get(resource);
         }
     }

@@ -74,7 +74,11 @@ namespace osu.Game.Rulesets
                 {
                     try
                     {
-                        var resolvedType = Type.GetType(r.InstantiationInfo);
+                        // Never resolve arbitrary persisted type names: Type.GetType can
+                        // load a removed plugin assembly before we get to validate it.
+                        var resolvedType = LoadedAssemblies.Values.FirstOrDefault(type =>
+                            instances.Any(instance => instance.GetType() == type &&
+                                instance.RulesetInfo.InstantiationInfo == r.InstantiationInfo));
 
                         if (resolvedType == null)
                         {

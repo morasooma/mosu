@@ -19,7 +19,7 @@ namespace osu.Game.Overlays.BeatmapSet
             {
                 if (value.CurrentNominations.Length == 0)
                 {
-                    this.FadeOut(TRANSITION_DURATION);
+                    HideMetadata();
                     return;
                 }
 

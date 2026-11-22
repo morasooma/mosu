@@ -140,7 +140,7 @@ namespace osu.Game.Overlays.Mods
 
                 if (!Precision.AlmostEquals(attribute.OriginalValue, attribute.AdjustedValue))
                 {
-                    adjustedByModsText.Text = $"This value is being adjusted by mods ({attribute.OriginalValue:0.0#} → {attribute.AdjustedValue:0.0#}).";
+                    adjustedByModsText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3961(attribute.OriginalValue, attribute.AdjustedValue);
                     adjustedByModsText.Alpha = 1;
                     shouldShow = true;
                 }

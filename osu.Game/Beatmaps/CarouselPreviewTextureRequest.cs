@@ -14,6 +14,17 @@ namespace osu.Game.Beatmaps
     {
         private const string prefix = "__carousel_preview_resolution__";
         private const char separator = '|';
+        private const string classic_prefix = "__carousel_classic_preview__|";
+
+        public static string CreateClassic(string resourceName, int resolutionPercent)
+            => Create(classic_prefix + resourceName, resolutionPercent);
+
+        public static (string ResourceName, int ResolutionPercent, bool Classic) ParseLegacy(string requestedName)
+        {
+            var (name, resolution) = Parse(requestedName);
+            bool classic = name.StartsWith(classic_prefix, StringComparison.Ordinal);
+            return (classic ? name[classic_prefix.Length..] : name, resolution, classic);
+        }
 
         public static string Create(string resourceName, int resolutionPercent)
             => $"{prefix}{Math.Clamp(resolutionPercent, 25, 100)}{separator}{resourceName}";

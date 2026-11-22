@@ -97,7 +97,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                     Anchor = Anchor.BottomCentre,
                     Origin = Anchor.TopCentre,
                     Y = 3,
-                    Text = "MORA",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4752,
                     Font = OsuFont.Default.With(size: 14, weight: FontWeight.Bold),
                     Colour = colours.Pink0,
                     Shadow = true,
@@ -120,7 +120,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                         {
                             Anchor = Anchor.Centre,
                             Origin = Anchor.Centre,
-                            Text = DialogueLanguage == "ru" ? "E   ДИАЛОГ" : "E   TALK",
+                            Text = DialogueLanguage == "ru" ? global::osu.Game.Localisation.ClientTranslationStrings.J4735 : global::osu.Game.Localisation.ClientTranslationStrings.J4736,
                             Font = OsuFont.Default.With(size: 17, weight: FontWeight.Bold),
                         },
                     },

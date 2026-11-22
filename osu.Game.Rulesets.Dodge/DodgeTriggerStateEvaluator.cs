@@ -107,6 +107,24 @@ namespace osu.Game.Rulesets.Dodge
         public DodgeTrigger? FlashEffectAt(double time)
             => timedEffectAt(time, DodgeTriggerAction.FlashEffect);
 
+        public DodgeTrigger? PlayerMoveAt(double time)
+            => triggers.LastOrDefault(t => t.Action == DodgeTriggerAction.MovePlayer && t.StartTime <= time);
+
+        public DodgeTrigger? CameraModeAt(double time)
+            => triggers.LastOrDefault(t => t.StartTime <= time
+                && t.Action is DodgeTriggerAction.CameraFollow or DodgeTriggerAction.CameraFixed);
+
+        public bool CameraFollowsAt(double time) => CameraModeAt(time)?.Action == DodgeTriggerAction.CameraFollow;
+
+        public static osuTK.Vector2 PlayerPositionAt(DodgeTrigger move, double time)
+            => PlayerPositionAt(move, time, move.SourcePosition);
+
+        public static osuTK.Vector2 PlayerPositionAt(DodgeTrigger move, double time, osuTK.Vector2 source)
+        {
+            float progress = move.Duration <= 0 ? 1 : (float)Math.Clamp((time - move.StartTime) / move.Duration, 0, 1);
+            return source + (move.TargetPosition - source) * move.Easing.Apply(progress);
+        }
+
         private DodgeTrigger? timedEffectAt(double time, DodgeTriggerAction action)
         {
             DodgeTrigger? match = null;
@@ -116,11 +134,13 @@ namespace osu.Game.Rulesets.Dodge
                 if (trigger.StartTime > time)
                     break;
 
-                if (trigger.Action == action && trigger.StartTime <= time && time <= trigger.EndTime)
+                if (trigger.Action == action)
                     match = trigger;
             }
 
-            return match;
+            // The newest effect replaces its predecessor permanently. An older,
+            // longer effect must not resume when the replacement finishes.
+            return match != null && time <= match.EndTime ? match : null;
         }
 
         /// <summary>

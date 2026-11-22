@@ -40,6 +40,13 @@ namespace osu.Game.Tests.Visual.Online
         [Resolved]
         private IRulesetStore rulesets { get; set; } = null!;
 
+        protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
+        {
+            var dependencies = base.CreateChildDependencies(parent);
+            Dependencies.CacheAs<IBeatmapApiProvider>(new BeatmapApiProvider(API, null));
+            return dependencies;
+        }
+
         [SetUp]
         public void SetUp() => Schedule(() => SelectedMods.Value = Array.Empty<Mod>());
 
@@ -335,7 +342,60 @@ namespace osu.Game.Tests.Visual.Online
                 }
             });
 
-            AddAssert(@"type is correct", () => type == lookupType.ToString());
+            AddUntilStep(@"type is correct", () => type == lookupType.ToString());
+        }
+
+        [Test]
+        public void TestFetchMissingDifficultyKeepsDefaultSelection()
+        {
+            APIBeatmapSet response = null!;
+
+            AddStep("return a set without the requested difficulty", () =>
+            {
+                response = getBeatmapSet();
+                ((DummyAPIAccess)API).HandleRequest = request =>
+                {
+                    if (request is not GetBeatmapSetRequest lookup)
+                        return false;
+
+                    lookup.TriggerSuccess(response);
+                    return true;
+                };
+            });
+            AddStep("fetch missing difficulty", () => overlay.FetchAndShowBeatmap(int.MaxValue));
+            AddUntilStep("remaining difficulty is selected", () =>
+                overlay.Header.HeaderContent.Picker.Beatmap.Value == response.Beatmaps[0]);
+        }
+
+        [Test]
+        public void TestLateResponseDoesNotReplaceCurrentSet()
+        {
+            GetBeatmapSetRequest firstRequest = null!;
+            APIBeatmapSet oldSet = null!;
+            APIBeatmapSet currentSet = null!;
+
+            AddStep("hold the first response", () =>
+            {
+                oldSet = getBeatmapSet();
+                currentSet = getBeatmapSet();
+                ((DummyAPIAccess)API).HandleRequest = request =>
+                {
+                    if (request is not GetBeatmapSetRequest lookup)
+                        return false;
+
+                    if (lookup.ID == oldSet.OnlineID)
+                        firstRequest = lookup;
+                    else
+                        lookup.TriggerSuccess(currentSet);
+                    return true;
+                };
+                overlay.FetchAndShowBeatmapSet(oldSet.OnlineID);
+            });
+            AddUntilStep("first request captured", () => firstRequest != null);
+            AddStep("open another set", () => overlay.FetchAndShowBeatmapSet(currentSet.OnlineID));
+            AddUntilStep("second set is shown", () => overlay.Header.BeatmapSet.Value == currentSet);
+            AddStep("deliver the old response", () => firstRequest.TriggerSuccess(oldSet));
+            AddAssert("second set stays open", () => overlay.Header.BeatmapSet.Value == currentSet);
         }
 
         [Test]

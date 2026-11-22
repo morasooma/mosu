@@ -3,9 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using osu.Framework.Allocation;
 using osu.Framework.Graphics;
-using osu.Game.Online.Multiplayer;
 using osu.Game.Online.RankedPlay;
 
 namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Hand
@@ -26,9 +24,6 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Hand
         /// Max amount of frames to collect per <see cref="FlushInterval"/>
         /// </summary>
         public int MaxBufferSize = 20;
-
-        [Resolved]
-        private MultiplayerClient client { get; set; } = null!;
 
         private readonly PlayerHandOfCards handOfCards;
 
@@ -105,13 +100,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Hand
 
         protected virtual void Flush(RankedPlayCardHandReplayFrame[] frames)
         {
-            if (frames.Length == 0)
-                return;
-
-            client.SendMatchRequest(new RankedPlayCardHandReplayRequest
-            {
-                Frames = frames,
-            });
+            // Public builds do not send replay frames.
         }
 
         protected override void Dispose(bool isDisposing)

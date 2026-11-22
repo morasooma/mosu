@@ -23,7 +23,20 @@ namespace osu.Game.Beatmaps.Drawables.Cards.Buttons
 
         public BindableBool Playing { get; } = new BindableBool();
 
-        private readonly IBeatmapSetInfo beatmapSetInfo;
+        private IBeatmapSetInfo beatmapSetInfo;
+
+        internal void ChangeBeatmapSet(IBeatmapSetInfo set)
+        {
+            Playing.Value = false;
+            previewStopped = true;
+            var previous = previewTrack;
+            previewTrack = null;
+            previous?.Stop();
+            if (previous?.Parent == this)
+                RemoveInternal(previous, true);
+            beatmapSetInfo = set;
+            progress.Value = 0;
+        }
 
         protected override IEnumerable<Drawable> EffectTargets => icon.Yield();
 
@@ -34,6 +47,11 @@ namespace osu.Game.Beatmaps.Drawables.Cards.Buttons
         private PreviewTrackManager previewTrackManager { get; set; } = null!;
 
         private PreviewTrack? previewTrack;
+        private volatile bool previewStopped;
+
+        // The UI callback below may be queued on a masked card's scheduler.
+        // Unload decisions must still see Stop without waiting for it to update.
+        internal bool IsPreviewActive => Playing.Value && !previewStopped;
 
         public PlayButton(IBeatmapSetInfo beatmapSetInfo)
         {
@@ -97,6 +115,8 @@ namespace osu.Game.Beatmaps.Drawables.Cards.Buttons
                 return;
             }
 
+            previewStopped = false;
+
             if (previewTrack == null)
             {
                 toggleLoading(true);
@@ -131,7 +151,16 @@ namespace osu.Game.Beatmaps.Drawables.Cards.Buttons
                 AddInternal(loadedPreview);
                 toggleLoading(false);
 
-                loadedPreview.Stopped += () => Schedule(() => Playing.Value = false);
+                loadedPreview.Stopped += () =>
+                {
+                    if (loadedPreview != previewTrack) return;
+                    previewStopped = true;
+                    Schedule(() =>
+                    {
+                        if (loadedPreview == previewTrack)
+                            Playing.Value = false;
+                    });
+                };
 
                 if (Playing.Value)
                     tryStartPreview();

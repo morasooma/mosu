@@ -16,7 +16,7 @@ namespace osu.Game.Rulesets.Osu.Mods
 
         public override IconUsage? Icon => OsuIcon.ModGrow;
 
-        public override LocalisableString Description => "Hit them at the right size!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3682;
 
         public override BindableNumber<float> StartScale { get; } = new BindableFloat(0.5f)
         {

@@ -22,7 +22,7 @@ namespace osu.Game.Rulesets.Osu.Mods
         public override string Acronym => "TC";
         public override IconUsage? Icon => OsuIcon.ModTraceable;
         public override ModType Type => ModType.DifficultyIncrease;
-        public override LocalisableString Description => "Put your faith in the approach circles...";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3741;
         public override bool Ranked => true;
 
         public override Type[] IncompatibleMods => new[] { typeof(IHidesApproachCircles), typeof(OsuModDepth) };

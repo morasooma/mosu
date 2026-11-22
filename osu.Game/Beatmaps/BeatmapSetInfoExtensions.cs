@@ -52,12 +52,23 @@ namespace osu.Game.Beatmaps
 
         public static bool IsServerExclusive(this IBeatmapMetadataInfo? metadata)
         {
-            if (string.IsNullOrWhiteSpace(metadata?.Tags))
-                return false;
+            ReadOnlySpan<char> tags = (metadata?.Tags).AsSpan();
+            while (!tags.IsEmpty)
+            {
+                int separator = tags.IndexOf(' ');
+                ReadOnlySpan<char> tag = separator < 0 ? tags : tags[..separator];
+                // Read old archives without ever generating the retired marker.
+                if (tag.Equals(ServerExclusiveTag.AsSpan(), StringComparison.OrdinalIgnoreCase)
+                    || tag.Equals("g0v0-exclusive".AsSpan(), StringComparison.OrdinalIgnoreCase)
+                    || tag.Equals("server-exclusive".AsSpan(), StringComparison.OrdinalIgnoreCase))
+                    return true;
 
-            return metadata.Tags
-                           .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                           .Any(tag => string.Equals(tag, ServerExclusiveTag, StringComparison.OrdinalIgnoreCase));
+                if (separator < 0)
+                    break;
+                tags = tags[(separator + 1)..];
+            }
+
+            return false;
         }
     }
 }

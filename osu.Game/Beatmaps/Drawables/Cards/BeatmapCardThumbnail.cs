@@ -24,6 +24,15 @@ namespace osu.Game.Beatmaps.Drawables.Cards
             set => foreground.Padding = value;
         }
 
+        private readonly UpdateableOnlineBeatmapSetCover cover;
+
+        internal void ChangeBeatmapSet(IBeatmapSetInfo info, IBeatmapSetOnlineInfo onlineInfo)
+        {
+            playButton.ChangeBeatmapSet(info);
+            cover.ResetOnlineInfo(onlineInfo);
+            Dimmed.Value = false;
+        }
+
         private readonly Box background;
         private readonly Container foreground;
         private readonly PlayButton playButton;
@@ -39,7 +48,7 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         {
             InternalChildren = new Drawable[]
             {
-                new UpdateableOnlineBeatmapSetCover(BeatmapSetCoverType.List, keepLoaded ? 0 : 500, keepLoaded ? double.MaxValue : 1000)
+                cover = new UpdateableOnlineBeatmapSetCover(BeatmapSetCoverType.List, keepLoaded ? 0 : 500, keepLoaded ? double.MaxValue : 1000)
                 {
                     RelativeSizeAxes = Axes.Both,
                     OnlineInfo = onlineInfo

@@ -1,19 +1,15 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using osu.Framework.Allocation;
-using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
-using osu.Game.Overlays;
 using osu.Game.Resources.Localisation.Web;
 using osu.Game.Screens.Ranking.Expanded.Accuracy;
 using osu.Game.Utils;
 using osuTK;
-using osuTK.Graphics;
 
 namespace osu.Game.Screens.Ranking.Expanded.Statistics
 {
@@ -51,10 +47,6 @@ namespace osu.Game.Screens.Ranking.Expanded.Statistics
             protected override double RollingDuration => AccuracyCircle.ACCURACY_TRANSFORM_DURATION / 2;
             protected override Easing RollingEasing => Easing.OutQuad;
 
-            [Resolved]
-            private OverlayColourProvider colourProvider { get; set; } = null!;
-            private IBindable<Colour4> themeColour = null!;
-
             protected override LocalisableString FormatCount(double count) => count.FormatAccuracy();
 
             protected override OsuSpriteText CreateSpriteText() => base.CreateSpriteText().With(s =>
@@ -62,13 +54,6 @@ namespace osu.Game.Screens.Ranking.Expanded.Statistics
                 s.Font = OsuFont.Torus.With(size: 20, fixedWidth: true);
                 s.Spacing = new Vector2(-2, 0);
             });
-
-            protected override void LoadComplete()
-            {
-                base.LoadComplete();
-                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-                themeColour.BindValueChanged(colour => DrawableCount.Colour = OverlayColourProvider.IsLightTheme ? colour.NewValue : Color4.White, true);
-            }
         }
     }
 }

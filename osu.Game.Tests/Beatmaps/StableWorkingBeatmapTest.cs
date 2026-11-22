@@ -14,6 +14,7 @@ using osu.Framework.Testing;
 using osu.Game.Beatmaps;
 using osu.Game.Database;
 using osu.Game.Models;
+using osu.Game.Screens.Select;
 using osu.Game.Storyboards;
 using osu.Game.Storyboards.Drawables;
 using osu.Game.Tests.Visual;
@@ -40,6 +41,50 @@ namespace osu.Game.Tests.Beatmaps
             StablePathManager.Replace(new Dictionary<Guid, string>(), new Dictionary<Guid, string>());
             stableStorage?.Dispose();
             stableStorage = null;
+        }
+
+        [Test]
+        public void TestBackgroundIsResolvedWithoutDecodingBeatmap()
+        {
+            StableWorkingBeatmap? working = null;
+            string backgroundPath = string.Empty;
+
+            AddStep("create stable beatmap with background", () =>
+            {
+                stableStorage = new TemporaryNativeStorage("stable-working-beatmap-background");
+                string beatmapPath = stableStorage.GetFullPath("background.osu");
+                backgroundPath = stableStorage.GetFullPath("background.png");
+                File.WriteAllText(beatmapPath,
+                    """
+                    osu file format v14
+
+                    [General]
+                    AudioFilename: audio.mp3
+
+                    [Events]
+                    0,0,"background.png",0,0
+
+                    [HitObjects]
+                    256,192,1000,1,0,0:0:0:0:
+                    """);
+                File.WriteAllBytes(backgroundPath, [1, 2, 3]);
+
+                var set = new BeatmapSetInfo();
+                var info = new BeatmapInfo { BeatmapSet = set, Metadata = new BeatmapMetadata { AudioFile = "audio.mp3" } };
+                set.Beatmaps.Add(info);
+                StablePathManager.Replace(new Dictionary<Guid, string> { [info.ID] = beatmapPath }, new Dictionary<Guid, string>());
+                working = new StableWorkingBeatmap(info, audio, host);
+            });
+
+            AddAssert("identity lookup does not discover background from disk", () => working!.CachedBackgroundFilePath, () => Is.Null);
+            AddStep("assign panel without synchronous metadata discovery", () =>
+            {
+                using var panel = new PanelSetBackground { Beatmap = working };
+                Assert.That(working!.CachedBackgroundFilePath, Is.Null);
+            });
+            AddAssert("background path resolved", () => working!.BackgroundFilePath, () => Is.EqualTo(backgroundPath));
+            AddAssert("resolved identity available without discovery", () => working!.CachedBackgroundFilePath, () => Is.EqualTo(backgroundPath));
+            AddAssert("beatmap not decoded", () => working!.BeatmapLoaded, () => Is.False);
         }
 
         [Test]

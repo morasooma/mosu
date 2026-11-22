@@ -96,7 +96,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
             targetPosition = Vector2.ComponentMin(Vector2.One, Vector2.ComponentMax(Vector2.Zero, normalisedPosition));
             buttons = (byte)(buttonState & 0b11);
             lastSampleTimestamp = Stopwatch.GetTimestamp();
-            label.Text = $"{username}  {pingMilliseconds} ms";
+            label.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4954(username, pingMilliseconds);
 
             if (!hasPosition)
             {

@@ -12,13 +12,13 @@ namespace osu.Game.Beatmaps
     {
         None = 0,
 
-        [Description("Normal")]
+        [Description("Normal"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3210))]
         Normal = 1,
 
-        [Description("Half speed")]
+        [Description("Half speed"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3211))]
         HalfSpeed = 2,
 
-        [Description("Double speed")]
+        [Description("Double speed"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3212))]
         DoubleSpeed = 3
     }
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -27,19 +27,34 @@ namespace osu.Game.Overlays.Settings.Sections.UserInterface
                     Current = config.GetBindable<bool>(OsuSetting.ShowConvertedBeatmaps),
                 })
                 {
+                    FavouriteId = "OsuSetting.ShowConvertedBeatmaps",
                     Keywords = new[] { "converts", "converted" }
+                },
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = CollectionMemoryStrings.Caption,
+                    HintText = CollectionMemoryStrings.Hint,
+                    Current = config.GetBindable<bool>(OsuSetting.SongSelectRememberCollection),
+                })
+                {
+                    FavouriteId = "OsuSetting.SongSelectRememberCollection",
+                    Keywords = new[] { "collection", "remember", "коллекция", "запоминать" },
                 },
                 new SettingsItemV2(new FormEnumDropdown<RandomSelectAlgorithm>
                 {
                     Caption = UserInterfaceStrings.RandomSelectionAlgorithm,
                     Current = config.GetBindable<RandomSelectAlgorithm>(OsuSetting.RandomSelectAlgorithm),
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.RandomSelectAlgorithm",
+                },
                 new SettingsItemV2(new FormEnumDropdown<ModSelectHotkeyStyle>
                 {
                     Caption = UserInterfaceStrings.ModSelectHotkeyStyle,
                     Current = config.GetBindable<ModSelectHotkeyStyle>(OsuSetting.ModSelectHotkeyStyle),
                 })
                 {
+                    FavouriteId = "OsuSetting.ModSelectHotkeyStyle",
                     ApplyClassicDefault = c => ((IHasCurrentValue<ModSelectHotkeyStyle>)c).Current.Value = ModSelectHotkeyStyle.Classic,
                 },
                 new SettingsItemV2(new FormCheckBox
@@ -48,13 +63,17 @@ namespace osu.Game.Overlays.Settings.Sections.UserInterface
                     Current = config.GetBindable<bool>(OsuSetting.ModSelectTextSearchStartsActive),
                 })
                 {
+                    FavouriteId = "OsuSetting.ModSelectTextSearchStartsActive",
                     ApplyClassicDefault = c => ((IHasCurrentValue<bool>)c).Current.Value = false,
                 },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GameplaySettingsStrings.BackgroundBlur,
                     Current = config.GetBindable<bool>(OsuSetting.SongSelectBackgroundBlur),
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.SongSelectBackgroundBlur",
+                },
             };
         }
     }

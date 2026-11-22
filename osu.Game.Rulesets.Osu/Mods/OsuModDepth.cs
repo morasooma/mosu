@@ -24,13 +24,13 @@ namespace osu.Game.Rulesets.Osu.Mods
         public override string Acronym => "DP";
         public override IconUsage? Icon => OsuIcon.ModDepth;
         public override ModType Type => ModType.Fun;
-        public override LocalisableString Description => "3D. Almost.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3683;
         public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[] { typeof(OsuModAutoplay), typeof(OsuModMagnetised), typeof(OsuModRepel), typeof(OsuModFreezeFrame), typeof(ModWithVisibilityAdjustment) }).ToArray();
 
         private static readonly Vector3 camera_position = new Vector3(OsuPlayfield.BASE_SIZE.X * 0.5f, OsuPlayfield.BASE_SIZE.Y * 0.5f, -200);
         private readonly float sliderMinDepth = depthForScale(1.5f); // Depth at which slider's scale will be 1.5f
 
-        [SettingSource("Maximum depth", "How far away objects appear.", 0)]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3684), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3685), 0)]
         public BindableFloat MaxDepth { get; } = new BindableFloat(100)
         {
             Precision = 10,
@@ -38,7 +38,7 @@ namespace osu.Game.Rulesets.Osu.Mods
             MaxValue = 200
         };
 
-        [SettingSource("Show Approach Circles", "Whether approach circles should be visible.", 1)]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3686), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3687), 1)]
         public BindableBool ShowApproachCircles { get; } = new BindableBool(true);
 
         protected override void ApplyIncreasedVisibilityState(DrawableHitObject hitObject, ArmedState state) => applyTransform(hitObject, state);

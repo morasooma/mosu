@@ -1,17 +1,13 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using osu.Framework.Allocation;
-using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
-using osu.Game.Overlays;
 using osuTK;
-using osuTK.Graphics;
 
 namespace osu.Game.Screens.Ranking.Expanded.Statistics
 {
@@ -25,10 +21,6 @@ namespace osu.Game.Screens.Ranking.Expanded.Statistics
 
         private RollingCounter<int> counter = null!;
         private OsuSpriteText? maxCountText;
-
-        [Resolved]
-        private OverlayColourProvider colourProvider { get; set; } = null!;
-        private IBindable<Colour4> themeColour = null!;
 
         /// <summary>
         /// Creates a new <see cref="CounterStatistic"/>.
@@ -75,17 +67,6 @@ namespace osu.Game.Screens.Ranking.Expanded.Statistics
             }
 
             return container;
-        }
-
-        protected override void LoadComplete()
-        {
-            base.LoadComplete();
-
-            if (maxCountText != null)
-            {
-                themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-                themeColour.BindValueChanged(colour => maxCountText.Colour = OverlayColourProvider.IsLightTheme ? colour.NewValue : Color4.White, true);
-            }
         }
     }
 }

@@ -406,7 +406,7 @@ namespace osu.Game.Rulesets.Edit
 
             var autoBankButton = sampleBankTogglesCollection.Single(t => t.BankName == HIT_BANK_AUTO);
             autoBankButton.NormalButton.Enabled.Value = enabled;
-            autoBankButton.NormalButton.TooltipText = !enabled ? "Auto normal bank can only be used during hit object placement" : string.Empty;
+            autoBankButton.NormalButton.TooltipText = !enabled ? global::osu.Game.Localisation.ClientTranslationStrings.J4083 : string.Empty;
         }
 
         #endregion

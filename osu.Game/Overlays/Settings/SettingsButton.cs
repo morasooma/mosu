@@ -24,6 +24,23 @@ namespace osu.Game.Overlays.Settings
             };
         }
 
+        private SettingsRowAnimation? rowAnimation;
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+            AddInternal(rowAnimation = new SettingsRowAnimation(this, Content));
+        }
+
+        public new bool MatchingFilter
+        {
+            set
+            {
+                base.MatchingFilter = value;
+                rowAnimation?.Reset();
+            }
+        }
+
         public IEnumerable<string> Keywords { get; set; } = Array.Empty<string>();
 
         public BindableBool CanBeShown { get; } = new BindableBool(true);

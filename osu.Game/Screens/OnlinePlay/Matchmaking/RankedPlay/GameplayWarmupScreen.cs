@@ -35,7 +35,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
     {
         public override bool ShowBeatmapBackground => true;
 
-        public override LocalisableString StageHeading => "Gameplay";
+        public override LocalisableString StageHeading => global::osu.Game.Localisation.ClientTranslationStrings.J4909;
 
         [Cached(typeof(IBindable<SongSelect.BeatmapSetLookupResult?>))]
         private readonly Bindable<SongSelect.BeatmapSetLookupResult?> lastLookupResult = new Bindable<SongSelect.BeatmapSetLookupResult?>();
@@ -72,11 +72,19 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         private Drawable detailsColumn = null!;
         private Drawable wedgesContainer = null!;
         private OsuSpriteText rouletteText = null!;
+        private bool metadataUnavailable;
 
         [BackgroundDependencyLoader]
         private void load()
         {
-            APIBeatmap beatmap = beatmapLookupCache.GetBeatmapAsync(Client.Room!.CurrentPlaylistItem.BeatmapID).GetResultSafely()!;
+            var item = Client.Room!.CurrentPlaylistItem;
+            APIBeatmap? beatmap = beatmapLookupCache.GetBeatmapAsync(item.BeatmapID).GetResultSafely();
+            if (beatmap?.BeatmapSet == null)
+            {
+                metadataUnavailable = true;
+                return;
+            }
+
             lastLookupResult.Value = SongSelect.BeatmapSetLookupResult.Completed(beatmap.BeatmapSet);
 
             var matchState = Client.Room?.MatchState as RankedPlayRoomState;
@@ -168,6 +176,16 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         {
             base.LoadComplete();
 
+            if (matchInfo.IsSpectating)
+                return;
+
+            if (metadataUnavailable)
+            {
+                Logger.Log("Ranked play warmup metadata unavailable; leaving the unplayable match.", LoggingTarget.Runtime, LogLevel.Error);
+                Client.LeaveRoom().FireAndForget();
+                return;
+            }
+
             MultiplayerPlaylistItem item = Client.Room!.CurrentPlaylistItem;
 
             RulesetInfo ruleset = rulesets.GetRuleset(item.RulesetID)!;
@@ -176,7 +194,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
             if (localBeatmap == null)
             {
-                Logger.Log($"Ranked play beatmap {item.BeatmapID} could not be resolved with the expected checksum.", LoggingTarget.Runtime, LogLevel.Important);
+                Logger.Log($"Ranked play beatmap {item.BeatmapID} could not be resolved with the expected checksum {item.BeatmapChecksum}; leaving the unplayable match.", LoggingTarget.Runtime, LogLevel.Error);
+                Client.LeaveRoom().FireAndForget();
                 return;
             }
 
@@ -188,7 +207,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
             if (workingBeatmap.BeatmapInfo.Status == BeatmapOnlineStatus.LocallyModified)
             {
-                Logger.Log($"Ranked play beatmap {item.BeatmapID} is locally modified or unavailable.", LoggingTarget.Runtime, LogLevel.Important);
+                Logger.Log($"Ranked play beatmap {item.BeatmapID} is locally modified or unavailable; leaving the unplayable match.", LoggingTarget.Runtime, LogLevel.Error);
+                Client.LeaveRoom().FireAndForget();
                 return;
             }
 
@@ -213,7 +233,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             if (availableMods.Length == 0)
                 availableMods = [selectedMod];
 
-            rouletteText.Text = "Random mod: AA";
+            rouletteText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4912;
             rouletteText.FadeIn(200);
 
             const int spins = 24;
@@ -221,12 +241,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             for (int i = 0; i < spins; i++)
             {
                 int index = i;
-                Scheduler.AddDelayed(() => rouletteText.Text = $"Random mod: {availableMods[index % availableMods.Length]}", i * 75);
+                Scheduler.AddDelayed(() => rouletteText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4913(availableMods[index % availableMods.Length]), i * 75);
             }
 
             Scheduler.AddDelayed(() =>
             {
-                rouletteText.Text = $"Random mod: {selectedMod}";
+                rouletteText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4913(selectedMod);
                 rouletteText.ScaleTo(1.2f, 180, Easing.OutBack).Then().ScaleTo(1, 220, Easing.OutQuint);
                 Client.ChangeState(MultiplayerUserState.Ready).FireAndForget();
             }, spins * 75);
@@ -236,7 +256,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         {
             base.OnEntering(previous);
 
-            if (matchInfo.LastPlayedCard == null)
+            if (metadataUnavailable || matchInfo.LastPlayedCard == null)
                 return;
 
             RankedPlayCard? card = null;
@@ -260,7 +280,9 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
             if (card == null)
             {
-                Logger.Log($"Played card {matchInfo.LastPlayedCard.Card.ID} was not on the screen.", level: LogLevel.Error);
+                // Spectators (including late joins) never own a card in an interactive pick row.
+                if (!matchInfo.IsSpectating && previous is PickScreen or OpponentPickScreen)
+                    Logger.Log($"Played card {matchInfo.LastPlayedCard.Card.ID} was not on the screen.", level: LogLevel.Error);
 
                 card = new RankedPlayCard(matchInfo.LastPlayedCard)
                 {

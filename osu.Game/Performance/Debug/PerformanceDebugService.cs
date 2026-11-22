@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
@@ -23,7 +22,7 @@ namespace osu.Game.Performance.Debug
         private readonly BindableBool showMemoryInToolbar = new BindableBool();
         private readonly BindableBool showFreezeAlerts = new BindableBool();
         private GameHost host = null!;
-        private Process process = null!;
+        private ProcessHeapSampler? processSampler;
         private double lastTelemetryTime;
         private long lastAllocatedBytes;
         private bool wasStuttering;
@@ -40,7 +39,6 @@ namespace osu.Game.Performance.Debug
         private void load(OsuConfigManager config, GameHost gameHost)
         {
             host = gameHost;
-            process = Process.GetCurrentProcess();
             config.BindWith(OsuSetting.ForkDebugHudMode, mode);
             config.BindWith(OsuSetting.ForkShowMemoryInToolbar, showMemoryInToolbar);
             config.BindWith(OsuSetting.ForkDebugFreezeAlerts, showFreezeAlerts);
@@ -54,10 +52,16 @@ namespace osu.Game.Performance.Debug
 
             if (!Enabled)
             {
+                processSampler?.Dispose();
+                processSampler = null;
                 wasStuttering = false;
                 return;
             }
 
+            // Process.Refresh/WorkingSet64 can read procfs or query the Windows
+            // process API. Keep that work (and heap polling) out of the frame whose
+            // timing this HUD is supposed to report. Reuse the existing poller.
+            processSampler ??= new ProcessHeapSampler(TimeSpan.FromMilliseconds(telemetry_interval_ms));
             double now = Time.Current;
             bool refreshMemory = now - lastTelemetryTime >= telemetry_interval_ms;
             PerformanceDebugSnapshot snapshot = capture(refreshMemory, now);
@@ -81,7 +85,9 @@ namespace osu.Game.Performance.Debug
 
         private PerformanceDebugSnapshot capture(bool refreshMemory, double now)
         {
-            // Standalone public build note: GameThread.PerformanceSnapshot is an optional Mosu framework extension.
+            var draw = host.DrawThread.PerformanceSnapshot;
+            var update = host.UpdateThread.PerformanceSnapshot;
+            var input = host.InputThread.PerformanceSnapshot;
             PerformanceDebugSnapshot previous = Latest;
 
             var snapshot = new PerformanceDebugSnapshot
@@ -89,9 +95,9 @@ namespace osu.Game.Performance.Debug
                 DrawFrameMs = host.DrawThread.Clock.ElapsedFrameTime,
                 UpdateFrameMs = host.UpdateThread.Clock.ElapsedFrameTime,
                 InputFrameMs = host.InputThread.Clock.ElapsedFrameTime,
-                DrawGcMs = 0,
-                UpdateGcMs = 0,
-                InputGcMs = 0,
+                DrawGcMs = draw.GcMs,
+                UpdateGcMs = update.GcMs,
+                InputGcMs = input.GcMs,
                 WorkingSetMb = previous.WorkingSetMb,
                 GcHeapMb = previous.GcHeapMb,
                 AllocationRateMbPerSecond = previous.AllocationRateMbPerSecond,
@@ -99,22 +105,24 @@ namespace osu.Game.Performance.Debug
                 Gen1Collections = GC.CollectionCount(1),
                 Gen2Collections = GC.CollectionCount(2),
                 GcMode = GCSettings.LatencyMode,
-                UpdateInvalidations = 0,
-                UpdateCcl = 0,
-                UpdateInputQueue = 0,
-                DrawPipelineCreates = 0,
-                DrawTextureUploadFlushes = 0,
-                DrawTextureUploads = 0,
-                DrawSwapBuffersUs = 0,
+                UpdateInvalidations = update.Invalidations,
+                UpdateCcl = update.CCL,
+                UpdateInputQueue = update.InputQueue,
+                DrawPipelineCreates = draw.PipelineCreates,
+                DrawTextureUploadFlushes = draw.TextureUploadFlushes,
+                DrawTextureUploads = draw.TextureUploads,
+                DrawSwapBuffersUs = draw.VeldridSwapBuffersUs,
             };
 
             if (refreshMemory)
             {
-                process.Refresh();
                 long allocatedBytes = GC.GetTotalAllocatedBytes(false);
                 double elapsedSeconds = Math.Max(0.001, (now - lastTelemetryTime) / 1000);
-                snapshot.WorkingSetMb = process.WorkingSet64 / 1024d / 1024d;
-                snapshot.GcHeapMb = GC.GetTotalMemory(false) / 1024d / 1024d;
+                if (processSampler?.Latest is { } memory)
+                {
+                    snapshot.WorkingSetMb = memory.WorkingSetMb;
+                    snapshot.GcHeapMb = memory.GcHeapMb;
+                }
                 snapshot.AllocationRateMbPerSecond = Math.Max(0, allocatedBytes - lastAllocatedBytes) / 1024d / 1024d / elapsedSeconds;
                 lastAllocatedBytes = allocatedBytes;
                 lastTelemetryTime = now;
@@ -128,7 +136,7 @@ namespace osu.Game.Performance.Debug
             mode.UnbindAll();
             showMemoryInToolbar.UnbindAll();
             showFreezeAlerts.UnbindAll();
-            process?.Dispose();
+            processSampler?.Dispose();
             base.Dispose(isDisposing);
         }
     }

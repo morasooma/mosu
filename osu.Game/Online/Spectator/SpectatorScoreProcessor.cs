@@ -44,6 +44,7 @@ namespace osu.Game.Online.Spectator
         /// The highest combo achieved in the score thus far.
         /// </summary>
         public readonly BindableInt HighestCombo = new BindableInt();
+        public readonly Bindable<int?> Misses = new Bindable<int?>();
 
         /// <summary>
         /// The <see cref="ScoringMode"/> used to calculate scores.
@@ -63,6 +64,7 @@ namespace osu.Game.Online.Spectator
             Accuracy.Value = totalHits == 0
                 ? 1
                 : (frame.Count300 * 300d + frame.Count100 * 100d + frame.Count50 * 50d) / (totalHits * 300d);
+            Misses.Value = frame.CountMiss;
             Combo.Value = frame.CurrentCombo;
             HighestCombo.Value = frame.MaxCombo;
             TotalScore.Value = frame.TotalScore;
@@ -114,6 +116,7 @@ namespace osu.Game.Online.Spectator
             if (!spectatorStates.TryGetValue(userId, out var userState) || userState.BeatmapID == null || userState.RulesetID == null)
             {
                 scoreInfo = null;
+                Misses.Value = null;
                 spectatorState = null;
                 replayFrames.Clear();
                 return;
@@ -171,11 +174,17 @@ namespace osu.Game.Online.Spectator
             scoreInfo.Statistics = frame.Header.Statistics;
             scoreInfo.MaximumStatistics = spectatorState.MaximumStatistics;
             scoreInfo.TotalScore = frame.Header.TotalScore;
+            scoreInfo.MosuTotalScore = !MosuServerEnvironment.IsThirdPartyServer && !MosuServerEnvironment.UsesStableProtocol
+                ? frame.Header.MosuTotalScore
+                : null;
+            if (MosuServerEnvironment.UsesStableProtocol)
+                scoreInfo.LegacyTotalScore = frame.Header.TotalScore;
 
+            Misses.Value = frame.Header.Statistics.GetValueOrDefault(HitResult.Miss);
             Accuracy.Value = frame.Header.Accuracy;
             Combo.Value = frame.Header.Combo;
             HighestCombo.Value = frame.Header.MaxCombo;
-            TotalScore.Value = frame.Header.TotalScore;
+            TotalScore.Value = scoreInfo.MosuTotalScore ?? frame.Header.TotalScore;
         }
 
         protected override void Dispose(bool isDisposing)

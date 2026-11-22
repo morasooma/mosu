@@ -578,9 +578,13 @@ namespace osu.Game.Tests.Visual
                 Add(runner = new TestSceneTestRunner.TestRunner());
             }
 
+            public bool LoadFonts { get; init; }
+
             protected override void InitialiseFonts()
             {
-                // skip fonts load as it's not required for testing purposes.
+                // Most tests do not need fonts; font integration tests opt in.
+                if (LoadFonts)
+                    base.InitialiseFonts();
             }
 
             public void RunTestBlocking(TestScene test) => runner.RunTestBlocking(test);

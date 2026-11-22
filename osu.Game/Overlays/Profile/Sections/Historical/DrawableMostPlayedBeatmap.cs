@@ -87,7 +87,7 @@ namespace osu.Game.Overlays.Profile.Sections.Historical
                                                         Direction = FillDirection.Horizontal,
                                                     }.With(d =>
                                                     {
-                                                        d.AddText("mapped by ");
+                                                        d.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3978);
                                                         d.AddUserLink(mostPlayed.BeatmapSet.Author);
                                                     }),
                                                 }
@@ -142,7 +142,7 @@ namespace osu.Game.Overlays.Profile.Sections.Historical
                     },
                     new OsuSpriteText
                     {
-                        Text = " by ",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J3979,
                         Font = OsuFont.GetFont(weight: FontWeight.Regular)
                     },
                     new OsuSpriteText

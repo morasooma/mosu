@@ -24,8 +24,9 @@ namespace osu.Game.Beatmaps.Drawables
             this.type = type;
         }
 
-        [BackgroundDependencyLoader]
-        private void load(LargeTextureStore textures)
+        internal string ResourceName => resourceFor(set, type);
+
+        private static string resourceFor(IBeatmapSetOnlineInfo set, BeatmapSetCoverType type)
         {
             string resource = null;
 
@@ -44,8 +45,16 @@ namespace osu.Game.Beatmaps.Drawables
                     break;
             }
 
-            if (resource != null)
-                Texture = textures.Get(resource);
+            // Older server records can omit card-sized assets. Preserve their
+            // banner fallback rather than silently removing the card background.
+            return resource ?? (type == BeatmapSetCoverType.Card ? set.Covers.Cover : null);
+        }
+
+        [BackgroundDependencyLoader]
+        private void load(LargeTextureStore textures)
+        {
+            if (ResourceName != null)
+                Texture = textures.Get(ResourceName);
         }
     }
 

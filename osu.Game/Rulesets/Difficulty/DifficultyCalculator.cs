@@ -26,7 +26,13 @@ namespace osu.Game.Rulesets.Difficulty
         /// <summary>
         /// The beatmap for which difficulty will be calculated.
         /// </summary>
-        protected IBeatmap Beatmap { get; private set; }
+        protected IBeatmap Beatmap { get; set; }
+
+        /// <summary>
+        /// The prepared playable beatmap from the most recent calculation. Consume before
+        /// starting another calculation, which replaces this instance.
+        /// </summary>
+        internal IBeatmap CalculatedBeatmap => Beatmap;
 
         /// <summary>
         /// The working beatmap for which difficulty will be calculated.
@@ -73,13 +79,22 @@ namespace osu.Game.Rulesets.Difficulty
             // ReSharper disable once PossiblyMistakenUseOfCancellationToken
             preProcess(mods, cancellationToken);
 
-            var skills = CreateSkills(Beatmap, playableMods);
+            var skills = CalculateSkills(Beatmap, playableMods, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            return CreateDifficultyAttributes(Beatmap, playableMods, skills);
+        }
 
-            if (!Beatmap.HitObjects.Any())
-                return CreateDifficultyAttributes(Beatmap, playableMods, skills);
+        protected static void CalculationCheckpoint() => BackgroundCalculationLimiter.Checkpoint();
 
-            foreach (var hitObject in getDifficultyHitObjects())
+        protected virtual Skill[] CalculateSkills(IBeatmap beatmap, Mod[] mods, CancellationToken cancellationToken)
+        {
+            var skills = CreateSkills(beatmap, mods);
+            if (beatmap.HitObjects.Count == 0)
+                return skills;
+
+            foreach (var hitObject in getDifficultyHitObjects(cancellationToken))
             {
+                BackgroundCalculationLimiter.Checkpoint();
                 foreach (var skill in skills)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -87,20 +102,20 @@ namespace osu.Game.Rulesets.Difficulty
                 }
             }
 
-            return CreateDifficultyAttributes(Beatmap, playableMods, skills);
+            return skills;
         }
-
-        /// <summary>
-        /// Whether this calculation should also prepare ruleset-specific state required by a
-        /// subsequent performance calculation. Visual star-rating-only callers may disable this.
-        /// </summary>
-        public bool PreparePerformanceCalculation { get; set; } = true;
 
         /// <summary>
         /// Calculates the difficulty of the beatmap with no mods applied and returns a set of <see cref="TimedDifficultyAttributes"/> representing the difficulty at every relevant time value in the beatmap.
         /// </summary>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The set of <see cref="TimedDifficultyAttributes"/>.</returns>
+        /// <summary>
+        /// Whether this calculation should also prepare ruleset-specific state required by a
+        /// subsequent performance calculation. Visual star-rating-only callers may disable this.
+        /// </summary>
+        public bool PreparePerformanceCalculation { get; set; } = true;
+
         public List<TimedDifficultyAttributes> CalculateTimed(CancellationToken cancellationToken = default)
             => CalculateTimed(Array.Empty<Mod>(), cancellationToken);
 
@@ -128,7 +143,7 @@ namespace osu.Game.Rulesets.Difficulty
 
             var skills = CreateSkills(Beatmap, playableMods);
             var progressiveBeatmap = new ProgressiveCalculationBeatmap(Beatmap);
-            var difficultyObjects = getDifficultyHitObjects().ToArray();
+            var difficultyObjects = getDifficultyHitObjects(cancellationToken).ToArray();
 
             int currentIndex = 0;
             bool preparePerformance = PreparePerformanceCalculation;
@@ -139,9 +154,12 @@ namespace osu.Game.Rulesets.Difficulty
 
             try
             {
+                BeginTimedCalculation(Beatmap, playableMods);
                 foreach (var obj in Beatmap.HitObjects)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     progressiveBeatmap.HitObjects.Add(obj);
+                    OnTimedPrefixAdded(progressiveBeatmap, obj);
 
                     while (currentIndex < difficultyObjects.Length && difficultyObjects[currentIndex].BaseObject.GetEndTime() <= obj.GetEndTime())
                     {
@@ -154,6 +172,7 @@ namespace osu.Game.Rulesets.Difficulty
                         currentIndex++;
                     }
 
+                    cancellationToken.ThrowIfCancellationRequested();
                     attribs.Add(new TimedDifficultyAttributes(obj.GetEndTime(), CreateDifficultyAttributes(progressiveBeatmap, playableMods, skills)));
                 }
 
@@ -165,12 +184,202 @@ namespace osu.Game.Rulesets.Difficulty
             finally
             {
                 PreparePerformanceCalculation = preparePerformance;
+                EndTimedCalculation();
             }
         }
+
+        /// <summary>
+        /// Returns an on-demand cursor only for rulesets/mods which explicitly support it.
+        /// Use a dedicated calculator instance; the cursor owns its timed lifecycle.
+        /// </summary>
+        public virtual bool SupportsProgressiveCalculation(IEnumerable<Mod> mods) => false;
+
+        public virtual IProgressiveDifficultyCalculator CreateProgressiveCalculation(IEnumerable<Mod> mods, CancellationToken cancellationToken = default)
+            => null;
+
+        protected IProgressiveDifficultyCalculator CreateProgressiveCalculationCore(IEnumerable<Mod> mods, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            preProcess(mods, cancellationToken);
+            return new ProgressiveCalculation(this, cancellationToken);
+        }
+
+        private sealed class ProgressiveCalculation : IProgressiveDifficultyCalculator
+        {
+            private readonly DifficultyCalculator calculator;
+            private readonly DifficultyHitObject[] difficultyObjects;
+            private readonly double[] prefixTimes;
+            private readonly bool preparePerformance;
+            private ProgressiveCalculationBeatmap progressiveBeatmap;
+            private Skill[] skills;
+            private int objectIndex;
+            private int difficultyIndex;
+            private int lastIndex = -1;
+            private DifficultyAttributes lastAttributes;
+            // Keep a small recent window, not an eager all-prefix table. Nested slider
+            // judgements/rewinds can revisit an already calculated prefix many times.
+            private const int recent_prefix_limit = 64;
+            private readonly Dictionary<int, DifficultyAttributes> recentAttributes = new Dictionary<int, DifficultyAttributes>();
+            private readonly Queue<int> recentOrder = new Queue<int>();
+            private bool disposed;
+
+            public ProgressiveCalculation(DifficultyCalculator calculator, CancellationToken token)
+            {
+                this.calculator = calculator;
+                difficultyObjects = calculator.getDifficultyHitObjects(token).ToArray();
+                prefixTimes = calculator.Beatmap.HitObjects.Select(obj => obj.GetEndTime()).ToArray();
+                preparePerformance = calculator.PreparePerformanceCalculation;
+                calculator.PreparePerformanceCalculation = false;
+                try
+                {
+                    reset();
+                }
+                catch
+                {
+                    Dispose();
+                    throw;
+                }
+            }
+
+            private bool timedStarted;
+
+            private void reset()
+            {
+                if (timedStarted)
+                    calculator.EndTimedCalculation();
+                skills = calculator.CreateSkills(calculator.Beatmap, calculator.playableMods);
+                progressiveBeatmap = new ProgressiveCalculationBeatmap(calculator.Beatmap);
+                objectIndex = difficultyIndex = 0;
+                lastIndex = -1;
+                lastAttributes = null;
+                timedStarted = true;
+                calculator.BeginTimedCalculation(calculator.Beatmap, calculator.playableMods);
+            }
+
+            public DifficultyAttributes GetAttributesAtTime(double time, CancellationToken cancellationToken = default)
+            {
+                if (disposed)
+                    throw new ObjectDisposedException(nameof(ProgressiveCalculation));
+                cancellationToken.ThrowIfCancellationRequested();
+                if (prefixTimes.Length == 0)
+                    return null;
+
+                // Deliberately match the existing HUD lookup, including duplicate timestamps
+                // and maps whose overlapping sliders make end times non-monotonic.
+                int index = Array.BinarySearch(prefixTimes, time);
+                if (index < 0)
+                    index = ~index - 1;
+                index = Math.Clamp(index, 0, prefixTimes.Length - 1);
+                if (index == lastIndex)
+                    return lastAttributes;
+                if (recentAttributes.TryGetValue(index, out var cached))
+                    return cached;
+                if (index < objectIndex - 1)
+                    reset();
+
+                try
+                {
+                    while (objectIndex <= index)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var obj = calculator.Beatmap.HitObjects[objectIndex++];
+                        progressiveBeatmap.HitObjects.Add(obj);
+                        calculator.OnTimedPrefixAdded(progressiveBeatmap, obj);
+                        while (difficultyIndex < difficultyObjects.Length && difficultyObjects[difficultyIndex].BaseObject.GetEndTime() <= obj.GetEndTime())
+                        {
+                            foreach (var skill in skills)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                skill.Process(difficultyObjects[difficultyIndex]);
+                            }
+                            difficultyIndex++;
+                        }
+                    }
+                    cancellationToken.ThrowIfCancellationRequested();
+                    lastAttributes = calculator.CreateDifficultyAttributes(progressiveBeatmap, calculator.playableMods, skills);
+                    lastIndex = index;
+                    if (recentAttributes.Count == recent_prefix_limit)
+                        recentAttributes.Remove(recentOrder.Dequeue());
+                    recentAttributes.Add(index, lastAttributes);
+                    recentOrder.Enqueue(index);
+                    return lastAttributes;
+                }
+                catch
+                {
+                    // Cancellation may interrupt processing halfway through one object's skills.
+                    // Discard that state before a retry rather than using a partially advanced cursor.
+                    reset();
+                    throw;
+                }
+            }
+
+            public void Dispose()
+            {
+                if (disposed)
+                    return;
+                disposed = true;
+                recentAttributes.Clear();
+                recentOrder.Clear();
+                if (timedStarted)
+                    calculator.EndTimedCalculation();
+                calculator.PreparePerformanceCalculation = preparePerformance;
+            }
+        }
+
+        /// <summary>
+        /// Called once before timed prefixes are calculated, and after each prefix object is appended.
+        /// Allows rulesets to maintain prefix-invariant aggregates without bypassing virtual attribute creation.
+        /// </summary>
+        protected virtual void BeginTimedCalculation(IBeatmap beatmap, Mod[] mods) { }
+
+        protected virtual void OnTimedPrefixAdded(IBeatmap prefixBeatmap, HitObject addedObject) { }
+
+        protected virtual void EndTimedCalculation() { }
 
         protected virtual void PrepareTimedPerformanceCalculation(IBeatmap beatmap, Mod[] mods, IReadOnlyList<TimedDifficultyAttributes> attributes)
         {
         }
+
+        /// <summary>
+        /// Processes native ruleset skills on an already prepared beatmap without converting it again.
+        /// This is intentionally separate from cumulative timed star ratings, which are not local difficulty.
+        /// No hit object timestamps are modified.
+        /// </summary>
+        public virtual IReadOnlyList<LocalDifficultySample> CalculateLocalDifficulty(IBeatmap beatmap, double clockRate = 1, CancellationToken cancellationToken = default)
+        {
+            if (!double.IsFinite(clockRate) || clockRate <= 0)
+                throw new ArgumentOutOfRangeException(nameof(clockRate));
+            Mod[] mods = clockRate == 1 ? Array.Empty<Mod>() : new Mod[] { new LocalDifficultyRateMod(clockRate) };
+            IBeatmap previousBeatmap = Beatmap;
+            Beatmap = beatmap;
+            try
+            {
+                var skills = CreateLocalDifficultySkills(beatmap, mods);
+                var result = new List<LocalDifficultySample>();
+                foreach (var obj in SortObjects(CreateDifficultyHitObjects(beatmap, mods, cancellationToken)))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    double sum = 0;
+                    foreach (var skill in skills)
+                    {
+                        skill.Process(obj);
+                        double local = skill.LocalDifficulty;
+                        if (double.IsFinite(local))
+                            sum += Math.Max(0, local);
+                    }
+
+                    result.Add(new LocalDifficultySample(obj.BaseObject.StartTime, Math.Sqrt(sum)));
+                }
+
+                return result;
+            }
+            finally
+            {
+                Beatmap = previousBeatmap;
+            }
+        }
+
+        protected virtual Skill[] CreateLocalDifficultySkills(IBeatmap beatmap, Mod[] mods) => CreateSkills(beatmap, mods);
 
         /// <summary>
         /// Calculates the difficulty of the beatmap using all mod combinations applicable to the beatmap.
@@ -180,6 +389,9 @@ namespace osu.Game.Rulesets.Difficulty
         /// </remarks>
         /// <returns>A collection of structures describing the difficulty of the beatmap for each mod combination.</returns>
         public IEnumerable<DifficultyAttributes> CalculateAllLegacyCombinations(CancellationToken cancellationToken = default)
+            => CalculateBatch(createLegacyCombinations(), cancellationToken);
+
+        private IEnumerable<IEnumerable<Mod>> createLegacyCombinations()
         {
             var rulesetInstance = ruleset.CreateInstance();
 
@@ -191,14 +403,28 @@ namespace osu.Game.Rulesets.Difficulty
                 if (classicMod != null)
                     finalCombination = finalCombination.Append(classicMod);
 
-                yield return Calculate(finalCombination.ToArray(), cancellationToken);
+                yield return finalCombination.ToArray();
+            }
+        }
+
+        /// <summary>
+        /// Calculates a sequential batch on this dedicated calculator, preserving request order.
+        /// Enumerate/dispose before using this calculator again. Rulesets may reuse preparation
+        /// inside this bounded lifetime, but not globally or between gameplay owners.
+        /// </summary>
+        public virtual IEnumerable<DifficultyAttributes> CalculateBatch(IEnumerable<IEnumerable<Mod>> combinations, CancellationToken cancellationToken = default)
+        {
+            foreach (var combination in combinations)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return Calculate(combination, cancellationToken);
             }
         }
 
         /// <summary>
         /// Retrieves the <see cref="DifficultyHitObject"/>s to calculate against.
         /// </summary>
-        private IEnumerable<DifficultyHitObject> getDifficultyHitObjects() => SortObjects(CreateDifficultyHitObjects(Beatmap, playableMods));
+        private IEnumerable<DifficultyHitObject> getDifficultyHitObjects(CancellationToken cancellationToken) => SortObjects(CreateDifficultyHitObjects(Beatmap, playableMods, cancellationToken));
 
         /// <summary>
         /// Performs required tasks before every calculation.
@@ -208,8 +434,11 @@ namespace osu.Game.Rulesets.Difficulty
         private void preProcess([NotNull] IEnumerable<Mod> mods, CancellationToken cancellationToken)
         {
             playableMods = mods.Select(m => m.DeepClone()).ToArray();
-            Beatmap = WorkingBeatmap.GetPlayableBeatmap(ruleset, playableMods, cancellationToken);
+            Beatmap = GetPlayableBeatmap(ruleset, playableMods, cancellationToken);
         }
+
+        protected virtual IBeatmap GetPlayableBeatmap(IRulesetInfo rulesetInfo, Mod[] mods, CancellationToken cancellationToken)
+            => WorkingBeatmap.GetPlayableBeatmap(rulesetInfo, mods, cancellationToken);
 
         /// <summary>
         /// Sorts a given set of <see cref="DifficultyHitObject"/>s.
@@ -308,6 +537,16 @@ namespace osu.Game.Rulesets.Difficulty
         /// <param name="mods">Mods to create difficulty objects with.</param>
         /// <returns>The enumerated <see cref="DifficultyHitObject"/>s.</returns>
         protected abstract IEnumerable<DifficultyHitObject> CreateDifficultyHitObjects(IBeatmap beatmap, Mod[] mods);
+
+        /// <summary>
+        /// Creates difficulty hitobjects while observing the active calculation cancellation token.
+        /// Existing rulesets remain compatible through the original overload.
+        /// </summary>
+        protected virtual IEnumerable<DifficultyHitObject> CreateDifficultyHitObjects(IBeatmap beatmap, Mod[] mods, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return CreateDifficultyHitObjects(beatmap, mods);
+        }
 
         /// <summary>
         /// Creates the <see cref="Skill"/>s to calculate the difficulty of an <see cref="IBeatmap"/>.

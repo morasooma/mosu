@@ -26,6 +26,7 @@ using osu.Game.Online.Leaderboards;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays;
 using osu.Game.Overlays.Notifications;
+using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Mods;
@@ -112,6 +113,8 @@ namespace osu.Game.Tests.Visual.Gameplay
             player = null;
             epilepsyWarning = null;
             onlineStatus = null;
+            batteryInfo.PendingStatus = null;
+            batteryInfo.FailStatus = false;
         });
 
         [SetUpSteps]
@@ -130,6 +133,7 @@ namespace osu.Game.Tests.Visual.Gameplay
                             leaderboardRequestsHandled++;
                             getScores.TriggerSuccess(new APIScoresCollection { Scores = [] });
                             return true;
+
                         default:
                             return false;
                     }
@@ -186,6 +190,20 @@ namespace osu.Game.Tests.Visual.Gameplay
             AddAssert("player did not load", () => player == null);
             AddUntilStep("player disposed", () => loader.DisposalTask == null);
             AddAssert("mod rate still applied", () => Beatmap.Value.Track.Rate != 1);
+        }
+
+        [Test]
+        public void TestPlayerExitsBeforeEntering()
+        {
+            ExitDuringLoadCompletePlayer earlyExitPlayer = null;
+
+            AddStep("push player", () =>
+            {
+                prepareBeatmap();
+                LoadScreen(earlyExitPlayer = new ExitDuringLoadCompletePlayer());
+            });
+            AddUntilStep("wait for player to exit", () => earlyExitPlayer.HasExited);
+            AddAssert("stack is empty", () => Stack.CurrentScreen == null);
         }
 
         /// <summary>
@@ -393,13 +411,21 @@ namespace osu.Game.Tests.Visual.Gameplay
         }
 
         [Test]
-        public void TestLeaderboardForciblyRefetchedOnRestart([Values] bool quickRestart)
+        public void TestLeaderboardForciblyRefetchedOnRestart([Values] bool quickRestart, [Values("NM", "RX", "MRX")] string mod)
         {
-            AddStep("load player", () => resetPlayer(true));
+            int expectedRulesetId = mod == "NM" ? 0 : RulesetInfo.OSU_RELAX_ONLINE_ID;
+
+            AddStep("load player", () => resetPlayer(true, () => SelectedMods.Value = mod switch
+            {
+                "RX" => new Mod[] { new OsuModRelax() },
+                "MRX" => new Mod[] { new OsuModMosuRelax() },
+                _ => Array.Empty<Mod>(),
+            }));
 
             AddUntilStep("wait for loader to become current", () => loader.IsCurrentScreen());
             AddUntilStep("wait for player to be current", () => player.IsCurrentScreen());
             AddAssert("leaderboard fetched once", () => leaderboardRequestsHandled, () => Is.EqualTo(1));
+            AddAssert("leaderboard matches gameplay mods", () => leaderboardManager.CurrentCriteria?.Ruleset?.OnlineID, () => Is.EqualTo(expectedRulesetId));
 
             AddStep("restart player", () =>
             {
@@ -409,6 +435,8 @@ namespace osu.Game.Tests.Visual.Gameplay
             });
 
             AddUntilStep("wait for player to be current", () => player.IsCurrentScreen());
+
+            AddAssert("restart keeps leaderboard mode", () => leaderboardManager.CurrentCriteria?.Ruleset?.OnlineID, () => Is.EqualTo(expectedRulesetId));
 
             if (quickRestart)
                 AddAssert("leaderboard not refetched", () => leaderboardRequestsHandled, () => Is.EqualTo(1));
@@ -555,6 +583,60 @@ namespace osu.Game.Tests.Visual.Gameplay
             AddUntilStep("wait for player load", () => player.IsLoaded);
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestPendingBatteryQueryDoesNotBlockLoaderAndDiscardsLateResult(bool exitEarly)
+        {
+            TaskCompletionSource<(bool OnBattery, double? ChargeLevel)> pending = null;
+            int updates = 0;
+            AddStep("hold battery query", () =>
+            {
+                sessionStatics.GetBindable<bool>(Static.LowBatteryNotificationShownOnce).Value = false;
+                pending = new TaskCompletionSource<(bool, double?)>(TaskCreationOptions.RunContinuationsAsynchronously);
+                batteryInfo.PendingStatus = pending.Task;
+                resetPlayer(false);
+                loader.BlockPlayerLoad = true;
+                loader.OnUpdate += _ => updates++;
+            });
+            AddUntilStep("loader entered with query pending", () => loader.IsCurrentScreen() && loader.BatteryCheckTask?.IsCompleted == false);
+            AddUntilStep("updates continue", () => updates > 5);
+            if (exitEarly)
+            {
+                AddStep("exit before power reply", () => loader.Exit());
+                AddUntilStep("loader no longer current", () => !loader.IsCurrentScreen());
+            }
+            AddStep("return low battery", () => pending.SetResult((true, 0.1)));
+            AddUntilStep("query delivery finished", () => loader.BatteryCheckTask.IsCompleted);
+            if (exitEarly)
+            {
+                AddStep("drain departed loader callbacks", () => loader.DrainPendingCallbacks());
+                AddAssert("no late notification", () => notificationOverlay.UnreadCount.Value == 0);
+                AddAssert("once flag untouched", () => !sessionStatics.GetBindable<bool>(Static.LowBatteryNotificationShownOnce).Value);
+            }
+            else
+            {
+                clickNotification();
+                AddAssert("once flag set", () => sessionStatics.GetBindable<bool>(Static.LowBatteryNotificationShownOnce).Value);
+                AddStep("exit loader", () => loader.Exit());
+            }
+        }
+
+        [Test]
+        public void TestBatteryFailureDoesNotBreakLoaderEntry()
+        {
+            AddStep("fail power query", () =>
+            {
+                sessionStatics.GetBindable<bool>(Static.LowBatteryNotificationShownOnce).Value = false;
+                batteryInfo.FailStatus = true;
+                resetPlayer(false);
+                loader.BlockPlayerLoad = true;
+            });
+            AddUntilStep("loader stays current", () => loader.IsCurrentScreen());
+            AddAssert("failure observed", () => loader.BatteryCheckTask.IsCompletedSuccessfully);
+            AddAssert("no warning", () => notificationOverlay.UnreadCount.Value == 0);
+            AddStep("exit loader", () => loader.Exit());
+        }
+
         private void restoreVolumes()
         {
             AddStep("restore previous volumes", () =>
@@ -635,11 +717,31 @@ namespace osu.Game.Tests.Visual.Gameplay
 
             public bool BlockPlayerLoad { get; set; }
 
+            public void DrainPendingCallbacks() => Scheduler.Update();
+
             protected override bool ReadyForGameplay => base.ReadyForGameplay && !BlockPlayerLoad;
 
             public TestPlayerLoader(Func<Player> createPlayer)
                 : base(createPlayer)
             {
+            }
+        }
+
+        private partial class ExitDuringLoadCompletePlayer : TestPlayer
+        {
+            public bool HasExited { get; private set; }
+
+            protected override void LoadComplete()
+            {
+                base.LoadComplete();
+                this.Exit();
+                HasExited = true;
+            }
+
+            // ScreenStack still dispatches the queued callback after LoadComplete returns.
+            public override void OnEntering(ScreenTransitionEvent e)
+            {
+                Assert.That(HasExited, Is.True);
             }
         }
 
@@ -681,9 +783,16 @@ namespace osu.Game.Tests.Visual.Gameplay
             private bool onBattery;
             private double? chargeLevel;
 
+            public Task<(bool OnBattery, double? ChargeLevel)> PendingStatus { get; set; }
+            public bool FailStatus { get; set; }
+
             public override bool OnBattery => onBattery;
 
             public override double? ChargeLevel => chargeLevel;
+
+            public override Task<(bool OnBattery, double? ChargeLevel)> GetStatusAsync()
+                => FailStatus ? Task.FromException<(bool, double?)>(new InvalidOperationException("expected battery probe failure"))
+                    : PendingStatus ?? base.GetStatusAsync();
 
             public void SetOnBattery(bool value)
             {

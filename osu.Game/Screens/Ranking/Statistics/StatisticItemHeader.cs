@@ -33,7 +33,9 @@ namespace osu.Game.Screens.Ranking.Statistics
 
         private LocalisableString text;
         private OsuSpriteText spriteText = null!;
+        private Box underlineBox = null!;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<Colour4> accentColour = null!;
 
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
@@ -62,7 +64,7 @@ namespace osu.Game.Screens.Ranking.Statistics
                             Text = text,
                             Font = OsuFont.GetFont(size: 16, weight: FontWeight.Bold),
                         },
-                        new Box
+                        underlineBox = new Box
                         {
                             Anchor = Anchor.BottomCentre,
                             Origin = Anchor.TopCentre,
@@ -77,6 +79,9 @@ namespace osu.Game.Screens.Ranking.Statistics
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(colour => spriteText.Colour = OverlayColourProvider.IsLightTheme ? colour.NewValue : Colour4.White, true);
+
+            accentColour = colourProvider.GetColourBindable(OverlayColour.Highlight1);
+            accentColour.BindValueChanged(colour => underlineBox.FadeColour(colour.NewValue, OverlayColourProvider.ThemeTransitionDuration(150), Easing.OutQuint), true);
         }
     }
 }

@@ -24,7 +24,7 @@ namespace osu.Game.Rulesets.Mania.UI
         public override bool PropagatePositionalInputSubTree => true;
         public override bool PropagateNonPositionalInputSubTree => true;
 
-        [SettingSource("Spacing", "The spacing between receptors.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5373), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5374))]
         public BindableFloat Spacing { get; } = new BindableFloat(10)
         {
             Precision = 1,
@@ -32,7 +32,7 @@ namespace osu.Game.Rulesets.Mania.UI
             MaxValue = 100,
         };
 
-        [SettingSource("Opacity", "The receptor opacity.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5375), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5376))]
         public BindableFloat Opacity { get; } = new BindableFloat(1)
         {
             Precision = 0.1f,

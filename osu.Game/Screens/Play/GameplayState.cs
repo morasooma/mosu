@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using osu.Framework.Bindables;
 using osu.Game.Audio;
 using osu.Game.Beatmaps;
@@ -42,6 +43,10 @@ namespace osu.Game.Screens.Play
 
         public readonly ScoreProcessor ScoreProcessor;
         public readonly HealthProcessor HealthProcessor;
+
+        /// <summary>Latest available live pp from the existing HUD calculator; null means unavailable.</summary>
+        public readonly Bindable<double?> LivePerformance = new Bindable<double?>();
+        internal readonly ConcurrentDictionary<HUD.PerformancePointsCounter, byte> LivePerformanceCounters = new ConcurrentDictionary<HUD.PerformancePointsCounter, byte>();
 
         /// <summary>
         /// The storyboard associated with the beatmap.

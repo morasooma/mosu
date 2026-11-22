@@ -280,9 +280,18 @@ namespace osu.Game.Graphics.Containers
                 headerBackgroundContainer.Height = expandableHeaderSize + fixedHeaderSize;
                 headerBackgroundContainer.Y = ExpandableHeader?.Y ?? 0;
 
-                var flowChildren = scrollContentContainer.FlowingChildren.OfType<T>();
+                float smallestSectionHeight = float.PositiveInfinity;
+                bool hasFlowChildren = false;
+                foreach (var child in scrollContentContainer.FlowingChildren)
+                {
+                    if (child is not T section)
+                        continue;
 
-                float smallestSectionHeight = flowChildren.Any() ? flowChildren.Min(d => d.Height) : 0;
+                    hasFlowChildren = true;
+                    smallestSectionHeight = Math.Min(smallestSectionHeight, section.Height);
+                }
+                if (!hasFlowChildren)
+                    smallestSectionHeight = 0;
 
                 // scroll offset is our fixed header height if we have it plus 10% of content height
                 // plus 5% to fix floating point errors and to not have a section instantly unselect when scrolling upwards
@@ -291,19 +300,35 @@ namespace osu.Game.Graphics.Containers
 
                 float scrollCentre = fixedHeaderSize + scrollContainer.DisplayableContent * scroll_y_centre + selectionLenienceAboveSection;
 
-                var presentChildren = flowChildren.Where(c => c.IsPresent);
-
                 if (lastClickedSection != null)
                     SelectedSection.Value = lastClickedSection;
-                else if (Precision.AlmostBigger(0, scrollContainer.Current))
-                    SelectedSection.Value = presentChildren.FirstOrDefault();
-                else if (Precision.AlmostBigger(scrollContainer.Current, scrollContainer.ScrollableExtent))
-                    SelectedSection.Value = presentChildren.LastOrDefault();
                 else
                 {
-                    SelectedSection.Value = presentChildren
-                                            .TakeWhile(section => scrollContainer.GetChildPosInContent(section) - currentScroll - scrollCentre <= 0)
-                                            .LastOrDefault() ?? presentChildren.FirstOrDefault();
+                    T? first = null;
+                    T? last = null;
+                    T? sectionAtCentre = null;
+                    bool atStart = Precision.AlmostBigger(0, scrollContainer.Current);
+                    bool atEnd = !atStart && Precision.AlmostBigger(scrollContainer.Current, scrollContainer.ScrollableExtent);
+                    foreach (var child in scrollContentContainer.FlowingChildren)
+                    {
+                        if (child is not T section || !section.IsPresent)
+                            continue;
+
+                        first ??= section;
+                        last = section;
+                        if (atStart)
+                            break;
+                        if (!atEnd)
+                        {
+                            if (scrollContainer.GetChildPosInContent(section) - currentScroll - scrollCentre <= 0)
+                                sectionAtCentre = section;
+                            else
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    SelectedSection.Value = atStart ? first : atEnd ? last : sectionAtCentre ?? first;
                 }
             }
         }

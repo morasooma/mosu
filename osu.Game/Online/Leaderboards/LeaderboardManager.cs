@@ -12,6 +12,7 @@ using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Development;
 using osu.Framework.Graphics;
+using osu.Framework.Extensions;
 using osu.Framework.Logging;
 using osu.Game.Beatmaps;
 using osu.Game.Database;
@@ -24,6 +25,7 @@ using osu.Game.Beatmaps.Legacy;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Scoring;
+using osu.Game.Performance;
 using osu.Game.Scoring.Legacy;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Screens.Play.Leaderboards;
@@ -40,12 +42,33 @@ namespace osu.Game.Online.Leaderboards
 
         private readonly Bindable<LeaderboardScores?> scores = new Bindable<LeaderboardScores?>();
 
+        /// <summary>Exact local revision resolved by the Mosu server when opening its leaderboard.</summary>
+        public IBindable<Guid?> MosuResolvedBeatmap => mosuResolvedBeatmap;
+        private readonly Bindable<Guid?> mosuResolvedBeatmap = new Bindable<Guid?>();
+        private readonly HashSet<Guid> mosuResolvedBeatmaps = new HashSet<Guid>();
+
+        public bool IsMosuResolved(Guid beatmapId) => mosuResolvedBeatmaps.Contains(beatmapId);
+
         public LeaderboardCriteria? CurrentCriteria { get; private set; }
 
         private IDisposable? localScoreSubscription;
+        private int localRevision;
+        private LocalScoreQuery? localScoreQuery;
+        private bool localSnapshotDirty;
+        private bool localSnapshotInFlight;
+        private bool localSnapshotScheduled;
         private GetScoresRequest? inFlightOnlineRequest;
         private GetBeatmapRequest? inFlightBeatmapLookupRequest;
         private CancellationTokenSource? stableLeaderboardCancellation;
+        private static readonly AsyncOperationQueue failureLogging = new AsyncOperationQueue();
+
+        // Exception formatting resolves stack symbols and can read PDBs. Preserve
+        // the complete diagnostic, but never do that work in the API Update callback.
+        internal static Task LogFailureAsync(string message, Exception exception) => failureLogging.Enqueue(() =>
+        {
+            Logger.GetLogger(LoggingTarget.Network).Add(message, exception: exception);
+            return Task.CompletedTask;
+        });
 
         [Resolved(CanBeNull = true)]
         private StableScoreSubmissionClient? stableClient { get; set; }
@@ -71,8 +94,17 @@ namespace osu.Game.Online.Leaderboards
             if (!forceRefresh && CurrentCriteria?.Equals(newCriteria) == true && scores.Value?.FailState == null)
                 return;
 
+            // Consumers also inspect CurrentCriteria after Realm recycling. Do not
+            // retain Update-owned objects whose Realm can close during a query.
+            if (newCriteria.Beatmap?.IsManaged == true || newCriteria.Ruleset?.IsManaged == true)
+                newCriteria = newCriteria with { Beatmap = newCriteria.Beatmap?.Detach(), Ruleset = newCriteria.Ruleset?.Detach() };
+
             CurrentCriteria = newCriteria;
+            localRevision++;
+            localSnapshotDirty = false;
+            localScoreQuery = null;
             localScoreSubscription?.Dispose();
+            localScoreSubscription = null;
             inFlightOnlineRequest?.Cancel();
             inFlightOnlineRequest = null;
             inFlightBeatmapLookupRequest?.Cancel();
@@ -92,30 +124,16 @@ namespace osu.Game.Online.Leaderboards
             {
                 case BeatmapLeaderboardScope.Local:
                 {
-                    // Scores are persisted against the playable (base) ruleset. Special rulesets are
-                    // only an API representation used to address relax/autopilot leaderboards online.
-                    // Callers may still pass one while viewing local scores (for example when RX is
-                    // selected in song select), so normalise it before querying the local database.
-                    var localRuleset = newCriteria.Ruleset.IsSpecialRuleset()
-                        ? newCriteria.Ruleset.CreateNormalRuleset()
-                        : newCriteria.Ruleset;
-
-                    localScoreSubscription = realm.RegisterForNotifications(r =>
+                    // Registering a linked score query can synchronously evaluate it in
+                    // Realm's native notification machinery. Keep only a cheap transaction
+                    // listener on Update; materialise/detach/sort scores on a worker.
+                    localScoreQuery = LocalScoreQuery.FromCriteria(newCriteria);
+                    localScoreSubscription = realm.RegisterCustomSubscription(r =>
                     {
-                        var allScores = r.All<ScoreInfo>();
-                        string commonFilter = $" AND {nameof(ScoreInfo.BeatmapInfo)}.{nameof(BeatmapInfo.Hash)} == {nameof(ScoreInfo.BeatmapHash)}"
-                                              + $" AND {nameof(ScoreInfo.Ruleset)}.{nameof(RulesetInfo.ShortName)} == $1"
-                                              + $" AND {nameof(ScoreInfo.DeletePending)} == false";
-
-                        if (string.IsNullOrEmpty(newCriteria.Beatmap.MD5Hash))
-                            return allScores.Filter($"{nameof(ScoreInfo.BeatmapInfo)}.{nameof(BeatmapInfo.ID)} == $0" + commonFilter,
-                                newCriteria.Beatmap.ID, localRuleset.ShortName);
-
-                        return allScores.Filter($"({nameof(ScoreInfo.BeatmapInfo)}.{nameof(BeatmapInfo.ID)} == $0"
-                                                + $" OR {nameof(ScoreInfo.BeatmapInfo)}.{nameof(BeatmapInfo.MD5Hash)} == $2)"
-                                                + commonFilter,
-                            newCriteria.Beatmap.ID, localRuleset.ShortName, newCriteria.Beatmap.MD5Hash);
-                    }, localScoresChanged);
+                        r.RealmChanged += localRealmChanged;
+                        invalidateLocalSnapshot(); // also refresh after Realm recycle.
+                        return new InvokeOnDisposal(() => r.RealmChanged -= localRealmChanged);
+                    });
                     return;
                 }
 
@@ -136,13 +154,6 @@ namespace osu.Game.Online.Leaderboards
                     if (!newCriteria.Ruleset.IsLegacyRuleset())
                     {
                         scores.Value = LeaderboardScores.Failure(LeaderboardFailState.RulesetUnavailable);
-                        return;
-                    }
-
-                    if (newCriteria.Beatmap.OnlineID <= 0)
-                    {
-                        Logger.Log($@"Leaderboard unavailable for beatmap {newCriteria.Beatmap}: beatmap online id is {newCriteria.Beatmap.OnlineID}, set online id is {newCriteria.Beatmap.BeatmapSet?.OnlineID ?? -1}", LoggingTarget.Network);
-                        scores.Value = LeaderboardScores.Failure(LeaderboardFailState.BeatmapUnavailable);
                         return;
                     }
 
@@ -199,7 +210,7 @@ namespace osu.Game.Online.Leaderboards
                                 return;
 
                             inFlightOnlineRequest = null;
-                            Logger.Log($@"Failed to fetch leaderboards when displaying results: {ex}", LoggingTarget.Network);
+                            _ = LogFailureAsync("Failed to fetch leaderboards when displaying results", ex);
                             if (ex is not OperationCanceledException)
                                 scores.Value = LeaderboardScores.Failure(GetFailureState(ex));
                         };
@@ -209,7 +220,9 @@ namespace osu.Game.Online.Leaderboards
 
                     if (requiresChecksumLookup(newCriteria.Beatmap))
                     {
-                        var lookupRequest = new GetBeatmapRequest(md5Hash: newCriteria.Beatmap.MD5Hash);
+                        // This is a Mosu score lookup, not an official catalogue lookup.
+                        // Ask only when the user opens this leaderboard; never scan the library.
+                        var lookupRequest = new GetBeatmapRequest(md5Hash: newCriteria.Beatmap.MD5Hash, serverExclusive: true);
                         lookupRequest.Success += resolvedBeatmap =>
                         {
                             if (!ReferenceEquals(lookupRequest, inFlightBeatmapLookupRequest))
@@ -228,8 +241,13 @@ namespace osu.Game.Online.Leaderboards
                             }
 
                             Logger.Log(
-                                $@"Resolved server-exclusive leaderboard beatmap by checksum: local id={newCriteria.Beatmap.OnlineID}, checksum={newCriteria.Beatmap.MD5Hash}, server id={resolvedBeatmap.OnlineID}.",
+                                $@"Resolved Mosu leaderboard beatmap by checksum: local id={newCriteria.Beatmap.OnlineID}, checksum={newCriteria.Beatmap.MD5Hash}, server id={resolvedBeatmap.OnlineID}.",
                                 LoggingTarget.Network);
+                            if (newCriteria.Beatmap is BeatmapInfo localBeatmap && localBeatmap.Status == BeatmapOnlineStatus.None)
+                            {
+                                mosuResolvedBeatmaps.Add(localBeatmap.ID);
+                                mosuResolvedBeatmap.Value = localBeatmap.ID;
+                            }
                             queueScoresRequest(resolvedBeatmap.OnlineID);
                         };
                         lookupRequest.Failure += ex =>
@@ -238,15 +256,17 @@ namespace osu.Game.Online.Leaderboards
                                 return;
 
                             inFlightBeatmapLookupRequest = null;
-                            Logger.Log($@"Failed to resolve server-exclusive leaderboard beatmap by checksum: {ex}", LoggingTarget.Network);
+                            _ = LogFailureAsync("Failed to resolve server-exclusive leaderboard beatmap by checksum", ex);
                             if (ex is not OperationCanceledException)
                                 scores.Value = LeaderboardScores.Failure(GetFailureState(ex));
                         };
 
                         api.Queue(inFlightBeatmapLookupRequest = lookupRequest);
                     }
-                    else
+                    else if (newCriteria.Beatmap.OnlineID > 0)
                         queueScoresRequest(newCriteria.Beatmap.OnlineID);
+                    else
+                        scores.Value = LeaderboardScores.Failure(LeaderboardFailState.BeatmapUnavailable);
 
                     break;
                 }
@@ -273,7 +293,7 @@ namespace osu.Game.Online.Leaderboards
             (RulesetInfo stableRuleset, LegacyMods specialModeMod) = NormaliseStableRuleset(criteria.Ruleset!);
             criteria = criteria with { Ruleset = stableRuleset };
 
-            if (criteria.Ruleset.OnlineID != 0)
+            if (criteria.Ruleset.OnlineID is < 0 or > 3)
             {
                 scores.Value = LeaderboardScores.Failure(LeaderboardFailState.RulesetUnavailable);
                 return;
@@ -308,7 +328,11 @@ namespace osu.Game.Online.Leaderboards
 
                     if (!response.BeatmapAvailable)
                     {
-                        Schedule(() => scores.Value = LeaderboardScores.Failure(LeaderboardFailState.BeatmapUnavailable));
+                        Schedule(() =>
+                        {
+                            if (ReferenceEquals(cancellation, stableLeaderboardCancellation))
+                                scores.Value = LeaderboardScores.Failure(LeaderboardFailState.BeatmapUnavailable);
+                        });
                         return;
                     }
 
@@ -397,104 +421,120 @@ namespace osu.Game.Online.Leaderboards
             score.SetCountMiss(source.CountMiss);
             score.SetCountKatu(source.CountKatu);
             score.SetCountGeki(source.CountGeki);
-            score.Accuracy = calculateAccuracy(score);
-            score.Rank = calculateRank(score);
+            score.Accuracy = StableScoreStatistics.CalculateAccuracy(score);
+            score.Rank = StableScoreStatistics.CalculateRank(score);
             return score;
         }
 
-        private static double calculateAccuracy(ScoreInfo score)
-        {
-            int count300 = score.GetCount300() ?? 0;
-            int count100 = score.GetCount100() ?? 0;
-            int count50 = score.GetCount50() ?? 0;
-            int countMiss = score.GetCountMiss() ?? 0;
-            int totalHits = count300 + count100 + count50 + countMiss;
-
-            return totalHits == 0 ? 0 : (count300 * 300d + count100 * 100d + count50 * 50d) / (totalHits * 300d);
-        }
-
-        private static ScoreRank calculateRank(ScoreInfo score)
-        {
-            if (!score.Passed)
-                return ScoreRank.F;
-
-            int count300 = score.GetCount300() ?? 0;
-            int count50 = score.GetCount50() ?? 0;
-            int countMiss = score.GetCountMiss() ?? 0;
-            int totalHits = count300 + (score.GetCount100() ?? 0) + count50 + countMiss;
-
-            if (totalHits == 0)
-                return ScoreRank.D;
-
-            double ratio300 = count300 / (double)totalHits;
-            double ratio50 = count50 / (double)totalHits;
-            ScoreRank rank;
-
-            if (count300 == totalHits)
-                rank = ScoreRank.X;
-            else if (ratio300 > 0.9 && ratio50 <= 0.01 && countMiss == 0)
-                rank = ScoreRank.S;
-            else if ((ratio300 > 0.8 && countMiss == 0) || ratio300 > 0.9)
-                rank = ScoreRank.A;
-            else if ((ratio300 > 0.7 && countMiss == 0) || ratio300 > 0.8)
-                rank = ScoreRank.B;
-            else if (ratio300 > 0.6)
-                rank = ScoreRank.C;
-            else
-                rank = ScoreRank.D;
-
-            bool silver = score.Mods.Any(mod => mod is Rulesets.Mods.ModHidden or Rulesets.Mods.ModFlashlight);
-            if (silver && rank == ScoreRank.X)
-                return ScoreRank.XH;
-            if (silver && rank == ScoreRank.S)
-                return ScoreRank.SH;
-
-            return rank;
-        }
-
-        private static bool requiresChecksumLookup(IBeatmapInfo beatmap)
+        internal static bool requiresChecksumLookup(IBeatmapInfo beatmap)
         {
             const int server_exclusive_id_threshold = 2_000_000_000;
 
             return !string.IsNullOrEmpty(beatmap.MD5Hash)
-                   && (beatmap.OnlineID >= server_exclusive_id_threshold
+                   && (beatmap.OnlineID <= 0
+                       || beatmap.OnlineID >= server_exclusive_id_threshold
                        || (beatmap.BeatmapSet?.OnlineID ?? -1) >= server_exclusive_id_threshold
                        || beatmap.Metadata.IsServerExclusive()
                        || beatmap.BeatmapSet.IsServerExclusive());
         }
 
-        private void localScoresChanged(IRealmCollection<ScoreInfo> sender, ChangeSet? changes)
-        {
-            Debug.Assert(CurrentCriteria != null);
+        private void localRealmChanged(object? sender, EventArgs args) => invalidateLocalSnapshot();
 
-            // This subscription may fire from changes to linked beatmaps, which we don't care about.
-            // It's currently not possible for a score to be modified after insertion, so we can safely ignore callbacks with only modifications.
-            if (changes?.HasCollectionChanges() == false)
+        private void invalidateLocalSnapshot()
+        {
+            localRevision++;
+            localSnapshotDirty = true;
+            queueLocalSnapshot();
+        }
+
+        private void queueLocalSnapshot()
+        {
+            if (localSnapshotScheduled || IsDisposed)
+                return;
+            localSnapshotScheduled = true;
+            realm.PostToUpdateThread(() =>
+            {
+                localSnapshotScheduled = false;
+                fetchLocalSnapshot();
+            });
+        }
+
+        private void fetchLocalSnapshot()
+        {
+            if (IsDisposed || localSnapshotInFlight || !localSnapshotDirty || CurrentCriteria?.Scope != BeatmapLeaderboardScope.Local)
                 return;
 
-            var newScores = sender.AsEnumerable();
-
-            if (CurrentCriteria.ExactMods != null)
+            var criteria = CurrentCriteria;
+            int revision = localRevision;
+            localSnapshotDirty = false;
+            localSnapshotInFlight = true;
+            // Criteria may hold live Realm models owned by Update. Only scalar
+            // query values and copied mod acronyms may cross into the worker.
+            var query = localScoreQuery!;
+            var task = realm.RunAsync(r => readLocalScores(r, query));
+            _ = task.ContinueWith(completed =>
             {
-                if (!CurrentCriteria.ExactMods.Any())
+                // Observe faults even if this component has been disposed before publication.
+                var error = completed.Exception;
+                realm.PostToUpdateThread(() =>
                 {
-                    // we need to filter out all scores that have any mods to get all local nomod scores
+                    localSnapshotInFlight = false;
+                    if (IsDisposed)
+                        return;
+
+                    if (revision == localRevision && ReferenceEquals(criteria, CurrentCriteria))
+                    {
+                        if (completed.IsCompletedSuccessfully)
+                        {
+                            var result = completed.GetResultSafely();
+                            scores.Value = LeaderboardScores.Success(result, result.Length, result.Length, null);
+                        }
+                        else if (error != null)
+                        {
+                            _ = LogFailureAsync("Failed to read local leaderboard snapshot", error);
+                            scores.Value = LeaderboardScores.Failure(LeaderboardFailState.NetworkFailure);
+                        }
+                    }
+                    if (localSnapshotDirty)
+                        queueLocalSnapshot();
+                });
+            }, TaskScheduler.Default);
+        }
+
+        internal record LocalScoreQuery(Guid BeatmapId, string MD5Hash, string RulesetName, string[]? ExactMods, LeaderboardSortMode Sorting)
+        {
+            internal static LocalScoreQuery FromCriteria(LeaderboardCriteria criteria)
+            {
+                // RX/AP names only address online API modes, not local scores.
+                var ruleset = criteria.Ruleset!.IsSpecialRuleset() ? criteria.Ruleset.CreateNormalRuleset() : criteria.Ruleset;
+                return new LocalScoreQuery(criteria.Beatmap!.ID, criteria.Beatmap.MD5Hash, ruleset.ShortName,
+                    criteria.ExactMods?.Select(m => m.Acronym).ToArray(), criteria.Sorting);
+            }
+        }
+
+        internal static ScoreInfo[] readLocalScores(Realm r, LocalScoreQuery query)
+        {
+            var allScores = r.All<ScoreInfo>();
+            string commonFilter = $" AND {nameof(ScoreInfo.BeatmapInfo)}.{nameof(BeatmapInfo.Hash)} == {nameof(ScoreInfo.BeatmapHash)}"
+                                  + $" AND {nameof(ScoreInfo.Ruleset)}.{nameof(RulesetInfo.ShortName)} == $1"
+                                  + $" AND {nameof(ScoreInfo.DeletePending)} == false";
+            IEnumerable<ScoreInfo> newScores = string.IsNullOrEmpty(query.MD5Hash)
+                ? allScores.Filter($"{nameof(ScoreInfo.BeatmapInfo)}.{nameof(BeatmapInfo.ID)} == $0" + commonFilter, query.BeatmapId, query.RulesetName)
+                : allScores.Filter($"({nameof(ScoreInfo.BeatmapInfo)}.{nameof(BeatmapInfo.ID)} == $0"
+                                   + $" OR {nameof(ScoreInfo.BeatmapInfo)}.{nameof(BeatmapInfo.MD5Hash)} == $2)" + commonFilter,
+                    query.BeatmapId, query.RulesetName, query.MD5Hash);
+
+            if (query.ExactMods != null)
+            {
+                if (!query.ExactMods.Any())
                     newScores = newScores.Where(s => !s.Mods.Any());
-                }
                 else
                 {
-                    // otherwise find all the scores that have all of the currently selected mods (similar to how web applies mod filters)
-                    // we're creating and using a string HashSet representation of selected mods so that it can be translated into the DB query itself
-                    var selectedMods = CurrentCriteria.ExactMods.Select(m => m.Acronym).ToHashSet();
-
+                    var selectedMods = query.ExactMods.ToHashSet();
                     newScores = newScores.Where(s => selectedMods.SetEquals(s.Mods.Select(m => m.Acronym)));
                 }
             }
-
-            newScores = newScores.Detach().OrderByCriteria(CurrentCriteria.Sorting);
-
-            var newScoresArray = newScores.ToArray();
-            scores.Value = LeaderboardScores.Success(newScoresArray, scoresRequested: newScoresArray.Length, totalScores: newScoresArray.Length, null);
+            return newScores.Detach().OrderByCriteria(query.Sorting).ToArray();
         }
 
         protected override void Dispose(bool isDisposing)

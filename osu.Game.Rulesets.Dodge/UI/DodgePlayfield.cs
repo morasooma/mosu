@@ -69,6 +69,17 @@ namespace osu.Game.Rulesets.Dodge.UI
         private Container arenaOutline = null!;
         private Container kiaiWrapper = null!;
         private Container screenShakeWrapper = null!;
+        private Container viewport = null!;
+
+        public Vector2 ViewportOffset { get; private set; }
+
+        internal osu.Framework.Graphics.Primitives.RectangleF? WorldBounds { get; private set; }
+
+        public bool HasWorldEvents => WorldBounds.HasValue;
+
+        public DodgeArenaState ArenaAt(double time) => arenaStateEvaluator.Evaluate(time);
+
+        internal DodgeArenaStateEvaluator ArenaTimeline => arenaStateEvaluator;
         private Box flashOverlay = null!;
         private SkinnableDrawable arenaSkin = null!;
         private ArenaBackgroundBox arenaBackground = null!;
@@ -323,7 +334,12 @@ namespace osu.Game.Rulesets.Dodge.UI
                 Volume = { Value = missSoundVolume / 100 },
             });
 
-            InternalChildren = children;
+            InternalChild = viewport = new Container
+            {
+                RelativeSizeAxes = Axes.Both,
+                Masking = showPlayer && HasWorldEvents,
+                Children = children,
+            };
         }
 
         protected override void Update()
@@ -332,6 +348,7 @@ namespace osu.Game.Rulesets.Dodge.UI
             base.Update();
 
             RefreshCachedState();
+            viewport.Masking = showPlayer && HasWorldEvents;
 
             updateTriggerEffects(Time.Current);
 
@@ -390,6 +407,9 @@ namespace osu.Game.Rulesets.Dodge.UI
             bool useLightweightOutline = defaultArenaSuppressed && arenaBackground.SuppressRendering;
             arena.BorderThickness = useLightweightOutline ? 0 : 2;
             arenaOutline.Alpha = useLightweightOutline ? 1 : 0;
+            flashOverlay.Position = arenaCenter - BASE_SIZE / 2;
+            flashOverlay.Size = state.Size;
+            flashOverlay.Rotation = totalArenaRotation;
             Player.ArenaPosition = state.Position;
             Player.ArenaSize = state.Size;
             Player.ArenaRotation = totalArenaRotation;
@@ -409,6 +429,12 @@ namespace osu.Game.Rulesets.Dodge.UI
             Vector2 collisionStartPlayerPosition = hasPreviousFrame
                 ? previousPlayerPosition
                 : Player.Position;
+
+            if (Player.AuthoredMoveDiscontinuity)
+            {
+                collisionStartPlayerPosition = Player.Position;
+                allowSweptCollision = false;
+            }
 
             if (isRewind)
             {
@@ -449,8 +475,10 @@ namespace osu.Game.Rulesets.Dodge.UI
             previousCollisionTime = currentTime;
             previousPlayerPosition = Player.Position;
             grazeIndicator.Position = Player.Position;
+            updateViewport(currentTime);
 
-            bool shouldShowGrazeIndicator = GrazeDistance > 0 && grazeProximityReported;
+            bool shouldShowGrazeIndicator = GrazeDistance > 0 && grazeProximityReported
+                                           && !UserHudHidden && triggerStateEvaluator?.HudVisibleAt(currentTime) != false;
 
             if (shouldShowGrazeIndicator != grazeIndicatorVisible)
             {
@@ -691,7 +719,13 @@ namespace osu.Game.Rulesets.Dodge.UI
 
         private void refreshArenaStateEvaluator()
         {
-            arenaStateEvaluator = new DodgeArenaStateEvaluator(arenaChanges);
+            arenaStateEvaluator = DodgeWorldGeometry.ApplyArenaTimeline(hitObjects);
+            WorldBounds = DodgeWorldGeometry.Bounds(hitObjects);
+            // Timing, easing, rotation and intermediate targets can alter exits
+            // without changing the union rectangle at all.
+            CameraStateVersion++;
+            gameplayEndTimeDirty = true;
+            collisionScheduleDirty = true;
             arenaStateDirty = false;
             ArenaStateRefreshCount++;
         }
@@ -707,6 +741,31 @@ namespace osu.Game.Rulesets.Dodge.UI
         {
             triggerStateEvaluator = triggers.Count > 0 ? new DodgeTriggerStateEvaluator(triggers) : null;
             triggerStateDirty = false;
+            refreshArenaStateEvaluator();
+            gameplayEndTimeDirty = true;
+            CameraStateVersion++;
+        }
+
+        private void updateViewport(double time)
+        {
+            ViewportOffset = Vector2.Zero;
+            DodgeTrigger? legacyMode = triggerStateEvaluator?.CameraModeAt(time);
+            DodgeCameraChange? cameraMode = cameraStateEvaluator.ModeAt(time);
+            bool follows = cameraMode != null && (legacyMode == null || cameraMode.StartTime >= legacyMode.StartTime)
+                ? cameraMode.Mode == DodgeCameraMode.FollowPlayer
+                : legacyMode?.Action == DodgeTriggerAction.CameraFollow;
+            if (showPlayer && follows)
+            {
+                DodgeArenaState state = ArenaAt(time);
+                Vector2 desired = Player.Position - BASE_SIZE / 2;
+                ViewportOffset = new Vector2(
+                    state.Size.X <= WIDTH ? state.Position.X + (state.Size.X - WIDTH) / 2
+                        : Math.Clamp(desired.X, state.Position.X, state.Position.X + state.Size.X - WIDTH),
+                    state.Size.Y <= HEIGHT ? state.Position.Y + (state.Size.Y - HEIGHT) / 2
+                        : Math.Clamp(desired.Y, state.Position.Y, state.Position.Y + state.Size.Y - HEIGHT));
+            }
+            screenShakeWrapper.Position -= ViewportOffset;
+            flashOverlay.Position -= ViewportOffset;
         }
 
         /// <summary>
@@ -768,6 +827,7 @@ namespace osu.Game.Rulesets.Dodge.UI
         private HUDOverlay? hudOverlay { get; set; }
 
         private bool? lastMapHudState;
+        private bool? hudStateBeforeOverride;
         /// <summary>
         /// Local user override: null follows the map, true/false force the trail off/on for this player.
         /// </summary>
@@ -804,13 +864,28 @@ namespace osu.Game.Rulesets.Dodge.UI
             bool visible = !(UserHudHidden || mapState == false);
 
             // The osu! HUD overlay drives score/combo/accuracy/key overlay fade as one unit.
-            if (hudOverlay != null)
-                hudOverlay.ShowHud.Value = visible;
+            if (hudOverlay != null && !hudOverlay.ShowHud.Disabled)
+            {
+                if (!visible)
+                {
+                    hudStateBeforeOverride ??= hudOverlay.ShowHud.Value;
+                    hudOverlay.ShowHud.Value = visible;
+                }
+                else
+                    restoreHudVisibility();
+            }
 
             // Dodge's own in-arena indicator follows the same visibility.
             float targetGrazeAlpha = visible ? GrazeIndicatorBrightness : 0;
             grazeIndicator.FadeTo(targetGrazeAlpha, 160);
             grazeIndicatorVisible = targetGrazeAlpha > 0;
+        }
+
+        private void restoreHudVisibility()
+        {
+            if (hudStateBeforeOverride is bool previous && hudOverlay != null && !hudOverlay.ShowHud.Disabled)
+                hudOverlay.ShowHud.Value = previous;
+            hudStateBeforeOverride = null;
         }
 
         /// <summary>
@@ -839,20 +914,24 @@ namespace osu.Game.Rulesets.Dodge.UI
         /// time to their authored positions, so live objects drift with the
         /// scroll while freshly-spawned objects stay where they were placed.
         /// </summary>
-        public bool HasCameraChanges => cameraChanges.Count > 0;
+        public bool HasCameraChanges => cameraStateEvaluator.HasChanges;
 
         public Vector2 CameraOffsetAt(double time) => cameraStateEvaluator?.Evaluate(time) ?? Vector2.Zero;
 
         internal void RefreshCachedState()
         {
-            if (gameplayEndTimeDirty)
-                refreshGameplayEndTime();
-
-            if (arenaStateDirty)
+            // Trigger changes can change world bounds and projectile lifetimes.
+            // Resolve those before the end-time cache, not one frame later.
+            if (triggerStateDirty)
+                refreshTriggerStateEvaluator();
+            else if (arenaStateDirty)
                 refreshArenaStateEvaluator();
 
             if (cameraStateDirty)
                 refreshCameraStateEvaluator();
+
+            if (gameplayEndTimeDirty)
+                refreshGameplayEndTime();
         }
 
         private void trackHitObject(DodgeHitObject hitObject)
@@ -883,6 +962,7 @@ namespace osu.Game.Rulesets.Dodge.UI
             // still much cheaper than hashing every hit object on every gameplay frame.
             arenaStateDirty = true;
             cameraStateDirty = true;
+            triggerStateDirty = true;
         }
 
         private void onHitObjectDefaultsApplied(HitObject hitObject)
@@ -904,6 +984,7 @@ namespace osu.Game.Rulesets.Dodge.UI
         {
             if (isDisposing)
             {
+                restoreHudVisibility();
                 foreach (DodgeHitObject hitObject in trackedHitObjects.ToArray())
                     untrackHitObject(hitObject);
             }

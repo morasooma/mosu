@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.LocalisationExtensions;
@@ -24,7 +25,6 @@ using osu.Game.Overlays;
 using osu.Game.Overlays.Mods;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
-using osu.Game.Rulesets.Scoring;
 using osu.Game.Screens.Footer;
 using osu.Game.Screens.Play.HUD;
 using osu.Game.Utils;
@@ -85,6 +85,14 @@ namespace osu.Game.Screens.Select
         private IBindable<WorkingBeatmap> beatmap { get; set; } = null!;
 
         private IBindable<Language> currentLanguage = null!;
+
+        [Resolved]
+        private BeatmapDifficultyCache difficultyCache { get; set; } = null!;
+
+        private CancellationTokenSource? difficultyCancellation;
+        private IBindable<StarDifficulty>? starDifficulty;
+
+        public override osu.Game.Overlays.CustomTheme.ThemeSurfaceContext? ButtonContext => osu.Game.Overlays.CustomTheme.ThemeSurfaceContext.FooterMods;
 
         public FooterButtonMods(ModSelectOverlay overlay)
             : base(overlay)
@@ -178,26 +186,56 @@ namespace osu.Game.Screens.Select
             base.LoadComplete();
 
             currentLanguage = game.CurrentLanguage.GetBoundCopy();
-            currentLanguage.BindValueChanged(_ => ScheduleAfterChildren(updateDisplay));
+            currentLanguage.BindValueChanged(_ => Scheduler.AddOnce(updateDisplay));
 
-            Ruleset.BindValueChanged(_ => updateDisplay());
-            beatmap.BindValueChanged(_ => updateDisplay());
+            Ruleset.BindValueChanged(_ => Scheduler.AddOnce(updateDisplay));
+            beatmap.BindValueChanged(_ => Scheduler.AddOnce(updateStarDifficulty));
             Mods.BindValueChanged(m =>
             {
-                modSettingChangeTracker?.Dispose();
+                updateModSettingTracker(m.NewValue);
+                Scheduler.AddOnce(updateDisplay);
+            });
 
-                updateDisplay();
+            Beatmap.BindValueChanged(_ => Scheduler.AddOnce(updateStarDifficulty));
 
-                if (m.NewValue != null)
-                {
-                    modSettingChangeTracker = new ModSettingChangeTracker(m.NewValue);
-                    modSettingChangeTracker.SettingChanged += _ => updateDisplay();
-                }
-            }, true);
-
-            Beatmap.BindValueChanged(_ => updateDisplay());
-
+            // Initial layout must be available immediately. Later changes are
+            // coalesced until Update: legacy chrome can leave this footer hidden
+            // for the entire session, so it must not accumulate idle transforms.
+            updateModSettingTracker(Mods.Value);
+            updateStarDifficulty();
+            updateDisplay();
             FinishTransforms(true);
+        }
+
+        private void updateStarDifficulty()
+        {
+            difficultyCancellation?.Cancel();
+            difficultyCancellation?.Dispose();
+            starDifficulty?.UnbindAll();
+            difficultyCancellation = new CancellationTokenSource();
+            starDifficulty = difficultyCache.GetBindableDifficulty((Beatmap.Value ?? beatmap.Value).BeatmapInfo, difficultyCancellation.Token,
+                computationDelay: SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE, calculatePerformance: false);
+            starDifficulty.BindValueChanged(_ => Scheduler.AddOnce(updateDisplay), true);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            difficultyCancellation?.Cancel();
+            difficultyCancellation?.Dispose();
+            starDifficulty?.UnbindAll();
+            modSettingChangeTracker?.Dispose();
+            base.Dispose(isDisposing);
+        }
+
+        private void updateModSettingTracker(IReadOnlyList<Mod>? selectedMods)
+        {
+            modSettingChangeTracker?.Dispose();
+            modSettingChangeTracker = null;
+            if (selectedMods == null)
+                return;
+
+            modSettingChangeTracker = new ModSettingChangeTracker(selectedMods);
+            modSettingChangeTracker.SettingChanged += _ => Scheduler.AddOnce(updateDisplay);
         }
 
         protected override bool OnMouseDown(MouseDownEvent e)
@@ -223,38 +261,43 @@ namespace osu.Game.Screens.Select
                 modDisplayBar.FadeOut(duration, easing);
                 modDisplay.FadeOut(duration, easing);
                 overflowModCountDisplay.FadeOut(duration, easing);
-
-                unrankedBadge.MoveToY(20, duration, easing);
-                unrankedBadge.FadeOut(duration, easing);
-
-                // add delay to let unranked indicator hide first before resizing the button back to its original width.
-                this.Delay(duration).ResizeWidthTo(BUTTON_WIDTH, duration, easing);
             }
             else
             {
-                if (!ModPerformancePointHelper.ModsAwardPerformancePoints(Beatmap.Value?.BeatmapInfo, Mods.Value))
-                {
-                    unrankedBadge.MoveToX(0, duration, easing);
-                    unrankedBadge.FadeIn(duration, easing);
-
-                    this.ResizeWidthTo(BUTTON_WIDTH + 5 + unrankedBadge.DrawWidth, duration, easing);
-                }
-                else
-                {
-                    unrankedBadge.MoveToX(-unrankedBadge.DrawWidth, duration, easing);
-                    unrankedBadge.FadeOut(duration, easing);
-
-                    this.ResizeWidthTo(BUTTON_WIDTH, duration, easing);
-                }
-
                 modDisplayBar.MoveToY(-5, duration, Easing.OutQuint);
-                unrankedBadge.MoveToY(-5, duration, easing);
                 modDisplayBar.FadeIn(duration, easing);
                 modDisplay.FadeIn(duration, easing);
             }
 
-            var scoreMultiplierCalculator = Ruleset.Value?.CreateInstance().CreateScoreMultiplierCalculator(new ScoreMultiplierContext(beatmap.Value.BeatmapInfo.Difficulty));
-            double multiplier = scoreMultiplierCalculator?.CalculateFor(Mods.Value) ?? 1;
+            var selectedBeatmap = (Beatmap.Value ?? beatmap.Value).BeatmapInfo;
+            bool unranked = !ModPerformancePointHelper.ModsAwardPerformancePoints(selectedBeatmap, Mods.Value)
+                            || !ModPerformancePointHelper.IsWithinRankedStarLimit(Ruleset.Value, Mods.Value,
+                                starDifficulty?.Value.Stars ?? selectedBeatmap.StarRating);
+
+            // Without mods there is no mod bar to reserve space for beside the badge.
+            float badgeOffset = Mods.Value.Count > 0 ? BUTTON_WIDTH + 5 : 0;
+            unrankedBadge.Margin = new MarginPadding { Left = badgeOffset };
+
+            if (unranked)
+            {
+                unrankedBadge.MoveToX(0, duration, easing);
+                unrankedBadge.MoveToY(-5, duration, easing);
+                unrankedBadge.FadeIn(duration, easing);
+                this.ResizeWidthTo(Math.Max(BUTTON_WIDTH, badgeOffset + unrankedBadge.DrawWidth), duration, easing);
+            }
+            else
+            {
+                unrankedBadge.MoveToX(-unrankedBadge.DrawWidth, duration, easing);
+                unrankedBadge.MoveToY(Mods.Value.Count == 0 ? 20 : -5, duration, easing);
+                unrankedBadge.FadeOut(duration, easing);
+                // Let the indicator hide before shrinking the no-mod button.
+                this.Delay(Mods.Value.Count == 0 ? duration : 0).ResizeWidthTo(BUTTON_WIDTH, duration, easing);
+            }
+
+            var currentRuleset = Ruleset.Value?.CreateInstance();
+            double multiplier = currentRuleset != null
+                ? ModUtils.CalculateScoreMultiplierForDisplay(currentRuleset, beatmap.Value.BeatmapInfo, Mods.Value)
+                : 1;
             multiplierText.Text = ModUtils.FormatScoreMultiplier(multiplier);
 
             if (multiplier > 1)
@@ -276,6 +319,20 @@ namespace osu.Game.Screens.Select
                 overflowModCountDisplay.Show();
             else
                 overflowModCountDisplay.Hide();
+        }
+
+        protected override void UpdateRadius()
+        {
+            base.UpdateRadius();
+
+            float target = ButtonRadiusBindable?.Value ?? CORNER_RADIUS;
+            float radius = !OsuGame.DisableShear.Value ? Math.Min(target, 12f) : target;
+            if (modDisplayBar != null)
+                modDisplayBar.CornerRadius = radius;
+            if (modContainer != null)
+                modContainer.CornerRadius = radius;
+            if (unrankedBadge is Container unrankedContainer)
+                unrankedContainer.CornerRadius = !OsuGame.DisableShear.Value ? Math.Min(target, 10f) : target;
         }
 
         public partial class ModCountText : VisibilityContainer, IHasCustomTooltip<IReadOnlyList<Mod>>
@@ -403,7 +460,7 @@ namespace osu.Game.Screens.Select
                 Depth = float.MaxValue;
                 Origin = Anchor.BottomLeft;
                 Shear = OsuGame.SHEAR;
-                CornerRadius = CORNER_RADIUS;
+                CornerRadius = !OsuGame.DisableShear.Value ? 8f : CORNER_RADIUS;
                 AutoSizeAxes = Axes.X;
                 Height = BAR_HEIGHT;
                 Masking = true;

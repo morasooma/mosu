@@ -9,7 +9,10 @@ using Microsoft.AspNetCore.SignalR.Client;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Logging;
+using osu.Framework.Statistics;
 using osu.Game.Configuration;
+using osu.Game.Beatmaps;
+using osu.Game.Performance;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Multiplayer;
@@ -39,6 +42,7 @@ namespace osu.Game.Online.Metadata
         private IAPIProvider api { get; set; } = null!;
 
         private IHubClientConnector? connector;
+        private readonly AsyncOperationQueue outgoingPresence = new AsyncOperationQueue();
         private Bindable<int> lastQueueId = null!;
         private IBindable<APIUser> localUser = null!;
         private IBindable<UserStatus> userStatus = null!;
@@ -52,11 +56,13 @@ namespace osu.Game.Online.Metadata
         }
 
         [BackgroundDependencyLoader]
-        private void load(OsuConfigManager config, SessionStatics session)
+        private void load(OsuConfigManager config, SessionStatics session, IBeatmapApiProvider beatmapApi, BeatmapModelDownloader downloader)
         {
             // Importantly, we are intentionally not using MessagePack here to correctly support derived class serialization.
             // More information on the limitations / reasoning can be found in osu-server-spectator's initialisation code.
             connector = api.GetHubConnector(nameof(OnlineMetadataClient), endpoint);
+            var downloads = new ClientBeatmapDownloadHandler(beatmapApi, action => Schedule(action),
+                set => downloader.GetExistingDownload(set) != null || downloader.Download(set, config.Get<bool>(OsuSetting.PreferNoVideo)));
 
             if (connector != null)
             {
@@ -66,12 +72,34 @@ namespace osu.Game.Online.Metadata
                     // https://github.com/dotnet/aspnetcore/issues/15198
                     connection.On<BeatmapUpdates>(nameof(IMetadataClient.BeatmapSetsUpdated), ((IMetadataClient)this).BeatmapSetsUpdated);
                     connection.On<int, UserPresence?>(nameof(IMetadataClient.UserPresenceUpdated), ((IMetadataClient)this).UserPresenceUpdated);
+                    connection.On<int>(nameof(IMetadataClient.OnlineUserCountUpdated), OnlineUserCountUpdated);
                     connection.On<int, UserPresence?>(nameof(IMetadataClient.FriendPresenceUpdated), ((IMetadataClient)this).FriendPresenceUpdated);
                     connection.On<DailyChallengeInfo?>(nameof(IMetadataClient.DailyChallengeUpdated), ((IMetadataClient)this).DailyChallengeUpdated);
                     connection.On<MultiplayerRoomScoreSetEvent>(nameof(IMetadataClient.MultiplayerRoomScoreSet), ((IMetadataClient)this).MultiplayerRoomScoreSet);
                     connection.On(nameof(IStatefulUserHubClient.DisconnectRequested), ((IStatefulUserHubClient)this).DisconnectRequested);
                     connection.On(nameof(IStatefulUserHubClient.ServerShuttingDown), ((IStatefulUserHubClient)this).ServerShuttingDown);
                     connection.On<string, string>(nameof(IStatefulUserHubClient.SystemNotification), ((IStatefulUserHubClient)this).SystemNotification);
+                    // Never expose remote download authority to custom server profiles.
+                    // Bind it to this exact connection AND connection id: reconnecting the same
+                    // HubConnection must also invalidate callbacks from its previous session.
+                    if (ClientBeatmapDownloadPolicy.IsTrusted(api.Endpoints,
+                            MosuServerEnvironment.IsThirdPartyServer, MosuServerEnvironment.UsesStableProtocol) &&
+                        api.Endpoints.MetadataUrl == endpoint)
+                    {
+                        int connectionUserId = api.LocalUser.Value.Id;
+                        connection.On<int, bool>("DownloadBeatmapSet", id =>
+                        {
+                            string? sourceConnectionId = connection.ConnectionId;
+                            return downloads.TryDownloadAsync(id, () =>
+                                !string.IsNullOrEmpty(sourceConnectionId) &&
+                                connector?.IsConnected.Value == true &&
+                                ReferenceEquals(connector.CurrentConnection, connection) &&
+                                connection.State == HubConnectionState.Connected &&
+                                connection.ConnectionId == sourceConnectionId &&
+                                connectionUserId > 0 && api.LocalUser.Value.Id == connectionUserId &&
+                                api.Endpoints.MetadataUrl == endpoint);
+                        });
+                    }
                 };
 
                 IsConnected.BindTo(connector.IsConnected);
@@ -109,6 +137,7 @@ namespace osu.Game.Online.Metadata
             {
                 Schedule(() =>
                 {
+                    OnlineUserCount.Value = -1;
                     userPresences.Clear();
                     friendPresences.Clear();
                     WatchedRooms.Clear();
@@ -192,8 +221,19 @@ namespace osu.Game.Online.Metadata
             if (connector?.IsConnected.Value != true)
                 return Task.FromCanceled(new CancellationToken(true));
 
-            Debug.Assert(connection != null);
-            return connection.InvokeAsync(nameof(IMetadataServer.UpdateActivity), activity);
+            var capturedConnector = connector;
+            var capturedConnection = connection;
+            if (capturedConnection == null)
+                return Task.FromCanceled(new CancellationToken(true));
+            var snapshot = activity?.Snapshot();
+            return outgoingPresence.EnqueueInvocation(() =>
+            {
+                // An old queued presence must never be sent on a replacement connection.
+                if (capturedConnector.IsConnected.Value != true || !ReferenceEquals(capturedConnector.CurrentConnection, capturedConnection))
+                    return Task.FromCanceled(new CancellationToken(true));
+                using var operation = StutterTraceEventSource.Log.Measure("Metadata.UpdateActivity.SyncInvoke");
+                return capturedConnection.InvokeAsync(nameof(IMetadataServer.UpdateActivity), snapshot);
+            });
         }
 
         public override Task UpdateStatus(UserStatus? status)
@@ -201,8 +241,17 @@ namespace osu.Game.Online.Metadata
             if (connector?.IsConnected.Value != true)
                 return Task.FromCanceled(new CancellationToken(true));
 
-            Debug.Assert(connection != null);
-            return connection.InvokeAsync(nameof(IMetadataServer.UpdateStatus), status);
+            var capturedConnector = connector;
+            var capturedConnection = connection;
+            if (capturedConnection == null)
+                return Task.FromCanceled(new CancellationToken(true));
+            return outgoingPresence.EnqueueInvocation(() =>
+            {
+                if (capturedConnector.IsConnected.Value != true || !ReferenceEquals(capturedConnector.CurrentConnection, capturedConnection))
+                    return Task.FromCanceled(new CancellationToken(true));
+                using var operation = StutterTraceEventSource.Log.Measure("Metadata.UpdateStatus.SyncInvoke");
+                return capturedConnection.InvokeAsync(nameof(IMetadataServer.UpdateStatus), status);
+            });
         }
 
         protected override Task BeginWatchingUserPresenceInternal()
@@ -234,7 +283,7 @@ namespace osu.Game.Online.Metadata
         {
             Schedule(() =>
             {
-                if (presence?.Status != null)
+                if (presence?.Status != null && presence.Value.Status != UserStatus.Offline)
                 {
                     if (userId == api.LocalUser.Value.OnlineID)
                         localUserPresence = presence.Value;
@@ -255,7 +304,7 @@ namespace osu.Game.Online.Metadata
         {
             Schedule(() =>
             {
-                if (presence?.Status != null)
+                if (presence?.Status != null && presence.Value.Status != UserStatus.Offline)
                     friendPresences[userId] = presence.Value;
                 else
                     friendPresences.Remove(userId);

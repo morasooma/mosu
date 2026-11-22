@@ -48,14 +48,14 @@ namespace osu.Game.Screens.SelectLegacy
                         AlwaysPresent = true,
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre,
-                        Text = "random",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J5279,
                     },
                     rewindSpriteText = new OsuSpriteText
                     {
                         AlwaysPresent = true,
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre,
-                        Text = "rewind",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J5280,
                         Alpha = 0f,
                     }
                 }

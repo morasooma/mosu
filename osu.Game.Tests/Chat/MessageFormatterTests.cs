@@ -27,6 +27,50 @@ namespace osu.Game.Tests.Chat
             MessageFormatter.WebsiteRootUrl = originalWebsiteRootUrl;
         }
 
+        [TestCase("")]
+        [TestCase("Ordinary message with no links")]
+        [TestCase("Message 300: score 123456, combo 405x, rating 5.12.")]
+        [TestCase("Unmatched [bracket and (parenthesis")]
+        [TestCase("A trailing colon:")]
+        [TestCase("#a is not a channel; neither is #_english")]
+        [TestCase("Malformed timestamp 00:60:000")]
+        public void TestPlainTextRemainsUnchanged(string text)
+        {
+            var result = MessageFormatter.FormatText(text);
+
+            Assert.That(result.Text, Is.EqualTo(text));
+            Assert.That(result.OriginalText, Is.EqualTo(text));
+            Assert.That(result.Links, Is.Empty);
+        }
+
+        [TestCase("00:01:234")]
+        [TestCase("99:59.999 (1,2,3)")]
+        [TestCase("\u0660\u0660:0\u0661:\u0662\u0663\u0664")]
+        [TestCase("\uFF10\uFF10:0\uFF11.\uFF12\uFF13\uFF14")]
+        public void TestStrictTimestampCandidate(string timestamp)
+        {
+            var result = MessageFormatter.FormatText($"Jump to {timestamp} now");
+
+            Assert.That(result.Links, Has.Count.EqualTo(1));
+            Assert.That(result.Links[0].Action, Is.EqualTo(LinkAction.OpenEditorTimestamp));
+            Assert.That(result.Links[0].Index, Is.EqualTo(8));
+            Assert.That(result.Links[0].Length, Is.EqualTo(timestamp.Length));
+            Assert.That(result.Links[0].Url, Is.EqualTo($"{OsuGameBase.OSU_PROTOCOL}edit/{timestamp}"));
+        }
+
+        [TestCase("[[#english]]", "#english", LinkAction.OpenWiki)]
+        [TestCase("[https://osu.ppy.sh 00:01:234]", "00:01:234", LinkAction.External)]
+        [TestCase("[https://osu.ppy.sh #english]", "#english", LinkAction.External)]
+        public void TestSyntaxInFormattedLinkDisplayPreservesPrecedence(string text, string display, LinkAction action)
+        {
+            var result = MessageFormatter.FormatText(text);
+
+            Assert.That(result.Text, Is.EqualTo(display));
+            Assert.That(result.Links, Has.Count.EqualTo(1));
+            Assert.That(result.Links[0].Action, Is.EqualTo(action));
+            Assert.That(result.Links[0].Length, Is.EqualTo(display.Length));
+        }
+
         [Test]
         public void TestUnsupportedProtocolLink()
         {

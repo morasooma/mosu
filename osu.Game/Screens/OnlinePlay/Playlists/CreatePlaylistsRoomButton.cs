@@ -11,7 +11,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
         [BackgroundDependencyLoader]
         private void load()
         {
-            Text = "Create playlist";
+            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5011;
         }
     }
 }

@@ -135,7 +135,7 @@ namespace osu.Game.Database
             }
 
             if (clientModsConverted)
-                PostNotification?.Invoke(new ProgressCompletionNotification { Text = "Client mods were converted for export." });
+                PostNotification?.Invoke(new ProgressCompletionNotification { Text = global::osu.Game.Localisation.ClientTranslationStrings.J3264 });
 
             notification.CompletionText = NotificationsStrings.FileExportFinished(itemFilename);
             notification.CompletionClickAction = () => ExportStorage.PresentFileExternally(filename);

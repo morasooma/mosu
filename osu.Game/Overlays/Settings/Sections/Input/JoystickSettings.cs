@@ -45,6 +45,9 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                     DisplayAsPercentage = true,
                     Current = localDeadzone,
                 })
+                {
+                    FavouriteId = "ui:JoystickSettingsStrings.DeadzoneThreshold",
+                }
             });
         }
 

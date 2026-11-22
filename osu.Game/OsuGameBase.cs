@@ -44,6 +44,8 @@ using osu.Game.Database;
 using osu.Game.Extensions;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Cursor;
+using osu.Game.Graphics.Fonts;
+using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Input;
 using osu.Game.Input.Bindings;
@@ -58,10 +60,11 @@ using osu.Game.Online.Metadata;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Spectator;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Overlays.Settings;
 using osu.Game.Overlays.Settings.Sections;
 using osu.Game.Overlays.Settings.Sections.Input;
-using osu.Game.Graphics.Fonts;
+using osu.Game.Performance.Debug;
 using osu.Game.Resources;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
@@ -98,17 +101,20 @@ namespace osu.Game
         /// </summary>
         public static readonly IReadOnlySet<string> BuiltInCustomUIFonts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "Default", "Torus", "Inter", "Venera", "Noto", "Torus-Alternate"
+            "Default", "Torus", "Inter", "Venera", "Noto", "Torus-Alternate",
+            "Nunito", "MosuRoundedAlt", "Syncopate", "Michroma"
         };
 
         public static readonly List<string> AvailableCustomUIFonts = new List<string>
         {
-            "Default", "Torus", "Inter", "Venera", "Noto", "Torus-Alternate"
+            "Default", "Nunito", "MosuRoundedAlt", "Syncopate", "Michroma", "Inter", "Noto",
+            "Torus", "Torus-Alternate", "Venera"
         };
 
         private readonly HashSet<string> loadedCustomFontFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private const string comfortaa_regular_font = @"Comfortaa Regular";
+        private ResourceStore<byte[]> mosuFontResources = null!;
         private const string comfortaa_regulare_legacy_font = @"Comfortaa Regulare";
 
 
@@ -138,9 +144,10 @@ namespace osu.Game
         {
             EndpointConfiguration config = UseDevelopmentServer ? new DevelopmentEndpointConfiguration() : new ProductionEndpointConfiguration();
 
-            profileManager = new Online.ServerProfileManager(Storage, LocalConfig);
+            profileManager ??= new Online.ServerProfileManager(Storage, LocalConfig);
             var activeProfile = profileManager.ActiveProfile;
 
+            Online.MosuServerEnvironment.ActiveApiUrl = Online.MosuServerEnvironment.ResolveProfileApiUrl(activeProfile.Id, activeProfile.ApiUrl);
             Online.MosuServerEnvironment.IsThirdPartyServer = activeProfile.Id != "default";
             Online.MosuServerEnvironment.IsToriiServer = Online.MosuServerEnvironment.IsToriiServerUrl(activeProfile.ApiUrl);
             Online.MosuServerEnvironment.UsesStableProtocol = activeProfile.UseStableProtocol;
@@ -343,6 +350,7 @@ namespace osu.Game
         private RealmAccess realm;
 
         private TabletFilterSettingsStore? tabletFilterSettingsStore;
+        private InterfaceSoundManager? interfaceSounds;
 
         /// <summary>
         /// Access to the realm for subclasses, which cannot resolve it via dependency injection during game
@@ -368,6 +376,12 @@ namespace osu.Game
         private readonly BindableNumber<double> globalTrackVolumeAdjust = new BindableNumber<double>(global_track_volume_adjust);
 
         private Bindable<string> frameworkLocale = null!;
+        private Bindable<InterfaceAnimationMode> interfaceAnimationMode = null!;
+        private Bindable<bool> enhancedInterfaceAnimations = null!;
+        private Bindable<bool> overlayTransparency = null!;
+        private Bindable<bool> songSelectTransparency = null!;
+        private Bindable<double> overlayBlurStrength = null!;
+        private Bindable<double> overlayDimAmount = null!;
 
         private IBindable<LocalisationParameters> localisationParameters = null!;
         private IBindable<ForkRelaxPpSystem> relaxPpSystem = null!;
@@ -405,14 +419,21 @@ namespace osu.Game
                 VersionHash = $"{Version}-{RuntimeInfo.OS}".ComputeMD5Hash();
             }
 
-            // Fork-specific resources take precedence over upstream resources so public-facing
-            // branding can be replaced without modifying the upstream dependency checkout.
-            var morasoomaAssembly = typeof(Morasooma.Resources.ResourceAssembly).Assembly;
-            foreach (string bank in new[] { "ShaderOverrides", "TextureOverrides", "CompatibilityOverrides", "CounterOverrides", "MedalOverrides", "IconOverrides", "SoundOverrides" })
-                Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(morasoomaAssembly), bank));
-
+            // Reviewed replacement banks preserve existing resource keys. Superseded media
+            // is excluded from source embedding, not merely shadowed here. Personal and
+            // beatmap skins / selected sound packs retain their higher-level precedence.
+            initialiseResourcePacks();
+            Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(Morasooma.Resources.ResourceAssembly).Assembly), @"ShaderOverrides"));
+            Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(Morasooma.Resources.ResourceAssembly).Assembly), @"TextureOverrides"));
+            Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(Morasooma.Resources.ResourceAssembly).Assembly), @"CompatibilityOverrides"));
+            Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(Morasooma.Resources.ResourceAssembly).Assembly), @"CounterOverrides"));
+            Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(Morasooma.Resources.ResourceAssembly).Assembly), @"MedalOverrides"));
+            Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(Morasooma.Resources.ResourceAssembly).Assembly), @"IconOverrides"));
+            Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(Morasooma.Resources.ResourceAssembly).Assembly), @"SoundOverrides"));
             Resources.AddStore(new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(OsuGameBase).Assembly), @"Resources"));
             Resources.AddStore(new DllResourceStore(OsuResources.ResourceAssembly));
+            mosuFontResources = new ResourceStore<byte[]>(new MosuFontResources(GameResourcePackStore.Borrow(resourcePackStore)));
+            Resources.AddStore(mosuFontResources);
 
             profileManager ??= new Online.ServerProfileManager(Storage, LocalConfig);
             profileManager.Initialize(Storage, LocalConfig);
@@ -443,10 +464,19 @@ namespace osu.Game
             largeStore.AddTextureSource(Host.CreateTextureLoaderStore(CreateOnlineStore()));
             dependencies.Cache(largeStore);
 
-            dependencies.Cache(onlineAssetStore = new OnlineAssetCachingStore(Host, realm));
+            dependencies.Cache(onlineAssetStore = new OnlineAssetCachingStore(Host, realm, LocalConfig));
 
             dependencies.CacheAs(LocalConfig);
             dependencies.CacheAs<IGameplaySettings>(LocalConfig);
+            var backgroundSafety = new Graphics.Backgrounds.AI.BackgroundSafetyService();
+            dependencies.Cache(backgroundSafety);
+            base.Content.Add(backgroundSafety);
+            var stillLife = new Graphics.Backgrounds.AI.StillLifeService();
+            dependencies.Cache(stillLife);
+            base.Content.Add(stillLife);
+            var discoveryAudio = new Overlays.Discovery.DiscoveryAudioService();
+            dependencies.Cache(discoveryAudio);
+            base.Content.Add(discoveryAudio);
 
             LocalConfig.GetBindable<bool>(OsuSetting.ForkDisableBeatmapStatusOverwrite).BindValueChanged(e =>
             {
@@ -477,6 +507,9 @@ namespace osu.Game
             addFilesWarning();
 
             Audio.Samples.PlaybackConcurrency = SAMPLE_CONCURRENCY;
+            loadResourcePackSoundSelection();
+            dependencies.Cache(interfaceSounds = new InterfaceSoundManager(Storage, LocalConfig, Audio, Resources));
+            RegisterImportHandler(new SoundImporter(this));
 
             // Fork tablet filters persist in a fork-owned file (mosu-tablet-filters.json),
             // never in the framework's input.json, so restores/backups from other clients
@@ -531,7 +564,9 @@ namespace osu.Game
 
             // TODO: OsuGame or OsuGameBase?
             dependencies.CacheAs(beatmapUpdater = CreateBeatmapUpdater());
-            dependencies.CacheAs(SpectatorClient = new OnlineSpectatorClient(endpoints));
+            dependencies.CacheAs(SpectatorClient = stableBanchoSession != null
+                ? new Online.Legacy.StableSpectatorClient(stableBanchoSession)
+                : new OnlineSpectatorClient(endpoints));
             dependencies.CacheAs(MultiplayerClient = stableBanchoSession != null
                 ? new Online.Legacy.StableMultiplayerClient(stableBanchoSession)
                 : new OnlineMultiplayerClient(endpoints));
@@ -540,7 +575,7 @@ namespace osu.Game
 
             base.Content.Add(new BeatmapOnlineChangeIngest(beatmapUpdater, realm, metadataClient));
 
-            BeatmapManager.ProcessBeatmap = (beatmapSet, scope) => beatmapUpdater.Process(beatmapSet, scope);
+            BeatmapManager.ProcessBeatmap = (beatmapSet, scope) => beatmapUpdater.Queue(beatmapSet.ToLive(realm), scope);
 
             dependencies.Cache(userCache = new UserLookupCache());
             base.Content.Add(userCache);
@@ -558,7 +593,23 @@ namespace osu.Game
             dependencies.Cache(hitErrorTracker = new SessionAverageHitErrorTracker());
             dependencies.Cache(Colours = new OsuColour());
 
+            // ConfigManager returns a weakly bound copy. Keep it alive for the entire game
+            // lifetime, otherwise GC disconnects the UI policy from the settings dropdown.
+            interfaceAnimationMode = LocalConfig.GetBindable<InterfaceAnimationMode>(OsuSetting.ForkInterfaceAnimations);
+            InterfaceAnimation.Mode.BindTo(interfaceAnimationMode);
+            enhancedInterfaceAnimations = LocalConfig.GetBindable<bool>(OsuSetting.ForkEnhancedAnimations);
+            InterfaceAnimation.Enhanced.BindTo(enhancedInterfaceAnimations);
+
             var configuredTheme = LocalConfig.GetBindable<ThemeMode>(OsuSetting.ForkThemeMode);
+            var customThemeJson = LocalConfig.GetBindable<string>(OsuSetting.ForkCustomThemeJson);
+
+            void syncCustomTheme()
+            {
+                OverlayColourProvider.CustomTheme.Value = CustomThemeDefinition.FromJson(customThemeJson.Value);
+            }
+
+            syncCustomTheme();
+            customThemeJson.BindValueChanged(_ => syncCustomTheme());
 
             void applyEffectiveTheme()
             {
@@ -573,9 +624,16 @@ namespace osu.Game
             configuredTheme.BindValueChanged(_ => applyEffectiveTheme(), true);
             API.LocalUser.BindValueChanged(_ => applyEffectiveTheme(), true);
 
-            LocalConfig.GetBindable<bool>(OsuSetting.ForkOverlayTransparency).BindValueChanged(e => OverlayTransparency.Enabled.Value = e.NewValue, true);
-            LocalConfig.GetBindable<double>(OsuSetting.ForkOverlayBlurStrength).BindValueChanged(e => OverlayTransparency.BlurStrength.Value = e.NewValue, true);
-            LocalConfig.GetBindable<double>(OsuSetting.ForkOverlayDimAmount).BindValueChanged(e => OverlayTransparency.DimAmount.Value = e.NewValue, true);
+            // Retain these weakly bound config copies for the entire game lifetime.
+            // Otherwise a collection disconnects changes from the shared glass state.
+            overlayTransparency = LocalConfig.GetBindable<bool>(OsuSetting.ForkOverlayTransparency);
+            songSelectTransparency = LocalConfig.GetBindable<bool>(OsuSetting.ForkSongSelectTransparency);
+            overlayBlurStrength = LocalConfig.GetBindable<double>(OsuSetting.ForkOverlayBlurStrength);
+            overlayDimAmount = LocalConfig.GetBindable<double>(OsuSetting.ForkOverlayDimAmount);
+            overlayTransparency.BindValueChanged(e => OverlayTransparency.Enabled.Value = e.NewValue, true);
+            songSelectTransparency.BindValueChanged(e => OverlayTransparency.SongSelectEnabled.Value = e.NewValue, true);
+            overlayBlurStrength.BindValueChanged(e => OverlayTransparency.BlurStrength.Value = e.NewValue, true);
+            overlayDimAmount.BindValueChanged(e => OverlayTransparency.DimAmount.Value = e.NewValue, true);
 
             IReadOnlyList<Mod>? pendingNormalisedMods = null;
 
@@ -617,7 +675,8 @@ namespace osu.Game
                         }
                     }
 
-                    if (normalised.All(m => m.Acronym != "CL"))
+                    if (Ruleset.Value != null && Online.Legacy.StableModCompatibility.RequiresClassic(Ruleset.Value.OnlineID)
+                        && normalised.All(m => m.Acronym != "CL"))
                     {
                         var classic = Ruleset.Value?.CreateInstance().CreateModFromAcronym("CL");
                         if (classic != null)
@@ -714,6 +773,16 @@ namespace osu.Game
 
             dependencies.Cache(globalBindings);
 
+            if (stableBanchoSession != null)
+            {
+                stableBanchoSession.IsConnected.BindValueChanged(connected =>
+                {
+                    if (connected.NewValue && Ruleset.Value?.OnlineID is >= 0 and <= 3)
+                        stableBanchoSession.SendPacketAsync(Online.Legacy.StableBanchoPacketCodec.CreateActionPacket(0, string.Empty,
+                            string.Empty, 0, (byte)Ruleset.Value.OnlineID, 0)).FireAndForget();
+                }, true);
+            }
+
             Ruleset.BindValueChanged(onRulesetChanged);
             Beatmap.BindValueChanged(onBeatmapChanged);
 
@@ -749,23 +818,72 @@ namespace osu.Game
             }
         }
 
-        private void onTrackChanged(WorkingBeatmap beatmap, TrackChangeDirection direction) => beatmapClock.ChangeSource(beatmap.Track);
+        private void onTrackChanged(WorkingBeatmap beatmap, TrackChangeDirection direction)
+        {
+            using var phase = PerformancePhaseLogger.Begin("OsuGameBase.TrackChanged");
+            beatmapClock.ChangeSource(beatmap.Track);
+        }
 
         protected virtual void InitialiseFonts()
         {
-            var catalogue = new MosuFontResources();
-            var bundledFonts = new ResourceStore<byte[]>(catalogue);
-            Resources.AddStore(bundledFonts);
+            // Register real names before legacy aliases so ordinary missing-glyph
+            // fallback uses the new UI families, not the old narrow custom atlas.
+            var mosuFonts = new MosuFontStore(Host.Renderer);
+            Fonts.AddStore(mosuFonts);
+            using (var catalogue = new MosuFontResources())
+            {
+                foreach (string asset in catalogue.GetFontAssets())
+                    AddFont(mosuFontResources, asset, mosuFonts);
+                foreach (string asset in MosuFontResources.LegacyFaces.Keys)
+                    AddFont(mosuFontResources, asset, mosuFonts);
 
-            foreach (string asset in MosuFontResources.LegacyFaces.Keys)
-                AddFont(bundledFonts, asset);
-
-            foreach (string asset in catalogue.GetFontAssets())
-                AddFont(bundledFonts, asset);
+                // A custom family can be applied to labels of any weight/style.
+                // Use real available faces, never synthesize weight or italics.
+                var assets = catalogue.GetFontAssets().ToHashSet(StringComparer.Ordinal);
+                foreach (string family in new[] { "Nunito", "MosuRoundedAlt", "Syncopate", "Michroma", "Inter" })
+                {
+                    foreach (FontWeight weight in Enum.GetValues<FontWeight>())
+                    {
+                        foreach (string italic in new[] { "", "Italic" })
+                        {
+                            string name = $"{family}-{weight}{italic}";
+                            string asset = $"Fonts/{family}/{name}";
+                            if (assets.Contains(asset))
+                                continue;
+                            string fallbackWeight = family == "Michroma" ? "Regular"
+                                : family == "Syncopate" ? weight >= FontWeight.SemiBold ? "Bold" : "Regular"
+                                : weight == FontWeight.Black ? "Bold" : weight == FontWeight.Medium && family == "Inter" ? "Regular" : weight.ToString();
+                            string fallback = $"Fonts/{family}/{family}-{fallbackWeight}";
+                            mosuFonts.AddTextureSource(new CustomWeightGlyphStore(mosuFontResources, fallback, name,
+                                Host.CreateTextureLoaderStore(mosuFontResources)));
+                        }
+                    }
+                }
+            }
 
             Fonts.AddStore(new OsuIcon.OsuIconStore(Textures));
 
             RefreshCustomFonts();
+            initialiseFontPacks();
+            loadResourcePackFonts();
+
+            // Dynamic carousel/status text is often empty at dependency load, so its
+            // first alphabet lookup otherwise happens in Update. Prepare only common
+            // UI characters in the actual families while bootstrapping off Update.
+            var fontConfiguration = FontConfiguration.Capture(LocalConfig);
+            var fontNames = new List<string> { "Nunito-Regular" };
+            foreach (var typeface in new[] { Typeface.Torus, Typeface.TorusAlternate, Typeface.Inter, Typeface.Venera })
+            {
+                foreach (var weight in new[] { FontWeight.Regular, FontWeight.Bold, FontWeight.SemiBold, FontWeight.Light })
+                {
+                    var font = OsuFont.GetFont(typeface, weight: weight);
+                    font = font.With(family: fontConfiguration.Resolve(font.Family));
+                    fontNames.Add(font.FontName);
+                }
+            }
+            // At most 16 MiB of alpha pages, no glyph textures per face/alias and no
+            // continuing job which could outlive font stores during game disposal.
+            Fonts.PrepareGlyphPages(fontNames, GameplayGlyphPrecache.UI_CHARACTERS, 16 * 1024 * 1024);
         }
 
         /// <summary>
@@ -807,6 +925,9 @@ namespace osu.Game
             {
                 var customFontsStorage = Storage.GetStorageForDirectory("Fonts");
                 var customFontsStore = new ResourceStore<byte[]>(new StorageBackedResourceStore(customFontsStorage));
+                // Keep user fonts after bundled UI families in normal fallback order.
+                var customFontTarget = new FontStore(Host.Renderer, minFilterMode: TextureFilteringMode.Linear);
+                Fonts.AddStore(customFontTarget);
 
                 string customFontsDir = customFontsStorage.GetFullPath(string.Empty);
                 if (!System.IO.Directory.Exists(customFontsDir))
@@ -822,8 +943,7 @@ namespace osu.Game
                     "Cormorant Garamond",
                     "Great Vibes Regular",
                     "Kablammo Regular",
-                    "Rubik Glitch Regular",
-                    "danc"
+                    "Rubik Glitch Regular"
                 };
 
                 var assembly = typeof(OsuGameBase).Assembly;
@@ -939,15 +1059,15 @@ namespace osu.Game
 
                     string fontName = file;
                     var store = Host.CreateTextureLoaderStore(customFontsStore);
-                    Fonts.AddTextureSource(new CustomWeightGlyphStore(customFontsStore, fontName, fontName, store));
+                    customFontTarget.AddTextureSource(new CustomWeightGlyphStore(customFontsStore, fontName, fontName, store));
 
                     string[] weights = { "Light", "Regular", "Medium", "SemiBold", "Bold", "Black" };
                     foreach (var weight in weights)
                     {
-                        Fonts.AddTextureSource(new CustomWeightGlyphStore(customFontsStore, fontName, fontName + "-" + weight, store));
-                        Fonts.AddTextureSource(new CustomWeightGlyphStore(customFontsStore, fontName, fontName + "-" + weight + "Italic", store));
+                        customFontTarget.AddTextureSource(new CustomWeightGlyphStore(customFontsStore, fontName, fontName + "-" + weight, store));
+                        customFontTarget.AddTextureSource(new CustomWeightGlyphStore(customFontsStore, fontName, fontName + "-" + weight + "Italic", store));
                     }
-                    Fonts.AddTextureSource(new CustomWeightGlyphStore(customFontsStore, fontName, fontName + "-Italic", store));
+                    customFontTarget.AddTextureSource(new CustomWeightGlyphStore(customFontsStore, fontName, fontName + "-Italic", store));
 
                     loadedCustomFontFiles.Add(file);
 
@@ -1046,8 +1166,11 @@ namespace osu.Game
 
         protected override void LoadComplete()
         {
-            base.LoadComplete();
+            using var startup = PerformancePhaseLogger.Begin("OsuGameBase.LoadComplete");
+            using (PerformancePhaseLogger.Begin("OsuGameBase.FrameworkLoadComplete"))
+                base.LoadComplete();
 
+            using var locales = PerformancePhaseLogger.Begin("OsuGameBase.AddLocaleMappings");
             var localeMappings = Enum.GetValues<Language>().Select(language =>
             {
 #if DEBUG
@@ -1069,7 +1192,9 @@ namespace osu.Game
             }).Where(m => m != null);
 
             Localisation.AddLocaleMappings(localeMappings);
+            locales.End();
 
+            using var selectedMods = PerformancePhaseLogger.Begin("OsuGameBase.BindSelectedMods");
             SelectedMods.BindValueChanged(_ =>
             {
                 selectedModSettingChangeTracker?.Dispose();
@@ -1094,11 +1219,19 @@ namespace osu.Game
                 ? new DevelopmentOsuConfigManager(Storage)
                 : new OsuConfigManager(Storage);
 
-            // Standalone public build note: Configurable MaximumAtlasSize is an optional Mosu framework extension.
+            // Texture stores are created later during game loading. Configure their page
+            // size now, while preserving an explicit benchmark/process override.
+            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOSU_TEXTURE_ATLAS_SIZE")))
+            {
+                osu.Framework.Graphics.Textures.TextureStore.MaximumAtlasSize =
+                    LocalConfig.Get<bool>(OsuSetting.ForkLargeTextureAtlas) ? 4096 : 1024;
+            }
 
             Environment.SetEnvironmentVariable("OSU_DISABLE_ERROR_REPORTING",
                 LocalConfig.Get<bool>(OsuSetting.ForkDisableRemoteLogging) ? "1" : null);
 
+            CrashReports = new CrashReportStore(Storage.GetFullPath(string.Empty));
+            CrashReportStore.Current = CrashReports;
             host.ExceptionThrown += onExceptionThrown;
         }
 
@@ -1136,6 +1269,16 @@ namespace osu.Game
         /// </summary>
         /// <returns>Whether a restart operation was queued.</returns>
         public virtual bool RestartAppWhenExited() => false;
+
+        /// <summary>
+        /// Runs the pending restart once. Desktop hosts defer this until host and IPC disposal have completed.
+        /// </summary>
+        protected virtual void ExecuteRestartOnExit()
+        {
+            Action restart = RestartOnExitAction;
+            RestartOnExitAction = null;
+            restart?.Invoke();
+        }
 
         #endregion
 
@@ -1186,7 +1329,10 @@ namespace osu.Game
             }
         }
 
-        protected virtual IBeatmapUpdater CreateBeatmapUpdater() => new BeatmapUpdater(BeatmapManager, difficultyCache, beatmapApi, Storage);
+        protected virtual IBeatmapUpdater CreateBeatmapUpdater() => new BeatmapUpdater(BeatmapManager, difficultyCache, beatmapApi, Storage, LocalConfig)
+        {
+            PostNotification = notification => BeatmapManager.PostNotification?.Invoke(notification)
+        };
 
         protected virtual IAPIProvider CreateAPIProvider(EndpointConfiguration endpoints) => new APIAccess(this, LocalConfig, endpoints, VersionHash, RulesetHashCache);
 
@@ -1284,6 +1430,10 @@ namespace osu.Game
                 return;
             }
 
+            if (stableBanchoSession?.IsConnected.Value == true && r.NewValue.OnlineID is >= 0 and <= 3)
+                stableBanchoSession.SendPacketAsync(Online.Legacy.StableBanchoPacketCodec.CreateActionPacket(0, string.Empty,
+                    string.Empty, 0, (byte)r.NewValue.OnlineID, 0)).FireAndForget();
+
             var dict = new Dictionary<ModType, IReadOnlyList<Mod>>();
 
             try
@@ -1328,8 +1478,9 @@ namespace osu.Game
             if (!ModUtils.CheckValidForGameplay(convertedMods, out var invalid))
                 invalid.ForEach(newMod => convertedMods.Remove(newMod));
 
-            if ((Online.MosuServerEnvironment.UsesStableProtocol && convertedMods.All(m => m.Acronym != "CL"))
-                || (!convertedMods.Any() && LocalConfig.Get<bool>(OsuSetting.ForkClassicModDefault)))
+            if ((Online.MosuServerEnvironment.UsesStableProtocol && Online.Legacy.StableModCompatibility.RequiresClassic(r.NewValue.OnlineID)
+                 && convertedMods.All(m => m.Acronym != "CL"))
+                || (!Online.MosuServerEnvironment.UsesStableProtocol && !convertedMods.Any() && LocalConfig.Get<bool>(OsuSetting.ForkClassicModDefault)))
             {
                 var classic = instance.CreateModFromAcronym("CL");
                 if (classic != null)
@@ -1339,6 +1490,20 @@ namespace osu.Game
             SelectedMods.Value = convertedMods;
 
             void revertRulesetChange() => Ruleset.Value = r.OldValue?.Available == true ? r.OldValue : RulesetStore.AvailableRulesets.First();
+        }
+
+        protected CrashReportStore? CrashReports { get; private set; }
+
+        /// <summary>Explicit, user-confirmed fault injection to verify next-startup crash reporting.</summary>
+        public void TriggerCrashReportTest()
+        {
+            Scheduler.Add(() =>
+            {
+                // Release normally tolerates one exception; this intentional test must be fatal.
+                Interlocked.Exchange(ref allowableExceptions, 0);
+                throw new InvalidOperationException("Intentional crash requested from Mosu debug settings.",
+                    new InvalidOperationException("Crash-report verification: this is a deliberate test, not a client bug."));
+            });
         }
 
         private int allowableExceptions;
@@ -1351,6 +1516,7 @@ namespace osu.Game
         {
             if (Interlocked.Decrement(ref allowableExceptions) < 0)
             {
+                CrashReports?.Capture(ex, Version);
                 Logger.Log("Too many unhandled exceptions, crashing out.");
                 RulesetStore?.TryDisableCustomRulesetsCausing(ex);
                 return false;
@@ -1368,8 +1534,17 @@ namespace osu.Game
             base.Dispose(isDisposing);
 
             selectedModSettingChangeTracker?.Dispose();
+            interfaceSounds?.Dispose();
+            resourcePackStore?.Dispose();
+            resourcePackCatalogue?.Dispose();
 
             RulesetStore?.Dispose();
+            interfaceAnimationMode?.UnbindAll();
+            enhancedInterfaceAnimations?.UnbindAll();
+            overlayTransparency?.UnbindAll();
+            songSelectTransparency?.UnbindAll();
+            overlayBlurStrength?.UnbindAll();
+            overlayDimAmount?.UnbindAll();
             LocalConfig?.Dispose();
 
             beatmapUpdater?.Dispose();
@@ -1381,12 +1556,14 @@ namespace osu.Game
             if (Host != null)
                 Host.ExceptionThrown -= onExceptionThrown;
 
-            RestartOnExitAction?.Invoke();
+            ExecuteRestartOnExit();
         }
 
-        ControlPointInfo IBeatSyncProvider.ControlPoints => Beatmap.Value.BeatmapLoaded ? Beatmap.Value.Beatmap.ControlPointInfo : null;
+        // A completed load can still fail (for example, when a custom ruleset is unavailable).
+        // WorkingBeatmap.Beatmap returns null in that case; menu animations must keep using default timing.
+        ControlPointInfo IBeatSyncProvider.ControlPoints => Beatmap?.Value is { BeatmapLoaded: true } beatmap ? beatmap.Beatmap?.ControlPointInfo : null;
         IClock IBeatSyncProvider.Clock => beatmapClock;
-        ChannelAmplitudes IHasAmplitudes.CurrentAmplitudes => Beatmap.Value.TrackLoaded ? Beatmap.Value.Track.CurrentAmplitudes : ChannelAmplitudes.Empty;
+        ChannelAmplitudes IHasAmplitudes.CurrentAmplitudes => Beatmap?.Value is { TrackLoaded: true } beatmap ? beatmap.Track.CurrentAmplitudes : ChannelAmplitudes.Empty;
         private class CustomWeightGlyphStore : osu.Framework.IO.Stores.RawCachingGlyphStore, osu.Framework.IO.Stores.IGlyphStore, osu.Framework.IO.Stores.IResourceStore<osu.Framework.Graphics.Textures.TextureUpload>
         {
             private readonly string customFontName;

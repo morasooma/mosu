@@ -66,7 +66,7 @@ namespace osu.Game.Rulesets.Dodge.Tests
 
             Assert.That(speedChangingMods.Select(mod => mod.Acronym), Is.EquivalentTo(new[]
             {
-                "HT", "DC", "DT", "NC", "SB", "TS", "WU", "WD", "AS",
+                "HT", "DC", "DT", "NC", "SB", "TS", "WU", "WD", "AS", "GL", "FN",
             }));
             Assert.Multiple(() =>
             {

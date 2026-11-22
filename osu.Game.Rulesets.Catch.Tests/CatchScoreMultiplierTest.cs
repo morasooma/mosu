@@ -21,6 +21,8 @@ namespace osu.Game.Rulesets.Catch.Tests
 
         private static readonly object[][] test_cases =
         [
+            [new Mod[] { new CatchModFruitNinja() }, 0.1],
+
             #region Difficulty Reduction
 
             [new Mod[] { new CatchModEasy() }, 0.5],

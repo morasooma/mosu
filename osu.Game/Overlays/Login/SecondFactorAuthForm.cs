@@ -141,7 +141,7 @@ namespace osu.Game.Overlays.Login
                 {
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y,
-                    Text = "An 8-digit one-time code was sent to the server's Telegram bot.",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J3953,
                 },
                 codeTextBox = new OsuNumberBox
                 {
@@ -157,7 +157,7 @@ namespace osu.Game.Overlays.Login
                 },
             });
 
-            explainText.AddParagraph("The code is valid for 5 minutes. Keep it private.");
+            explainText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J3954);
             explainText.AddLink(UserVerificationStrings.BoxInfoLogoutLink, () => { api.Logout(); });
 
             codeTextBox.Current.BindValueChanged(code =>
@@ -201,9 +201,9 @@ namespace osu.Game.Overlays.Login
 
             explainText.AddParagraph(UserVerificationStrings.BoxInfoCheckSpam);
             // We can't support localisable strings with nested links yet. Not sure if we even can (probably need to allow markdown link formatting or something).
-            explainText.AddParagraph("If you can't access your email or have forgotten what you used, please follow the ");
+            explainText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J3955);
             explainText.AddLink(UserVerificationStrings.BoxInfoRecoverLink, $"{api.Endpoints.WebsiteUrl}/home/password-reset");
-            explainText.AddText(". You can also ");
+            explainText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3956);
             explainText.AddLink(UserVerificationStrings.BoxInfoReissueLink, () =>
             {
                 loading.Show();
@@ -221,7 +221,7 @@ namespace osu.Game.Overlays.Login
 
                 Task.Run(() => api.Perform(reissueRequest));
             });
-            explainText.AddText(" or ");
+            explainText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3957);
             explainText.AddLink(UserVerificationStrings.BoxInfoLogoutLink, () => { api.Logout(); });
             explainText.AddText(".");
 
@@ -265,15 +265,15 @@ namespace osu.Game.Overlays.Login
             });
 
             // We can't support localisable strings with nested links yet. Not sure if we even can (probably need to allow markdown link formatting or something).
-            explainText.AddParagraph("If you can't access your app, ");
-            explainText.AddLink("you can verify using email instead", () =>
+            explainText.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J3958);
+            explainText.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J3959, () =>
             {
                 var fallbackRequest = new VerificationMailFallbackRequest();
                 fallbackRequest.Success += showEmailVerification;
                 fallbackRequest.Failure += ex => errorText.Text = ex.Message;
                 Task.Run(() => api.Perform(fallbackRequest));
             });
-            explainText.AddText(". You can also ");
+            explainText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3956);
             explainText.AddLink(UserVerificationStrings.BoxInfoLogoutLink, () => { api.Logout(); });
             explainText.AddText(".");
 

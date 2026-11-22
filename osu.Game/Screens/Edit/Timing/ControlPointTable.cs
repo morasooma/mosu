@@ -188,7 +188,10 @@ namespace osu.Game.Screens.Edit.Timing
             private OsuColour colours { get; set; } = null!;
 
             [Resolved]
-            private Bindable<ControlPointGroup?> selectedGroup { get; set; } = null!;
+            private ControlPointSelection selection { get; set; } = null!;
+
+            [Resolved]
+            private EditorBeatmap beatmap { get; set; } = null!;
 
             [Resolved]
             private Bindable<TimingControlPoint?> activeTimingPoint { get; set; } = null!;
@@ -254,7 +257,7 @@ namespace osu.Game.Screens.Edit.Timing
             {
                 base.LoadComplete();
 
-                selectedGroup.BindValueChanged(_ => updateState());
+                selection.SelectedGroups.BindCollectionChanged((_, _) => updateState());
                 activeEffectPoint.BindValueChanged(_ => updateState());
                 activeTimingPoint.BindValueChanged(_ => updateState(), true);
                 FinishTransforms(true);
@@ -283,9 +286,15 @@ namespace osu.Game.Screens.Edit.Timing
             {
                 // schedule to give time for any modified focused text box to lose focus and commit changes (e.g. BPM / time signature textboxes) before switching to new point.
                 var currentGroup = Current.Value;
+                bool range = e.ShiftPressed;
+                bool toggle = e.ControlPressed || e.SuperPressed;
                 Schedule(() =>
                 {
-                    selectedGroup.Value = currentGroup;
+                    // A focused offset box can replace the clicked row while committing.
+                    if (!beatmap.ControlPointInfo.Groups.Any(g => ReferenceEquals(g, currentGroup)))
+                        return;
+
+                    selection.Select(currentGroup, beatmap.ControlPointInfo.Groups, range, toggle);
                     editorClock.SeekSmoothlyTo(currentGroup.Time);
                 });
                 return true;
@@ -293,7 +302,7 @@ namespace osu.Game.Screens.Edit.Timing
 
             private void updateState()
             {
-                bool isSelected = selectedGroup.Value?.Equals(current.Value) == true;
+                bool isSelected = selection.SelectedGroups.Contains(current.Value);
 
                 bool hasCurrentTimingPoint = activeTimingPoint.Value != null && current.Value.ControlPoints.Contains(activeTimingPoint.Value);
                 bool hasCurrentEffectPoint = activeEffectPoint.Value != null && current.Value.ControlPoints.Contains(activeEffectPoint.Value);

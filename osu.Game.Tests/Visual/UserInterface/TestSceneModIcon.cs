@@ -1,13 +1,18 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using osu.Framework.Allocation;
+using osu.Framework.Development;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Rendering.Dummy;
 using osu.Framework.Graphics.Sprites;
+using osu.Framework.Graphics.Textures;
+using osu.Framework.IO.Stores;
 using osu.Framework.Testing;
 using osu.Framework.Utils;
 using osu.Game.Rulesets;
@@ -16,6 +21,7 @@ using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.UI;
 using osu.Game.Screens.Play.HUD;
+using SharpFNT;
 
 namespace osu.Game.Tests.Visual.UserInterface
 {
@@ -70,6 +76,62 @@ namespace osu.Game.Tests.Visual.UserInterface
         {
             spreadOutFlow.AddRange(mods.Select(m => new ModIcon(m)));
             modDisplay.Current.Value = modDisplay.Current.Value.Concat(mods.OfType<Mod>()).ToList();
+        }
+
+        [Test]
+        public void TestAsyncLoadPreparesActualModIconBeforeLoadComplete()
+        {
+            GlyphReadProbe glyphs = null!;
+            FontStore fonts = null!;
+            ModIcon icon = null!;
+            var mod = new GlyphProbeMod();
+            AddStep("load with cold icon font", () =>
+            {
+                var resources = new NamespacedResourceStore<byte[]>(new DllResourceStore(typeof(Drawable).Assembly), "Resources.Fonts.FontAwesome5");
+                glyphs = new GlyphReadProbe(resources);
+                fonts = new FontStore(new DummyRenderer(), glyphs, minFilterMode: TextureFilteringMode.Linear);
+                var container = new DependencyProvidingContainer
+                {
+                    AutoSizeAxes = Axes.Both,
+                    CachedDependencies = new (Type, object)[] { (typeof(FontStore), fonts) },
+                    Child = icon = new ModIcon(mod),
+                };
+                LoadComponentAsync(container, loaded => Child = loaded);
+            });
+            AddUntilStep("icon ready", () => icon.IsLoaded);
+            AddWaitStep("finish initial icon update", 3);
+            AddAssert("actual icon prepared", () => glyphs.ActualIconReads > 0);
+            AddAssert("no Update pixel reads", () => glyphs.UpdateReads == 0);
+            AddStep("dispose isolated font", () =>
+            {
+                Clear();
+                fonts.Dispose();
+            });
+        }
+
+        private class GlyphReadProbe : GlyphStore
+        {
+            public int UpdateReads;
+            public int ActualIconReads;
+
+            public GlyphReadProbe(ResourceStore<byte[]> resources)
+                : base(resources, "FontAwesome-Solid")
+            {
+            }
+
+            protected override TextureUpload LoadCharacter(Character character)
+            {
+                if (ThreadSafety.IsUpdateThread)
+                    UpdateReads++;
+                if (character == Font.GetCharacter(FontAwesome.Solid.Play.Icon))
+                    ActualIconReads++;
+                return base.LoadCharacter(character);
+            }
+        }
+
+        private class GlyphProbeMod : OsuModDoubleTime
+        {
+            public override IconUsage? Icon => FontAwesome.Solid.Play;
         }
 
         [Test]

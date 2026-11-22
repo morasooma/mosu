@@ -19,6 +19,7 @@ using osu.Game.Localisation;
 using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.Chat;
+using osu.Game.Overlays;
 using osu.Game.Resources.Localisation.Web;
 using osuTK;
 
@@ -35,12 +36,12 @@ namespace osu.Game.Screens.Select
         private MetadataDisplay submitted = null!;
         private MetadataDisplay ranked = null!;
 
-        private Drawable ratingsWedge = null!;
+        private Container ratingsWedge = null!;
         private SuccessRateDisplay successRateDisplay = null!;
         private UserRatingDisplay userRatingDisplay = null!;
         private RatingSpreadDisplay ratingSpreadDisplay = null!;
 
-        private Drawable failRetryWedge = null!;
+        private Container failRetryWedge = null!;
         private FailRetryDisplay failRetryDisplay = null!;
 
         public bool RatingsVisible => ratingsWedge.Alpha > 0;
@@ -71,6 +72,11 @@ namespace osu.Game.Screens.Select
         private Sample? wedgeAppearSample;
         private Sample? wedgeHideSample;
 
+        [Resolved]
+        private OverlayColourProvider colourProvider { get; set; } = null!;
+
+        private Container metadataWedge = null!;
+        private IBindable<float>? radiusBindable;
         private FillFlowContainer outerFlow = null!;
         private Container mainInner = null!;
         private GridContainer ratingsInner = null!;
@@ -95,7 +101,7 @@ namespace osu.Game.Screens.Select
                 Shear = OsuGame.SHEAR,
                 Children = new[]
                 {
-                    new ShearAligningWrapper(new Container
+                    new ShearAligningWrapper(metadataWedge = new Container
                     {
                         CornerRadius = 10,
                         Masking = true,
@@ -260,6 +266,21 @@ namespace osu.Game.Screens.Select
 
             wedgeAppearSample = audio.Samples.Get(@"SongSelect/metadata-wedge-pop-in");
             wedgeHideSample = audio.Samples.Get(@"SongSelect/metadata-wedge-pop-out");
+
+            radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Panel, 10f);
+
+            void updateRadius()
+            {
+                float target = radiusBindable?.Value ?? 10f;
+                float maxSafe = !disableShear.Value ? 12f : 25f;
+                float radius = Math.Min(target, maxSafe);
+                metadataWedge.CornerRadius = radius;
+                ratingsWedge.CornerRadius = radius;
+                failRetryWedge.CornerRadius = radius;
+            }
+
+            disableShear.BindValueChanged(_ => updateRadius());
+            radiusBindable.BindValueChanged(_ => updateRadius(), true);
         }
 
         protected override void LoadComplete()

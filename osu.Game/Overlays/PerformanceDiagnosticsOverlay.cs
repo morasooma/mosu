@@ -51,6 +51,9 @@ namespace osu.Game.Overlays
         private OsuTextFlowContainer modeDescription = null!;
         private MosuDiagnosticsMode selectedMode = MosuDiagnosticsMode.Quick;
         private OsuColour colours = null!;
+        private BackdropBlurSurface background = null!;
+
+        protected override BackdropBlurSurface OpaqueBackground => background;
 
         // The diagnostics runner may request presentation while this overlay is still queued behind other asynchronous overlay loads.
         private readonly object presentationLock = new object();
@@ -79,7 +82,7 @@ namespace osu.Game.Overlays
 
             Children = new Drawable[]
             {
-                new BackdropBlurSurface
+                background = new BackdropBlurSurface
                 {
                     SurfaceColour = colours.GreySeaFoamDark,
                     RelativeSizeAxes = Axes.Both,

@@ -62,7 +62,7 @@ namespace osu.Game.Overlays.Notifications
             }
         }
 
-        public LocalisableString CompletionText { get; set; } = "Task has completed!";
+        public LocalisableString CompletionText { get; set; } = global::osu.Game.Localisation.ClientTranslationStrings.J3968;
 
         private float progress;
 

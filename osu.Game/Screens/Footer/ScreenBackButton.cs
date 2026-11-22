@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -10,6 +11,8 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Localisation;
+using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 using osuTK.Graphics;
 
@@ -18,6 +21,11 @@ namespace osu.Game.Screens.Footer
     public partial class ScreenBackButton : ShearedButton
     {
         public const float BUTTON_WIDTH = 240;
+
+        private static readonly Colour4 default_darker = Color4Extensions.FromHex("#DE31AE");
+        private static readonly Colour4 default_lighter = Color4Extensions.FromHex("#FF86DD");
+
+        private IBindable<int>? paletteVersionBindable;
 
         public sealed override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
         {
@@ -63,9 +71,19 @@ namespace osu.Game.Screens.Footer
                 }
             };
 
-            DarkerColour = Color4Extensions.FromHex("#DE31AE");
-            LighterColour = Color4Extensions.FromHex("#FF86DD");
+            DarkerColour = default_darker;
+            LighterColour = default_lighter;
             TextColour = Color4.White;
+
+            paletteVersionBindable = ColourProvider.PaletteVersion.GetBoundCopy();
+            paletteVersionBindable.BindValueChanged(_ => updateColours(), true);
+        }
+
+        private void updateColours()
+        {
+            DarkerColour = OverlayColourProvider.GetEffectiveContextColour(ThemeSurfaceContext.FooterBack, SurfaceColourRole.ControlIdle, default_darker);
+            LighterColour = OverlayColourProvider.GetEffectiveContextColour(ThemeSurfaceContext.FooterBack, SurfaceColourRole.ControlHover, default_lighter);
+            TextColour = OverlayColourProvider.GetEffectiveContextColour(ThemeSurfaceContext.FooterBack, SurfaceColourRole.TextPrimary, Color4.White);
         }
     }
 }

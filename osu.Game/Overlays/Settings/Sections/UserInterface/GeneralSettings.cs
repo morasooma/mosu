@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -26,6 +26,7 @@ namespace osu.Game.Overlays.Settings.Sections.UserInterface
                     Current = config.GetBindable<bool>(OsuSetting.CursorRotation)
                 })
                 {
+                    FavouriteId = "OsuSetting.CursorRotation",
                     Keywords = [@"spin"],
                 },
                 new SettingsItemV2(new FormSliderBar<float>
@@ -34,22 +35,29 @@ namespace osu.Game.Overlays.Settings.Sections.UserInterface
                     Current = config.GetBindable<float>(OsuSetting.MenuCursorSize),
                     KeyboardStep = 0.01f,
                     LabelFormat = v => $"{v:0.##}x"
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.MenuCursorSize",
+                },
                 new SettingsItemV2(new FormSliderBar<float>
                 {
                     Caption = UserInterfaceStrings.Parallax,
                     Current = config.GetBindable<float>(OsuSetting.MenuParallaxScale),
                     DisplayAsPercentage = true,
                     LabelFormat = v => v == 0 ? CommonStrings.Disabled : FormSliderBar<float>.DefaultLabelFormat(v, true),
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.MenuParallaxScale",
+                },
                 new SettingsItemV2(new FormSliderBar<double>
                 {
                     Caption = UserInterfaceStrings.HoldToConfirmActivationTime,
                     Current = config.GetBindable<double>(OsuSetting.UIHoldActivationDelay),
                     KeyboardStep = 50,
-                    LabelFormat = v => $"{v:N0} ms",
+                    LabelFormat = v => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4062(v),
                 })
                 {
+                    FavouriteId = "OsuSetting.UIHoldActivationDelay",
                     Keywords = [@"delay"],
                     ApplyClassicDefault = c => ((IHasCurrentValue<double>)c).Current.Value = 0,
                 },

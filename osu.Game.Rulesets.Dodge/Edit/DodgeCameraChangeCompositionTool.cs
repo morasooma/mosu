@@ -19,7 +19,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             : base(DodgeEditorStrings.Camera)
         {
             Action = DodgeAction.EditorCameraChangeTool;
-            TooltipText = "Place camera scroll change";
+            TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J3285;
         }
 
         public override Drawable CreateIcon() => new Circle

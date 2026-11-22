@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.IO;
 using System.Linq;
 using osu.Framework.Audio;
@@ -13,6 +14,7 @@ using osu.Game.Beatmaps.Formats;
 using osu.Game.Database;
 using osu.Game.Extensions;
 using osu.Game.Storyboards;
+using osu.Game.Utils;
 
 namespace osu.Game.Beatmaps
 {
@@ -29,9 +31,27 @@ namespace osu.Game.Beatmaps
         private readonly osu.Framework.Audio.Track.ITrackStore? trackStore;
         private readonly osu.Framework.IO.Stores.IResourceStore<byte[]>? resourceStore;
         private readonly osu.Framework.Platform.GameHost host;
+        private readonly object backgroundFileLock = new object();
+        private bool backgroundFileResolved;
+        private volatile string? resolvedBackgroundFile;
 
         // Exposed for cross-instance comparison in TryTransferTrack
         internal string? AudioFilePath => audioPath;
+        // Identity comparisons on the update thread must not discover metadata from disk.
+        internal string? CachedBackgroundFilePath
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(beatmapPath))
+                    return null;
+
+                // A stale/null cached value only skips reuse; do not wait for an in-flight parse.
+                string? filename = string.IsNullOrEmpty(Metadata.BackgroundFile) ? resolvedBackgroundFile : Metadata.BackgroundFile;
+                string? directory = Path.GetDirectoryName(beatmapPath);
+                return string.IsNullOrEmpty(filename) || string.IsNullOrEmpty(directory) ? null : Path.Combine(directory, filename);
+            }
+        }
+
         internal string? BackgroundFilePath
         {
             get
@@ -39,7 +59,7 @@ namespace osu.Game.Beatmaps
                 if (string.IsNullOrEmpty(beatmapPath))
                     return null;
 
-                string? backgroundFile = Metadata?.BackgroundFile;
+                string? backgroundFile = getBackgroundFile();
 
                 if (string.IsNullOrEmpty(backgroundFile))
                     return null;
@@ -212,21 +232,24 @@ namespace osu.Game.Beatmaps
         public override Texture? GetLegacyPreviewBackground(int resolutionPercent)
             => getBackground(legacyPreviewTextureStore, resolutionPercent, legacyPreviewTextureStoreUsesAbsolutePaths) ?? GetPanelBackground(resolutionPercent);
 
-        private Texture? getBackground(TextureStore? store, int? resolutionPercent = null, bool useAbsolutePath = false)
+        public override Texture? GetClassicPreviewBackground(int resolutionPercent)
+            => getBackground(legacyPreviewTextureStore, resolutionPercent, legacyPreviewTextureStoreUsesAbsolutePaths, classic: true) ?? GetBackground();
+
+        private Texture? getBackground(TextureStore? store, int? resolutionPercent = null, bool useAbsolutePath = false, bool classic = false)
         {
             if (store == null || string.IsNullOrEmpty(beatmapPath))
                 return null;
 
-            string? bgFile = Metadata?.BackgroundFile;
+            string? bgFile = getBackgroundFile();
             if (string.IsNullOrEmpty(bgFile))
                 return null;
 
             try
             {
                 string resourceName = useAbsolutePath ? BackgroundFilePath ?? bgFile : bgFile;
-                var texture = store.Get(resolutionPercent.HasValue
-                    ? CarouselPreviewTextureRequest.Create(resourceName, resolutionPercent.Value)
-                    : resourceName);
+                var texture = store.Get(classic
+                    ? CarouselPreviewTextureRequest.CreateClassic(resourceName, resolutionPercent ?? 100)
+                    : resolutionPercent.HasValue ? CarouselPreviewTextureRequest.Create(resourceName, resolutionPercent.Value) : resourceName);
 
                 if (texture == null)
                     osu.Framework.Logging.Logger.Log($"Stable beatmap background failed to load: {bgFile} from {BackgroundFilePath}", osu.Framework.Logging.LoggingTarget.Database);
@@ -239,6 +262,74 @@ namespace osu.Game.Beatmaps
                 return null;
             }
         }
+
+        private string? getBackgroundFile()
+        {
+            if (!string.IsNullOrEmpty(Metadata?.BackgroundFile))
+                return Metadata.BackgroundFile;
+
+            lock (backgroundFileLock)
+            {
+                if (backgroundFileResolved)
+                    return resolvedBackgroundFile;
+
+                // osu!.db has no background filename. Read only [Events], not the hit objects.
+                if (string.IsNullOrEmpty(beatmapPath) || !File.Exists(beatmapPath))
+                    return null;
+
+                try
+                {
+                    using var reader = new StreamReader(beatmapPath);
+                    bool inEvents = false;
+                    string? backgroundFile = null;
+                    string? line;
+
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        line = line.Trim();
+                        if (line.StartsWith('['))
+                        {
+                            if (inEvents)
+                                break;
+
+                            inEvents = line.Equals("[Events]", StringComparison.OrdinalIgnoreCase);
+                            continue;
+                        }
+
+                        if (!inEvents || line.Length == 0 || line.StartsWith("//", StringComparison.Ordinal))
+                            continue;
+
+                        string[] fields = line.Split(',');
+                        if (fields.Length < 3)
+                            continue;
+
+                        if (fields[0] == "0" || fields[0].Equals("Background", StringComparison.OrdinalIgnoreCase))
+                            backgroundFile = cleanBackgroundFilename(fields[2]);
+                        else if ((fields[0] == "4" || fields[0].Equals("Sprite", StringComparison.OrdinalIgnoreCase))
+                                 && fields.Length >= 4 && string.IsNullOrEmpty(backgroundFile))
+                            backgroundFile = cleanBackgroundFilename(fields[3]);
+                        else if (fields[0] == "1" || fields[0].Equals("Video", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string filename = cleanBackgroundFilename(fields[2]);
+                            if (!SupportedExtensions.VIDEO_EXTENSIONS.Contains(Path.GetExtension(filename).ToLowerInvariant()))
+                                backgroundFile = filename;
+                        }
+                    }
+
+                    // Publish only the final identity to lock-free carousel readers.
+                    resolvedBackgroundFile = backgroundFile;
+                    backgroundFileResolved = true;
+                }
+                catch (Exception e)
+                {
+                    Logger.Error(e, $"Stable beatmap background metadata failed to load: {beatmapPath}");
+                }
+
+                return resolvedBackgroundFile;
+            }
+        }
+
+        private static string cleanBackgroundFilename(string filename) => filename.Trim().Replace(@"\\", @"\").Trim('"').ToStandardisedPath();
 
         protected override Track? GetBeatmapTrack()
         {
@@ -262,6 +353,29 @@ namespace osu.Game.Beatmaps
                 Logger.Error(exception, $"Stable beatmap track failed to load: {audioPath}");
                 return null;
             }
+        }
+
+        internal override string? BackgroundContentHash => null; // Stable files are mutable; hash their actual bytes.
+
+        internal override string? BackgroundSafetyCacheKey
+        {
+            get
+            {
+                string? path = BackgroundFilePath;
+                if (path == null)
+                    return null;
+
+                // Evaluated on the drawable loader, never Update. Changes invalidate the
+                // session alias; the worker still hashes the actual bytes for persistent scores.
+                var file = new FileInfo(path);
+                return file.Exists ? $"stable:{path}:{file.Length}:{file.LastWriteTimeUtc.Ticks}" : null;
+            }
+        }
+
+        internal override Stream? OpenBackgroundStream()
+        {
+            string? path = BackgroundFilePath;
+            return path == null ? null : File.OpenRead(path);
         }
 
         public override Stream? GetStream(string storagePath)

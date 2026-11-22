@@ -66,7 +66,7 @@ namespace osu.Game.Screens.Edit.Timing
                 {
                     control = new FormDiscreteAdjustmentControl<double>(0.05)
                     {
-                        Caption = "Slider velocity",
+                        Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4336,
                         Current = Current,
                     },
                     presetsFlow = new FillFlowContainer
@@ -122,9 +122,9 @@ namespace osu.Game.Screens.Edit.Timing
             control.Current.Value = velocities.FirstOrDefault(defaultValue: control.Current.Value);
 
             control.LabelFormat = IsMultipleValues
-                ? static _ => "(multiple)"
+                ? static _ => global::osu.Game.Localisation.ClientTranslationStrings.J4335
                 : v => LocalisableString.Interpolate($@"{v:0.00}x");
-            control.TextBox.PlaceholderText = IsMultipleValues ? "(multiple)" : string.Empty;
+            control.TextBox.PlaceholderText = IsMultipleValues ? global::osu.Game.Localisation.ClientTranslationStrings.J4335 : string.Empty;
 
             foreach (var preset in presetsFlow.OfType<SliderVelocityPresetTernaryButton>())
             {

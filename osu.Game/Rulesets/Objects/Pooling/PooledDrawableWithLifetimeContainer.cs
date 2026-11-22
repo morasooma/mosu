@@ -162,7 +162,7 @@ namespace osu.Game.Rulesets.Objects.Pooling
             if (!IsPresent)
                 return false;
 
-            // Standalone public build note: LifetimeEntryManager.StatisticsSourceName is an optional Mosu framework extension.
+            lifetimeManager.StatisticsSourceName = GetType().Name;
 
             bool lifetimeChanged = lifetimeManager.Update(Time.Current - PastLifetimeExtension, Time.Current + FutureLifetimeExtension);
 

@@ -72,7 +72,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                 {
                     distanceSnapInput = new FormSliderBar<double>
                     {
-                        Caption = "Distance snap",
+                        Caption = global::osu.Game.Localisation.ClientTranslationStrings.J3311,
                         Current = new BindableNumber<double>(1)
                         {
                             MinValue = 0.1,
@@ -84,7 +84,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                     },
                     offsetAngleInput = new FormSliderBar<int>
                     {
-                        Caption = "Offset angle",
+                        Caption = global::osu.Game.Localisation.ClientTranslationStrings.J3312,
                         Current = new BindableNumber<int>
                         {
                             MinValue = 0,
@@ -95,7 +95,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                     },
                     repeatCountInput = new FormSliderBar<int>
                     {
-                        Caption = "Repeats",
+                        Caption = global::osu.Game.Localisation.ClientTranslationStrings.J3313,
                         Current = new BindableNumber<int>(1)
                         {
                             MinValue = 1,
@@ -106,7 +106,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                     },
                     pointInput = new FormSliderBar<int>
                     {
-                        Caption = "Vertices",
+                        Caption = global::osu.Game.Localisation.ClientTranslationStrings.J3314,
                         Current = new BindableNumber<int>(3)
                         {
                             MinValue = 3,
@@ -118,7 +118,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                     commitButton = new RoundedButton
                     {
                         RelativeSizeAxes = Axes.X,
-                        Text = "Create",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J3315,
                         Action = commit
                     }
                 }

@@ -30,11 +30,14 @@ namespace osu.Game.Online.API.Requests
         {
             var req = base.CreateWebRequest();
 
-            if (ruleset != null)
-                req.AddParameter("mode", ruleset.ShortName);
+            if (type != ScoreType.MostViewed)
+            {
+                if (ruleset != null)
+                    req.AddParameter("mode", ruleset.ShortName);
 
-            if (variant != null)
-                req.AddParameter("variant", variant);
+                if (variant != null)
+                    req.AddParameter("variant", variant);
+            }
 
             return req;
         }
@@ -47,6 +50,7 @@ namespace osu.Game.Online.API.Requests
         Best,
         Firsts,
         Recent,
-        Pinned
+        Pinned,
+        MostViewed
     }
 }

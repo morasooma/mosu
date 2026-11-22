@@ -22,7 +22,7 @@ namespace osu.Game.Screens.Play.HUD
 
         protected override double RollingDuration => SkinPerformanceMode.ShouldSimplifyCounters ? 0 : 250;
 
-        [SettingSource("Wireframe opacity", "Controls the opacity of the wireframes behind the digits.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5081), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5082))]
         public BindableFloat WireframeOpacity { get; } = new BindableFloat(0.25f)
         {
             Precision = 0.01f,
@@ -57,11 +57,16 @@ namespace osu.Game.Screens.Play.HUD
 
             public Bindable<bool> ShowLabel { get; } = new BindableBool();
 
+            private LocalisableString text;
+
             public LocalisableString Text
             {
-                get => wholePart.Text;
+                get => text;
                 set
                 {
+                    if (text.Equals(value))
+                        return;
+
                     string[] split = value.ToString().Replace("%", string.Empty).Split(".");
 
                     string whole = split[0];
@@ -72,6 +77,8 @@ namespace osu.Game.Screens.Play.HUD
 
                     if (!fractionPart.Text.Equals(fraction))
                         fractionPart.Text = fraction;
+
+                    text = value;
                 }
             }
 

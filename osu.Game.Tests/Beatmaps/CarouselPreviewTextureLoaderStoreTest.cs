@@ -53,6 +53,43 @@ namespace osu.Game.Tests.Beatmaps
             });
         }
 
+        [TestCase(100, false)]
+        [TestCase(50, false)]
+        [TestCase(25, false)]
+        [TestCase(100, true)]
+        [TestCase(50, true)]
+        public async Task TestClassicPreviewIsFourByThree(int resolutionPercent, bool stream)
+        {
+            using IResourceStore<TextureUpload> source = stream ? new StreamTextureStore(1280, 720) : new TestTextureStore(1280, 720);
+            using var store = new BeatmapLegacyPreviewBackgroundTextureLoaderStore(source);
+            string request = CarouselPreviewTextureRequest.CreateClassic("background.jpg", resolutionPercent);
+            using TextureUpload sync = store.Get(request);
+            using TextureUpload asyncUpload = await store.GetAsync(request);
+            Assert.Multiple(() =>
+            {
+                Assert.That(sync.Width, Is.EqualTo(512 * resolutionPercent / 100));
+                Assert.That(sync.Height, Is.EqualTo(384 * resolutionPercent / 100));
+                Assert.That(asyncUpload.Width, Is.EqualTo(sync.Width));
+                Assert.That(asyncUpload.Height, Is.EqualTo(sync.Height));
+                Assert.That(CarouselPreviewTextureRequest.ParseLegacy(request).ResourceName, Is.EqualTo("background.jpg"));
+                Assert.That(request, Is.Not.EqualTo(CarouselPreviewTextureRequest.Create("background.jpg", resolutionPercent)));
+            });
+        }
+
+        [Test]
+        public void TestClassicPreviewDoesNotLoseVerticalDetailToIntermediateCrop()
+        {
+            var source = new TestTextureStore(800, 600, markTop: true);
+            using var store = new BeatmapLegacyPreviewBackgroundTextureLoaderStore(source);
+            using TextureUpload classic = store.Get(CarouselPreviewTextureRequest.CreateClassic("background.jpg", 100));
+            using TextureUpload legacy = store.Get(CarouselPreviewTextureRequest.Create("background.jpg", 100));
+            Assert.Multiple(() =>
+            {
+                Assert.That(classic.Data[classic.Width / 2].R, Is.GreaterThan(240), "4:3 keeps the source's red top edge");
+                Assert.That(legacy.Data[legacy.Width / 2].R, Is.LessThan(10), "16:9 intentionally crops that edge away");
+            });
+        }
+
         [TestCase(false, 1024, 160)]
         [TestCase(true, 512, 288)]
         public void TestStreamDecodeProducesExpectedSize(bool legacy, int expectedWidth, int expectedHeight)
@@ -70,6 +107,24 @@ namespace osu.Game.Tests.Beatmaps
                 Assert.That(upload.Width, Is.EqualTo(expectedWidth));
                 Assert.That(upload.Height, Is.EqualTo(expectedHeight));
             });
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task TestCorruptPngIsTreatedAsMissingArtwork(bool legacy)
+        {
+            using var source = new StreamTextureStore(16, 16, corruptPng: true);
+            using IResourceStore<TextureUpload> store = legacy
+                ? new BeatmapLegacyPreviewBackgroundTextureLoaderStore(source)
+                : new BeatmapPanelBackgroundTextureLoaderStore(source);
+            string request = CarouselPreviewTextureRequest.Create("background.png", 100);
+
+            using (var png = source.GetStream("background.png"))
+                Assert.Throws<InvalidImageContentException>(() => Image.Identify(png));
+
+            Assert.That(store.Get(request), Is.Null);
+            Assert.That(await store.GetAsync(request), Is.Null);
+            Assert.That(source.UploadRequestCount, Is.Zero);
         }
 
         [TestCase(false)]
@@ -127,12 +182,24 @@ namespace osu.Game.Tests.Beatmaps
 
             public int UploadRequestCount { get; private set; }
 
-            public StreamTextureStore(int width, int height)
+            public StreamTextureStore(int width, int height, bool corruptPng = false)
             {
                 using var image = new Image<Rgba32>(width, height);
                 using var stream = new MemoryStream();
-                image.SaveAsJpeg(stream);
+
+                if (corruptPng)
+                    image.SaveAsPng(stream);
+                else
+                    image.SaveAsJpeg(stream);
+
                 encodedImage = stream.ToArray();
+                if (corruptPng)
+                {
+                    // Flip the first byte of the IDAT CRC, without changing the encoded pixels.
+                    int idat = encodedImage.AsSpan().IndexOf("IDAT"u8);
+                    int length = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(encodedImage.AsSpan(idat - 4, 4));
+                    encodedImage[idat + 4 + length] ^= 0x80;
+                }
             }
 
             public TextureUpload Get(string name)
@@ -203,22 +270,31 @@ namespace osu.Game.Tests.Beatmaps
         {
             private readonly int width;
             private readonly int height;
+            private readonly bool markTop;
 
             public string? LastRequestedName { get; private set; }
 
             public int RequestCount { get; private set; }
 
-            public TestTextureStore(int width, int height)
+            public TestTextureStore(int width, int height, bool markTop = false)
             {
                 this.width = width;
                 this.height = height;
+                this.markTop = markTop;
             }
 
             public TextureUpload Get(string name)
             {
                 LastRequestedName = name;
                 RequestCount++;
-                return new TextureUpload(new Image<Rgba32>(width, height));
+                var image = new Image<Rgba32>(width, height);
+                if (markTop)
+                {
+                    for (int y = 0; y < 40; y++)
+                        for (int x = 0; x < width; x++)
+                            image[x, y] = new Rgba32(255, 0, 0, 255);
+                }
+                return new TextureUpload(image);
             }
 
             public Task<TextureUpload> GetAsync(string name, CancellationToken cancellationToken = default)

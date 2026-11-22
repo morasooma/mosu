@@ -61,6 +61,20 @@ namespace osu.Game.Graphics.Carousel
                 });
             }
 
+            public bool PreserveInterfaceAnimations { get; set; }
+
+            protected override void UpdateAfterChildren()
+            {
+                // Includes keyboard selection, wheel scrolling and an animation already in flight.
+                if (!PreserveInterfaceAnimations && !InterfaceAnimation.AllowDecorativeMovement)
+                    ScrollTo(Target, animated: false);
+
+                base.UpdateAfterChildren();
+            }
+
+            protected override void OnUserScroll(double value, bool animated = true, double? distanceDecay = null)
+                => base.OnUserScroll(value, animated && (PreserveInterfaceAnimations || InterfaceAnimation.AllowDecorativeMovement), distanceDecay);
+
             public override void OffsetScrollPosition(double offset)
             {
                 base.OffsetScrollPosition(offset);
@@ -229,6 +243,20 @@ namespace osu.Game.Graphics.Carousel
             }
 
             private void endAbsoluteScrolling() => AbsoluteScrolling = false;
+
+            public void BeginExternalAbsoluteScroll(Vector2 position)
+            {
+                ScrollToAbsolutePosition(position);
+                AbsoluteScrolling = true;
+            }
+
+            public void MoveExternalAbsoluteScroll(Vector2 position)
+            {
+                if (AbsoluteScrolling)
+                    ScrollToAbsolutePosition(position);
+            }
+
+            public void EndExternalAbsoluteScroll() => endAbsoluteScrolling();
 
             #endregion
 

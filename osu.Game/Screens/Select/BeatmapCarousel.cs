@@ -29,8 +29,10 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Carousel;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Online.API;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets;
 using osu.Game.Scoring;
+using osu.Framework.Logging;
 using Realms;
 
 namespace osu.Game.Screens.Select
@@ -51,6 +53,12 @@ namespace osu.Game.Screens.Select
         public required Action<GroupedBeatmap> RequestSelection { private get; init; }
 
         public const float SPACING = 3f;
+
+        /// <summary>Optional screen-owned catalogue; null retains the ordinary local library.</summary>
+        public IBindableList<BeatmapSetInfo>? BeatmapSource { get; init; }
+        public Action? RequestMoreItems { get; init; }
+        public bool UsesExternalSource => BeatmapSource != null;
+
 
         /// <summary>
         /// Whether the hosting screen supports stable-style carousel panels.
@@ -78,7 +86,115 @@ namespace osu.Game.Screens.Select
 
         private readonly BindableBool carouselPerformanceMode = new BindableBool();
 
-        protected override bool UseReducedPanelMotion => carouselPerformanceMode.Value;
+        protected override bool UseReducedPanelMotion => carouselPerformanceMode.Value || (!UsesStableLayout && !InterfaceAnimation.AllowDecorativeMovement);
+
+        public override void FinishTransforms(bool propagateChildren = false, string? targetMember = null)
+        {
+            // SongSelect's animation observer also flushes descendants. Keep the stable
+            // list's in-flight row transitions intact when the global mode changes.
+            if (UsesStableLayout && InterfaceAnimation.Mode.Value != InterfaceAnimationMode.Full)
+                return;
+            base.FinishTransforms(propagateChildren, targetMember);
+        }
+
+        internal bool UsesStableLayout => (config?.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle) ?? ForkSongSelectStyle.Modern).UsesStableStyleOn(SupportsStableStyle);
+
+        [Resolved]
+        private BeatmapDifficultyCache difficultyCache { get; set; } = null!;
+
+        private double previousPreviewScrollPosition;
+        private SongSelectRatingWork? ratingWork;
+        private Task ratingDrain = Task.CompletedTask;
+        private bool ratingWorkEnabled = true;
+        private readonly BindableBool moddedRatings = new BindableBool();
+        private void stopRatings()
+        {
+            if (ratingWork == null) return;
+            ratingWork.Dispose();
+            ratingDrain = Task.WhenAll(ratingDrain, ratingWork.Completion);
+            ratingWork = null;
+        }
+        internal void SetRatingWorkEnabled(bool enabled)
+        {
+            ratingWorkEnabled = enabled;
+            if (!enabled) stopRatings();
+            else if (sourceCriteria != null) Filter(sourceCriteria);
+        }
+        private FilterCriteria? sourceCriteria;
+        private int ratingsChanged;
+        private double nextRatingRefresh;
+        private double nextRatingPromotion;
+        private double ratingsScrollQuietUntil;
+
+        private void acceptRating(BeatmapDifficultyCache.DifficultyCacheLookup lookup, StarDifficulty result)
+            => ratingWork?.Accept(lookup, result);
+
+        private bool ratingsNeedRestart;
+        private void invalidateRatings()
+        {
+            ratingsNeedRestart = true;
+            Interlocked.Exchange(ref ratingsChanged, 1);
+        }
+        private void prepareRatings(FilterCriteria criteria)
+        {
+            bool needed = criteria.Sort is osu.Game.Screens.Select.Filter.SortMode.Difficulty or osu.Game.Screens.Select.Filter.SortMode.Performance
+                          || criteria.Group == osu.Game.Screens.Select.Filter.GroupMode.Difficulty || criteria.StarDifficulty.HasFilter
+                          || criteria.UserStarDifficulty.HasFilter || criteria.PerformancePoints.HasFilter;
+            var ruleset = criteria.Ruleset;
+            if (!moddedRatings.Value || !needed || ruleset == null || UsesExternalSource || !ratingWorkEnabled)
+            {
+                stopRatings();
+                return;
+            }
+            var mods = criteria.Mods?.OrderBy(m => m.Acronym).Select(m => m.DeepClone()).ToArray() ?? Array.Empty<osu.Game.Rulesets.Mods.Mod>();
+            string key = ruleset.ShortName + "|" + (criteria.Sort == osu.Game.Screens.Select.Filter.SortMode.Performance || criteria.PerformancePoints.HasFilter)
+                         + "|" + Newtonsoft.Json.JsonConvert.SerializeObject(mods.Select(m => new { Type = m.GetType().AssemblyQualifiedName, Mod = new APIMod(m) }));
+            if (ratingWork?.Key == key && !ratingsNeedRestart) return;
+            ratingsNeedRestart = false;
+            stopRatings();
+            // Items are already detached catalogue models; never walk Realm objects on workers.
+            ratingWork = new SongSelectRatingWork(difficultyCache, ruleset, mods,
+                criteria.Sort == osu.Game.Screens.Select.Filter.SortMode.Performance || criteria.PerformancePoints.HasFilter, key,
+                () => Interlocked.Exchange(ref ratingsChanged, 1));
+            ratingWork.Start(ratingDrain);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            stopRatings();
+            if (difficultyCache != null)
+            {
+                difficultyCache.SongSelectDifficultyUpdated -= acceptRating;
+                difficultyCache.SongSelectRatingsInvalidated -= invalidateRatings;
+            }
+            base.Dispose(isDisposing);
+        }
+
+        internal void BeginExternalAbsoluteScroll(osuTK.Vector2 position) => Scroll.BeginExternalAbsoluteScroll(position);
+        internal void MoveExternalAbsoluteScroll(osuTK.Vector2 position) => Scroll.MoveExternalAbsoluteScroll(position);
+        internal void EndExternalAbsoluteScroll() => Scroll.EndExternalAbsoluteScroll();
+
+        internal float StableLayoutScale { get; private set; } = 1;
+
+        private Panel? stableHoveredPanel;
+
+        internal void SetStableLayoutScale(float scale)
+        {
+            if (Math.Abs(StableLayoutScale - scale) < 0.001f)
+                return;
+
+            StableLayoutScale = scale;
+            if (UsesStableLayout && Criteria != null)
+                Filter(Criteria, forceResetDisplay: true);
+        }
+
+        internal void SetStableHoveredPanel(Panel panel, bool hovered)
+        {
+            if (hovered)
+                stableHoveredPanel = panel;
+            else if (stableHoveredPanel == panel)
+                stableHoveredPanel = null;
+        }
 
         /// <summary>
         /// Total number of beatmap difficulties displayed with the filter.
@@ -87,6 +203,15 @@ namespace osu.Game.Screens.Select
 
         protected override float GetSpacingBetweenPanels(CarouselItem top, CarouselItem bottom)
         {
+            if (UsesStableLayout)
+            {
+                bool boundary = bottom.Model is GroupDefinition && top.Model is not GroupDefinition
+                                || top.Model is GroupedBeatmap && bottom.Model is GroupedBeatmapSet
+                                || top.Model is GroupedBeatmapSet && bottom.Model is GroupedBeatmap;
+                return StableCarouselLayout.RowStep * StableLayoutScale - (top.DrawHeight + bottom.DrawHeight) / 2
+                       + (boundary ? StableCarouselLayout.BoundaryGap * StableLayoutScale : 0);
+            }
+
             // Group panels do not overlap with any other panel but should overlap with themselves.
             if ((top.Model is GroupDefinition) ^ (bottom.Model is GroupDefinition))
                 return SPACING * 2;
@@ -133,6 +258,7 @@ namespace osu.Game.Screens.Select
                     GetLocalUserTopRanks = GetBeatmapInfoGuidToTopRankMapping,
                     GetFavouriteBeatmapSets = GetFavouriteBeatmapSets,
                     ShowAdditionalInfo = () => this.config?.Get<bool>(OsuSetting.ForkDifficultyAdditionalInfo) ?? false,
+                    GetStableLayoutScale = () => StableLayoutScale,
                     UseSkinnedLegacyCarousel = () => (this.config?.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle) ?? ForkSongSelectStyle.Modern).UsesStableStyleOn(SupportsStableStyle),
                 }
 
@@ -142,14 +268,22 @@ namespace osu.Game.Screens.Select
         }
 
         [BackgroundDependencyLoader]
-        private void load(BeatmapStore beatmapStore, AudioManager audio, OsuConfigManager config, CancellationToken? cancellationToken)
+        private void load(AudioManager audio, OsuConfigManager config, CancellationToken? cancellationToken, BeatmapStore? beatmapStore = null)
         {
             this.config = config;
+            difficultyCache.SongSelectDifficultyUpdated += acceptRating;
+            difficultyCache.SongSelectRatingsInvalidated += invalidateRatings;
             setupPools();
-            detachedBeatmaps = beatmapStore.GetBeatmapSets(cancellationToken);
+            detachedBeatmaps = BeatmapSource ?? (beatmapStore ?? throw new InvalidOperationException("Local carousel requires a BeatmapStore.")).GetBeatmapSets(cancellationToken);
             loadSamples(audio);
 
             config.BindWith(OsuSetting.RandomSelectAlgorithm, randomAlgorithm);
+            config.BindWith(OsuSetting.ForkSongSelectModdedRatings, moddedRatings);
+            moddedRatings.BindValueChanged(_ =>
+            {
+                if (sourceCriteria != null)
+                    Filter(sourceCriteria);
+            });
 
             var additionalInfo = config.GetBindable<bool>(OsuSetting.ForkDifficultyAdditionalInfo);
             additionalInfo.BindValueChanged(_ =>
@@ -383,8 +517,11 @@ namespace osu.Game.Screens.Select
 
         protected GroupedBeatmapSet? ExpandedBeatmapSet { get; private set; }
 
+        internal bool HasSetHeader(GroupedBeatmap beatmap)
+            => grouping.ItemMap.ContainsKey(new GroupedBeatmapSet(beatmap.Group, beatmap.Beatmap.BeatmapSet!));
+
         protected override bool ShouldActivateOnKeyboardSelection(CarouselItem item) =>
-            grouping.BeatmapSetsGroupedTogether && item.Model is GroupedBeatmap;
+            item.Model is GroupedBeatmap beatmap && HasSetHeader(beatmap);
 
         /// <summary>
         /// The currently selected <see cref="GroupedBeatmap"/>.
@@ -476,6 +613,7 @@ namespace osu.Game.Screens.Select
 
         protected override void HandleItemSelected(object? model)
         {
+            BackgroundCalculationLimiter.DeferForInteractiveUse(350);
             base.HandleItemSelected(model);
 
             switch (model)
@@ -500,6 +638,7 @@ namespace osu.Game.Screens.Select
                 case NotifyCollectionChangedAction.Remove:
                 case NotifyCollectionChangedAction.Move:
                 case NotifyCollectionChangedAction.Reset:
+                    invalidateRatings();
                     return true;
 
                 case NotifyCollectionChangedAction.Replace:
@@ -538,6 +677,7 @@ namespace osu.Game.Screens.Select
                             return false;
                     }
 
+                    invalidateRatings();
                     return true;
 
                 default:
@@ -659,8 +799,8 @@ namespace osu.Game.Screens.Select
                 case GroupedBeatmapSet:
                     return true;
 
-                case GroupedBeatmap:
-                    return !grouping.BeatmapSetsGroupedTogether;
+                case GroupedBeatmap beatmap:
+                    return !HasSetHeader(beatmap);
 
                 case GroupDefinition:
                     return false;
@@ -718,7 +858,7 @@ namespace osu.Game.Screens.Select
 
                             default:
                                 // Case where there are no set headers, all items should be visible.
-                                if (!grouping.BeatmapSetsGroupedTogether)
+                                if (i.Model is GroupedBeatmap beatmap && !HasSetHeader(beatmap))
                                     i.IsVisible = true;
                                 break;
                         }
@@ -779,6 +919,7 @@ namespace osu.Game.Screens.Select
 
             if (grouping.SetItems.TryGetValue(set, out var items))
             {
+                bool hasHeader = grouping.ItemMap.ContainsKey(set);
                 foreach (var i in items)
                 {
                     if (i.Model is GroupedBeatmapSet)
@@ -787,7 +928,7 @@ namespace osu.Game.Screens.Select
                         i.IsVisible = canMakeVisible && (!stableStyle || !expanded);
                     }
                     else
-                        i.IsVisible = canMakeVisible && expanded;
+                        i.IsVisible = canMakeVisible && (expanded || !hasHeader);
                 }
             }
         }
@@ -868,16 +1009,98 @@ namespace osu.Game.Screens.Select
 
         private float selectionFocusOffset;
 
+        private int measuredInitialUpdateFrames;
+
+        public override bool UpdateSubTree()
+        {
+            if (!PerformancePhaseLogger.Enabled || measuredInitialUpdateFrames >= 3)
+                return base.UpdateSubTree();
+
+            measuredInitialUpdateFrames++;
+            long start = Stopwatch.GetTimestamp();
+            try
+            {
+                return base.UpdateSubTree();
+            }
+            finally
+            {
+                Logger.Log($"MOSU_SONG_SELECT_INITIAL_TREE component=BeatmapCarousel frame={measuredInitialUpdateFrames} "
+                           + $"elapsed_ms={Stopwatch.GetElapsedTime(start).TotalMilliseconds:F2}", LoggingTarget.Performance);
+            }
+        }
+
         protected override void Update()
         {
+            if (AbsoluteScrolling || Math.Abs(Scroll.Current - previousPreviewScrollPosition) > 0.1)
+            {
+                difficultyCache.DeferPreviewCalculations(250);
+                BackgroundCalculationLimiter.DeferForInteractiveUse(350);
+                ratingsScrollQuietUntil = Time.Current + 350;
+            }
+            previousPreviewScrollPosition = Scroll.Current;
+            if (ratingWork != null && Time.Current >= nextRatingPromotion)
+            {
+                nextRatingPromotion = Time.Current + 200;
+                var visible = Scroll.Panels.Select(p => ((ICarouselPanel)p).Item?.Model).OfType<GroupedBeatmap>().Select(b => b.Beatmap);
+                ratingWork.Promote(CurrentSelection is GroupedBeatmap selected ? visible.Prepend(selected.Beatmap) : visible);
+            }
+            if (ratingWork != null && sourceCriteria != null && !IsFiltering && !Scroll.UserScrolling && !AbsoluteScrolling
+                && Time.Current >= Math.Max(nextRatingRefresh, ratingsScrollQuietUntil) && Interlocked.Exchange(ref ratingsChanged, 0) != 0)
+            {
+                nextRatingRefresh = Time.Current + 1500;
+                Filter(sourceCriteria);
+            }
+            Scroll.PreserveInterfaceAnimations = UsesStableLayout;
             base.Update();
 
-            selectionFocusOffset = (float)Interpolation.DampContinuously(selectionFocusOffset, VisuallyFocusSelected ? 300 : 0, 100, Time.Elapsed);
+            if (RequestMoreItems != null && Scroll.Current + DrawHeight + 600 >= Scroll.ScrollableExtent)
+                RequestMoreItems();
+
+            selectionFocusOffset = UseReducedPanelMotion
+                ? (VisuallyFocusSelected ? 300 : 0)
+                : (float)Interpolation.DampContinuously(selectionFocusOffset, VisuallyFocusSelected ? 300 : 0, 100, Time.Elapsed);
+        }
+
+        protected override double GetPanelYPosition(Drawable panel, double current, double target)
+        {
+            if (!UsesStableLayout)
+                return base.GetPanelYPosition(panel, current, target);
+
+            if (stableHoveredPanel?.Item is CarouselItem hovered && stableHoveredPanel.IsHovered)
+            {
+                var item = ((ICarouselPanel)panel).Item;
+                if (item != null)
+                    target += Math.Sign(item.CarouselYPosition - hovered.CarouselYPosition) * StableCarouselLayout.BoundaryGap * StableLayoutScale;
+            }
+
+            return UseReducedPanelMotion ? target : StableCarouselLayout.Approach(current, target, 0.875, Time.Elapsed);
         }
 
         protected override float GetPanelXOffset(Drawable panel)
         {
-            return base.GetPanelXOffset(panel) + (((ICarouselPanel)panel).Selected.Value ? 0 : selectionFocusOffset);
+            if (!UsesStableLayout)
+                return base.GetPanelXOffset(panel) + (((ICarouselPanel)panel).Selected.Value ? 0 : selectionFocusOffset);
+
+            var row = (ICarouselPanel)panel;
+            float centreY = (float)(row.DrawYPosition - Scroll.Current + panel.DrawHeight / 2);
+            float target = StableCarouselLayout.CurveOffset(centreY, DrawHeight) * StableLayoutScale;
+
+            // Only expanded sets protrude. A standalone difficulty in a collapsed
+            // group has no expanded set and keeps the same baseline as a set header.
+            if (row.Item?.Model is GroupDefinition
+                || row.Item?.Model is GroupedBeatmap beatmap && ExpandedBeatmapSet == new GroupedBeatmapSet(beatmap.Group, beatmap.Beatmap.BeatmapSet!))
+                target -= StableCarouselLayout.ExpandedOffset * StableLayoutScale;
+            if (panel.IsHovered)
+                target -= StableCarouselLayout.HoverOffset * StableLayoutScale;
+
+            if (panel is Panel { StableXOffsetInitialised: false } stablePanel)
+            {
+                // Pool reuse must not interpolate from the previous map's selected/hovered X.
+                stablePanel.StableXOffsetInitialised = true;
+                return target;
+            }
+
+            return UseReducedPanelMotion ? target : (float)StableCarouselLayout.Approach(panel.X, target, 0.95, Time.Elapsed);
         }
 
         #endregion
@@ -892,7 +1115,9 @@ namespace osu.Game.Screens.Select
         {
             bool resetDisplay = forceResetDisplay || grouping.BeatmapSetsGroupedTogether != BeatmapCarouselFilterGrouping.ShouldGroupBeatmapsTogether(criteria);
 
-            Criteria = criteria;
+            sourceCriteria = criteria.WithRatings(null);
+            prepareRatings(sourceCriteria);
+            Criteria = sourceCriteria.WithRatings(ratingWork?.Snapshot());
 
             loadingDebounce ??= Scheduler.AddDelayed(() =>
             {
@@ -1047,6 +1272,11 @@ namespace osu.Game.Screens.Select
 
         protected override Drawable GetDrawableForDisplay(CarouselItem item)
         {
+            // Every stable folder uses the skin's menu-button-background and map
+            // count, including ranked-status and achieved-rank groups.
+            if (UsesStableLayout && item.Model is GroupDefinition)
+                return groupPanelPool.Get();
+
             switch (item.Model)
             {
                 case RankedStatusGroupDefinition:
@@ -1143,6 +1373,13 @@ namespace osu.Game.Screens.Select
             return true;
         }
 
+        /// <summary>Only difficulties in this presented group, never the other difficulties of their sets.</summary>
+        public IReadOnlyList<BeatmapInfo> GetBeatmapsInGroup(GroupDefinition group) => IsFiltering
+            ? Array.Empty<BeatmapInfo>()
+            : GetCarouselItems()?.Select(i => i.Model).OfType<GroupedBeatmap>()
+                                .Where(b => b.Group == group).Select(b => b.Beatmap).DistinctBy(b => b.ID).ToArray()
+              ?? Array.Empty<BeatmapInfo>();
+
         private bool nextRandomBeatmap()
         {
             ICollection<GroupedBeatmap> visibleBeatmaps = ExpandedGroup != null && grouping.GroupItems.TryGetValue(ExpandedGroup, out var groupItems)
@@ -1191,13 +1428,9 @@ namespace osu.Game.Screens.Select
 
         private bool nextRandomSet()
         {
-            ICollection<GroupedBeatmapSet> visibleGroupedSets = ExpandedGroup != null && grouping.GroupItems.TryGetValue(ExpandedGroup, out var groupItems)
-                // In the case of grouping, users expect random to only operate on the expanded group.
-                // This is going to incur some overhead as we don't have a group-beatmapset mapping currently.
-                //
-                // If this becomes an issue, we could either store a mapping, or run the random algorithm many times
-                // using the `SetItems` method until we get a group HIT.
-                ? groupItems.Select(i => i.Model).OfType<GroupedBeatmapSet>().ToArray()
+            ICollection<GroupedBeatmapSet> visibleGroupedSets = ExpandedGroup != null && grouping.GroupItems.ContainsKey(ExpandedGroup)
+                // Include headerless singletons while restricting random to the expanded group.
+                ? grouping.SetItems.Keys.Where(set => set.Group == ExpandedGroup).ToArray()
                 // This is the fastest way to retrieve sets for randomisation.
                 : grouping.SetItems.Keys;
 

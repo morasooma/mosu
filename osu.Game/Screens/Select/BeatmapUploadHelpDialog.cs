@@ -17,7 +17,10 @@ namespace osu.Game.Screens.Select
 
             Buttons = new PopupDialogButton[]
             {
-                new PopupDialogOkButton(),
+                new PopupDialogOkButton
+                {
+                    Text = CommonStrings.Back,
+                },
             };
         }
     }

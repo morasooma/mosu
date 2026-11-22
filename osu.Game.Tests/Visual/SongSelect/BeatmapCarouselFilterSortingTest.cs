@@ -12,6 +12,7 @@ using osu.Game.Beatmaps;
 using osu.Game.Graphics.Carousel;
 using osu.Game.Screens.Select;
 using osu.Game.Screens.Select.Filter;
+using osu.Game.Scoring;
 using osu.Game.Tests.Resources;
 
 namespace osu.Game.Tests.Visual.SongSelect
@@ -203,6 +204,182 @@ namespace osu.Game.Tests.Visual.SongSelect
             results = await runSorting(SortMode.Artist, beatmapSets);
 
             Assert.That(results.Select(b => b.BeatmapSet!.DateAdded), Is.Ordered.Descending);
+        }
+
+        [TestCase(SortMode.BPM)]
+        [TestCase(SortMode.Length)]
+        [TestCase(SortMode.LastPlayed)]
+        public async Task TestAggregateIgnoresHiddenDifficulties(SortMode sort)
+        {
+            var low = TestResources.CreateTestBeatmapSetInfo(2);
+            var high = TestResources.CreateTestBeatmapSetInfo(2);
+            foreach (var b in low.Beatmaps)
+            {
+                b.BPM = 100;
+                b.Length = 100;
+                b.LastPlayed = DateTimeOffset.FromUnixTimeSeconds(100);
+            }
+            low.Beatmaps[1].Hidden = true;
+            low.Beatmaps[1].BPM = 999;
+            low.Beatmaps[1].Length = 999;
+            low.Beatmaps[1].LastPlayed = DateTimeOffset.FromUnixTimeSeconds(999);
+            foreach (var b in high.Beatmaps)
+            {
+                b.BPM = 200;
+                b.Length = 200;
+                b.LastPlayed = DateTimeOffset.FromUnixTimeSeconds(200);
+            }
+            var sorted = (await runSorting(sort, new List<BeatmapSetInfo> { low, high })).ToArray();
+            Assert.That(sorted[0].BeatmapSet!.ID, Is.EqualTo(sort == SortMode.LastPlayed ? high.ID : low.ID));
+        }
+
+        [TestCase(SortMode.BPM)]
+        [TestCase(SortMode.Length)]
+        [TestCase(SortMode.LastPlayed)]
+        public async Task TestAggregateSortMatchesUncachedOrder(SortMode sort)
+        {
+            var sets = Enumerable.Range(0, 36).Select(index =>
+            {
+                var set = TestResources.CreateTestBeatmapSetInfo(4);
+                set.DateAdded = DateTimeOffset.FromUnixTimeSeconds(index % 3);
+                foreach (var beatmap in set.Beatmaps)
+                    beatmap.Metadata.Title = $"title {index % 5}";
+
+                for (int difficulty = 0; difficulty < set.Beatmaps.Count; difficulty++)
+                {
+                    var beatmap = set.Beatmaps[difficulty];
+                    double value = (index + difficulty * 7) % 11;
+                    beatmap.BPM = index % 7 == 0 || difficulty == 1 ? double.NaN : value;
+                    beatmap.Length = index % 7 == 0 || difficulty == 1 ? double.NaN : value;
+                    beatmap.LastPlayed = difficulty == 1 ? null : DateTimeOffset.FromUnixTimeSeconds((long)value);
+                    beatmap.Hidden = index % 9 == 0 || difficulty == 3;
+                }
+
+                return set;
+            }).ToArray();
+            Func<BeatmapInfo, double> selector = sort switch
+            {
+                SortMode.BPM => beatmap => beatmap.BPM,
+                SortMode.Length => beatmap => beatmap.Length,
+                _ => beatmap => (beatmap.LastPlayed ?? DateTimeOffset.MinValue).ToUnixTimeSeconds()
+            };
+            double? uncachedMaximum(BeatmapSetInfo set)
+                => set.Beatmaps.Any(beatmap => !beatmap.Hidden)
+                    ? set.Beatmaps.Where(beatmap => !beatmap.Hidden).Max(selector)
+                    : null;
+
+            var expected = (sort == SortMode.LastPlayed
+                    ? sets.OrderByDescending(uncachedMaximum)
+                    : sets.OrderBy(uncachedMaximum))
+                .ThenBy(set => set.Metadata.Title, osu.Game.Utils.OrdinalSortByCaseStringComparer.DEFAULT)
+                .ThenByDescending(set => set.DateAdded)
+                .ThenByDescending(set => set.ID)
+                .Select(set => set.Beatmaps[0].ID);
+            // Only one difficulty matches the search, but the aggregate must still include
+            // the other non-hidden difficulties in its set, including NaN and null values.
+            var sorter = new BeatmapCarouselFilterSorting(() => new FilterCriteria { Sort = sort });
+            var result = await sorter.Run(sets.Select(set => new CarouselItem(set.Beatmaps[0])), CancellationToken.None);
+            Assert.That(result.Select(item => ((BeatmapInfo)item.Model).ID), Is.EqualTo(expected));
+        }
+
+        [TestCase(SortMode.BPM)]
+        [TestCase(SortMode.Length)]
+        [TestCase(SortMode.LastPlayed)]
+        public async Task TestAggregateSortRecomputesAfterHiddenDifficultiesChange(SortMode sort)
+        {
+            var low = TestResources.CreateTestBeatmapSetInfo(2);
+            var high = TestResources.CreateTestBeatmapSetInfo(2);
+            foreach (var beatmap in low.Beatmaps.Concat(high.Beatmaps))
+            {
+                beatmap.BPM = beatmap.Length = 200;
+                beatmap.LastPlayed = DateTimeOffset.FromUnixTimeSeconds(200);
+            }
+            low.Beatmaps[0].BPM = low.Beatmaps[0].Length = 100;
+            low.Beatmaps[0].LastPlayed = DateTimeOffset.FromUnixTimeSeconds(100);
+            low.Beatmaps[1].BPM = low.Beatmaps[1].Length = 500;
+            low.Beatmaps[1].LastPlayed = DateTimeOffset.FromUnixTimeSeconds(500);
+            var items = new[] { new CarouselItem(low.Beatmaps[0]), new CarouselItem(high.Beatmaps[0]) };
+            var sorter = new BeatmapCarouselFilterSorting(() => new FilterCriteria { Sort = sort });
+
+            var before = await sorter.Run(items, CancellationToken.None);
+            Assert.That(((BeatmapInfo)before[0].Model).BeatmapSet, Is.SameAs(sort == SortMode.LastPlayed ? low : high));
+
+            low.Beatmaps[1].Hidden = true;
+            var after = await sorter.Run(items, CancellationToken.None);
+            Assert.That(((BeatmapInfo)after[0].Model).BeatmapSet, Is.SameAs(sort == SortMode.LastPlayed ? high : low));
+        }
+
+        [TestCase(SortMode.BPM)]
+        [TestCase(SortMode.Length)]
+        [TestCase(SortMode.LastPlayed)]
+        [TestCase(SortMode.Title)]
+        [TestCase(SortMode.Difficulty)]
+        [TestCase(SortMode.Performance)]
+        public async Task TestFilterPipelineSkipsBeatmapWithoutSet(SortMode sort)
+        {
+            var criteria = new FilterCriteria { Sort = sort, Group = GroupMode.None };
+            var matcher = new BeatmapCarouselFilterMatching(() => criteria);
+            var sorter = new BeatmapCarouselFilterSorting(() => criteria);
+            var grouping = new BeatmapCarouselFilterGrouping
+            {
+                GetCriteria = () => criteria,
+                GetCollections = () => [],
+                GetLocalUserTopRanks = _ => new Dictionary<Guid, ScoreRank>(),
+                GetFavouriteBeatmapSets = () => [],
+            };
+            var goodItems = TestResources.CreateTestBeatmapSetInfo(2).Beatmaps.Select(beatmap => new CarouselItem(beatmap)).ToArray();
+            var orphan = new CarouselItem(new BeatmapInfo { BeatmapSet = null });
+            var input = new[] { goodItems[0], orphan, goodItems[1] };
+
+            var expected = await sorter.Run(goodItems, CancellationToken.None);
+            var matched = await matcher.Run(input, CancellationToken.None);
+            var sorted = await sorter.Run(matched, CancellationToken.None);
+            var grouped = await grouping.Run(sorted, CancellationToken.None);
+
+            Assert.That(sorted, Is.EqualTo(expected));
+            Assert.That(grouped.Select(item => item.Model).OfType<GroupedBeatmap>().Select(item => item.Beatmap),
+                Is.EqualTo(expected.Select(item => item.Model)));
+            Assert.That(matcher.BeatmapItemsCount, Is.EqualTo(goodItems.Length));
+        }
+
+        [Test]
+        public async Task TestSortingEnumeratesInputOnce()
+        {
+            int enumerations = 0;
+            var set = TestResources.CreateTestBeatmapSetInfo(3);
+            IEnumerable<CarouselItem> items()
+            {
+                enumerations++;
+                foreach (var beatmap in set.Beatmaps)
+                    yield return new CarouselItem(beatmap);
+            }
+
+            var sorter = new BeatmapCarouselFilterSorting(() => new FilterCriteria { Sort = SortMode.Title });
+            var result = await sorter.Run(items(), CancellationToken.None);
+            Assert.That(result.Count, Is.EqualTo(3));
+            Assert.That(enumerations, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void TestCancellationDuringEnumerationStopsObsoleteSort()
+        {
+            using var cancellation = new CancellationTokenSource();
+            int visited = 0;
+            var beatmap = TestResources.CreateTestBeatmapSetInfo(1).Beatmaps[0];
+            IEnumerable<CarouselItem> items()
+            {
+                for (int index = 0; index < 10000; index++)
+                {
+                    visited++;
+                    if (index == 4)
+                        cancellation.Cancel();
+                    yield return new CarouselItem(beatmap);
+                }
+            }
+
+            var sorter = new BeatmapCarouselFilterSorting(() => new FilterCriteria { Sort = SortMode.Title });
+            Assert.CatchAsync<OperationCanceledException>(async () => await sorter.Run(items(), cancellation.Token));
+            Assert.That(visited, Is.LessThanOrEqualTo(5));
         }
 
         private static async Task<IEnumerable<BeatmapInfo>> runSorting(SortMode sort, List<BeatmapSetInfo> beatmapSets)

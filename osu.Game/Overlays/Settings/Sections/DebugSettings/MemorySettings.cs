@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
@@ -19,7 +19,7 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
 {
     public partial class MemorySettings : SettingsSubsection
     {
-        protected override LocalisableString Header => @"Memory";
+        protected override LocalisableString Header => global::osu.Game.Localisation.ClientTranslationStrings.J4030;
 
         [BackgroundDependencyLoader]
         private void load(GameHost host, RealmAccess realm)
@@ -29,7 +29,7 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
 
             Add(new SettingsButtonV2
             {
-                Text = @"Clear all caches",
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4031,
                 Action = () =>
                 {
                     host.Collect();
@@ -42,8 +42,11 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
             FormEnumDropdown<GCLatencyMode> latencyModeDropdown;
             Add(new SettingsItemV2(latencyModeDropdown = new FormEnumDropdown<GCLatencyMode>
             {
-                Caption = "GC mode",
-            }));
+                Caption = global::osu.Game.Localisation.ClientTranslationStrings.J4032,
+            })
+            {
+                FavouriteId = "ui:MemorySettings:latencyModeDropdown",
+            });
 
             latencyModeDropdown.Current.BindValueChanged(mode =>
             {
@@ -52,6 +55,8 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
                 switch (mode.NewValue)
                 {
                     case GCLatencyMode.Default:
+                        // Match the desktop host's startup mode. Gameplay may temporarily override this via
+                        // HighPerformanceSessionManager and will restore it afterwards.
                         GCSettings.LatencyMode = System.Runtime.GCLatencyMode.Interactive;
                         break;
 
@@ -67,7 +72,7 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
                 {
                     new SettingsButtonV2
                     {
-                        Text = @"Compact realm",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4033,
                         Action = () =>
                         {
                             try
@@ -85,11 +90,11 @@ namespace osu.Game.Overlays.Settings.Sections.DebugSettings
                     },
                     blockAction = new SettingsButtonV2
                     {
-                        Text = @"Block realm",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4034,
                     },
                     unblockAction = new SettingsButtonV2
                     {
-                        Text = @"Unblock realm",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4035,
                     }
                 });
 

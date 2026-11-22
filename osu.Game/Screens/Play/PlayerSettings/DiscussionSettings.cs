@@ -22,14 +22,14 @@ namespace osu.Game.Screens.Play.PlayerSettings
             {
                 new PlayerCheckbox
                 {
-                    LabelText = "Show floating comments",
+                    LabelText = global::osu.Game.Localisation.ClientTranslationStrings.J5096,
                     Current = config.GetBindable<bool>(OsuSetting.FloatingComments)
                 },
                 new FocusedTextBox
                 {
                     RelativeSizeAxes = Axes.X,
                     Height = 30,
-                    PlaceholderText = "Add Comment",
+                    PlaceholderText = global::osu.Game.Localisation.ClientTranslationStrings.J5097,
                     HoldFocus = false,
                 },
             };

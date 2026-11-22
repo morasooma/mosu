@@ -42,6 +42,7 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                     TooltipFormat = v => $@"{v:0.##}x",
                 })
                 {
+                    FavouriteId = "ui:PenSettingsStrings.PenSensitivity",
                     Keywords = new[] { "speed", "velocity" },
                 }
             });

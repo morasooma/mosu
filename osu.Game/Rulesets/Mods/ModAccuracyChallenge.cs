@@ -24,7 +24,7 @@ namespace osu.Game.Rulesets.Mods
 
         public override string Acronym => "AC";
 
-        public override LocalisableString Description => "Fail if your accuracy drops too low!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4179;
 
         public override IconUsage? Icon => OsuIcon.ModAccuracyChallenge;
 
@@ -41,17 +41,17 @@ namespace osu.Game.Rulesets.Mods
             get
             {
                 if (!MinimumAccuracy.IsDefault)
-                    yield return ("Minimum accuracy", MinimumAccuracy.Value.ToLocalisableString(@"P1"));
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4180, MinimumAccuracy.Value.ToLocalisableString(@"P1"));
 
                 if (!AccuracyJudgeMode.IsDefault)
-                    yield return ("Accuracy mode", AccuracyJudgeMode.Value.ToLocalisableString());
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4181, AccuracyJudgeMode.Value.ToLocalisableString());
 
                 if (!Restart.IsDefault)
-                    yield return ("Restart on fail", "On");
+                    yield return (global::osu.Game.Localisation.ClientTranslationStrings.J4182, global::osu.Game.Localisation.ClientTranslationStrings.J4183);
             }
         }
 
-        [SettingSource("Minimum accuracy", "Trigger a failure if your accuracy goes below this value.", SettingControlType = typeof(MinimumAccuracySlider))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4180), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4184), SettingControlType = typeof(MinimumAccuracySlider))]
         public BindableNumber<double> MinimumAccuracy { get; } = new BindableDouble
         {
             MinValue = 0.60,
@@ -61,7 +61,7 @@ namespace osu.Game.Rulesets.Mods
             Value = 0.9,
         };
 
-        [SettingSource("Accuracy mode", "The mode of accuracy that will trigger failure.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4181), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4185))]
         public Bindable<AccuracyMode> AccuracyJudgeMode { get; } = new Bindable<AccuracyMode>();
 
         private readonly Bindable<double> currentAccuracy = new Bindable<double>();

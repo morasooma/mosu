@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Extensions.TypeExtensions;
@@ -71,6 +72,26 @@ namespace osu.Game.Rulesets.Scoring
             Reset(false);
             SimulateAutoplay(beatmap);
             Reset(true);
+        }
+
+        private CancellationToken simulationCancellationToken;
+
+        /// <summary>
+        /// Applies a beatmap with cancellable autoplay simulation, preserving the original virtual extension point.
+        /// </summary>
+        public void ApplyBeatmap(IBeatmap beatmap, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CancellationToken previous = simulationCancellationToken;
+            simulationCancellationToken = cancellationToken;
+            try
+            {
+                ApplyBeatmap(beatmap);
+            }
+            finally
+            {
+                simulationCancellationToken = previous;
+            }
         }
 
         /// <summary>
@@ -158,20 +179,26 @@ namespace osu.Game.Rulesets.Scoring
         protected void SimulateAutoplay(IBeatmap beatmap)
         {
             IsSimulating = true;
-
-            foreach (var obj in EnumerateHitObjects(beatmap))
+            try
             {
-                var judgement = obj.Judgement;
+                foreach (var obj in EnumerateHitObjects(beatmap))
+                {
+                    simulationCancellationToken.ThrowIfCancellationRequested();
+                    var judgement = obj.Judgement;
 
-                var result = CreateResult(obj, judgement);
-                if (result == null)
-                    throw new InvalidOperationException($"{GetType().ReadableName()} must provide a {nameof(JudgementResult)} through {nameof(CreateResult)}.");
+                    var result = CreateResult(obj, judgement);
+                    if (result == null)
+                        throw new InvalidOperationException($"{GetType().ReadableName()} must provide a {nameof(JudgementResult)} through {nameof(CreateResult)}.");
 
-                result.Type = GetSimulatedHitResult(judgement);
-                ApplyResult(result);
+                    result.Type = GetSimulatedHitResult(judgement);
+                    ApplyResult(result);
+                }
+                simulationCancellationToken.ThrowIfCancellationRequested();
             }
-
-            IsSimulating = false;
+            finally
+            {
+                IsSimulating = false;
+            }
         }
 
         /// <summary>

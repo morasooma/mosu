@@ -16,6 +16,7 @@ using osu.Framework.Input.Events;
 using osu.Game.Graphics.Containers;
 using osu.Game.Input.Bindings;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 
 namespace osu.Game.Graphics.UserInterfaceV2
@@ -28,6 +29,8 @@ namespace osu.Game.Graphics.UserInterfaceV2
         private Sample? samplePopIn;
         private Sample? samplePopOut;
         private IBindable<Colour4>? themeColour;
+        private IBindable<float>? popupRadius;
+        private IBindable<osu.Game.Configuration.InterfaceAnimationMode>? animationMode;
         private readonly BackdropBlurSurface glassBackground;
         protected virtual string PopInSampleName => "UI/overlay-pop-in";
         protected virtual string PopOutSampleName => "UI/overlay-pop-out";
@@ -68,6 +71,10 @@ namespace osu.Game.Graphics.UserInterfaceV2
             else
                 glassBackground.SurfaceColour = Arrow.Colour = colours.GreySeaFoamDarker;
 
+            animationMode = InterfaceAnimation.Observe(this);
+            popupRadius = colourProvider?.GetRadiusBindable(GeometryRole.Popup, 10f) ?? OverlayColourProvider.GetGeometryRadius(GeometryRole.Popup, 10f);
+            popupRadius.BindValueChanged(r => Body.CornerRadius = r.NewValue, true);
+
             samplePopIn = audio.Samples.Get(PopInSampleName);
             samplePopOut = audio.Samples.Get(PopOutSampleName);
         }
@@ -76,8 +83,8 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
         protected override void PopIn()
         {
-            this.ScaleTo(1, scale_duration, Easing.OutElasticHalf);
-            this.FadeIn(fade_duration, Easing.OutQuint);
+            this.ScaleTo(1, InterfaceAnimation.MovementDuration(scale_duration), Easing.OutElasticHalf);
+            this.FadeIn(InterfaceAnimation.FadeDuration(fade_duration), Easing.OutQuint);
 
             samplePopIn?.Play();
             wasOpened = true;
@@ -85,8 +92,8 @@ namespace osu.Game.Graphics.UserInterfaceV2
 
         protected override void PopOut()
         {
-            this.ScaleTo(0.7f, scale_duration, Easing.OutQuint);
-            this.FadeOut(fade_duration, Easing.OutQuint);
+            this.ScaleTo(0.7f, InterfaceAnimation.MovementDuration(scale_duration), Easing.OutQuint);
+            this.FadeOut(InterfaceAnimation.FadeDuration(fade_duration), Easing.OutQuint);
 
             if (wasOpened)
                 samplePopOut?.Play();

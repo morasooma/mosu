@@ -20,6 +20,14 @@ namespace osu.Game.Online.Metadata
     {
         public abstract IBindable<bool> IsConnected { get; }
 
+        public readonly Bindable<int> OnlineUserCount = new Bindable<int>(-1);
+
+        public virtual Task OnlineUserCountUpdated(int count)
+        {
+            Schedule(() => OnlineUserCount.Value = Math.Max(0, count));
+            return Task.CompletedTask;
+        }
+
         /// <summary>
         /// A list of all watched multiplayer rooms (see <see cref="BeginWatchingMultiplayerRoom"/>).
         /// </summary>

@@ -59,6 +59,13 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 },
                 new OsuTextFlowContainer(sprite => sprite.Font = OsuFont.GetFont(size: 11))
                 {
+                    Text = DodgeEditorStrings.EditorNavigationHint,
+                    RelativeSizeAxes = Axes.X,
+                    AutoSizeAxes = Axes.Y,
+                    Alpha = 0.65f,
+                },
+                new OsuTextFlowContainer(sprite => sprite.Font = OsuFont.GetFont(size: 11))
+                {
                     Text = DodgeEditorStrings.ToolShortcuts,
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y,
@@ -96,20 +103,32 @@ namespace osu.Game.Rulesets.Dodge.Edit
             {
                 mode = DodgeEditorStrings.ArenaMode;
                 instruction = composer.BlueprintContainer.CurrentPlacement?.PlacementActive == PlacementBlueprint.PlacementState.Active
-                    ? DodgeEditorStrings.ArenaPlacementEnd
-                    : DodgeEditorStrings.ArenaPlacementStart;
+                    ? composer.EditorSettings.ArenaWorldSpace.Value ? DodgeEditorStrings.WorldArenaPlacementEnd : DodgeEditorStrings.ArenaPlacementEnd
+                    : composer.EditorSettings.ArenaWorldSpace.Value ? DodgeEditorStrings.WorldArenaPlacementStart : DodgeEditorStrings.ArenaPlacementStart;
+            }
+            else if (composer.BlueprintContainer.CurrentTool is DodgeCameraChangeCompositionTool)
+            {
+                mode = DodgeEditorStrings.Camera;
+                instruction = DodgeEditorStrings.CameraPlacementHint;
+            }
+            else if (composer.BlueprintContainer.CurrentTool is DodgeTriggerCompositionTool)
+            {
+                mode = DodgeEditorStrings.Trigger;
+                instruction = DodgeEditorStrings.TriggerPlacementHint;
             }
             else
             {
                 int bulletCount = editorBeatmap.SelectedHitObjects.OfType<DodgeBullet>().Count();
                 int emitterCount = editorBeatmap.SelectedHitObjects.OfType<DodgeEmitter>().Count();
                 int arenaCount = editorBeatmap.SelectedHitObjects.OfType<DodgeArenaChange>().Count();
-                int total = bulletCount + emitterCount + arenaCount;
+                int total = editorBeatmap.SelectedHitObjects.Count;
 
                 mode = total > 0 ? DodgeEditorStrings.SelectionCount(total) : DodgeEditorStrings.SelectMode;
-                instruction = total > 0
-                    ? DodgeEditorStrings.SelectionHint(bulletCount, emitterCount, arenaCount)
-                    : DodgeEditorStrings.ReadyToMap;
+                instruction = editorBeatmap.SelectedHitObjects.OfType<DodgeTrigger>().Any()
+                    ? DodgeEditorStrings.TriggerSelectionHint
+                    : total > 0
+                        ? DodgeEditorStrings.SelectionHint(bulletCount, emitterCount, arenaCount)
+                        : DodgeEditorStrings.ReadyToMap;
             }
 
             if (mode != lastMode)

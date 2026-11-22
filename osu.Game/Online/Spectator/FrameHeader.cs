@@ -91,23 +91,41 @@ namespace osu.Game.Online.Spectator
         public int[]? Pauses { get; set; }
 
         /// <summary>
+        /// The live total using Morasooma's multipliers. <see cref="TotalScore"/> retains
+        /// the original multipliers for replay storage and compatibility with older clients.
+        /// </summary>
+        [Key(10)]
+        public long? MosuTotalScore { get; set; }
+
+        /// <summary>
         /// Construct header summary information from a point-in-time reference to a score which is actively being played.
         /// </summary>
         /// <param name="score">The score for reference.</param>
         /// <param name="statistics">The score processor statistics for the current point in time.</param>
         public FrameHeader(ScoreInfo score, ScoreProcessorStatistics statistics)
         {
-            TotalScore = score.TotalScore;
+            TotalScore = MosuServerEnvironment.UsesStableProtocol && score.LegacyTotalScore.HasValue
+                ? score.LegacyTotalScore.Value
+                : score.TotalScore;
+            if (!MosuServerEnvironment.IsThirdPartyServer && !MosuServerEnvironment.UsesStableProtocol)
+                MosuTotalScore = score.MosuTotalScore;
             Accuracy = score.Accuracy;
             Combo = score.Combo;
             MaxCombo = score.MaxCombo;
             // copy for safety
             Statistics = new Dictionary<HitResult, int>(score.Statistics);
-            Mods = score.APIMods.ToArray();
+            Mods = SpectatorSnapshot.Mods(score.APIMods);
             TotalScoreWithoutMods = score.TotalScoreWithoutMods;
             Pauses = score.Pauses.ToArray();
 
-            ScoreProcessorStatistics = statistics;
+            ScoreProcessorStatistics = new ScoreProcessorStatistics
+            {
+                BaseScore = statistics.BaseScore,
+                MaximumBaseScore = statistics.MaximumBaseScore,
+                AccuracyJudgementCount = statistics.AccuracyJudgementCount,
+                ComboPortion = statistics.ComboPortion,
+                BonusPortion = statistics.BonusPortion,
+            };
         }
 
         [JsonConstructor]

@@ -237,42 +237,69 @@ namespace osu.Game.Rulesets.Dodge.Edit
             settings.EmitterBulletCount.BindValueChanged(count =>
             {
                 countSlider.ContractedLabelText = DodgeEditorStrings.Count(count.NewValue);
-                applyToSelection();
+                applyToSelection(emitter => emitter.BulletCount = count.NewValue);
             }, true);
             settings.EmitterSpreadAngle.BindValueChanged(spread =>
             {
                 spreadSlider.ContractedLabelText = DodgeEditorStrings.Spread(spread.NewValue);
-                applyToSelection();
+                applyToSelection(emitter => emitter.SpreadAngle = spread.NewValue);
             }, true);
 
-            settings.EmitterContinueUntilExit.BindValueChanged(_ => applyToSelection());
-            settings.EmitterTrajectoryGuideStyle.BindValueChanged(_ => applyToSelection());
+            settings.EmitterContinueUntilExit.BindValueChanged(value => applyToSelection(emitter => emitter.ContinueUntilExit = value.NewValue));
+            settings.EmitterTrajectoryGuideStyle.BindValueChanged(value => applyToSelection(emitter => emitter.TrajectoryGuideStyle = value.NewValue));
             settings.EmitterMovementType.BindValueChanged(type =>
             {
-                waveControls.Alpha = type.NewValue == DodgeMovementType.Sine ? 1 : 0;
-                applyToSelection();
+                waveControls.Alpha = type.NewValue != DodgeMovementType.Linear ? 1 : 0;
+                waveControls.Children[0].Alpha = type.NewValue == DodgeMovementType.Sine ? 1 : 0;
+                ((ExpandableSlider<int>)waveControls.Children[1]).ExpandedLabelText = type.NewValue.IsLooping()
+                    ? DodgeEditorStrings.LoopRepetitions : DodgeEditorStrings.WaveCycles;
+                applyToSelection(emitter => emitter.MovementType = type.NewValue);
             }, true);
-            settings.EmitterMovementEasing.BindValueChanged(_ => applyToSelection());
-            settings.EmitterWaveAmplitude.BindValueChanged(_ => applyToSelection());
-            settings.EmitterWaveCycles.BindValueChanged(_ => applyToSelection());
-            settings.EmitterWavePhase.BindValueChanged(_ => applyToSelection());
-            settings.EmitterShape.BindValueChanged(_ => applyToSelection());
+            settings.EmitterMovementEasing.BindValueChanged(value => applyToSelection(emitter => emitter.MovementEasing = value.NewValue));
+            settings.EmitterWaveAmplitude.BindValueChanged(value => applyToSelection(emitter => emitter.WaveAmplitude = value.NewValue));
+            settings.EmitterWaveCycles.BindValueChanged(value => applyToSelection(emitter => emitter.WaveCycles = value.NewValue));
+            settings.EmitterWavePhase.BindValueChanged(value => applyToSelection(emitter => emitter.WavePhase = value.NewValue));
+            settings.EmitterShape.BindValueChanged(value => applyToSelection(emitter => emitter.Shape = value.NewValue));
             settings.EmitterRepeating.BindValueChanged(repeating =>
             {
                 repeatControls.Alpha = repeating.NewValue ? 1 : 0;
-                applyToSelection();
+                applyToSelection(emitter => emitter.BurstCount = repeating.NewValue
+                    ? settings.EmitterBurstCount.Value
+                    : DodgeEmitter.MIN_BURST_COUNT);
             }, true);
-            settings.EmitterMoving.BindValueChanged(_ => applyToSelection());
-            settings.EmitterBurstCount.BindValueChanged(_ => applyToSelection());
-            settings.EmitterBurstBeatDivisor.BindValueChanged(_ => applyToSelection());
-            settings.EmitterBurstRotation.BindValueChanged(_ => applyToSelection());
-            settings.EmitterColour.BindValueChanged(_ => applyToSelection());
-            settings.EmitterOutlineColour.BindValueChanged(_ => applyToSelection());
-            settings.EmitterOpacity.BindValueChanged(_ => applyToSelection());
-            settings.EmitterOutlineThickness.BindValueChanged(_ => applyToSelection());
+            settings.EmitterMoving.BindValueChanged(value => applyToSelection(emitter => setMoving(emitter, value.NewValue)));
+            settings.EmitterBurstCount.BindValueChanged(value => applyToSelection(emitter =>
+            {
+                if (emitter.EffectiveBurstCount > 1)
+                    emitter.BurstCount = value.NewValue;
+            }));
+            settings.EmitterBurstBeatDivisor.BindValueChanged(value => applyToSelection(emitter =>
+            {
+                emitter.BurstBeatDivisor = (int)value.NewValue;
+                emitter.BurstInterval = intervalAt(emitter.StartTime, emitter.BurstBeatDivisor);
+            }));
+            settings.EmitterBurstRotation.BindValueChanged(value => applyToSelection(emitter => emitter.BurstRotation = value.NewValue));
+            settings.EmitterColour.BindValueChanged(value => applyToSelection(emitter => emitter.Colour = value.NewValue));
+            settings.EmitterOutlineColour.BindValueChanged(value => applyToSelection(emitter => emitter.OutlineColour = value.NewValue));
+            settings.EmitterOpacity.BindValueChanged(value => applyToSelection(emitter => emitter.Opacity = value.NewValue));
+            settings.EmitterOutlineThickness.BindValueChanged(value => applyToSelection(emitter => emitter.OutlineThickness = value.NewValue));
 
             selectedHitObjects.BindTo(editorBeatmap.SelectedHitObjects);
-            selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection());
+            selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection(), true);
+            editorBeatmap.HitObjectUpdated += onHitObjectUpdated;
+        }
+
+        private void onHitObjectUpdated(HitObject item)
+        {
+            if (selectedHitObjects.Contains(item))
+                Scheduler.AddOnce(readFromSelection);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (editorBeatmap != null)
+                editorBeatmap.HitObjectUpdated -= onHitObjectUpdated;
+            base.Dispose(isDisposing);
         }
 
         private void readFromSelection()
@@ -305,7 +332,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             syncingSelection = false;
         }
 
-        private void applyToSelection()
+        private void applyToSelection(Action<DodgeEmitter> apply)
         {
             if (syncingSelection)
                 return;
@@ -317,46 +344,31 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
             editorBeatmap.BeginChange();
 
-            foreach (var emitter in emitters)
+            try
             {
-                bool wasMoving = emitter.MoveSource;
-                emitter.BulletCount = settings.EmitterBulletCount.Value;
-                emitter.SpreadAngle = settings.EmitterSpreadAngle.Value;
-                emitter.ContinueUntilExit = settings.EmitterContinueUntilExit.Value;
-                emitter.TrajectoryGuideStyle = settings.EmitterTrajectoryGuideStyle.Value;
-                emitter.MovementType = settings.EmitterMovementType.Value;
-                emitter.MovementEasing = settings.EmitterMovementEasing.Value;
-                emitter.WaveAmplitude = settings.EmitterWaveAmplitude.Value;
-                emitter.WaveCycles = settings.EmitterWaveCycles.Value;
-                emitter.WavePhase = settings.EmitterWavePhase.Value;
-                emitter.Shape = settings.EmitterShape.Value;
-                emitter.BurstCount = settings.EmitterRepeating.Value
-                    ? settings.EmitterBurstCount.Value
-                    : DodgeEmitter.MIN_BURST_COUNT;
-                emitter.BurstBeatDivisor = (int)settings.EmitterBurstBeatDivisor.Value;
-                emitter.BurstInterval = intervalAt(emitter.StartTime, emitter.BurstBeatDivisor);
-                emitter.BurstRotation = settings.EmitterBurstRotation.Value;
-                emitter.MoveSource = settings.EmitterRepeating.Value && settings.EmitterMoving.Value;
-                emitter.Colour = settings.EmitterColour.Value;
-                emitter.OutlineColour = settings.EmitterOutlineColour.Value;
-                emitter.Opacity = settings.EmitterOpacity.Value;
-                emitter.OutlineThickness = settings.EmitterOutlineThickness.Value;
-
-                if (!emitter.MoveSource)
+                foreach (var emitter in emitters)
                 {
-                    emitter.MovementEndPosition = emitter.Position;
+                    apply(emitter);
+                    editorBeatmap.Update(emitter);
                 }
-                else if (!wasMoving || emitter.MovementEndPosition == emitter.Position)
-                {
-                    emitter.MovementEndPosition = Vector2.ComponentMin(
-                        emitter.Position + new Vector2(96, 0),
-                        DodgePlayfield.BASE_SIZE);
-                }
-
-                editorBeatmap.Update(emitter);
             }
+            finally
+            {
+                editorBeatmap.EndChange();
+            }
+        }
 
-            editorBeatmap.EndChange();
+        private static void setMoving(DodgeEmitter emitter, bool moving)
+        {
+            bool wasMoving = emitter.MoveSource;
+            emitter.MoveSource = moving;
+
+            if (moving && (!wasMoving || emitter.MovementEndPosition == emitter.Position))
+            {
+                emitter.MovementEndPosition = Vector2.ComponentMin(
+                    emitter.Position + new Vector2(96, 0),
+                    DodgePlayfield.BASE_SIZE);
+            }
         }
 
         private DodgeEmitterBeatDivisor inferBeatDivisor(DodgeEmitter emitter)

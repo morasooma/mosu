@@ -5,6 +5,7 @@
 
 using System;
 using osu.Framework.Allocation;
+using osu.Game.Graphics;
 using osu.Framework.Audio.Track;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
@@ -100,13 +101,24 @@ namespace osu.Game.Screens.Menu
 
         protected override void OnNewBeat(int beatIndex, TimingControlPoint timingPoint, EffectControlPoint effectPoint, ChannelAmplitudes amplitudes)
         {
-            if (beatIndex < 0)
+            if (beatIndex < 0 || !InterfaceAnimation.AllowDecorativeMovement)
                 return;
 
             if (effectPoint.KiaiMode ? beatIndex % 2 == 0 : beatIndex % timingPoint.TimeSignature.Numerator == 0)
                 flash(leftBox, timingPoint.BeatLength, effectPoint.KiaiMode, amplitudes);
             if (effectPoint.KiaiMode ? beatIndex % 2 == 1 : beatIndex % timingPoint.TimeSignature.Numerator == 0)
                 flash(rightBox, timingPoint.BeatLength, effectPoint.KiaiMode, amplitudes);
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+            if (!InterfaceAnimation.AllowDecorativeMovement)
+            {
+                leftBox.ClearTransforms();
+                rightBox.ClearTransforms();
+                leftBox.Alpha = rightBox.Alpha = 0;
+            }
         }
 
         private void flash(Drawable d, double beatLength, bool kiai, ChannelAmplitudes amplitudes)

@@ -62,7 +62,7 @@ namespace osu.Game.Overlays
         private const float pixels_per_second = 50;
 
         private Drawable mainContent = null!;
-        private Drawable fillerContent = null!;
+        private Drawable? fillerContent;
         private FillFlowContainer flow = null!;
 
         private readonly Cached scrollCached = new Cached();
@@ -100,12 +100,12 @@ namespace osu.Game.Overlays
         private void updateContent()
         {
             flow.Clear();
+            fillerContent = null;
 
             if (createContent == null)
                 return;
 
             flow.Add(mainContent = createContent());
-            flow.Add(fillerContent = createContent().With(d => d.Alpha = 0));
             scrollCached.Invalidate();
         }
 
@@ -120,6 +120,9 @@ namespace osu.Game.Overlays
 
             if (overflowWidth > 0 && AllowScrolling)
             {
+                if (fillerContent == null)
+                    flow.Add(fillerContent = createContent!());
+
                 fillerContent.Alpha = 1;
                 flow.Anchor = Anchor.TopLeft;
                 flow.Origin = Anchor.TopLeft;
@@ -133,7 +136,8 @@ namespace osu.Game.Overlays
             }
             else
             {
-                fillerContent.Alpha = 0;
+                if (fillerContent != null)
+                    fillerContent.Alpha = 0;
                 flow.ClearTransforms();
                 flow.MoveToX(0, 300, Easing.OutQuint);
                 flow.Anchor = NonOverflowingContentAnchor;

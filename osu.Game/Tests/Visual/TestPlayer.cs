@@ -40,10 +40,6 @@ namespace osu.Game.Tests.Visual
 
         public new HealthProcessor HealthProcessor => base.HealthProcessor;
 
-        public bool TokenCreationRequested { get; private set; }
-
-        public Score SubmittedScore { get; private set; }
-
         public new bool PauseCooldownActive => base.PauseCooldownActive;
 
         public readonly List<JudgementResult> Results = new List<JudgementResult>();

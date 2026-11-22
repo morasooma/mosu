@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Linq;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -49,6 +50,8 @@ namespace osu.Desktop.Windows
             new FileAssociation(@".olz", WindowsAssociationManagerStrings.OsuBeatmap, Icons.Beatmap),
             new FileAssociation(@".osr", WindowsAssociationManagerStrings.OsuReplay, Icons.Beatmap),
             new FileAssociation(@".osk", WindowsAssociationManagerStrings.OsuSkin, Icons.Beatmap),
+            new FileAssociation(@".morafn", "Morasooma fonts", Icons.Beatmap),
+            new FileAssociation(@".morars", "Morasooma resources", Icons.Beatmap),
         };
 
         private static readonly UriAssociation[] uri_associations =
@@ -63,6 +66,15 @@ namespace osu.Desktop.Windows
         /// <remarks>
         /// Call <see cref="LocaliseDescriptions"/> in a timely fashion to keep descriptions up-to-date and localised.
         /// </remarks>
+        public static void InstallFontAssociation()
+        {
+            var formats = file_associations.Where(a => a.Extension is ".morafn" or ".morars").ToArray();
+            application_capability.Install();
+            foreach (var format in formats) format.Install();
+            application_capability.RegisterFileAssociations(formats);
+            NotifyShellUpdate();
+        }
+
         public static void InstallAssociations()
         {
             try
@@ -284,7 +296,14 @@ namespace osu.Desktop.Windows
                 {
                     // Clear out our existing default ProgramID. Default programs in Windows are handled internally by Explorer,
                     // so having it here is just confusing and may override user preferences.
-                    if (extensionKey.GetValue(null) is string s && s == ProgramId)
+                    if (Extension is ".morafn" or ".morars")
+                    {
+                        // Our own format has a default handler without an extra settings
+                        // button. Never modify Explorer's protected UserChoice override.
+                        if (string.IsNullOrEmpty(extensionKey.GetValue(null) as string))
+                            extensionKey.SetValue(null, ProgramId);
+                    }
+                    else if (extensionKey.GetValue(null) is string s && s == ProgramId)
                         extensionKey.SetValue(null, string.Empty);
 
                     // add to the open with dialog
@@ -313,6 +332,8 @@ namespace osu.Desktop.Windows
 
                 using (var extensionKey = classes.OpenSubKey(Extension, true))
                 {
+                    if (Extension is ".morafn" or ".morars" && extensionKey?.GetValue(null) as string == ProgramId)
+                        extensionKey!.DeleteValue(string.Empty, throwOnMissingValue: false);
                     using (var openWithKey = extensionKey?.CreateSubKey(@"OpenWithProgIds"))
                         openWithKey?.DeleteValue(ProgramId, throwOnMissingValue: false);
                 }

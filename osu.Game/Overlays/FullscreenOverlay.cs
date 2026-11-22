@@ -13,6 +13,7 @@ using osu.Framework.Graphics.Sprites;
 using osu.Framework.Localisation;
 using osu.Game.Graphics.Containers;
 using osu.Game.Online.API;
+using osu.Game.Overlays.CustomTheme;
 using osuTK.Graphics;
 
 namespace osu.Game.Overlays
@@ -37,14 +38,16 @@ namespace osu.Game.Overlays
         protected override Container<Drawable> Content => content;
 
         private readonly BackdropBlurSurface background;
+
+        protected override BackdropBlurSurface OpaqueBackground => background;
         private readonly Container content;
         private IBindable<Colour4> themeColour = null!;
 
-        protected FullscreenOverlay(OverlayColourScheme colourScheme)
+        protected FullscreenOverlay(OverlayColourScheme colourScheme, ThemeSurfaceContext? surfaceContext = null)
         {
             RecreateHeader();
 
-            ColourProvider = new OverlayColourProvider(colourScheme);
+            ColourProvider = new OverlayColourProvider(colourScheme, surfaceContext);
 
             RelativeSizeAxes = Axes.Both;
             RelativePositionAxes = Axes.Both;

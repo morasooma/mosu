@@ -59,8 +59,8 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                     Spacing = new Vector2(3),
                 };
 
-                bool matchEnded = rankedPlayScreen.ActiveSubScreen is EndedScreen;
-                addButton(matchEnded ? CommonStrings.Exit : "Give up", FontAwesome.Solid.SignOutAlt, () =>
+                bool matchEnded = rankedPlayScreen.IsSpectating || rankedPlayScreen.ActiveSubScreen is EndedScreen;
+                addButton(matchEnded ? CommonStrings.Exit : global::osu.Game.Localisation.ClientTranslationStrings.J4914, FontAwesome.Solid.SignOutAlt, () =>
                 {
                     if (matchEnded || multiplayerClient == null)
                     {
@@ -75,7 +75,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                     }));
                 });
 
-                addButton("Report opponent", FontAwesome.Solid.ExclamationTriangle, () => ReportRequested.Invoke());
+                addButton(global::osu.Game.Localisation.ClientTranslationStrings.J4915, FontAwesome.Solid.ExclamationTriangle, () => ReportRequested.Invoke());
             }
 
             protected override void LoadComplete()

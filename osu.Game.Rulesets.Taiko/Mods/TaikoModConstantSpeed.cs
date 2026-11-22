@@ -16,7 +16,7 @@ namespace osu.Game.Rulesets.Taiko.Mods
     {
         public override string Name => "Constant Speed";
         public override string Acronym => "CS";
-        public override LocalisableString Description => "No more tricky speed changes!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3626;
         public override IconUsage? Icon => OsuIcon.ModConstantSpeed;
         public override ModType Type => ModType.Conversion;
 

@@ -13,7 +13,7 @@ namespace osu.Game.Rulesets.Catch.Mods
 {
     public class CatchModNoScope : ModNoScope, IUpdatableByPlayfield
     {
-        public override LocalisableString Description => "Where's the catcher?";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3624;
 
         public override BindableInt HiddenComboCount { get; } = new BindableInt(10)
         {

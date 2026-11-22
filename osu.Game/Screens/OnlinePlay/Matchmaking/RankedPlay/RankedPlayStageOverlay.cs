@@ -142,7 +142,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                             Origin = Anchor.CentreLeft,
                             UseFullGlyphHeight = false,
                             Font = OsuFont.Torus.With(size: 32),
-                            Text = $"{PickingUser.Username}'s pick",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4925(PickingUser.Username),
                             Colour = colourScheme.Primary,
                         },
                     },

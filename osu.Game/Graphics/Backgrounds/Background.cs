@@ -48,12 +48,6 @@ namespace osu.Game.Graphics.Backgrounds
                 Sprite.Texture = textures.Get(textureName);
         }
 
-        // NOTE (R11.B, 2026-07-26): drawing the background with Blending = None while provably opaque was
-        // implemented and A/B'd here, and measured NO effect (1255.7 vs 1261.6 avg fps, same exe). On Vega/GCN
-        // the destination read of a DCC fast-cleared render target is metadata-only, so there was nothing to
-        // save. Removed per the worklog acceptance rule; see RENDERING_PERFORMANCE_WORKLOG_2026-07.md R11.B
-        // before re-attempting on different hardware.
-
         public Vector2 BlurSigma => Vector2.Divide(bufferedContainer?.BlurSigma ?? Vector2.Zero, blurScale);
 
         /// <summary>
@@ -69,9 +63,6 @@ namespace osu.Game.Graphics.Backgrounds
                 transformBlurSigma(newBlurSigma, duration, easing);
         }
 
-        // NOTE (R13.G, 2026-07-26): a high-dim FrameBufferScale=0.5 downscale hook lived here and
-        // measured NO effect (+0.4% within variance, same exe) — texture-fetch of the fullscreen blit is
-        // cache-amortised; the cost is the backbuffer write. Removed per worklog rule §8.
         private void ensureBufferedContainer()
         {
             if (bufferedContainer != null)

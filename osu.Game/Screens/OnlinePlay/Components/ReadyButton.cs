@@ -36,7 +36,7 @@ namespace osu.Game.Screens.OnlinePlay.Components
                     return string.Empty;
 
                 if (availability.Value.State != DownloadState.LocallyAvailable)
-                    return "Beatmap not downloaded";
+                    return global::osu.Game.Localisation.ClientTranslationStrings.J4367;
 
                 return string.Empty;
             }

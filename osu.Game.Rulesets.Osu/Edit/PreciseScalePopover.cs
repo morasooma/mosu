@@ -71,7 +71,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                 {
                     scaleInput = new FormSliderBar<float>
                     {
-                        Caption = "Scale",
+                        Caption = global::osu.Game.Localisation.ClientTranslationStrings.J3322,
                         Current = scaleInputBindable = new BindableNumber<float>
                         {
                             MinValue = 0.05f,
@@ -97,13 +97,13 @@ namespace osu.Game.Rulesets.Osu.Edit
                             xCheckBox = new OsuCheckbox(false)
                             {
                                 RelativeSizeAxes = Axes.X,
-                                LabelText = "X-axis",
+                                LabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3323,
                                 Current = { Value = true },
                             },
                             yCheckBox = new OsuCheckbox(false)
                             {
                                 RelativeSizeAxes = Axes.X,
-                                LabelText = "Y-axis",
+                                LabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3324,
                                 Current = { Value = true },
                             },
                         }
@@ -111,27 +111,27 @@ namespace osu.Game.Rulesets.Osu.Edit
                 }
             };
 
-            scaleOrigin.AddButton(gridCentreButton = new EditorRadioButton("Grid centre",
+            scaleOrigin.AddButton(gridCentreButton = new EditorRadioButton(global::osu.Game.Localisation.ClientTranslationStrings.J3318,
                 () => setOrigin(EditorOrigin.GridCentre),
                 () => new SpriteIcon { Icon = FontAwesome.Regular.PlusSquare }));
-            scaleOrigin.AddButton(playfieldCentreButton = new EditorRadioButton("Playfield centre",
+            scaleOrigin.AddButton(playfieldCentreButton = new EditorRadioButton(global::osu.Game.Localisation.ClientTranslationStrings.J3319,
                 () => setOrigin(EditorOrigin.PlayfieldCentre),
                 () => new SpriteIcon { Icon = FontAwesome.Regular.Square }));
-            scaleOrigin.AddButton(selectionCentreButton = new EditorRadioButton("Selection centre",
+            scaleOrigin.AddButton(selectionCentreButton = new EditorRadioButton(global::osu.Game.Localisation.ClientTranslationStrings.J3320,
                 () => setOrigin(EditorOrigin.SelectionCentre),
                 () => new SpriteIcon { Icon = FontAwesome.Solid.VectorSquare }));
 
             gridCentreButton.Selected.DisabledChanged += isDisabled =>
             {
-                gridCentreButton.TooltipText = isDisabled ? "The current selection cannot be scaled relative to grid centre." : string.Empty;
+                gridCentreButton.TooltipText = isDisabled ? global::osu.Game.Localisation.ClientTranslationStrings.J3325 : string.Empty;
             };
             playfieldCentreButton.Selected.DisabledChanged += isDisabled =>
             {
-                playfieldCentreButton.TooltipText = isDisabled ? "The current selection cannot be scaled relative to playfield centre." : string.Empty;
+                playfieldCentreButton.TooltipText = isDisabled ? global::osu.Game.Localisation.ClientTranslationStrings.J3326 : string.Empty;
             };
             selectionCentreButton.Selected.DisabledChanged += isDisabled =>
             {
-                selectionCentreButton.TooltipText = isDisabled ? "The current selection cannot be scaled relative to its centre." : string.Empty;
+                selectionCentreButton.TooltipText = isDisabled ? global::osu.Game.Localisation.ClientTranslationStrings.J3327 : string.Empty;
             };
         }
 

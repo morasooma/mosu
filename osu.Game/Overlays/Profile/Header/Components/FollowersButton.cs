@@ -27,6 +27,7 @@ namespace osu.Game.Overlays.Profile.Header.Components
         // Because it is impossible to update the number of friends after the operation,
         // the number of friends obtained is stored and modified locally.
         private int followerCount;
+        private APIRequest? pendingRequest;
 
         public override LocalisableString TooltipText
         {
@@ -51,7 +52,7 @@ namespace osu.Game.Overlays.Profile.Header.Components
 
         protected override IconUsage Icon => FontAwesome.Solid.User;
 
-        private readonly IBindableList<APIRelation> apiFriends = new BindableList<APIRelation>();
+        private readonly BindableList<APIRelation> apiFriends = new BindableList<APIRelation>();
         private readonly IBindable<APIUser> localUser = new Bindable<APIUser>();
 
         private readonly Bindable<FriendStatus> status = new Bindable<FriendStatus>();
@@ -78,7 +79,7 @@ namespace osu.Game.Overlays.Profile.Header.Components
 
             Action += () =>
             {
-                if (User.Value == null)
+                if (User.Value == null || pendingRequest != null)
                     return;
 
                 if (status.Value == FriendStatus.Self)
@@ -86,19 +87,30 @@ namespace osu.Game.Overlays.Profile.Header.Components
 
                 ShowLoadingLayer();
 
-                APIRequest req = status.Value == FriendStatus.None ? new AddFriendRequest(User.Value.User.OnlineID) : new DeleteFriendRequest(User.Value.User.OnlineID);
+                APIUser targetUser = User.Value.User;
+                int targetId = targetUser.OnlineID;
+                APIRequest req = pendingRequest = status.Value == FriendStatus.None ? new AddFriendRequest(targetId) : new DeleteFriendRequest(targetId);
 
                 req.Success += () =>
                 {
-                    if (req is AddFriendRequest addedRequest)
+                    pendingRequest = null;
+                    // Apply the acknowledged relationship before the asynchronous refresh, so
+                    // another click cannot act on the old friends list (or a different profile).
+                    foreach (var friend in apiFriends.Where(friend => friend.TargetID == targetId).ToArray())
+                        apiFriends.Remove(friend);
+
+                    if (req is AddFriendRequest { Response.UserRelation: { } relation })
                     {
-                        SetValue(++followerCount);
-                        status.Value = addedRequest.Response?.UserRelation.Mutual == true ? FriendStatus.Mutual : FriendStatus.NotMutual;
+                        // The mutation response may omit the profile. Keep the user captured when
+                        // the request started, even if another profile is now being displayed.
+                        relation.TargetUser ??= targetUser;
+                        apiFriends.Add(relation);
                     }
-                    else
+
+                    if (User.Value?.User.OnlineID == targetId)
                     {
-                        SetValue(--followerCount);
-                        status.Value = FriendStatus.None;
+                        followerCount = Math.Max(0, followerCount + (req is AddFriendRequest ? 1 : -1));
+                        updateStatus();
                     }
 
                     api.LocalUserState.UpdateFriends();
@@ -107,6 +119,8 @@ namespace osu.Game.Overlays.Profile.Header.Components
 
                 req.Failure += e =>
                 {
+                    pendingRequest = null;
+                    api.LocalUserState.UpdateFriends();
                     notifications?.Post(new SimpleNotification
                     {
                         Text = e.Message,
@@ -124,7 +138,7 @@ namespace osu.Game.Overlays.Profile.Header.Components
         {
             base.LoadComplete();
 
-            apiFriends.BindTo(api.LocalUserState.Friends);
+            ((IBindableList<APIRelation>)apiFriends).BindTo(api.LocalUserState.Friends);
             apiFriends.BindCollectionChanged((_, _) => Schedule(updateStatus));
 
             User.BindValueChanged(u =>

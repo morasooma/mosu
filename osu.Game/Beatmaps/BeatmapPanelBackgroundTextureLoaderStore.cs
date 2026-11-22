@@ -60,6 +60,11 @@ namespace osu.Game.Beatmaps
 
                 return limitTextureUploadSize(textureUpload, resolutionPercent);
             }
+            catch (ImageFormatException)
+            {
+                // Bad artwork is equivalent to no preview; the panel already has a fallback.
+                return null!;
+            }
             finally
             {
                 CarouselPreviewDecodeLimiter.Semaphore.Release();
@@ -102,6 +107,10 @@ namespace osu.Game.Beatmaps
                     textureUpload.Dispose();
                     throw;
                 }
+            }
+            catch (ImageFormatException)
+            {
+                return null!;
             }
             finally
             {

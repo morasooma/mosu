@@ -9,7 +9,7 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
     {
         Open,
 
-        [Description("Recently Ended")]
+        [Description("Recently Ended"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4801))]
         Ended,
         Participated,
         Owned,

@@ -42,6 +42,8 @@ namespace osu.Game.Beatmaps
     {
         public ITrackStore BeatmapTrackStore { get; }
 
+        public StableBeatmapHistory StableHistory { get; }
+
         private readonly BeatmapImporter beatmapImporter;
 
         private readonly WorkingBeatmapCache workingBeatmapCache;
@@ -112,6 +114,7 @@ namespace osu.Game.Beatmaps
 
             this.storage = storage;
             this.api = api;
+            StableHistory = new StableBeatmapHistory(storage);
         }
 
         protected virtual WorkingBeatmapCache CreateWorkingBeatmapCache(AudioManager audioManager, IResourceStore<byte[]> resources, IResourceStore<byte[]> storage, WorkingBeatmap? defaultBeatmap,
@@ -682,14 +685,26 @@ namespace osu.Game.Beatmaps
         {
             BeatmapInfo? realmBeatmap = Realm.Run(r =>
             {
-                IQueryable<BeatmapInfo> beatmaps = r.All<BeatmapInfo>().ForOnlineId(id);
-
-                if (!string.IsNullOrEmpty(expectedChecksum))
-                    beatmaps = beatmaps.Filter($@"{nameof(BeatmapInfo.MD5Hash)} == $0", expectedChecksum);
+                // A match's advertised checksum is authoritative for that game. Fresh imports
+                // already have their file hash, but background metadata/PP processing may not
+                // have committed OnlineMD5Hash yet. Do not gate them on ForOnlineId's extra
+                // online-metadata check when we can verify the exact requested revision.
+                IQueryable<BeatmapInfo> beatmaps = string.IsNullOrEmpty(expectedChecksum)
+                    ? r.All<BeatmapInfo>().ForOnlineId(id)
+                    : r.All<BeatmapInfo>().NotDeleted().Filter(
+                        $@"{nameof(BeatmapInfo.OnlineID)} == $0 AND {nameof(BeatmapInfo.MD5Hash)} == $1", id, expectedChecksum);
 
                 // See https://github.com/ppy/osu/issues/36234 for why this isn't a SingleOrDefault().
                 return beatmaps.FirstOrDefault()?.Detach();
             });
+
+            if (realmBeatmap == null && Online.MosuServerEnvironment.UsesStableProtocol && !string.IsNullOrEmpty(expectedChecksum))
+            {
+                // Private stable servers can assign a different online ID to the
+                // exact same .osu file. The match checksum remains authoritative.
+                realmBeatmap = Realm.Run(r => r.All<BeatmapInfo>().NotDeleted()
+                    .Filter($@"{nameof(BeatmapInfo.MD5Hash)} == $0", expectedChecksum).FirstOrDefault()?.Detach());
+            }
 
             return realmBeatmap ?? StablePathManager.GetBeatmapInfo(id, expectedChecksum);
         }
@@ -803,7 +818,7 @@ namespace osu.Game.Beatmaps
             var notification = new ProgressNotification
             {
                 Progress = 0,
-                Text = $"Preparing to delete all {HumanisedModelName} videos...",
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3203(HumanisedModelName),
                 CompletionText = MaintenanceSettingsStrings.NoVideosFoundToDelete,
                 State = ProgressNotificationState.Active,
             };
@@ -826,10 +841,10 @@ namespace osu.Game.Beatmaps
                 {
                     DeleteFile(b, video);
                     deleted++;
-                    notification.CompletionText = $"Deleted {deleted} {HumanisedModelName} video(s)!";
+                    notification.CompletionText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3204(deleted, HumanisedModelName);
                 }
 
-                notification.Text = $"Deleting videos from {HumanisedModelName}s ({deleted} deleted)";
+                notification.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3205(HumanisedModelName, deleted);
 
                 notification.Progress = (float)++i / items.Count;
             }
@@ -863,7 +878,7 @@ namespace osu.Game.Beatmaps
             var notification = new ProgressNotification
             {
                 State = ProgressNotificationState.Active,
-                Text = $"Preparing to export {idsList.Count} beatmap sets...",
+                Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3206(idsList.Count),
                 Progress = 0,
             };
 
@@ -912,12 +927,12 @@ namespace osu.Game.Beatmaps
                     }
 
                     notification.Progress = (float)exportedCount / totalCount;
-                    notification.Text = $"Exporting beatmaps: {exportedCount} of {totalCount}...";
+                    notification.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3207(exportedCount, totalCount);
                 }
 
                 if (notification.State != ProgressNotificationState.Cancelled)
                 {
-                    notification.CompletionText = $"Successfully exported {exportedCount} beatmap sets!";
+                    notification.CompletionText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3208(exportedCount);
                     notification.CompletionClickAction = () =>
                     {
                         try
@@ -1033,9 +1048,14 @@ namespace osu.Game.Beatmaps
 
                 liveBeatmapSet.Beatmaps.Single(b => b.ID == beatmapInfo.ID)
                               .UpdateLocalScores(r);
+            });
 
-                // do not look up metadata.
-                // this is a locally-modified set now, so looking up metadata is busy work at best and harmful at worst.
+            // Invalidate immediately, but queue the expensive processing only after files and metadata are committed.
+            workingBeatmapCache.Invalidate(setInfo);
+            Realm.Run(r =>
+            {
+                var liveBeatmapSet = r.Find<BeatmapSetInfo>(setInfo.ID)!;
+                // Locally modified maps must not have their metadata looked up again.
                 ProcessBeatmap?.Invoke(liveBeatmapSet, MetadataLookupScope.None);
             });
 
@@ -1048,25 +1068,40 @@ namespace osu.Game.Beatmaps
             }
         }
 
-        public void MarkPlayed(BeatmapInfo beatmapSetInfo) => Realm.Run(r =>
+        public void MarkPlayed(BeatmapInfo beatmap) => setLastPlayed(beatmap, DateTimeOffset.Now);
+
+        public void MarkNotPlayed(BeatmapInfo beatmap) => setLastPlayed(beatmap, null);
+
+        private void setLastPlayed(BeatmapInfo beatmap, DateTimeOffset? date)
         {
-            using var transaction = r.BeginWrite();
+            if (StablePathManager.IsStableBeatmap(beatmap.ID))
+            {
+                StableHistory.SetLastPlayed(beatmap.ID, date);
+                return;
+            }
 
-            var beatmap = r.Find<BeatmapInfo>(beatmapSetInfo.ID)!;
-            beatmap.LastPlayed = DateTimeOffset.Now;
+            Realm.Write(r =>
+            {
+                var stored = r.Find<BeatmapInfo>(beatmap.ID);
+                if (stored != null)
+                    stored.LastPlayed = date;
+            });
+        }
 
-            transaction.Commit();
-        });
-
-        public void MarkNotPlayed(BeatmapInfo beatmapSetInfo) => Realm.Run(r =>
+        public Task MarkPlayedAsync(BeatmapInfo beatmap)
         {
-            using var transaction = r.BeginWrite();
+            Guid id = beatmap.ID;
+            var date = DateTimeOffset.Now;
+            if (StablePathManager.IsStableBeatmap(id))
+                return Task.Run(() => StableHistory.SetLastPlayed(id, date));
 
-            var beatmap = r.Find<BeatmapInfo>(beatmapSetInfo.ID)!;
-            beatmap.LastPlayed = null;
-
-            transaction.Commit();
-        });
+            return Realm.WriteAsync(r =>
+            {
+                var stored = r.Find<BeatmapInfo>(id);
+                if (stored != null)
+                    stored.LastPlayed = date;
+            });
+        }
 
         #region Implementation of ICanAcceptFiles
 
@@ -1101,8 +1136,12 @@ namespace osu.Game.Beatmaps
             {
                 if (refetch)
                     workingBeatmapCache.Invalidate(beatmapInfo);
+                else if (workingBeatmapCache.GetExisting(beatmapInfo) is WorkingBeatmap cached)
+                    return cached;
 
-                // Detached beatmapsets don't come with files as an optimisation (see `RealmObjectExtensions.beatmap_set_mapper`).
+                // Detached beatmapsets omit files. Check the cache before refetching or
+                // cloning that graph: pooled carousel panels repeatedly request the same map.
+                // On a cache miss, retrieve files for the new working beatmap as before.
                 // If we seem to be missing files, now is a good time to re-fetch.
                 bool missingFiles = beatmapInfo.BeatmapSet?.Files.Count == 0;
 
@@ -1123,6 +1162,17 @@ namespace osu.Game.Beatmaps
         }
 
         WorkingBeatmap IWorkingBeatmapCache.GetWorkingBeatmap(BeatmapInfo? beatmapInfo) => GetWorkingBeatmap(beatmapInfo);
+
+        WorkingBeatmap IWorkingBeatmapCache.GetWorkingBeatmapForCalculation(BeatmapInfo beatmapInfo) => workingBeatmapCache.GetWorkingBeatmapForCalculation(beatmapInfo);
+
+        WorkingBeatmap IWorkingBeatmapCache.GetCarouselBackgroundBeatmap(BeatmapInfo? beatmapInfo)
+        {
+            // Stable/external/custom sources keep their existing file resolution path.
+            if (beatmapInfo == null || StablePathManager.IsStableBeatmap(beatmapInfo.ID) || beatmapInfo.IsExternalCatalogue)
+                return GetWorkingBeatmap(beatmapInfo);
+
+            return workingBeatmapCache.GetCarouselBackgroundBeatmap(beatmapInfo);
+        }
         void IWorkingBeatmapCache.Invalidate(BeatmapSetInfo beatmapSetInfo) => workingBeatmapCache.Invalidate(beatmapSetInfo);
         void IWorkingBeatmapCache.Invalidate(BeatmapInfo beatmapInfo) => workingBeatmapCache.Invalidate(beatmapInfo);
 

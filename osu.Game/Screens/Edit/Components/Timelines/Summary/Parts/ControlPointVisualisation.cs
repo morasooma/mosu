@@ -40,10 +40,10 @@ namespace osu.Game.Screens.Edit.Components.Timelines.Summary.Parts
                 switch (Point)
                 {
                     case EffectControlPoint effect:
-                        return $"{StartTime.ToEditorFormattedString()} effect [{effect.ScrollSpeed:N2}x scroll{(effect.KiaiMode ? " kiai" : "")}]";
+                        return global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4297(StartTime.ToEditorFormattedString(), effect.ScrollSpeed, (effect.KiaiMode ? " kiai" : ""));
 
                     case TimingControlPoint timing:
-                        return $"{StartTime.ToEditorFormattedString()} timing [{timing.BPM:N2} bpm {timing.TimeSignature.GetDescription()}]";
+                        return global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4298(StartTime.ToEditorFormattedString(), timing.BPM, timing.TimeSignature.GetDescription());
                 }
 
                 return string.Empty;

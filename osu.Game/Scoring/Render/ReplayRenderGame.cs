@@ -9,7 +9,9 @@ using osu.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Mixing;
+using osu.Framework.Bindables;
 using osu.Framework.Configuration;
+using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics;
 using osu.Framework.Logging;
 using osu.Framework.Platform;
@@ -21,6 +23,9 @@ using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Scoring;
 using osu.Game.Screens;
+using osu.Game.Skinning;
+using osu.Game.Graphics;
+using osu.Game.Graphics.Containers;
 
 namespace osu.Game.Scoring.Render
 {
@@ -37,11 +42,10 @@ namespace osu.Game.Scoring.Render
         private readonly Size renderSize;
         private readonly ManualClock renderSceneSourceClock = new ManualClock { IsRunning = true, Rate = 1 };
         private readonly FramedClock renderSceneClock;
+        private readonly ReplayRenderSnapshot? renderSnapshot;
         private OsuScreenStack screenStack = null!;
         private AudioMixer? renderSampleCaptureMixer;
-
-        [Resolved]
-        private FrameworkConfigManager frameworkConfig { get; set; } = null!;
+        private Bindable<bool> disableShear = null!;
 
         internal Drawable RenderCaptureTarget => screenStack;
         internal AudioMixer? RenderSampleCaptureMixer => renderSampleCaptureMixer;
@@ -50,6 +54,13 @@ namespace osu.Game.Scoring.Render
         public ReplayRenderGame(string[] args)
         {
             this.args = args;
+            string? snapshotPath = getArgument("--render-snapshot");
+            if (!string.IsNullOrWhiteSpace(snapshotPath))
+            {
+                renderSnapshot = ReplayRenderSnapshot.Read(snapshotPath);
+                MosuServerEnvironment.UsesStableProtocol = renderSnapshot.UsesStableProtocol;
+                MosuServerEnvironment.IsThirdPartyServer = renderSnapshot.IsThirdPartyServer;
+            }
             renderSize = parseResolution(args);
             renderSceneClock = new FramedClock(renderSceneSourceClock, processSource: false);
         }
@@ -65,54 +76,62 @@ namespace osu.Game.Scoring.Render
             defaults[FrameworkSetting.WindowedSize] = renderSize;
             defaults[FrameworkSetting.ConfineMouseMode] = ConfineMouseMode.Never;
             defaults[FrameworkSetting.MinimiseOnFocusLossInFullscreen] = false;
+            defaults[FrameworkSetting.FrameSync] = FrameSync.Unlimited;
 
             return defaults;
         }
 
-        /// <summary>
-        /// Prevents the framework config manager from persisting any settings to disk by flipping
-        /// its internal hasLoaded flag to false (via reflection). This makes Save() a no-op, which
-        /// prevents both the 100ms deferred QueueBackgroundSave and the Dispose()→Save() call from
-        /// writing temporary render settings to framework.ini.
-        /// </summary>
-        private void suppressFrameworkConfigSave()
-        {
-            try
-            {
-                var configType = frameworkConfig.GetType().BaseType?.BaseType;
-                if (configType == null) return;
+        internal static RendererType GetCaptureRenderer(bool isWindows, bool isLinux)
+            => isWindows ? RendererType.Direct3D11 : isLinux ? RendererType.Vulkan : RendererType.Automatic;
 
-                var hasLoadedField = configType.GetField("hasLoaded", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (hasLoadedField != null)
-                {
-                    hasLoadedField.SetValue(frameworkConfig, false);
-                    Logger.Log("[ReplayRenderGame] Suppressed framework config persistence (hasLoaded=false).",
-                        LoggingTarget.Runtime,
-                        LogLevel.Verbose);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"[ReplayRenderGame] Failed to suppress framework config save: {ex.Message}",
-                    LoggingTarget.Runtime,
-                    LogLevel.Important);
-            }
+        protected override void ConfigureFrameworkConfig(FrameworkConfigManager config)
+        {
+            base.ConfigureFrameworkConfig(config);
+
+            // Defaults do not override framework.ini, and load()/SetHost() run after renderer
+            // creation. Apply the isolated export policy here, before any window/GPU setup.
+            config.DisableSaving();
+            RendererType renderer = GetCaptureRenderer(OperatingSystem.IsWindows(), OperatingSystem.IsLinux());
+            if (renderer != RendererType.Automatic)
+                config.SetValue(FrameworkSetting.Renderer, renderer);
+            config.SetValue(FrameworkSetting.ExecutionMode, ExecutionMode.SingleThread);
+            config.SetValue(FrameworkSetting.FrameSync, FrameSync.Unlimited);
+            config.SetValue(FrameworkSetting.WindowMode, WindowMode.Windowed);
+            config.SetValue(FrameworkSetting.WindowedSize, renderSize);
+            config.SetValue(FrameworkSetting.SizeFullscreen, renderSize);
+            config.SetValue(FrameworkSetting.ConfineMouseMode, ConfineMouseMode.Never);
+            config.SetValue(FrameworkSetting.MinimiseOnFocusLossInFullscreen, false);
         }
 
         protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
         {
             var dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
             dependencies.CacheAs<IRenderGameplaySampleTriggerRecorder>(gameplaySampleTriggerRecorder);
+            if (renderSnapshot != null)
+                dependencies.Cache(renderSnapshot);
             return dependencies;
         }
+
+        protected override Container CreateScalingContainer() => new ScalingContainer(ScalingMode.Everything);
 
         public override void SetHost(GameHost host)
         {
             base.SetHost(host);
 
+            // Base SetHost creates LocalConfig before the root scaling containers load.
+            // Use current parent-process values, not potentially stale deferred config saves.
+            LocalConfig.DisableSaving();
+            renderSnapshot?.Layout?.Apply(LocalConfig);
+            disableShear = LocalConfig.GetBindable<bool>(OsuSetting.ForkDisableInterfaceShear);
+            OsuGame.DisableShear.BindTo(disableShear);
+
+            // Offline capture must not wait for the desktop compositor / DXGI frame-latency
+            // object between exported frames. This host is isolated from the interactive client.
+            host.AllowTearing.Value = true;
+
             if (host.Window != null)
             {
-                // Standalone public build note: ShowOnFirstDraw is an optional Mosu framework extension.
+                host.Window.ShowOnFirstDraw = false;
                 host.Window.CursorState |= CursorState.Hidden;
 
                 host.Window.Hide();
@@ -140,10 +159,27 @@ namespace osu.Game.Scoring.Render
             // BDLs execute in base-to-derived order, so Game.Audio is available here. Keep all
             // ReplayRenderGame dependency initialisation in this single loader; osu-framework
             // permits only one BackgroundDependencyLoader method per concrete type.
-            renderSampleCaptureMixer = Audio.CreateAudioMixer("ReplayRenderHitsoundCapture");
-            // Standalone public build note: SampleStoreMixerOverride is an optional Mosu framework extension.
+            LocalConfig.DisableSaving();
+            ApplySkinPerformanceSettings(LocalConfig);
+            if (renderSnapshot != null)
+            {
+                MosuServerEnvironment.UsesStableProtocol = renderSnapshot.UsesStableProtocol;
+                MosuServerEnvironment.IsThirdPartyServer = renderSnapshot.IsThirdPartyServer;
+                // OsuGameBase creates this store in our child dependency scope. Loader
+                // parameters resolve against the parent scope, where it is not registered.
+                var onlineAssets = Dependencies.Get<OnlineAssetCachingStore>();
+                onlineAssets.UseRenderSnapshot(renderSnapshot.Avatars);
+                foreach (string avatarUrl in renderSnapshot.Avatars.Keys)
+                    onlineAssets.Get(avatarUrl);
+                LocalConfig.SetValue(OsuSetting.GameplayLeaderboard, renderSnapshot.ShowLeaderboard);
+                LocalConfig.SetValue(OsuSetting.ScoreDisplayMode, renderSnapshot.ScoreDisplayMode);
+            }
 
-            // Save original audio settings so we can restore them in Dispose.
+            renderSampleCaptureMixer = Audio.CreateAudioMixer("ReplayRenderHitsoundCapture");
+            Audio.SampleStoreMixerOverride = renderSampleCaptureMixer;
+
+            // Preserve the user's mix levels for post-processing only. This isolated child
+            // process must never restore live playback volumes, including during teardown.
             previousMasterVolumeForLog = Audio.Volume.Value;
             previousSampleVolumeForLog = Audio.VolumeSample.Value;
             previousTrackVolume = Audio.VolumeTrack.Value;
@@ -154,36 +190,7 @@ namespace osu.Game.Scoring.Render
             // Hitsounds are captured from the sample mixer, and music is muxed by ffmpeg later.
             Audio.VolumeTrack.Value = 0;
 
-            // Suppress framework config persistence. Each SetValue() below would otherwise trigger
-            // QueueBackgroundSave() (after 100ms) and ConfigManager.Dispose()→Save() on exit, both of
-            // which write temporary render settings to framework.ini — overwriting the user's real
-            // preferences, especially dangerous if the main client crashed.
-            //
-            // We flip the internal hasLoaded flag to false via reflection so Save() becomes a no-op
-            // (it returns early when !hasLoaded). This is the cleanest way to prevent persistence
-            // without modifying the framework, and is safe because this process never needs to save
-            // framework config — it's a throwaway render worker.
-            suppressFrameworkConfigSave();
-
-            // Force SingleThread mode to ensure 100% deterministic frame synchronization
-            // between the Update and Draw loops, eliminating frame swim/tearing/jitter.
-            frameworkConfig.SetValue(FrameworkSetting.ExecutionMode, ExecutionMode.SingleThread);
-
-            // Force standard Direct3D11 renderer to ensure background rendering works even when the window is hidden.
-            frameworkConfig.SetValue(FrameworkSetting.Renderer, RendererType.Direct3D11);
-
-            // Force the hidden child renderer onto a non-fullscreen path even if the user's persisted
-            // framework.ini prefers fullscreen.
-            frameworkConfig.SetValue(FrameworkSetting.WindowMode, WindowMode.Windowed);
-            frameworkConfig.SetValue(FrameworkSetting.WindowedSize, renderSize);
-            frameworkConfig.SetValue(FrameworkSetting.SizeFullscreen, renderSize);
-            frameworkConfig.SetValue(FrameworkSetting.MinimiseOnFocusLossInFullscreen, false);
-
-            if (Host.Window != null)
-                Host.Window.WindowMode.Value = WindowMode.Windowed;
-
-            // Hitsound export requires the sample mixer to be backed by a decode-capable global mixer.
-            frameworkConfig.SetValue(FrameworkSetting.AudioUseExperimentalWasapi, true);
+            // Renderer, deterministic execution and window settings were applied before host startup.
 
             // Prefer the skin captured by the parent process when the render was started. Config
             // saves are deferred, so a new render process may otherwise observe the previous skin.
@@ -191,28 +198,33 @@ namespace osu.Game.Scoring.Render
             string configuredSkin = getArgument("--skin") ?? LocalConfig.Get<string>(OsuSetting.Skin);
             SkinManager.SetSkinFromConfiguration(configuredSkin);
 
-            Add(screenStack = new OsuScreenStack
+            Add(new ScalingContainer(ScalingMode.ExcludeOverlays)
             {
-                RelativeSizeAxes = Axes.Both,
-                Clock = renderSceneClock,
+                Anchor = Anchor.Centre,
+                Origin = Anchor.Centre,
+                Child = screenStack = new OsuScreenStack
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Clock = renderSceneClock,
+                },
             });
         }
 
-        protected override void Dispose(bool isDisposing)
+        internal static void ApplySkinPerformanceSettings(OsuConfigManager config)
         {
-            // Restore audio volumes in-memory (AudioManager is transient, no config persistence).
-            if (Audio != null)
-            {
-                Audio.Volume.Value = previousMasterVolumeForLog;
-                Audio.VolumeSample.Value = previousSampleVolumeForLog;
-                Audio.VolumeTrack.Value = previousTrackVolume;
-            }
-
-            // frameworkConfig persistence was suppressed in load() via suppressFrameworkConfigSave().
-            // The Dispose()→Save() call will be a no-op, so temporary render settings (SingleThread,
-            // D3D11, Windowed, Wasapi) will never be written to framework.ini — even if this process
-            // crashes or outlives the main client.
-            base.Dispose(isDisposing);
+            // Offline video export must retain full visuals regardless of the user's gameplay
+            // performance profile. Disable it in this child process only, without changing config,
+            // before any gameplay drawables or skin caches are loaded.
+            SkinPerformanceMode.ClearBenchmarkOverride();
+            SkinPerformanceMode.Enabled = false;
+            SkinPerformanceMode.FreezeAnimations = config.Get<bool>(OsuSetting.ForkSkinPerformanceFreezeAnimations);
+            SkinPerformanceMode.SimplifyEffects = config.Get<bool>(OsuSetting.ForkSkinPerformanceSimplifyEffects);
+            SkinPerformanceMode.OptimiseTextures = config.Get<bool>(OsuSetting.ForkSkinPerformanceOptimiseTextures);
+            SkinPerformanceMode.SimplifyHud = config.Get<bool>(OsuSetting.ForkSkinPerformanceSimplifyHud);
+            SkinPerformanceMode.SimplifyCounters = config.Get<bool>(OsuSetting.ForkSkinPerformanceSimplifyCounters);
+            SkinPerformanceMode.DisableKiaiFlashing = config.Get<bool>(OsuSetting.ForkSkinPerformanceDisableKiaiFlashing);
+            SkinPerformanceMode.BlackBackground = config.Get<bool>(OsuSetting.ForkSkinPerformanceBlackBackground);
+            SkinPerformanceMode.ArgonFollowRing = config.Get<bool>(OsuSetting.ForkArgonFollowRing);
         }
 
         protected override async void LoadComplete()
@@ -226,7 +238,7 @@ namespace osu.Game.Scoring.Render
 
             if (Audio != null)
             {
-                // Standalone public build note: SuspendLiveOutputAsync is an optional Mosu framework extension.
+                await Audio.SuspendLiveOutputAsync().ConfigureAwait(true);
 
                 if (!Audio.UsingGlobalMixer.Value)
                 {
@@ -317,7 +329,7 @@ namespace osu.Game.Scoring.Render
             System.IO.Directory.CreateDirectory(renderDir);
 
             string rawTitle = scoreInfo.BeatmapInfo?.Metadata?.Title ?? "unknown";
-            string sanitizedTitle = string.Concat(rawTitle.Select(c => System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+            string sanitizedTitle = ReplayRenderFileName.SanitizeTitle(rawTitle);
             string outputFileName = $"render_{sanitizedTitle}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.mp4";
             string outputPath = System.IO.Path.Combine(renderDir, outputFileName);
 
@@ -343,6 +355,12 @@ namespace osu.Game.Scoring.Render
                 Logger.Log("[ReplayRenderGame] Score has no replay data.", LoggingTarget.Runtime, LogLevel.Error);
                 Schedule(Exit);
                 return;
+            }
+
+            if (renderSnapshot != null)
+            {
+                score.ScoreInfo.User = renderSnapshot.Player.ToUser();
+                score.ScoreInfo.Position = renderSnapshot.PlayerPosition;
             }
 
             if (scoreInfo.BeatmapInfo != null)

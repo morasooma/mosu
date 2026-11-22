@@ -1,7 +1,10 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
+using osu.Framework.Allocation;
 using osu.Framework.Graphics.Primitives;
+using osu.Game.Screens.Edit;
 using osu.Game.Rulesets.Dodge.Objects;
 using osu.Game.Rulesets.Edit;
 using osuTK;
@@ -13,7 +16,19 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         private const float selection_padding = 6;
         private readonly DodgeTriggerPiece piece;
 
-        protected override bool AlwaysShowWhenSelected => true;
+        [Resolved]
+        private EditorClock editorClock { get; set; } = null!;
+
+        protected override bool ShouldBeAlive
+            => IsSelected || editorClock != null
+               && editorClock.CurrentTime >= HitObject.StartTime - HitObject.TimePreempt
+               && editorClock.CurrentTime <= Math.Max(HitObject.EndTime, HitObject.StartTime + 500);
+
+        protected override void OnDeselected()
+        {
+            // The runtime drawable is invisible. Keep an editor marker even
+            // without selection, rather than hiding the only visible representation.
+        }
 
         public DodgeTriggerSelectionBlueprint(DodgeTrigger hitObject)
             : base(hitObject)
@@ -27,7 +42,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             piece.UpdateFrom(HitObject);
         }
 
-        public override Vector2 ScreenSpaceSelectionPoint => ToScreenSpace(HitObject.Position);
+        public override Vector2 ScreenSpaceSelectionPoint => ToScreenSpace(DodgeSelectionTransformUtils.GetPoints(HitObject).Start);
 
         public override Quad SelectionQuad
         {
@@ -44,6 +59,6 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             }
         }
 
-        public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => piece.ReceivePositionalInputAt(screenSpacePos);
+        public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => SelectionQuad.Contains(screenSpacePos);
     }
 }

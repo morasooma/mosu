@@ -10,6 +10,7 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
+using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
@@ -191,63 +192,51 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
             Alpha = 0;
 
             sections[Section.Room] = section(
-                heading("ПАРАМЕТРЫ КОМНАТЫ", colours.Pink1, 15),
-                roomName = new LabelledEditorField("Название комнаты", "показывается в HUD", string.Empty, colours, applyRoom),
-                roomWidth = new LabelledEditorField("Ширина", "800–6000 единиц", string.Empty, colours, applyRoom),
-                roomHeight = new LabelledEditorField("Высота", "600–4000 единиц", string.Empty, colours, applyRoom),
-                button("Применить параметры комнаты", applyRoom),
-                button("Поставить точку входа под игроком", host.SetSpawnAtPlayer));
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4536, colours.Pink1, 15),
+                roomName = new LabelledEditorField(global::osu.Game.Localisation.ClientTranslationStrings.J4537, global::osu.Game.Localisation.ClientTranslationStrings.J4538, string.Empty, colours, applyRoom),
+                roomWidth = new LabelledEditorField(global::osu.Game.Localisation.ClientTranslationStrings.J4539, global::osu.Game.Localisation.ClientTranslationStrings.J4540, string.Empty, colours, applyRoom),
+                roomHeight = new LabelledEditorField(global::osu.Game.Localisation.ClientTranslationStrings.J4541, global::osu.Game.Localisation.ClientTranslationStrings.J4542, string.Empty, colours, applyRoom),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4543, applyRoom),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4544, host.SetSpawnAtPlayer));
 
             sections[Section.Object] = section(
                 Inspector,
-                button("Применить свойства объекта", Inspector.Apply),
-                button("Больше мобов в зоне", () => host.AdjustSpawnCount(1)),
-                button("Меньше мобов в зоне", () => host.AdjustSpawnCount(-1)),
-                button("Сменить вид / цвет", host.CycleSelectedStyle),
-                button("Переключить скругление", host.ToggleSelectedShape),
-                heading("КОПИИ И СЛОИ", colours.Pink1, 15),
-                heading("Копия сохраняет все свойства, включая диалог и текстуру, и переносится между комнатами."
-                        + " Слой решает, кто сверху, когда объекты стоят на одной глубине.", colours.GrayA),
-                button("Дублировать (Ctrl+D)", host.DuplicateSelected),
-                button("Копировать (Ctrl+C)", host.CopySelected),
-                button("Вставить (Ctrl+V)", host.PasteCopied),
-                button("На передний план (Ctrl+])", host.BringSelectionToFront),
-                button("На задний план (Ctrl+[)", host.SendSelectionToBack),
-                button("Удалить выбранный объект", host.DeleteSelected),
-                heading("СЮЖЕТ — КАК СОБРАТЬ СЦЕНУ", colours.Pink1, 15),
-                heading("Флаг — это счётчик у игрока. Он поднимается до указанного числа, а не прибавляется,"
-                        + " поэтому поговорить дважды — не пройти дважды.", colours.GrayA),
-                heading("1. NPC: «Ставит флаг» → mora.met, «Значение флага» → 1. Флаг ставится, когда игрок"
-                        + " дослушал ветку до конца, а не когда открыл диалог. Сама сцена — во вкладке «Диалог»:"
-                        + " одна ветка читается по порядку, а вторая ветка — это то, что персонаж скажет в"
-                        + " следующий разговор.", colours.GrayA),
-                heading("2. Награда: опыт и монеты выдаются один раз — в тот же момент, когда флаг поднялся"
-                        + " впервые. Начисляет сервер, по числам из опубликованного мира.", colours.GrayA),
-                heading("3. Что должно появиться: у двери, прохода, варпа, зоны мобов — «Виден, если флаг» →"
-                        + " mora.met, «не меньше» → 1. До разговора объекта нет вообще, после — есть, и комната"
-                        + " перестраивается сразу, без выхода из неё.", colours.GrayA),
-                heading("4. Следующий шаг — тот же флаг с большим значением: 2, 3, 4. «и меньше» убирает объект"
-                        + " снова, когда история ушла дальше — так делается то, что бывает только в одной главе.",
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4545, Inspector.Apply),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4546, () => host.AdjustSpawnCount(1)),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4547, () => host.AdjustSpawnCount(-1)),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4548, host.CycleSelectedStyle),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4549, host.ToggleSelectedShape),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4550, colours.Pink1, 15),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4551, colours.GrayA),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4552, host.DuplicateSelected),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4553, host.CopySelected),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4554, host.PasteCopied),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4555, host.BringSelectionToFront),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4556, host.SendSelectionToBack),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4557, host.DeleteSelected),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4558, colours.Pink1, 15),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4559, colours.GrayA),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4560, colours.GrayA),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4561, colours.GrayA),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4562, colours.GrayA),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4563,
                     colours.GrayA),
-                heading("Неизвестный флаг равен нулю, поэтому сюжет можно переписывать: старый прогресс не"
-                        + " ломается, а условие, которого раньше не было, просто ещё не выполнено.", colours.GrayA));
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4564, colours.GrayA));
 
             sections[Section.Dialogue] = section(Dialogue);
 
             sections[Section.Material] = section(
-                heading("МАТЕРИАЛ ОБЪЕКТА", colours.Pink1, 15),
-                heading("Текстуру берут поверхности, NPC и зоны мобов. У зоны это внешний вид её мобов."
-                        + " Stretch тянет, Fill обрезает, Fit вписывает, Tile повторяет — один пиксель"
-                        + " картинки на одну единицу мира, поэтому плитка 128×128 покрывает комнату любого размера.",
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4565, colours.Pink1, 15),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4566,
                     colours.GrayA),
-                heading("РАДИУС УГЛОВ", colours.GrayA),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4567, colours.GrayA),
                 new RoundedSliderBar<float>
                 {
                     RelativeSizeAxes = Axes.X,
                     Current = SurfaceCornerRadius,
                     AccentColour = colours.Pink1,
                 },
-                heading("ПРОЗРАЧНОСТЬ ТЕКСТУРЫ", colours.GrayA),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4568, colours.GrayA),
                 new RoundedSliderBar<float>
                 {
                     RelativeSizeAxes = Axes.X,
@@ -255,10 +244,10 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                     DisplayAsPercentage = true,
                     AccentColour = colours.Pink1,
                 },
-                fillButton = button("Заполнение текстуры: Fill", host.CycleTextureFill),
-                smoothingButton = button("Сглаживание: Linear", host.ToggleTextureSmoothing),
-                heading("БИБЛИОТЕКА ТЕКСТУР", colours.Pink1, 15),
-                textureSelection = heading("Ничего не выбрано", colours.GrayA),
+                fillButton = button(global::osu.Game.Localisation.ClientTranslationStrings.J4569, host.CycleTextureFill),
+                smoothingButton = button(global::osu.Game.Localisation.ClientTranslationStrings.J4570, host.ToggleTextureSmoothing),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4571, colours.Pink1, 15),
+                textureSelection = heading(global::osu.Game.Localisation.ClientTranslationStrings.J4572, colours.GrayA),
                 new OsuScrollContainer(Direction.Horizontal)
                 {
                     RelativeSizeAxes = Axes.X,
@@ -270,65 +259,53 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                         Spacing = new Vector2(8),
                     },
                 },
-                button("Добавить PNG/JPG в библиотеку", host.ImportTexture),
-                button("Применить к выбранному объекту", host.ApplySelectedTextureToSurface),
-                button("Использовать выбранную как меч", host.ApplySelectedTextureToWeapon),
-                heading("УРОН МЕЧА", colours.GrayA),
-                heading("Сколько снимает один удар. Здоровье моба задаётся в его зоне, так что это две"
-                        + " половины одного числа: сколько ударов он держит.", colours.GrayA),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4573, host.ImportTexture),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4574, host.ApplySelectedTextureToSurface),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4575, host.ApplySelectedTextureToWeapon),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4576, colours.GrayA),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4577, colours.GrayA),
                 new RoundedSliderBar<int>
                 {
                     RelativeSizeAxes = Axes.X,
                     Current = SwordDamage,
                     AccentColour = colours.Pink1,
                 },
-                button("Убрать текстуру с объекта", host.ClearSurfaceTexture));
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4578, host.ClearSurfaceTexture));
 
             sections[Section.World] = section(
-                heading("ОБЪЕКТЫ", colours.Pink1, 15),
-                button("Добавить панель комнаты", host.AddSurface),
-                button("Добавить зону коллизии", host.AddCollisionZone),
-                button("Добавить NPC", host.AddNpc),
-                heading("NPC — это и персонаж, и предмет: поставь «Живое существо: нет», и над ним не будет"
-                        + " имени, а подсказка станет коротким «E». Ширина, высота и заполнение текстуры —"
-                        + " во вкладке «Объект» и «Материал», а что он говорит — во вкладке «Диалог»:"
-                        + " ветка читается целиком, следующий разговор берёт следующую ветку.", colours.GrayA),
-                button("Добавить доску заданий", host.AddTerminal),
-                button("Добавить магазин", host.AddShop),
-                button("Добавить зону появления мобов", host.AddMobSpawnZone),
-                heading("ПОЛОСА ПРЕПЯТСТВИЙ", colours.Pink1, 15),
-                heading("Работают по кругу и ни на кого не реагируют. Расставляются сдвигом фазы: одинаковый цикл, разный сдвиг — получается волна.", colours.GrayA),
-                button("Добавить эмиттер", host.AddEmitter),
-                button("Добавить луч", host.AddBeam),
-                heading("СВЯЗИ МЕЖДУ КОМНАТАМИ", colours.Pink1, 15),
-                heading("Портал и проход ведут в комнату; варп — платная сеть телепортов. Проходы работают"
-                        + " парами: когда связываешь проход с комнатой, он сам находит там обратный проход и"
-                        + " берёт его в пару — игрок выйдет именно у него. Поэтому два коридора между одними и"
-                        + " теми же комнатами больше не путаются.", colours.GrayA),
-                heading("Выбери проход — снизу написано, куда он ведёт и у какого прохода выйдет игрок. В"
-                        + " комнате это видно крестом: жёлтый — точка задана вручную, синий — посчитана"
-                        + " автоматически. Внутрь стены попасть нельзя: игрока вынесет на ближайшее свободное"
-                        + " место.", colours.GrayA),
-                button("Добавить портал", host.AddPortal),
-                button("Добавить боковой проход", host.AddSidePassage),
-                button("Добавить варп", host.AddWarp),
-                button("Куда ведёт проход — выбрать на карте", host.LinkSelectedPassage),
-                button("Связать проход с предыдущей комнатой", host.LinkSelectedPassageToPreviousRoom),
-                button("Сюда приходить из… (точка выхода)", host.SetArrivalHere),
-                button("Создать комнату из выбранного прохода", host.CreateConnectedRoom),
-                button("Открыть связанную комнату", host.OpenLinkedRoom),
-                button("Вернуться в начальную комнату", host.ReturnToRootRoom),
-                button("Карта мира (M)", host.ToggleWorldMap),
-                heading("МИР", colours.Pink1, 15),
-                heading("Начальная комната — та, в которой мир начинается и в которую возвращает смерть."
-                        + " Её же карта мира считает началом отсчёта. Удалить начальную комнату нельзя:"
-                        + " сначала сделай начальной другую.", colours.GrayA),
-                button("Сделать эту комнату начальной", host.MakeThisRoomInitial),
-                button("Удалить эту комнату", host.DeleteThisRoom),
-                button("Отменить последнее действие (Ctrl+Z)", host.Undo),
-                button("Сохранить / опубликовать мир", host.PublishWorld),
-                button("Сбросить текущую комнату", host.ResetRoom),
-                button("Закрыть редактор (F2 или Esc)", host.CloseEditor));
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4579, colours.Pink1, 15),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4580, host.AddSurface),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4581, host.AddCollisionZone),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4582, host.AddNpc),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4583, colours.GrayA),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4584, host.AddTerminal),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4585, host.AddShop),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4586, host.AddMobSpawnZone),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4587, colours.Pink1, 15),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4588, colours.GrayA),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4589, host.AddEmitter),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4590, host.AddBeam),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4591, colours.Pink1, 15),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4592, colours.GrayA),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4593, colours.GrayA),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4594, host.AddPortal),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4595, host.AddSidePassage),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4596, host.AddWarp),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4597, host.LinkSelectedPassage),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4598, host.LinkSelectedPassageToPreviousRoom),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4599, host.SetArrivalHere),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4600, host.CreateConnectedRoom),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4601, host.OpenLinkedRoom),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4602, host.ReturnToRootRoom),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4603, host.ToggleWorldMap),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4604, colours.Pink1, 15),
+                heading(global::osu.Game.Localisation.ClientTranslationStrings.J4605, colours.GrayA),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4606, host.MakeThisRoomInitial),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4607, host.DeleteThisRoom),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4608, host.Undo),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4609, host.PublishWorld),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4610, host.ResetRoom),
+                button(global::osu.Game.Localisation.ClientTranslationStrings.J4611, host.CloseEditor));
 
             var tabFlow = new FillFlowContainer
             {
@@ -338,11 +315,11 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                 Spacing = new Vector2(5),
             };
 
-            addTab(tabFlow, Section.Room, "Комната");
-            addTab(tabFlow, Section.Object, "Объект");
-            addTab(tabFlow, Section.Dialogue, "Диалог");
-            addTab(tabFlow, Section.Material, "Материал");
-            addTab(tabFlow, Section.World, "Мир");
+            addTab(tabFlow, Section.Room, global::osu.Game.Localisation.ClientTranslationStrings.J4612);
+            addTab(tabFlow, Section.Object, global::osu.Game.Localisation.ClientTranslationStrings.J4613);
+            addTab(tabFlow, Section.Dialogue, global::osu.Game.Localisation.ClientTranslationStrings.J4614);
+            addTab(tabFlow, Section.Material, global::osu.Game.Localisation.ClientTranslationStrings.J4615);
+            addTab(tabFlow, Section.World, global::osu.Game.Localisation.ClientTranslationStrings.J4616);
 
             InternalChildren = new Drawable[]
             {
@@ -362,16 +339,12 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                         {
                             title = new OsuSpriteText
                             {
-                                Text = "РЕДАКТОР DODGE WORLD",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4617,
                                 Font = OsuFont.Default.With(size: 24, weight: FontWeight.Bold),
                                 Colour = colours.Pink1,
                             },
                             WrappedText.Paragraph(
-                                "F2 или Esc — закрыть • Ctrl+Z — отменить • Ctrl+S — опубликовать • перетаскивание — переместить"
-                                + " • стрелки — сдвиг на 16 (Shift — на 1) • Ctrl+D — дублировать • Ctrl+C/Ctrl+V — копировать"
-                                + " • Ctrl+] / Ctrl+[ — слой • Delete — удалить • колесо — масштаб • Space+ЛКМ — камера"
-                                + " • M — карта мира • картинку можно просто бросить в окно • Alt+стрелки и Alt+колесо —"
-                                + " громкость игры • чат тянется за заголовок и за уголок", colours.GrayA),
+                                global::osu.Game.Localisation.ClientTranslationStrings.J4618, colours.GrayA),
                             tabFlow,
                             new Box { RelativeSizeAxes = Axes.X, Height = 2, Colour = colours.Gray3 },
                             new Container
@@ -380,7 +353,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                                 AutoSizeAxes = Axes.Y,
                                 Children = sections.Values.ToArray(),
                             },
-                            status = WrappedText.Paragraph("Выбери объект на карте или раздел редактора.", colours.Gray9, 13),
+                            status = WrappedText.Paragraph(global::osu.Game.Localisation.ClientTranslationStrings.J4619, colours.Gray9, 13),
                         },
                     },
                 },
@@ -408,7 +381,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
             library.Changed -= RebuildTextureBrowser;
         }
 
-        public void SetStatus(string text) => status.Text = text;
+        public void SetStatus(LocalisableString text) => status.Text = text;
 
         private bool showingSwordDamage;
 
@@ -429,7 +402,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
             roomHeight.SetValue(EditorValue.Format(size.Y));
         }
 
-        public void SetZoomDisplay(float zoom) => title.Text = $"РЕДАКТОР DODGE WORLD  •  {zoom:P0}";
+        public void SetZoomDisplay(float zoom) => title.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4620(zoom);
 
         /// <summary>
         /// Points the inspector and the dialogue editor at a new selection.
@@ -452,8 +425,8 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
         public void SetMaterialLabels(ITexturedEntity? entity)
         {
             // A character has no fill choice, so the button reports why rather than showing a value.
-            fillButton.Text = $"Заполнение текстуры: {entity?.TextureFillModeName ?? "—"}";
-            smoothingButton.Text = $"Сглаживание: {(entity == null ? "—" : entity.TextureSmoothing ? "Linear" : "Nearest")}";
+            fillButton.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4621(entity?.TextureFillModeName ?? "—");
+            smoothingButton.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4622((entity == null ? "—" : entity.TextureSmoothing ? "Linear" : "Nearest"));
         }
 
         public void RebuildTextureBrowser()
@@ -473,12 +446,12 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
                 library.LoadPreview(card, entry);
             }
 
-            textureSelection.Text = library.Selected == null ? "Ничего не выбрано" : $"Выбрано: {library.Selected.Name}";
+            textureSelection.Text = library.Selected == null ? global::osu.Game.Localisation.ClientTranslationStrings.J4572 : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4623(library.Selected.Name);
         }
 
         private void applyRoom() => host.ApplyRoomProperties(roomName.Value, roomWidth.Value, roomHeight.Value);
 
-        private void addTab(FillFlowContainer flow, Section target, string text)
+        private void addTab(FillFlowContainer flow, Section target, LocalisableString text)
         {
             var tab = new RoundedButton
             {
@@ -510,10 +483,10 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
             Children = children,
         };
 
-        private static OsuTextFlowContainer heading(string text, ColourInfo colour, float size = 12) =>
+        private static OsuTextFlowContainer heading(LocalisableString text, ColourInfo colour, float size = 12) =>
             WrappedText.Paragraph(text, colour, size, FontWeight.Bold);
 
-        private RoundedButton button(string text, Action action) => new RoundedButton
+        private RoundedButton button(LocalisableString text, Action action) => new RoundedButton
         {
             RelativeSizeAxes = Axes.X,
             Height = 32,

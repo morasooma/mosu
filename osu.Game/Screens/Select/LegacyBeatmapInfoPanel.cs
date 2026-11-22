@@ -229,7 +229,7 @@ namespace osu.Game.Screens.Select
             var metadata = info.Metadata;
 
             titleText.Text = $"{metadata.Artist} - {metadata.Title} [{info.DifficultyName}]";
-            mapperText.Text = $"Mapped by {metadata.Author.Username}";
+            mapperText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5160(metadata.Author.Username);
 
             // star rating con los mods actuales aplicados; el bindable ademas se actualiza solo
             // con los cambios de mod/ruleset.
@@ -250,7 +250,10 @@ namespace osu.Game.Screens.Select
             countsCancellation?.Cancel();
 
             if (working.BeatmapLoaded)
+            {
                 countsText.Text = formatCounts(working);
+                refreshLengthLine();
+            }
             else
             {
                 countsText.Text = string.Empty;
@@ -264,7 +267,12 @@ namespace osu.Game.Screens.Select
                     Schedule(() =>
                     {
                         if (!cts.IsCancellationRequested)
+                        {
                             countsText.Text = text;
+                            // Stable metadata starts with cached osu!.db values. Decoding updates
+                            // the exact BPM and object total; refresh those alongside the breakdown.
+                            refreshLengthLine();
+                        }
                     });
                 }, cts.Token);
             }

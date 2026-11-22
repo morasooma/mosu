@@ -14,6 +14,7 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 using osuTK.Graphics;
 
@@ -38,6 +39,8 @@ namespace osu.Game.Screens.Edit.Components.RadioButtons
 
         private OverlayColourProvider colourProvider = null!;
         private IBindable<Colour4>? themeColour;
+        private IBindable<ThemeMode>? themeModeBindable;
+        private IBindable<CustomThemeDefinition>? customThemeBindable;
 
         private Color4 defaultBackgroundColour;
         private Color4 defaultIconColour;
@@ -78,7 +81,14 @@ namespace osu.Game.Screens.Edit.Components.RadioButtons
             }));
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-            themeColour.BindValueChanged(_ => updateColours(), true);
+            themeColour.BindValueChanged(_ => updateColours());
+            colourProvider.PaletteVersion.BindValueChanged(_ => updateColours());
+
+            themeModeBindable = OverlayColourProvider.CurrentTheme.GetBoundCopy();
+            themeModeBindable.BindValueChanged(_ => updateColours());
+
+            customThemeBindable = OverlayColourProvider.CustomTheme.GetBoundCopy();
+            customThemeBindable.BindValueChanged(_ => updateColours(), true);
 
             if (Hotkey != null)
             {
@@ -97,6 +107,17 @@ namespace osu.Game.Screens.Edit.Components.RadioButtons
         }
 
         private void updateColours()
+        {
+            if (IsLoaded)
+            {
+                Scheduler.AddOnce(applyColours);
+                return;
+            }
+
+            applyColours();
+        }
+
+        private void applyColours()
         {
             defaultBackgroundColour = colourProvider.Background3;
             selectedBackgroundColour = colourProvider.Background1;

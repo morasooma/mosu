@@ -9,6 +9,7 @@ using osu.Framework.Graphics.Cursor;
 using osu.Game.Graphics.Cursor;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Online;
+using osu.Game.Overlays.CustomTheme;
 
 namespace osu.Game.Overlays
 {
@@ -24,8 +25,8 @@ namespace osu.Game.Overlays
         private readonly Container loadingContainer;
         private readonly Container content;
 
-        protected OnlineOverlay(OverlayColourScheme colourScheme, bool requiresSignIn = true)
-            : base(colourScheme)
+        protected OnlineOverlay(OverlayColourScheme colourScheme, bool requiresSignIn = true, ThemeSurfaceContext? surfaceContext = null)
+            : base(colourScheme, surfaceContext)
         {
             var mainContent = requiresSignIn
                 ? new OnlineViewContainer($"Sign in to view the {Header.Title.Title}")
@@ -73,6 +74,11 @@ namespace osu.Game.Overlays
             });
 
             base.Content.Add(mainContent);
+        }
+
+        protected OnlineOverlay(OverlayColourScheme colourScheme, ThemeSurfaceContext surfaceContext)
+            : this(colourScheme, true, surfaceContext)
+        {
         }
 
         protected override void LoadComplete()

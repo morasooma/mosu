@@ -158,7 +158,7 @@ namespace osu.Game.Screens.Edit.Timing
                                         Anchor = Anchor.Centre,
                                         Origin = Anchor.BottomCentre,
                                         Y = 5,
-                                        Text = "Tap",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4337,
                                     },
                                     bpmText = new OsuSpriteText
                                     {
@@ -314,7 +314,7 @@ namespace osu.Game.Screens.Edit.Timing
 
             double bpm = Math.Round(60000 / averageBeatLength / clockRate);
 
-            bpmText.Text = $"{bpm} BPM";
+            bpmText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4338(bpm);
 
             var timingPoint = selectedGroup?.Value.ControlPoints.OfType<TimingControlPoint>().FirstOrDefault();
 
@@ -328,7 +328,7 @@ namespace osu.Game.Screens.Edit.Timing
 
             using (BeginDelayedSequence(tapTimings.Count > 0 ? transition_length : 0))
             {
-                Schedule(() => bpmText.Text = "the beat!");
+                Schedule(() => bpmText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4339);
                 bpmText.FadeIn(800, Easing.OutQuint);
             }
 

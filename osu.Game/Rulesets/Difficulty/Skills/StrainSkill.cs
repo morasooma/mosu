@@ -31,6 +31,11 @@ namespace osu.Game.Rulesets.Difficulty.Skills
 
         private readonly List<double> strainPeaks = new List<double>();
 
+        // Read-only access for allocation-free skill-specific aggregation. Keep the public
+        // enumerable and its virtual processing behaviour unchanged for existing consumers.
+        protected IReadOnlyList<double> CompletedStrainPeaks => strainPeaks;
+        protected double CurrentSectionPeak => currentSectionPeak;
+
         protected StrainSkill(Mod[] mods)
             : base(mods)
         {

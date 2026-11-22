@@ -109,7 +109,7 @@ namespace osu.Game.Rulesets.Dodge.UI
                         {
                             Anchor = Anchor.Centre,
                             Origin = Anchor.Centre,
-                            Text = "SLOW",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5372,
                             Font = OsuFont.Torus.With(size: 20, weight: FontWeight.SemiBold),
                             Colour = new Color4(0.9f, 0.9f, 0.9f, 0.72f),
                         },

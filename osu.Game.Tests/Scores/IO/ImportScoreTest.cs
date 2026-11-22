@@ -516,7 +516,7 @@ namespace osu.Game.Tests.Scores.IO
         }
 
         [Test]
-        public void TestUserLookedUpByOnlineIDIfPresent([Values] bool isOnlineScore)
+        public void TestUserLookedUpByOnlineIDIfPresent([Values] bool isOnlineScore, [Values("", "Custom nickname")] string recordedUsername)
         {
             using (HeadlessGameHost host = new CleanRunHeadlessGameHost())
             {
@@ -525,6 +525,12 @@ namespace osu.Game.Tests.Scores.IO
                     var osu = LoadOsuIntoHost(host, true);
 
                     var api = (DummyAPIAccess)osu.API;
+                    var userLookupResponse = new APIUser
+                    {
+                        Username = "Some other guy",
+                        CountryCode = CountryCode.DE,
+                        Id = 5555
+                    };
                     api.HandleRequest = req =>
                     {
                         switch (req)
@@ -533,12 +539,7 @@ namespace osu.Game.Tests.Scores.IO
                                 if (userRequest.Lookup != "5555")
                                     return false;
 
-                                userRequest.TriggerSuccess(new APIUser
-                                {
-                                    Username = "Some other guy",
-                                    CountryCode = CountryCode.DE,
-                                    Id = 5555
-                                });
+                                userRequest.TriggerSuccess(userLookupResponse);
                                 return true;
 
                             default:
@@ -555,7 +556,7 @@ namespace osu.Game.Tests.Scores.IO
                         Accuracy = 0.8,
                         MaxCombo = 500,
                         Combo = 250,
-                        User = new APIUser { Id = 5555 },
+                        User = new APIUser { Id = 5555, Username = recordedUsername },
                         Date = DateTimeOffset.Now,
                         Ruleset = new OsuRuleset().RulesetInfo,
                         BeatmapInfo = beatmap.Beatmaps.First()
@@ -571,7 +572,10 @@ namespace osu.Game.Tests.Scores.IO
                     ClassicAssert.AreEqual(toImport.MaxCombo, imported.MaxCombo);
                     ClassicAssert.AreEqual(toImport.Date, imported.Date);
                     ClassicAssert.AreEqual(toImport.OnlineID, imported.OnlineID);
-                    ClassicAssert.AreEqual("Some other guy", imported.RealmUser.Username);
+                    string expectedUsername = string.IsNullOrEmpty(recordedUsername) ? "Some other guy" : recordedUsername;
+                    ClassicAssert.AreEqual(expectedUsername, imported.RealmUser.Username);
+                    ClassicAssert.AreEqual(expectedUsername, imported.User.Username);
+                    ClassicAssert.AreEqual("Some other guy", userLookupResponse.Username);
                     ClassicAssert.AreEqual(5555, imported.RealmUser.OnlineID);
                     ClassicAssert.AreEqual(CountryCode.DE, imported.RealmUser.CountryCode);
                 }

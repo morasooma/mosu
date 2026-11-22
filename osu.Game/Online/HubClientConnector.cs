@@ -4,6 +4,7 @@
 
 using System;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using osu.Framework;
 using osu.Game.Online.API;
+using osu.Game.Configuration;
 using osu.Game.Rulesets;
 
 namespace osu.Game.Online
@@ -31,6 +33,7 @@ namespace osu.Game.Online
         private readonly string endpoint;
         private readonly string versionHash;
         private readonly RulesetHashCache rulesetHashCache;
+        private readonly Func<ReleaseStream>? releaseStream;
 
         /// <summary>
         /// The current connection opened by this connector.
@@ -45,13 +48,16 @@ namespace osu.Game.Online
         /// <param name="api"> An API provider used to react to connection state changes.</param>
         /// <param name="versionHash">The hash representing the current game version, used for verification purposes.</param>
         /// <param name="rulesetHashCache">The ruleset hash cache.</param>
-        public HubClientConnector(string clientName, string endpoint, IAPIProvider api, string versionHash, RulesetHashCache rulesetHashCache)
+        /// <param name="releaseStream">Current selected update stream, evaluated for each connection.</param>
+        public HubClientConnector(string clientName, string endpoint, IAPIProvider api, string versionHash, RulesetHashCache rulesetHashCache,
+                                  Func<ReleaseStream>? releaseStream = null)
             : base(api)
         {
             ClientName = clientName;
             this.endpoint = endpoint;
             this.versionHash = versionHash;
             this.rulesetHashCache = rulesetHashCache;
+            this.releaseStream = releaseStream;
 
             // Automatically start these connections.
             Start();
@@ -68,6 +74,18 @@ namespace osu.Game.Online
 
                     options.AccessTokenProvider = () => Task.FromResult<string?>(API.AccessToken);
                     options.Headers.Add(VERSION_HASH_HEADER, versionHash);
+                    if (MosuServerEnvironment.UsesMosuPresence)
+                    {
+                    var assembly = Assembly.GetEntryAssembly();
+                    string version = assembly?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
+                    string kind = releaseStream != null
+                        ? ClientBuildKind.FromReleaseStream(version, releaseStream())
+                        : ClientBuildKind.FromInformationalVersion(version);
+                    options.Headers.Add("X-Mosu-Platform", RuntimeInfo.OS.ToString());
+                    options.Headers.Add("X-Mosu-Build-Kind", kind);
+                    // Versions are informational; these headers are not an authenticity check.
+                    options.Headers.Add("X-Mosu-Client-Version", version);
+                    }
                     options.Headers.Add(CLIENT_SESSION_ID_HEADER, API.SessionIdentifier.ToString());
                     options.Headers.Add(RULESET_HASH_HEADER, JsonConvert.SerializeObject(rulesetHashCache.RulesetsHashes));
                 });
@@ -77,6 +95,7 @@ namespace osu.Game.Online
                 options.SerializerOptions = SignalRUnionWorkaroundResolver.OPTIONS;
             });
 
+            TracedMessagePackHubProtocol.Register(builder.Services);
             var newConnection = builder.Build();
 
             ConfigureConnection?.Invoke(newConnection);

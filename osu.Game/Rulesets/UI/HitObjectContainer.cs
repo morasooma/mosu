@@ -5,14 +5,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.TypeExtensions;
 using osu.Framework.Graphics;
+using osu.Framework.Logging;
+using osu.Framework.Statistics;
 using osu.Game.Rulesets.Judgements;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Drawables;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets.Objects.Pooling;
 
 namespace osu.Game.Rulesets.UI
@@ -22,6 +26,31 @@ namespace osu.Game.Rulesets.UI
         public IEnumerable<DrawableHitObject> Objects => InternalChildren.Cast<DrawableHitObject>().OrderBy(h => h.HitObject.StartTime);
 
         public IEnumerable<DrawableHitObject> AliveObjects => AliveEntries.Values.OrderBy(h => h.HitObject.StartTime);
+
+        /// <summary>
+        /// Copies alive objects in stable start-time order into reusable caller-owned storage.
+        /// Avoids LINQ's per-enumeration arrays on high-frequency gameplay paths.
+        /// </summary>
+        public void CopyAliveObjectsTo(List<DrawableHitObject> destination)
+        {
+            destination.Clear();
+            foreach (var drawable in AliveEntries.Values)
+                destination.Add(drawable);
+
+            // Alive sets are small. Stable insertion sort preserves the ordering of equal
+            // start times used by AliveObjects without allocating a sorter or index map.
+            for (int i = 1; i < destination.Count; i++)
+            {
+                var current = destination[i];
+                int j = i - 1;
+                while (j >= 0 && destination[j].HitObject.StartTime.CompareTo(current.HitObject.StartTime) > 0)
+                {
+                    destination[j + 1] = destination[j];
+                    j--;
+                }
+                destination[j + 1] = current;
+            }
+        }
 
         /// <summary>
         /// Invoked when a <see cref="DrawableHitObject"/> is judged.
@@ -82,8 +111,23 @@ namespace osu.Game.Rulesets.UI
             if (nonPooledDrawableMap.TryGetValue(entry, out var drawable))
                 return drawable;
 
-            return pooledObjectProvider?.GetPooledDrawableRepresentation(entry.HitObject, null) ??
-                   throw new InvalidOperationException($"A drawable representation could not be retrieved for hitobject type: {entry.HitObject.GetType().ReadableName()}.");
+            using var operation = StutterTraceEventSource.Log.Measure("HitObject.AcquirePooled");
+            long started = PerformancePhaseLogger.Enabled ? Stopwatch.GetTimestamp() : 0;
+            try
+            {
+                return pooledObjectProvider?.GetPooledDrawableRepresentation(entry.HitObject, null) ??
+                       throw new InvalidOperationException($"A drawable representation could not be retrieved for hitobject type: {entry.HitObject.GetType().ReadableName()}.");
+            }
+            finally
+            {
+                if (started != 0)
+                {
+                    double elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                    if (elapsed >= 8)
+                        Logger.Log($"MOSU_SLOW_HITOBJECT_ACQUIRE elapsed_ms={elapsed:F2} type={entry.HitObject.GetType().Name} "
+                                   + $"start_time={entry.HitObject.StartTime:F0}", LoggingTarget.Performance);
+                }
+            }
         }
 
         protected override void AddDrawable(HitObjectLifetimeEntry entry, DrawableHitObject drawable)

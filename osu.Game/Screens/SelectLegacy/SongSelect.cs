@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
@@ -106,7 +107,7 @@ namespace osu.Game.Screens.SelectLegacy
         /// <returns>The menu items.</returns>
         public virtual MenuItem[] CreateForwardNavigationMenuItemsForBeatmap(Func<BeatmapInfo> getBeatmap) => new MenuItem[]
         {
-            new OsuMenuItem(@"Select", MenuItemType.Highlighted, () => FinaliseSelection(getBeatmap()))
+            new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J5290, MenuItemType.Highlighted, () => FinaliseSelection(getBeatmap()))
         };
 
         [Resolved]
@@ -401,15 +402,15 @@ namespace osu.Game.Screens.SelectLegacy
                 foreach (var (button, overlay) in CreateSongSelectFooterButtons())
                     SongSelectFooter.AddButton(button, overlay);
 
-                BeatmapOptions.AddButton(@"Manage", @"collections", FontAwesome.Solid.Book, colours.Green, () => manageCollectionsDialog?.Show());
-                BeatmapOptions.AddButton(@"Delete", @"all difficulties", FontAwesome.Solid.Trash, colours.Pink, () => DeleteBeatmap(Beatmap.Value.BeatmapSetInfo));
-                BeatmapOptions.AddButton(@"Mark", @"as played", FontAwesome.Regular.TimesCircle, colours.Purple, () => beatmaps.MarkPlayed(Beatmap.Value.BeatmapInfo));
-                BeatmapOptions.AddButton(@"Clear", @"local scores", FontAwesome.Solid.Eraser, colours.Purple, () => ClearScores(Beatmap.Value.BeatmapInfo));
+                BeatmapOptions.AddButton(global::osu.Game.Localisation.ClientTranslationStrings.J5291, @"collections", FontAwesome.Solid.Book, colours.Green, () => manageCollectionsDialog?.Show());
+                BeatmapOptions.AddButton(global::osu.Game.Localisation.ClientTranslationStrings.J5293, @"all difficulties", FontAwesome.Solid.Trash, colours.Pink, () => DeleteBeatmap(Beatmap.Value.BeatmapSetInfo));
+                BeatmapOptions.AddButton(global::osu.Game.Localisation.ClientTranslationStrings.J5295, @"as played", FontAwesome.Regular.TimesCircle, colours.Purple, () => beatmaps.MarkPlayed(Beatmap.Value.BeatmapInfo));
+                BeatmapOptions.AddButton(global::osu.Game.Localisation.ClientTranslationStrings.J5297, @"local scores", FontAwesome.Solid.Eraser, colours.Purple, () => ClearScores(Beatmap.Value.BeatmapInfo));
             }
 
-            sampleChangeDifficulty = audio.Samples.Get(@"SongSelect/select-difficulty");
-            sampleChangeBeatmap = audio.Samples.Get(@"SongSelect/select-expand");
-            SampleConfirm = audio.Samples.Get(@"SongSelect/confirm-selection");
+            sampleChangeDifficulty = audio.Samples.Get("SongSelectClassic/select-difficulty");
+            sampleChangeBeatmap = audio.Samples.Get("SongSelectClassic/select-expand");
+            SampleConfirm = audio.Samples.Get("SongSelectClassic/confirm-selection");
         }
 
         protected virtual FilterControl CreateFilterControl() => new FilterControl();
@@ -446,7 +447,7 @@ namespace osu.Game.Screens.SelectLegacy
             (beatmapOptionsButton = new FooterButtonOptions(), BeatmapOptions)
         };
 
-        protected virtual ModSelectOverlay CreateModSelectOverlay() => new UserModSelectOverlay
+        protected virtual ModSelectOverlay CreateModSelectOverlay() => new ClassicModSelectOverlay
         {
             ShowPresets = true,
         };
@@ -555,6 +556,11 @@ namespace osu.Game.Screens.SelectLegacy
                 Beatmap.Value = e.OldValue;
                 return;
             }
+
+            // Normal carousel selection is published back through the global bindable.
+            // Do not synchronously drain the carousel scheduler and scan every set again.
+            if (Carousel.SelectedBeatmapInfo?.Equals(beatmap.BeatmapInfo) == true)
+                return;
 
             Logger.Log($"Song select working beatmap updated to {beatmap}");
 
@@ -763,15 +769,15 @@ namespace osu.Game.Screens.SelectLegacy
                 }
             }
 
-            LeftArea.MoveToX(0, 400, Easing.OutQuint);
-            LeftArea.FadeIn(100, Easing.OutQuint);
+            LeftArea.MoveToX(0, InterfaceAnimation.MovementDuration(400), Easing.OutQuint);
+            LeftArea.FadeIn(InterfaceAnimation.FadeDuration(100), Easing.OutQuint);
 
-            FilterControl.MoveToY(0, 400, Easing.OutQuint);
-            FilterControl.FadeIn(100, Easing.OutQuint);
+            FilterControl.MoveToY(0, InterfaceAnimation.MovementDuration(400), Easing.OutQuint);
+            FilterControl.FadeIn(InterfaceAnimation.FadeDuration(100), Easing.OutQuint);
 
-            this.FadeIn(250, Easing.OutQuint);
+            this.FadeIn(InterfaceAnimation.FadeDuration(250), Easing.OutQuint);
 
-            wedgeBackground.ScaleTo(1, 500, Easing.OutQuint);
+            wedgeBackground.ScaleTo(1, InterfaceAnimation.MovementDuration(500), Easing.OutQuint);
 
             FilterControl.Activate();
         }
@@ -818,20 +824,21 @@ namespace osu.Game.Screens.SelectLegacy
 
             endLooping();
 
-            FilterControl.MoveToY(-120, 500, Easing.OutQuint);
-            FilterControl.FadeOut(200, Easing.OutQuint);
+            FilterControl.MoveToY(-120, InterfaceAnimation.MovementDuration(500), Easing.OutQuint);
+            FilterControl.FadeOut(InterfaceAnimation.FadeDuration(200), Easing.OutQuint);
 
-            LeftArea.MoveToX(-150, 1800, Easing.OutQuint);
-            LeftArea.FadeOut(200, Easing.OutQuint);
+            LeftArea.MoveToX(-150, InterfaceAnimation.MovementDuration(1800), Easing.OutQuint);
+            LeftArea.FadeOut(InterfaceAnimation.FadeDuration(200), Easing.OutQuint);
 
-            wedgeBackground.ScaleTo(2.4f, 400, Easing.OutQuint);
+            wedgeBackground.ScaleTo(2.4f, InterfaceAnimation.MovementDuration(400), Easing.OutQuint);
 
-            this.FadeOut(400, Easing.OutQuint);
+            this.FadeOut(InterfaceAnimation.FadeDuration(400), Easing.OutQuint);
 
             FilterControl.Deactivate();
         }
 
         private bool isHandlingLooping;
+        private IWorkingBeatmap? pendingPreviewBeatmap;
 
         private void beginLooping()
         {
@@ -854,12 +861,55 @@ namespace osu.Game.Screens.SelectLegacy
                 return;
 
             music.CurrentTrack.Looping = isHandlingLooping = false;
+            pendingPreviewBeatmap = null;
 
             music.TrackChanged -= ensureTrackLooping;
         }
 
         private void ensureTrackLooping(IWorkingBeatmap beatmap, TrackChangeDirection changeDirection)
-            => beatmap.PrepareTrackForPreview(true);
+        {
+            if (!beatmap.TrackLoaded)
+                beatmap.LoadTrack();
+
+            Track track = beatmap.Track;
+            if (track.IsLoaded)
+            {
+                pendingPreviewBeatmap = null;
+                beatmap.PrepareTrackForPreview(true);
+                return;
+            }
+
+            // A synchronous cold seek waits for audio decoding on the update thread.
+            // Keep input responsive and only finish preparation for the current selection.
+            pendingPreviewBeatmap = beatmap;
+            track.Looping = true;
+            _ = preparePreviewAsync(beatmap, track);
+        }
+
+        private async Task preparePreviewAsync(IWorkingBeatmap beatmap, Track track)
+        {
+            try
+            {
+                await track.SeekAsync(track.CurrentTime).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e, "Could not prepare the selected track for preview");
+            }
+
+            Schedule(() =>
+            {
+                if (!ReferenceEquals(pendingPreviewBeatmap, beatmap) || !ReferenceEquals(Beatmap.Value, beatmap)
+                    || !ReferenceEquals(beatmap.Track, track) || !isHandlingLooping)
+                    return;
+
+                pendingPreviewBeatmap = null;
+                if (track.IsLoaded)
+                    beatmap.PrepareTrackForPreview(true);
+
+                ensurePlayingSelected();
+            });
+        }
 
         public override bool OnBackButton()
         {
@@ -878,6 +928,8 @@ namespace osu.Game.Screens.SelectLegacy
 
             decoupledRuleset.UnbindAll();
 
+            pendingPreviewBeatmap = null;
+            isHandlingLooping = false;
             if (music.IsNotNull())
                 music.TrackChanged -= ensureTrackLooping;
 
@@ -930,7 +982,7 @@ namespace osu.Game.Screens.SelectLegacy
             backgroundModeBeatmap.BlurAmount.Value = configBackgroundBlur.Value ? BACKGROUND_BLUR : 0f;
             backgroundModeBeatmap.DimWhenUserSettingsIgnored.Value = (float)carouselBackgroundDim.Value;
 
-            wedgeBackground.FadeTo(configBackgroundBlur.Value ? 0.5f : 0.2f, UserDimContainer.BACKGROUND_FADE_DURATION, Easing.OutQuint);
+            wedgeBackground.FadeTo(configBackgroundBlur.Value ? 0.5f : 0.2f, InterfaceAnimation.FadeDuration(UserDimContainer.BACKGROUND_FADE_DURATION), Easing.OutQuint);
         }
 
         private readonly WeakReference<ITrack?> lastTrack = new WeakReference<ITrack?>(null);
@@ -941,7 +993,7 @@ namespace osu.Game.Screens.SelectLegacy
         /// </summary>
         private void ensurePlayingSelected()
         {
-            if (!ControlGlobalMusic)
+            if (!ControlGlobalMusic || pendingPreviewBeatmap != null)
                 return;
 
             ITrack track = music.CurrentTrack;
@@ -995,7 +1047,7 @@ namespace osu.Game.Screens.SelectLegacy
             // Intentionally not localised until we have proper support for this (see https://github.com/ppy/osu-framework/pull/4918
             // but also in this case we want support for formatting a number within a string).
             int carouselCountDisplayed = Carousel.CountDisplayed;
-            FilterControl.InformationalText = carouselCountDisplayed != 1 ? $"{carouselCountDisplayed:#,0} matches" : $"{carouselCountDisplayed:#,0} match";
+            FilterControl.InformationalText = carouselCountDisplayed != 1 ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5299(carouselCountDisplayed) : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5300(carouselCountDisplayed);
         }
 
         private bool boundLocalBindables;

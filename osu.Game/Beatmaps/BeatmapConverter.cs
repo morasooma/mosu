@@ -30,6 +30,7 @@ namespace osu.Game.Beatmaps
         }
 
         public IBeatmap Beatmap { get; }
+        public bool CloneHitObjects { get; set; }
 
         protected BeatmapConverter(IBeatmap beatmap, Ruleset ruleset)
         {
@@ -43,6 +44,7 @@ namespace osu.Game.Beatmaps
 
         public IBeatmap Convert(CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             // We always operate on a clone of the original beatmap, to not modify it game-wide
             var original = Beatmap.Clone();
 
@@ -55,6 +57,7 @@ namespace osu.Game.Beatmaps
             original.Breaks = new SortedList<BreakPeriod>(Comparer<BreakPeriod>.Default);
             original.Breaks.AddRange(Beatmap.Breaks);
 
+            cancellationToken.ThrowIfCancellationRequested();
             return ConvertBeatmap(original, cancellationToken);
         }
 
@@ -70,7 +73,9 @@ namespace osu.Game.Beatmaps
 
             beatmap.BeatmapInfo = original.BeatmapInfo;
             beatmap.ControlPointInfo = original.ControlPointInfo;
-            beatmap.HitObjects = convertHitObjects(original.HitObjects, original, cancellationToken).OrderBy(s => s.StartTime).ToList();
+            var convertedObjects = convertHitObjects(original.HitObjects, original, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            beatmap.HitObjects = convertedObjects.OrderBy(s => s.StartTime).ToList();
             beatmap.Breaks = original.Breaks;
             beatmap.AudioLeadIn = original.AudioLeadIn;
             beatmap.StackLeniency = original.StackLeniency;
@@ -97,9 +102,13 @@ namespace osu.Game.Beatmaps
 
             foreach (var obj in hitObjects)
             {
+                BackgroundCalculationLimiter.Checkpoint();
+                cancellationToken.ThrowIfCancellationRequested();
                 if (obj is T tObj)
                 {
-                    result.Add(tObj);
+                    result.Add(CloneHitObjects
+                        ? SegmentTimingClone.Clone(tObj)
+                        : tObj);
                     continue;
                 }
 
@@ -113,6 +122,7 @@ namespace osu.Game.Beatmaps
 
                 foreach (var c in converted)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (c != null)
                         result.Add(c);
                 }

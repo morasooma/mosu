@@ -3,6 +3,8 @@
 
 using System;
 using osu.Framework;
+using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
@@ -15,6 +17,7 @@ using osu.Framework.Localisation;
 using osu.Game.Graphics.Backgrounds;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Overlays;
 using osuTK;
 using osuTK.Graphics;
 
@@ -75,13 +78,14 @@ namespace osu.Game.Graphics.UserInterface
             }
         }
 
-        protected readonly Container ColourContainer;
+        protected internal readonly Container ColourContainer;
 
         private readonly Container glowContainer;
         private readonly Box leftGlow;
         private readonly Box centerGlow;
         private readonly Box rightGlow;
         private readonly SpriteText spriteText;
+        private IBindable<float>? buttonRadius;
         private Vector2 hoverSpacing => new Vector2(1.4f, 0f);
 
         public DialogButton(HoverSampleSet sampleSet = HoverSampleSet.Button)
@@ -188,6 +192,14 @@ namespace osu.Game.Graphics.UserInterface
                     Colour = Color4.White,
                 },
             };
+        }
+
+        [BackgroundDependencyLoader(permitNulls: true)]
+        private void load(OverlayColourProvider? colourProvider)
+        {
+            buttonRadius = colourProvider?.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Button, 5f)
+                ?? OverlayColourProvider.GetGeometryRadius(osu.Game.Overlays.CustomTheme.GeometryRole.Button, 5f);
+            buttonRadius.BindValueChanged(r => ColourContainer.CornerRadius = r.NewValue, true);
         }
 
         protected override void LoadComplete()

@@ -29,7 +29,7 @@ namespace osu.Game.Screens.Edit.Components
         private readonly Func<Popover?> createPopover;
 
         private OverlayColourProvider colourProvider = null!;
-        private IBindable<Colour4>? themeColour;
+        private IBindable<int> paletteVersion = null!;
 
         private Color4 defaultBackgroundColour;
         private Color4 defaultIconColour;
@@ -68,9 +68,6 @@ namespace osu.Game.Screens.Edit.Components
                 b.X = 10;
             }));
 
-            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-            themeColour.BindValueChanged(_ => updateColours(), true);
-
             Action = Selected.Toggle;
         }
 
@@ -92,28 +89,37 @@ namespace osu.Game.Screens.Edit.Components
                 icon.Blending = BlendingParameters.Additive;
             }
 
-            updateSelectionState();
+            updateSelectionColours();
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
 
+            paletteVersion = colourProvider.PaletteVersion;
+            paletteVersion.BindValueChanged(_ => updateColours(), true);
             Selected.BindValueChanged(_ => updateSelectionState(), true);
+        }
+
+        private void updateSelectionColours()
+        {
+            BackgroundColour = Selected.Value ? selectedBackgroundColour : defaultBackgroundColour;
+            icon.Colour = Selected.Value ? selectedIconColour : defaultIconColour;
+            SpriteText.Colour = OsuColour.ForegroundTextColourFor(BackgroundColour);
         }
 
         private void updateSelectionState()
         {
-            if (!IsLoaded)
-                return;
+            updateSelectionColours();
 
-            BackgroundColour = Selected.Value ? selectedBackgroundColour : defaultBackgroundColour;
-            icon.Colour = Selected.Value ? selectedIconColour : defaultIconColour;
-            SpriteText.Colour = OsuColour.ForegroundTextColourFor(BackgroundColour);
+            var container = this.FindClosestParent<PopoverContainer>();
+
+            if (container == null)
+                return;
 
             if (Selected.Value)
                 this.ShowPopover();
-            else
+            else if (container.CurrentTarget == this)
                 this.HidePopover();
         }
 

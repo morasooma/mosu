@@ -91,7 +91,7 @@ namespace osu.Game.Overlays.AccountCreation
                             Origin = Anchor.TopCentre,
                             Colour = Color4.Red,
                             Font = OsuFont.GetFont(size: 28, weight: FontWeight.Light),
-                            Text = "Warning! 注意！",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J3874,
                         },
                         multiAccountExplanationText = new OsuTextFlowContainer(cp => cp.Font = cp.Font.With(size: 12))
                         {
@@ -120,16 +120,16 @@ namespace osu.Game.Overlays.AccountCreation
                 }
             };
 
-            multiAccountExplanationText.AddText("Are you ");
+            multiAccountExplanationText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3875);
             multiAccountExplanationText.AddText(api.ProvidedUsername, cp => cp.Colour = colours.BlueLight);
-            multiAccountExplanationText.AddText("? Morasooma has a policy of ");
-            multiAccountExplanationText.AddText("one account per person!", cp => cp.Colour = colours.Yellow);
-            multiAccountExplanationText.AddText(" Please be aware that creating more than one account per person may result in ");
-            multiAccountExplanationText.AddText("permanent deactivation of accounts", cp => cp.Colour = colours.Yellow);
+            multiAccountExplanationText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3876);
+            multiAccountExplanationText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3877, cp => cp.Colour = colours.Yellow);
+            multiAccountExplanationText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3878);
+            multiAccountExplanationText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3879, cp => cp.Colour = colours.Yellow);
             multiAccountExplanationText.AddText(".");
 
-            furtherAssistance.AddText("Need further assistance? Contact us via our ");
-            furtherAssistance.AddLink("support system", help_centre_url);
+            furtherAssistance.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3880);
+            furtherAssistance.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J3881, help_centre_url);
             furtherAssistance.AddText(".");
         }
     }

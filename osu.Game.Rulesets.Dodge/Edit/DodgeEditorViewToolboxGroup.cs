@@ -15,6 +15,9 @@ namespace osu.Game.Rulesets.Dodge.Edit
         [Resolved]
         private DodgeEditorSettings settings { get; set; } = null!;
 
+        [Resolved]
+        private osu.Game.Screens.Edit.EditorBeatmap editorBeatmap { get; set; } = null!;
+
         public bool CompactPlayfield
         {
             get => settings.CompactPlayfield.Value;
@@ -50,6 +53,27 @@ namespace osu.Game.Rulesets.Dodge.Edit
             Spacing = new osuTK.Vector2(5);
             Children = new Drawable[]
             {
+                new ExpandableButton
+                {
+                    ContractedLabelText = DodgeEditorStrings.FitWorld, ExpandedLabelText = DodgeEditorStrings.FitWorld,
+                    RelativeSizeAxes = Axes.X,
+                    Action = () =>
+                    {
+                        var bounds = Objects.DodgeWorldGeometry.Bounds(System.Linq.Enumerable.OfType<Objects.DodgeHitObject>(editorBeatmap.HitObjects));
+                        settings.FitEditorView(bounds?.Centre ?? UI.DodgePlayfield.BASE_SIZE / 2,
+                            bounds.HasValue ? new osuTK.Vector2(bounds.Value.Width, bounds.Value.Height) : UI.DodgePlayfield.BASE_SIZE);
+                    },
+                },
+                new ExpandableButton
+                {
+                    ContractedLabelText = DodgeEditorStrings.ResetView, ExpandedLabelText = DodgeEditorStrings.ResetView,
+                    RelativeSizeAxes = Axes.X,
+                    Action = () => { settings.EditorZoom.Value = 1; settings.EditorCentreX.Value = 256; settings.EditorCentreY.Value = 192; },
+                },
+                new OsuSpriteText { Text = DodgeEditorStrings.EditorNavigationHint, Font = osu.Game.Graphics.OsuFont.Default.With(size: 11) },
+                new ExpandableSlider<float> { ExpandedLabelText = DodgeEditorStrings.EditorZoom, Current = settings.EditorZoom, KeyboardStep = 0.05f },
+                new ExpandableSlider<float> { ExpandedLabelText = DodgeEditorStrings.EditorCentreX, Current = settings.EditorCentreX, KeyboardStep = 16 },
+                new ExpandableSlider<float> { ExpandedLabelText = DodgeEditorStrings.EditorCentreY, Current = settings.EditorCentreY, KeyboardStep = 16 },
                 new OsuCheckbox
                 {
                     RelativeSizeAxes = Axes.X,

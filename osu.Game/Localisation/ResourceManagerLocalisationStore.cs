@@ -27,6 +27,12 @@ namespace osu.Game.Localisation
             "osu.Game.Resources.Localisation.FirstRunSetupOverlay:welcome_description",
             "osu.Game.Resources.Localisation.FirstRunSetupOverlay:ui_scale_description",
             "osu.Game.Resources.Localisation.GeneralSettings:open_osu_folder",
+            "osu.Game.Resources.Localisation.GeneralSettings:change_folder_location",
+            "osu.Game.Resources.Localisation.GeneralSettings:change_folder_location_tooltip",
+            "osu.Game.Resources.Localisation.GeneralSettings:running_latest_release",
+            "osu.Game.Resources.Localisation.DebugSettings:import_all_files_from_directory_tooltip",
+            "osu.Game.Resources.Localisation.BeatmapOverlayStrings:by_turning_off_the_featured",
+            "osu.Game.Resources.Localisation.Osu.OsuEditorSetupStrings:stack_leniency_description",
             "osu.Game.Resources.Localisation.GraphicsSettings:minimise_on_focus_loss",
             "osu.Game.Resources.Localisation.LayoutSettings:osu_is_running_exclusive_fullscreen",
             "osu.Game.Resources.Localisation.Leaderboard:please_invest_in_an_osu_supporter_tag_to_view_this_leaderboard",
@@ -54,6 +60,14 @@ namespace osu.Game.Localisation
             "osu.Game.Resources.Localisation.WindowsAssociationManager:osu_multiplayer",
         };
 
+        // These keys name the Standard ruleset, not the application or an external service.
+        private static readonly HashSet<string> standard_ruleset_keys = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "osu.Game.Localisation.Discovery:unsupported",
+            "osu.Game.Localisation.Discovery:gameplay_osu_only",
+            "osu.Game.Resources.Localisation.ForkSettings:gameplay_render_scale_hint",
+        };
+
         public ResourceManagerLocalisationStore(string cultureCode)
         {
             EffectiveCulture = new CultureInfo(cultureCode);
@@ -72,6 +86,11 @@ namespace osu.Game.Localisation
             }
 
             string? result = getInternal(lookup);
+
+            // Branding policy is keyed by the public identity, not the remapped
+            // resource key. A translation-bank replacement must not bypass it.
+            if (result != null && standard_ruleset_keys.Contains(lookup))
+                result = result.Replace("osu!", "Standard", StringComparison.OrdinalIgnoreCase);
 
             lock (lookupCache)
             {
@@ -128,11 +147,10 @@ namespace osu.Game.Localisation
 
                 try
                 {
-                    string? value = manager.GetString(key, EffectiveCulture);
+                    string value = manager.GetString(key, EffectiveCulture);
 
-                    return value == null || !morasooma_client_identity_keys.Contains(lookup)
-                        ? value
-                        : replaceClientBranding(value);
+                    if (value == null) return null;
+                    return morasooma_client_identity_keys.Contains(lookup) ? replaceClientBranding(value) : value;
                 }
                 catch (MissingManifestResourceException)
                 {

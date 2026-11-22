@@ -45,6 +45,17 @@ namespace osu.Game.Screens.Footer
         [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
 
+        [Resolved(CanBeNull = true)]
+        private ScreenFooter? footer { get; set; }
+
+        private bool glassActive => footer?.SongSelectActive == true && footer.DefaultChromeVisible && !footer.HasActiveOverlay;
+
+        protected override void Update()
+        {
+            base.Update();
+            backgroundBox.Alpha = glassActive ? OverlayTransparency.SongSelectSurfaceAlpha : 1;
+        }
+
         private Colour4 buttonAccentColour;
 
         public Colour4 AccentColour
@@ -87,6 +98,8 @@ namespace osu.Game.Screens.Footer
         }
 
         private readonly Container shearedContent;
+
+        protected IBindable<float>? ButtonRadiusBindable;
         private readonly Container textIconContainer;
         private readonly Container barContainer;
 
@@ -96,6 +109,13 @@ namespace osu.Game.Screens.Footer
         protected Container TextContainer;
         private readonly Box bar;
         private readonly Box backgroundBox;
+        /// <summary>
+        /// Specific footer button context for independent theme overrides (e.g. Mods, Random, Options).
+        /// </summary>
+        public virtual osu.Game.Overlays.CustomTheme.ThemeSurfaceContext? ButtonContext => null;
+
+        private IBindable<int>? paletteVersionBindable;
+        private IBindable<bool>? buttonFooterGradientsBindable;
         private readonly Box glowBox;
         private readonly Box flashLayer;
         private IBindable<Colour4> themeColour = null!;
@@ -127,6 +147,11 @@ namespace osu.Game.Screens.Footer
                     RelativeSizeAxes = Axes.Both,
                     Children = new Drawable[]
                     {
+                        new SongSelectBackdropSurface
+                        {
+                            IsActive = () => glassActive,
+                            GetCornerRadius = () => shearedContent.CornerRadius,
+                        },
                         backgroundBox = new Box
                         {
                             RelativeSizeAxes = Axes.Both
@@ -204,9 +229,28 @@ namespace osu.Game.Screens.Footer
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ => UpdateDisplay(), true);
 
-            disableShear.BindValueChanged(_ => UpdateShear(), true);
+            paletteVersionBindable = colourProvider.PaletteVersion.GetBoundCopy();
+            paletteVersionBindable.BindValueChanged(_ => UpdateDisplay());
+
+            buttonFooterGradientsBindable = OverlayColourProvider.ButtonFooterGradients.GetBoundCopy();
+            buttonFooterGradientsBindable.BindValueChanged(_ => UpdateDisplay());
+
+            ButtonRadiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Button, CORNER_RADIUS);
+            ButtonRadiusBindable.BindValueChanged(_ => UpdateRadius(), true);
+
+            disableShear.BindValueChanged(_ =>
+            {
+                UpdateShear();
+                UpdateRadius();
+            }, true);
 
             FinishTransforms(true);
+        }
+
+        protected virtual void UpdateRadius()
+        {
+            float target = ButtonRadiusBindable?.Value ?? CORNER_RADIUS;
+            shearedContent.CornerRadius = !disableShear.Value ? Math.Min(target, 10f) : target;
         }
 
         protected virtual void UpdateShear()
@@ -253,15 +297,52 @@ namespace osu.Game.Screens.Footer
 
         public virtual void UpdateDisplay()
         {
-            Color4 activeForegroundColour = OsuColour.ForegroundTextColourFor(buttonAccentColour);
-            Color4 backgroundColour = OverlayState.Value == Visibility.Visible ? buttonAccentColour : colourProvider.Background3;
-            Color4 textColour = OverlayState.Value == Visibility.Visible ? activeForegroundColour : colourProvider.Content1;
-            Color4 accentColour = OverlayState.Value == Visibility.Visible ? activeForegroundColour : buttonAccentColour;
+            Colour4 effectiveAccent = buttonAccentColour;
+            if (ButtonContext.HasValue && OverlayColourProvider.TryGetCustomContextColour(ButtonContext.Value, osu.Game.Overlays.CustomTheme.SurfaceColourRole.Accent, out var customAccent))
+                effectiveAccent = customAccent;
+
+            Color4 activeForegroundColour = OsuColour.ForegroundTextColourFor(effectiveAccent);
+
+            Color4 backgroundColour;
+            if (OverlayState.Value == Visibility.Visible)
+            {
+                if (ButtonContext.HasValue && OverlayColourProvider.TryGetCustomContextColour(ButtonContext.Value, osu.Game.Overlays.CustomTheme.SurfaceColourRole.ControlSelected, out var customSelected))
+                    backgroundColour = customSelected;
+                else
+                    backgroundColour = effectiveAccent;
+            }
+            else
+            {
+                if (ButtonContext.HasValue && OverlayColourProvider.TryGetCustomContextColour(ButtonContext.Value, osu.Game.Overlays.CustomTheme.SurfaceColourRole.ControlIdle, out var customIdle))
+                    backgroundColour = customIdle;
+                else
+                    backgroundColour = colourProvider.Background3;
+            }
+
+            Color4 textColour;
+            if (OverlayState.Value == Visibility.Visible)
+            {
+                textColour = activeForegroundColour;
+            }
+            else
+            {
+                if (ButtonContext.HasValue && OverlayColourProvider.TryGetCustomContextColour(ButtonContext.Value, osu.Game.Overlays.CustomTheme.SurfaceColourRole.TextPrimary, out var customText))
+                    textColour = customText;
+                else
+                    textColour = colourProvider.Content1;
+            }
+
+            Color4 accentColour = OverlayState.Value == Visibility.Visible ? activeForegroundColour : effectiveAccent;
 
             if (!Enabled.Value)
                 backgroundColour = backgroundColour.Darken(1f);
             else if (IsHovered)
-                backgroundColour = backgroundColour.Lighten(0.2f);
+            {
+                if (ButtonContext.HasValue && OverlayColourProvider.TryGetCustomContextColour(ButtonContext.Value, osu.Game.Overlays.CustomTheme.SurfaceColourRole.ControlHover, out var customHover))
+                    backgroundColour = customHover;
+                else
+                    backgroundColour = backgroundColour.Lighten(0.2f);
+            }
 
             double duration = OverlayColourProvider.ThemeTransitionDuration(150);
             backgroundBox.FadeColour(backgroundColour, duration, Easing.OutQuint);
@@ -273,7 +354,11 @@ namespace osu.Game.Screens.Footer
             icon.FadeColour(accentColour, duration, Easing.OutQuint);
             bar.FadeColour(accentColour, duration, Easing.OutQuint);
 
-            glowBox.FadeColour(ColourInfo.GradientVertical(buttonAccentColour.Opacity(0f), buttonAccentColour.Opacity(0.2f)), duration, Easing.OutQuint);
+            bool enableGradients = OverlayColourProvider.ButtonFooterGradients.Value;
+            if (enableGradients)
+                glowBox.FadeColour(ColourInfo.GradientVertical(effectiveAccent.Opacity(0f), effectiveAccent.Opacity(0.2f)), duration, Easing.OutQuint);
+            else
+                glowBox.FadeColour(Colour4.Transparent, duration, Easing.OutQuint);
         }
 
         public void AppearFromLeft(double delay)

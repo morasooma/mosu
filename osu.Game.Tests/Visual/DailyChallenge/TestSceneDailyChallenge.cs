@@ -31,11 +31,16 @@ namespace osu.Game.Tests.Visual.DailyChallenge
         [Cached(typeof(INotificationOverlay))]
         private NotificationOverlay notificationOverlay = new NotificationOverlay();
 
+        private partial class ProposalNavigationScreen : Screens.OsuScreen { }
+
         [BackgroundDependencyLoader]
         private void load()
         {
             base.Content.Add(notificationOverlay);
             base.Content.Add(metadataClient);
+            var store = new osu.Game.Database.RealmDetachedBeatmapStore();
+            Dependencies.CacheAs<osu.Game.Database.BeatmapStore>(store);
+            base.Content.Add(store);
         }
 
         [Test]
@@ -59,6 +64,102 @@ namespace osu.Game.Tests.Visual.DailyChallenge
 
             AddStep("add room", () => API.Perform(new CreateRoomRequest(room)));
             AddStep("push screen", () => LoadScreen(new Screens.OnlinePlay.DailyChallenge.DailyChallenge(room)));
+        }
+
+        [Test]
+        public void TestReturningFromProposalRestoresDailyRulesetAndRequiredMods()
+        {
+            var room = new Room
+            {
+                Name = "Daily restore regression",
+                Playlist = [new PlaylistItem(TestResources.CreateTestBeatmapSetInfo().Beatmaps.First())
+                {
+                    RequiredMods = [new APIMod(new OsuModHidden())],
+                    AllowedMods = []
+                }],
+                EndDate = DateTimeOffset.Now.AddHours(12), Category = RoomCategory.DailyChallenge,
+            };
+            Screens.OnlinePlay.DailyChallenge.DailyChallenge daily = null!;
+            Screens.OsuScreen child = null!;
+            AddStep("create room", () => API.Perform(new CreateRoomRequest(room)));
+            AddStep("open daily", () => LoadScreen(daily = new Screens.OnlinePlay.DailyChallenge.DailyChallenge(room)));
+            AddUntilStep("daily ready", () => daily.IsCurrentScreen());
+            AddStep("open child selection", () => daily.Push(child = new ProposalNavigationScreen()));
+            AddUntilStep("child ready", () => child.IsCurrentScreen());
+            AddStep("browse another ruleset and mods", () =>
+            {
+                child.Ruleset.Value = new osu.Game.Rulesets.Taiko.TaikoRuleset().RulesetInfo;
+                child.Mods.Value = [];
+            });
+            AddStep("return", () => child.Exit());
+            AddUntilStep("daily resumed", () => daily.IsCurrentScreen());
+            AddAssert("daily ruleset restored", () => daily.Ruleset.Value.OnlineID == 0);
+            AddAssert("daily required mods restored", () => daily.Mods.Value.Single() is OsuModHidden);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestProposalFromDailyChallengeInitialisesModCustomisation(bool disableShear)
+        {
+            var room = new Room
+            {
+                Name = "Daily proposal navigation",
+                Playlist = [new PlaylistItem(TestResources.CreateTestBeatmapSetInfo().Beatmaps.First())
+                {
+                    RequiredMods = [new APIMod(new OsuModHidden())], AllowedMods = []
+                }],
+                EndDate = DateTimeOffset.Now.AddHours(12), Category = RoomCategory.DailyChallenge,
+            };
+            Screens.OnlinePlay.DailyChallenge.DailyChallenge daily = null!;
+            Screens.OnlinePlay.DailyChallenge.DailyChallengeProposalSongSelect proposal = null!;
+            osu.Game.Overlays.Mods.ModSelectOverlay overlay = null!;
+            var config = Dependencies.Get<osu.Game.Configuration.OsuConfigManager>();
+            float originalScale = 1;
+            bool originalShear = false;
+            osu.Game.Configuration.ForkSongSelectStyle originalStyle = default;
+            AddStep("use modern at user scale", () =>
+            {
+                originalScale = config.Get<float>(osu.Game.Configuration.OsuSetting.UIScale);
+                originalShear = OsuGame.DisableShear.Value;
+                originalStyle = config.Get<osu.Game.Configuration.ForkSongSelectStyle>(osu.Game.Configuration.OsuSetting.ForkSongSelectStyle);
+                config.SetValue(osu.Game.Configuration.OsuSetting.ForkSongSelectStyle, osu.Game.Configuration.ForkSongSelectStyle.Modern);
+                config.SetValue(osu.Game.Configuration.OsuSetting.UIScale, 0.9f);
+                OsuGame.DisableShear.Value = disableShear;
+            });
+            AddStep("create room", () => API.Perform(new CreateRoomRequest(room)));
+            AddStep("open daily", () => LoadScreen(daily = new Screens.OnlinePlay.DailyChallenge.DailyChallenge(room)));
+            AddUntilStep("daily ready", () => daily.IsCurrentScreen());
+            AddStep("open proposal from daily", () => daily.Push(proposal = new Screens.OnlinePlay.DailyChallenge.DailyChallengeProposalSongSelect()));
+            AddUntilStep("proposal ready", () => proposal.IsCurrentScreen() && !proposal.IsFiltering);
+            AddStep("open required mods", () =>
+            {
+                overlay = (osu.Game.Overlays.Mods.ModSelectOverlay)proposal.CreateFooterButtons().OfType<FooterButtonMods>().Single().Overlay!;
+                overlay.Show();
+            });
+            AddUntilStep("overlay visible", () => overlay.IsPresent);
+            AddStep("select DA", () => overlay.ChildrenOfType<osu.Game.Overlays.Mods.ModPanel>().Single(p => p.Mod is OsuModDifficultyAdjust).TriggerClick());
+            AddAssert("customisation initialised and enabled", () => overlay.ChildrenOfType<osu.Game.Overlays.Mods.ModCustomisationPanel>().Single().Enabled.Value);
+            AddAssert("settings open", () => overlay.ChildrenOfType<osu.Game.Overlays.Mods.ModCustomisationPanel>().Single().ExpandedState.Value
+                == osu.Game.Overlays.Mods.ModCustomisationPanel.ModCustomisationPanelState.ExpandedByMod);
+            AddUntilStep("DA controls visible", () => overlay.ChildrenOfType<OsuSliderBar<float>>().Any(s => s.IsPresent));
+            AddUntilStep("hover difficulty slider", () =>
+            {
+                var slider = overlay.ChildrenOfType<OsuSliderBar<float>>().First();
+                InputManager.MoveMouseTo(slider);
+                return slider.IsHovered;
+            });
+            AddStep("adjust difficulty via keyboard", () => InputManager.Key(Key.Right));
+            AddAssert("DA setting changed", () => proposal.Mods.Value.OfType<OsuModDifficultyAdjust>().Single().CircleSize.Value != null);
+            AddStep("close mods", () => overlay.Hide());
+            AddStep("return to daily", () => proposal.Exit());
+            AddUntilStep("daily restored", () => daily.IsCurrentScreen());
+            AddAssert("mandatory mod preserved", () => daily.Mods.Value.Single() is OsuModHidden);
+            AddStep("restore display settings", () =>
+            {
+                config.SetValue(osu.Game.Configuration.OsuSetting.UIScale, originalScale);
+                config.SetValue(osu.Game.Configuration.OsuSetting.ForkSongSelectStyle, originalStyle);
+                OsuGame.DisableShear.Value = originalShear;
+            });
         }
 
         [Test]

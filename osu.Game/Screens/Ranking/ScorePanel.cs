@@ -16,6 +16,7 @@ using osu.Framework.Input.Events;
 using osu.Framework.Utils;
 using osu.Game.Scoring;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Screens.Ranking.Contracted;
 using osu.Game.Screens.Ranking.Expanded;
 using osu.Game.Users;
@@ -80,6 +81,8 @@ namespace osu.Game.Screens.Ranking
         {
             get
             {
+                if (OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom && colourProvider != null)
+                    return ColourInfo.GradientVertical(colourProvider.Background4, colourProvider.Background5);
                 if (OverlayColourProvider.IsDarkTheme)
                     return ColourInfo.GradientVertical(Color4Extensions.FromHex("#1a1a1a"), Color4Extensions.FromHex("#0d0d0d"));
                 if (OverlayColourProvider.IsLightTheme)
@@ -92,6 +95,8 @@ namespace osu.Game.Screens.Ranking
         {
             get
             {
+                if (OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom && colourProvider != null)
+                    return ColourInfo.GradientVertical(colourProvider.Background3, colourProvider.Background5);
                 if (OverlayColourProvider.IsDarkTheme)
                     return ColourInfo.GradientVertical(Color4Extensions.FromHex("#222"), Color4Extensions.FromHex("#0d0d0d"));
                 if (OverlayColourProvider.IsLightTheme)
@@ -104,6 +109,7 @@ namespace osu.Game.Screens.Ranking
         {
             get
             {
+                if (OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom && colourProvider != null) return colourProvider.Background4;
                 if (OverlayColourProvider.IsDarkTheme) return Color4Extensions.FromHex("#0a0a0a");
                 if (OverlayColourProvider.IsLightTheme) return Color4Extensions.FromHex("#e0e0e0");
                 return Color4Extensions.FromHex("#353535");
@@ -114,6 +120,7 @@ namespace osu.Game.Screens.Ranking
         {
             get
             {
+                if (OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom && colourProvider != null) return colourProvider.Background3;
                 if (OverlayColourProvider.IsDarkTheme) return Color4Extensions.FromHex("#0a0a0a");
                 if (OverlayColourProvider.IsLightTheme) return Color4Extensions.FromHex("#e0e0e0");
                 return Color4Extensions.FromHex("#353535");
@@ -150,7 +157,14 @@ namespace osu.Game.Screens.Ranking
         private Drawable middleLayerBackground = null!;
         private Container middleLayerContentContainer = null!;
         private Drawable? middleLayerContent;
-        private IBindable<Colour4> themeColour = null!;
+        private OverlayColourProvider colourProvider = null!;
+        private Container topLayerBackgroundContainer = null!;
+        private Container middleLayerBackgroundContainer = null!;
+        private IBindable<float>? radiusBindable;
+        private IBindable<Colour4>? themeColour;
+        private IBindable<Colour4>? accentColourBindable;
+        private IBindable<ThemeMode>? themeModeBindable;
+        private IBindable<CustomThemeDefinition>? customThemeBindable;
 
         private ScorePanelTrackingContainer? trackingContainer;
 
@@ -164,9 +178,19 @@ namespace osu.Game.Screens.Ranking
             ScorePosition.Value = score.Position;
         }
 
-        [BackgroundDependencyLoader]
-        private void load(AudioManager audio, OverlayColourProvider colourProvider)
+        protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
         {
+            var dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
+            colourProvider = parent.Get<OverlayColourProvider>() ?? new OverlayColourProvider(OverlayColourScheme.Aquamarine, osu.Game.Overlays.CustomTheme.ThemeSurfaceContext.Results);
+            dependencies.Cache(colourProvider);
+            return dependencies;
+        }
+
+        [BackgroundDependencyLoader(true)]
+        private void load(AudioManager audio, OverlayColourProvider? injectedColourProvider)
+        {
+            colourProvider = injectedColourProvider ?? colourProvider ?? new OverlayColourProvider(OverlayColourScheme.Aquamarine, osu.Game.Overlays.CustomTheme.ThemeSurfaceContext.Results);
+
             // ScorePanel doesn't include the top extruding area in its own size.
             // Adding a manual offset here allows the expanded version to take on an "acceptable" vertical centre when at 100% UI scale.
             const float vertical_fudge = 20;
@@ -187,7 +211,7 @@ namespace osu.Game.Screens.Ranking
                         Height = 120,
                         Children = new Drawable[]
                         {
-                            new Container
+                            topLayerBackgroundContainer = new Container
                             {
                                 RelativeSizeAxes = Axes.Both,
                                 CornerRadius = 20,
@@ -204,7 +228,7 @@ namespace osu.Game.Screens.Ranking
                         RelativeSizeAxes = Axes.Both,
                         Children = new Drawable[]
                         {
-                            new Container
+                            middleLayerBackgroundContainer = new Container
                             {
                                 RelativeSizeAxes = Axes.Both,
                                 CornerRadius = 20,
@@ -228,8 +252,24 @@ namespace osu.Game.Screens.Ranking
                 }
             };
 
+            themeModeBindable = OverlayColourProvider.CurrentTheme.GetBoundCopy();
+            themeModeBindable.BindValueChanged(_ => updateState());
+
+            customThemeBindable = OverlayColourProvider.CustomTheme.GetBoundCopy();
+            customThemeBindable.BindValueChanged(_ => updateState());
+
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-            themeColour.BindValueChanged(_ => updateState(), true);
+            themeColour.BindValueChanged(_ => updateState());
+
+            accentColourBindable = colourProvider.GetColourBindable(OverlayColour.Highlight1);
+            accentColourBindable.BindValueChanged(_ => updateAccentColour());
+
+            radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Card, 20f);
+            radiusBindable.BindValueChanged(r =>
+            {
+                topLayerBackgroundContainer.CornerRadius = r.NewValue;
+                middleLayerBackgroundContainer.CornerRadius = r.NewValue;
+            }, true);
         }
 
         protected override void LoadComplete()
@@ -237,9 +277,26 @@ namespace osu.Game.Screens.Ranking
             base.LoadComplete();
 
             updateState();
+            updateAccentColour();
 
             topLayerBackground.FinishTransforms(false, nameof(Colour));
             middleLayerBackground.FinishTransforms(false, nameof(Colour));
+        }
+
+        private void updateAccentColour()
+        {
+            if (OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom && colourProvider != null)
+            {
+                topLayerBackgroundContainer.BorderThickness = 1.5f;
+                topLayerBackgroundContainer.BorderColour = colourProvider.Highlight1;
+                middleLayerBackgroundContainer.BorderThickness = 1.5f;
+                middleLayerBackgroundContainer.BorderColour = colourProvider.Highlight1;
+            }
+            else
+            {
+                topLayerBackgroundContainer.BorderThickness = 0;
+                middleLayerBackgroundContainer.BorderThickness = 0;
+            }
         }
 
         private PanelState state = PanelState.Contracted;
@@ -283,6 +340,7 @@ namespace osu.Game.Screens.Ranking
 
         private void updateState()
         {
+            updateAccentColour();
             topLayerContent?.FadeOut(content_fade_duration).Expire();
             middleLayerContent?.FadeOut(content_fade_duration).Expire();
 

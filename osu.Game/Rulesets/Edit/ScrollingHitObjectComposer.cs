@@ -48,7 +48,7 @@ namespace osu.Game.Rulesets.Edit
         {
             if (DrawableRuleset is ISupportConstantAlgorithmToggle toggleRuleset)
             {
-                LeftToolbox.Add(new EditorToolboxGroup("playfield")
+                LeftToolbox.Add(new EditorToolboxGroup(global::osu.Game.Localisation.ClientTranslationStrings.J4091)
                 {
                     Child = new FillFlowContainer
                     {
@@ -61,7 +61,7 @@ namespace osu.Game.Rulesets.Edit
                             new DrawableTernaryButton
                             {
                                 Current = showSpeedChanges,
-                                Description = "Show speed changes",
+                                Description = global::osu.Game.Localisation.ClientTranslationStrings.J4092,
                                 CreateIcon = () => new SpriteIcon { Icon = FontAwesome.Solid.TachometerAlt },
                             }
                         }

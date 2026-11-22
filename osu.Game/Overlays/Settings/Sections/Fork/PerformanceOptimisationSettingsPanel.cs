@@ -51,19 +51,25 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 Children = new Drawable[]
                 {
                     createCheckBox(ForkSettingsStrings.CarouselPerformanceModeCaption, ForkSettingsStrings.CarouselPerformanceModeHint,
-                        config.GetBindable<bool>(OsuSetting.ForkSongSelectCarouselPerformanceMode), tradeOff(ForkSettingsStrings.PerformanceEvidenceCarousel)),
+                        config.GetBindable<bool>(OsuSetting.ForkSongSelectCarouselPerformanceMode), "OsuSetting.ForkSongSelectCarouselPerformanceMode", tradeOff(ForkSettingsStrings.PerformanceEvidenceCarousel)),
                     new SettingsItemV2(new FormCheckBox
                     {
                         Caption = ForkSettingsStrings.CarouselPreviewsCaption,
                         HintText = ForkSettingsStrings.CarouselPreviewsHint,
                         Current = config.GetBindable<bool>(OsuSetting.ForkSongSelectCarouselPreviews),
-                    }),
+                    })
+                    {
+                        FavouriteId = "OsuSetting.ForkSongSelectCarouselPreviews",
+                    },
                     new SettingsItemV2(new FormCheckBox
                     {
                         Caption = ForkSettingsStrings.CarouselLazyLoadingCaption,
                         HintText = ForkSettingsStrings.CarouselLazyLoadingHint,
                         Current = config.GetBindable<bool>(OsuSetting.ForkSongSelectCarouselLazyLoading),
-                    }),
+                    })
+                    {
+                        FavouriteId = "OsuSetting.ForkSongSelectCarouselLazyLoading",
+                    },
                     new SettingsItemV2(new FormSliderBar<int>
                     {
                         Caption = ForkSettingsStrings.CarouselPreviewResolutionCaption,
@@ -71,7 +77,10 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                         Current = config.GetBindable<int>(OsuSetting.ForkSongSelectCarouselPreviewResolution),
                         KeyboardStep = 5,
                         LabelFormat = value => $"{value}%",
-                    }),
+                    })
+                    {
+                        FavouriteId = "OsuSetting.ForkSongSelectCarouselPreviewResolution",
+                    },
                 };
             }
         }
@@ -89,23 +98,23 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
             {
                 Children = new Drawable[]
                 {
-                    createCheckBox(ForkSettingsStrings.WindowsUltraPerfCaption, ForkSettingsStrings.WindowsUltraPerfHint, config.GetBindable<bool>(OsuSetting.ForkWindowsUltraPerformanceMode),
+                    createCheckBox(ForkSettingsStrings.WindowsUltraPerfCaption, ForkSettingsStrings.WindowsUltraPerfHint, config.GetBindable<bool>(OsuSetting.ForkWindowsUltraPerformanceMode), "OsuSetting.ForkWindowsUltraPerformanceMode",
                         latency(ForkSettingsStrings.PerformanceEvidenceWindowsUltra)),
-                    createCheckBox(ForkSettingsStrings.Use8kPollingRateCaption, ForkSettingsStrings.Use8kPollingRateHint, config.GetBindable<bool>(OsuSetting.ForkUse8kPollingRate),
+                    createCheckBox(ForkSettingsStrings.Use8kPollingRateCaption, ForkSettingsStrings.Use8kPollingRateHint, config.GetBindable<bool>(OsuSetting.ForkUse8kPollingRate), "OsuSetting.ForkUse8kPollingRate",
                         situational(ForkSettingsStrings.PerformanceEvidenceInput8k)),
-                    createCheckBox(ForkSettingsStrings.LargeTextureAtlasCaption, ForkSettingsStrings.LargeTextureAtlasHint, config.GetBindable<bool>(OsuSetting.ForkLargeTextureAtlas),
+                    createCheckBox(ForkSettingsStrings.LargeTextureAtlasCaption, ForkSettingsStrings.LargeTextureAtlasHint, config.GetBindable<bool>(OsuSetting.ForkLargeTextureAtlas), "OsuSetting.ForkLargeTextureAtlas",
                         negative(ForkSettingsStrings.PerformanceEvidenceAtlas4096)),
-                    createCheckBox(ForkSettingsStrings.DeferredVertexBatchingCaption, ForkSettingsStrings.DeferredVertexBatchingHint, config.GetBindable<bool>(OsuSetting.ForkDeferredVertexUploadBatching),
+                    createCheckBox(ForkSettingsStrings.DeferredVertexBatchingCaption, ForkSettingsStrings.DeferredVertexBatchingHint, config.GetBindable<bool>(OsuSetting.ForkDeferredVertexUploadBatching), "OsuSetting.ForkDeferredVertexUploadBatching",
                         negative(ForkSettingsStrings.PerformanceEvidenceDeferredVertexBatching)),
-                    createCheckBox(ForkSettingsStrings.DeferredDirectVertexUploadCaption, ForkSettingsStrings.DeferredDirectVertexUploadHint, config.GetBindable<bool>(OsuSetting.ForkDeferredDirectVertexUpload),
+                    createCheckBox(ForkSettingsStrings.DeferredDirectVertexUploadCaption, ForkSettingsStrings.DeferredDirectVertexUploadHint, config.GetBindable<bool>(OsuSetting.ForkDeferredDirectVertexUpload), "OsuSetting.ForkDeferredDirectVertexUpload",
                         tradeOff(ForkSettingsStrings.PerformanceEvidenceDeferredDirectVertex)),
-                    createCheckBox(ForkSettingsStrings.DeferredDirectUniformUploadCaption, ForkSettingsStrings.DeferredDirectUniformUploadHint, config.GetBindable<bool>(OsuSetting.ForkDeferredDirectUniformUpload),
+                    createCheckBox(ForkSettingsStrings.DeferredDirectUniformUploadCaption, ForkSettingsStrings.DeferredDirectUniformUploadHint, config.GetBindable<bool>(OsuSetting.ForkDeferredDirectUniformUpload), "OsuSetting.ForkDeferredDirectUniformUpload",
                         tradeOff(ForkSettingsStrings.PerformanceEvidenceDeferredDirectUniform)),
-                    createCheckBox(ForkSettingsStrings.VeldridPipelineLookupCacheCaption, ForkSettingsStrings.VeldridPipelineLookupCacheHint, config.GetBindable<bool>(OsuSetting.ForkVeldridPipelineLookupCache),
+                    createCheckBox(ForkSettingsStrings.VeldridPipelineLookupCacheCaption, ForkSettingsStrings.VeldridPipelineLookupCacheHint, config.GetBindable<bool>(OsuSetting.ForkVeldridPipelineLookupCache), "OsuSetting.ForkVeldridPipelineLookupCache",
                         tradeOff(ForkSettingsStrings.PerformanceEvidencePipelineCache)),
-                    createCheckBox(ForkSettingsStrings.StaticChildLifetimeCacheCaption, ForkSettingsStrings.StaticChildLifetimeCacheHint, config.GetBindable<bool>(OsuSetting.ForkStaticChildLifetimeCache),
+                    createCheckBox(ForkSettingsStrings.StaticChildLifetimeCacheCaption, ForkSettingsStrings.StaticChildLifetimeCacheHint, config.GetBindable<bool>(OsuSetting.ForkStaticChildLifetimeCache), "OsuSetting.ForkStaticChildLifetimeCache",
                         tradeOff(ForkSettingsStrings.PerformanceEvidenceStaticLifetime)),
-                    createCheckBox(ForkSettingsStrings.AtlasRegionAllocatorCaption, ForkSettingsStrings.AtlasRegionAllocatorHint, config.GetBindable<bool>(OsuSetting.ForkAtlasRegionAllocator),
+                    createCheckBox(ForkSettingsStrings.AtlasRegionAllocatorCaption, ForkSettingsStrings.AtlasRegionAllocatorHint, config.GetBindable<bool>(OsuSetting.ForkAtlasRegionAllocator), "OsuSetting.ForkAtlasRegionAllocator",
                         tradeOff(ForkSettingsStrings.PerformanceEvidenceAtlasRegionReuse)),
                     new SettingsItemV2(new FormSliderBar<float>
                     {
@@ -114,10 +123,13 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                         Current = config.GetBindable<float>(OsuSetting.ForkGameplayRenderScale),
                         KeyboardStep = 0.05f,
                         DisplayAsPercentage = true,
-                    }),
-                    createCheckBox(ForkSettingsStrings.AllowTearingCaption, ForkSettingsStrings.AllowTearingHint, config.GetBindable<bool>(OsuSetting.ForkAllowTearing),
+                    })
+                    {
+                        FavouriteId = "OsuSetting.ForkGameplayRenderScale",
+                    },
+                    createCheckBox(ForkSettingsStrings.AllowTearingCaption, ForkSettingsStrings.AllowTearingHint, config.GetBindable<bool>(OsuSetting.ForkAllowTearing), "OsuSetting.ForkAllowTearing",
                         situational(ForkSettingsStrings.PerformanceEvidenceAllowTearing)),
-                    createCheckBox(ForkSettingsStrings.UpdateSpinWaitCaption, ForkSettingsStrings.UpdateSpinWaitHint, config.GetBindable<bool>(OsuSetting.ForkUpdateThreadSpinWait),
+                    createCheckBox(ForkSettingsStrings.UpdateSpinWaitCaption, ForkSettingsStrings.UpdateSpinWaitHint, config.GetBindable<bool>(OsuSetting.ForkUpdateThreadSpinWait), "OsuSetting.ForkUpdateThreadSpinWait",
                         latency(ForkSettingsStrings.PerformanceEvidenceSpinWait)),
                 };
             }
@@ -137,6 +149,7 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                 var control = new ExclusiveAudioPerformanceCheckBox(config.GetBindable<bool>(OsuSetting.ForkExclusiveAudio), audio);
                 var item = new SettingsItemV2(control)
                 {
+                    FavouriteId = "ui:PerformanceOptimisationSettingsPanel:control",
                     Keywords = new[] { "audio", "latency", "wasapi", "exclusive", "extreme" },
                 };
 
@@ -150,19 +163,49 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                         : null;
                 }, true);
 
-                Children = new Drawable[]
+                if (OperatingSystem.IsLinux())
                 {
-                    item,
-                    new SettingsItemV2(new FormCheckBox
+                    Children = new Drawable[]
                     {
-                        Caption = ForkSettingsStrings.ExclusiveAudioGameplayOnlyCaption,
-                        HintText = ForkSettingsStrings.ExclusiveAudioGameplayOnlyHint,
-                        Current = config.GetBindable<bool>(OsuSetting.ForkExclusiveAudioGameplayOnly),
-                    })
+                        new SettingsItemV2(new FormCheckBox
+                        {
+                            Caption = ForkSettingsStrings.LinuxLowLatencyAudioCaption,
+                            HintText = ForkSettingsStrings.LinuxLowLatencyAudioHint,
+                            Current = audio.UseLinuxLowLatency,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.LinuxLowLatencyAudioCaption",
+                            Keywords = new[] { "audio", "linux", "latency", "bass" },
+                        },
+                        new SettingsItemV2(new FormCheckBox
+                        {
+                            Caption = ForkSettingsStrings.LinuxSdlOutputCaption,
+                            HintText = ForkSettingsStrings.LinuxSdlOutputHint,
+                            Current = audio.UseLinuxSdlOutput,
+                        })
+                        {
+                            FavouriteId = "ui:ForkSettingsStrings.LinuxSdlOutputCaption",
+                            Keywords = new[] { "audio", "linux", "sdl3", "pipewire" },
+                        },
+                    };
+                }
+                else if (OperatingSystem.IsWindows())
+                {
+                    Children = new Drawable[]
                     {
-                        Keywords = new[] { "audio", "wasapi", "exclusive", "gameplay" },
-                    },
-                };
+                        item,
+                        new SettingsItemV2(new FormCheckBox
+                        {
+                            Caption = ForkSettingsStrings.ExclusiveAudioGameplayOnlyCaption,
+                            HintText = ForkSettingsStrings.ExclusiveAudioGameplayOnlyHint,
+                            Current = config.GetBindable<bool>(OsuSetting.ForkExclusiveAudioGameplayOnly),
+                        })
+                        {
+                            FavouriteId = "OsuSetting.ForkExclusiveAudioGameplayOnly",
+                            Keywords = new[] { "audio", "wasapi", "exclusive", "gameplay" },
+                        },
+                    };
+                }
             }
         }
 
@@ -237,11 +280,11 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                         Current.Value = false;
                 });
 
-                // Standalone public build note: AudioManager.OutputLatency is an optional Mosu framework extension.
+                outputLatency.BindTo(audio.OutputLatency);
                 outputLatency.BindValueChanged(change => Schedule(() =>
                 {
                     latencyText.Text = change.NewValue > 0
-                        ? ForkSettingsStrings.CurrentAudioLatency($"~{change.NewValue:0.0} ms")
+                        ? ForkSettingsStrings.CurrentAudioLatency(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4057(change.NewValue))
                         : ForkSettingsStrings.AudioLatencyMeasuring;
                 }), true);
             }
@@ -272,36 +315,36 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
             {
                 Children = new Drawable[]
                 {
-                    createCheckBox(ForkSettingsStrings.SkinPerfCaption, ForkSettingsStrings.SkinPerfHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceMode),
+                    createCheckBox(ForkSettingsStrings.SkinPerfCaption, ForkSettingsStrings.SkinPerfHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceMode), "OsuSetting.ForkSkinPerformanceMode",
                         highGain(ForkSettingsStrings.PerformanceEvidenceSkinMaster)),
-                    createCheckBox(ForkSettingsStrings.SkinPerfFreezeAnimationsCaption, ForkSettingsStrings.SkinPerfFreezeAnimationsHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceFreezeAnimations),
+                    createCheckBox(ForkSettingsStrings.SkinPerfFreezeAnimationsCaption, ForkSettingsStrings.SkinPerfFreezeAnimationsHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceFreezeAnimations), "OsuSetting.ForkSkinPerformanceFreezeAnimations",
                         smallGain(ForkSettingsStrings.PerformanceEvidenceSkinFreezeAnimations)),
-                    createCheckBox(ForkSettingsStrings.SkinPerfSimplifyEffectsCaption, ForkSettingsStrings.SkinPerfSimplifyEffectsHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceSimplifyEffects),
+                    createCheckBox(ForkSettingsStrings.SkinPerfSimplifyEffectsCaption, ForkSettingsStrings.SkinPerfSimplifyEffectsHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceSimplifyEffects), "OsuSetting.ForkSkinPerformanceSimplifyEffects",
                         smallGain(ForkSettingsStrings.PerformanceEvidenceSkinSimplifyEffects)),
-                    createCheckBox(ForkSettingsStrings.SkinPerfOptimiseTexturesCaption, ForkSettingsStrings.SkinPerfOptimiseTexturesHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceOptimiseTextures),
+                    createCheckBox(ForkSettingsStrings.SkinPerfOptimiseTexturesCaption, ForkSettingsStrings.SkinPerfOptimiseTexturesHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceOptimiseTextures), "OsuSetting.ForkSkinPerformanceOptimiseTextures",
                         mediumGain(ForkSettingsStrings.PerformanceEvidenceSkinOptimiseTextures)),
-                    createCheckBox(ForkSettingsStrings.SkinPerfSimplifyHudCaption, ForkSettingsStrings.SkinPerfSimplifyHudHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceSimplifyHud),
+                    createCheckBox(ForkSettingsStrings.SkinPerfSimplifyHudCaption, ForkSettingsStrings.SkinPerfSimplifyHudHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceSimplifyHud), "OsuSetting.ForkSkinPerformanceSimplifyHud",
                         mediumGain(ForkSettingsStrings.PerformanceEvidenceSkinSimplifyHud)),
-                    createCheckBox(ForkSettingsStrings.SkinPerfSimplifyCountersCaption, ForkSettingsStrings.SkinPerfSimplifyCountersHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceSimplifyCounters),
+                    createCheckBox(ForkSettingsStrings.SkinPerfSimplifyCountersCaption, ForkSettingsStrings.SkinPerfSimplifyCountersHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceSimplifyCounters), "OsuSetting.ForkSkinPerformanceSimplifyCounters",
                         smallGain(ForkSettingsStrings.PerformanceEvidenceSkinSimplifyCounters)),
-                    createCheckBox(ForkSettingsStrings.SkinPerfDisableKiaiFlashingCaption, ForkSettingsStrings.SkinPerfDisableKiaiFlashingHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceDisableKiaiFlashing),
+                    createCheckBox(ForkSettingsStrings.SkinPerfDisableKiaiFlashingCaption, ForkSettingsStrings.SkinPerfDisableKiaiFlashingHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceDisableKiaiFlashing), "OsuSetting.ForkSkinPerformanceDisableKiaiFlashing",
                         mediumGain(ForkSettingsStrings.PerformanceEvidenceSkinDisableKiai)),
-                    createCheckBox(ForkSettingsStrings.SkinPerfBlackBackgroundCaption, ForkSettingsStrings.SkinPerfBlackBackgroundHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceBlackBackground),
+                    createCheckBox(ForkSettingsStrings.SkinPerfBlackBackgroundCaption, ForkSettingsStrings.SkinPerfBlackBackgroundHint, config.GetBindable<bool>(OsuSetting.ForkSkinPerformanceBlackBackground), "OsuSetting.ForkSkinPerformanceBlackBackground",
                         highGain(ForkSettingsStrings.PerformanceEvidenceSkinBlackBackground)),
-                    createCheckBox(ForkSettingsStrings.SkinPerfArgonFollowRingCaption, ForkSettingsStrings.SkinPerfArgonFollowRingHint, config.GetBindable<bool>(OsuSetting.ForkArgonFollowRing),
+                    createCheckBox(ForkSettingsStrings.SkinPerfArgonFollowRingCaption, ForkSettingsStrings.SkinPerfArgonFollowRingHint, config.GetBindable<bool>(OsuSetting.ForkArgonFollowRing), "OsuSetting.ForkArgonFollowRing",
                         mediumGain(ForkSettingsStrings.PerformanceEvidenceArgonFollowRing)),
                 };
             }
         }
 
-        private static SettingsItemV2 createCheckBox(LocalisableString caption, LocalisableString hint, Bindable<bool> current, PerformanceImpact impact)
+        private static SettingsItemV2 createCheckBox(LocalisableString caption, LocalisableString hint, Bindable<bool> current, string favouriteId, PerformanceImpact impact)
         {
             var item = new SettingsItemV2(new FormCheckBox
             {
                 Caption = caption,
                 HintText = hint,
                 Current = current,
-            });
+            }) { FavouriteId = favouriteId };
 
             item.Note.Value = new SettingsNote.Data(
                 ForkSettingsStrings.PerformanceImpactDescription(impact.Level, impact.Guidance, impact.Evidence),

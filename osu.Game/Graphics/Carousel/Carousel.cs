@@ -24,9 +24,11 @@ using osu.Framework.Input.Events;
 using osu.Framework.Layout;
 using osu.Framework.Logging;
 using osu.Framework.Threading;
+using osu.Framework.Statistics;
 using osu.Framework.Utils;
 using osu.Game.Input.Bindings;
 using osu.Game.Online.Multiplayer;
+using osu.Game.Performance.Debug;
 using osuTK;
 using osuTK.Input;
 
@@ -70,7 +72,7 @@ namespace osu.Game.Graphics.Carousel
         /// <summary>
         /// Removes decorative panel and scroll transitions for workloads which favour stable frame times.
         /// </summary>
-        protected virtual bool UseReducedPanelMotion => false;
+        protected virtual bool UseReducedPanelMotion => !InterfaceAnimation.AllowDecorativeMovement;
 
         // Exit animations keep pooled panels checked out until their lifetime ends. Unbounded animated exits
         // can starve the pools during rapid scrolling and force thousands of synchronously-loaded replacements.
@@ -447,6 +449,7 @@ namespace osu.Game.Graphics.Carousel
 
             Schedule(() =>
             {
+                using var phase = PerformancePhaseLogger.Begin("Carousel.PublishFilteredItems", detail: $"items={items.Count}");
                 log("Items ready for display");
                 carouselItems = items;
                 displayedRange = null;
@@ -903,6 +906,7 @@ namespace osu.Game.Graphics.Carousel
         /// </summary>
         private void refreshAfterSelection()
         {
+            using var operation = StutterTraceEventSource.Log.Measure("Carousel.RefreshSelectionLayout");
             float yPos = visibleHalfHeight;
 
             // Invalidate display range as panel positions and visible status may have changed.
@@ -1012,6 +1016,7 @@ namespace osu.Game.Graphics.Carousel
 
         protected override void Update()
         {
+            using var operation = StutterTraceEventSource.Log.Measure("Carousel.Update");
             base.Update();
 
             if (carouselItems == null)
@@ -1035,8 +1040,14 @@ namespace osu.Game.Graphics.Carousel
 
             if (range != displayedRange)
             {
+                int previousPanelCount = Scroll.Panels.Count;
+                long rangeStart = Stopwatch.GetTimestamp();
                 displayedRange = range;
                 updateDisplayedRange(range);
+                double elapsedMs = Stopwatch.GetElapsedTime(rangeStart).TotalMilliseconds;
+                if (elapsedMs >= 16)
+                    Logger.Log($"MOSU_SLOW_CAROUSEL_RANGE elapsed_ms={elapsedMs:F2} first={range.First} last={range.Last} "
+                               + $"panels_before={previousPanelCount} panels_after={Scroll.Panels.Count}", LoggingTarget.Performance);
             }
 
             double selectedYPos = currentSelection.CarouselItem?.CarouselYPosition ?? 0;
@@ -1055,8 +1066,9 @@ namespace osu.Game.Graphics.Carousel
                 if (panel.Depth != depth)
                     Scroll.Panels.ChangeChildDepth(panel, depth);
 
-                if (c.DrawYPosition != c.Item.CarouselYPosition)
-                    c.DrawYPosition = Interpolation.DampContinuously(c.DrawYPosition, c.Item.CarouselYPosition, 50, Time.Elapsed);
+                double nextY = GetPanelYPosition(panel, c.DrawYPosition, c.Item.CarouselYPosition);
+                if (c.DrawYPosition != nextY)
+                    c.DrawYPosition = nextY;
 
                 panel.X = GetPanelXOffset(panel);
 
@@ -1094,6 +1106,9 @@ namespace osu.Game.Graphics.Carousel
         /// Returns the Y position to scroll to in order to show the most relevant carousel item(s).
         /// </summary>
         protected virtual double? GetScrollTarget() => currentKeyboardSelection.YPosition;
+
+        protected virtual double GetPanelYPosition(Drawable panel, double current, double target)
+            => UseReducedPanelMotion ? target : Interpolation.DampContinuously(current, target, 50, Time.Elapsed);
 
         protected virtual float GetPanelXOffset(Drawable panel)
         {
@@ -1145,6 +1160,7 @@ namespace osu.Game.Graphics.Carousel
 
         private void updateDisplayedRange(DisplayRange range)
         {
+            using var operation = StutterTraceEventSource.Log.Measure("Carousel.UpdateDisplayedRange");
             Debug.Assert(carouselItems != null);
 
             List<CarouselItem> toDisplay = range == DisplayRange.EMPTY

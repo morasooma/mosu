@@ -47,11 +47,11 @@ namespace osu.Game.Screens.Play
                 // TODO: This should be customised for `MultiplayerSpectatorPlayer` to be static and only show the player name.
                 // Or maybe we should completely redesign this to show the user avatar and other things if that happens.
                 OsuTextFlowContainer message = new OsuTextFlowContainer(cp => cp.Font = OsuFont.Style.Body) { AutoSizeAxes = Axes.Both };
-                message.AddText("Watching ");
+                message.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5068);
                 message.AddText(Score.ScoreInfo.User.Username, s => s.Font = s.Font.With(weight: FontWeight.SemiBold));
-                message.AddText(" play ");
+                message.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5069);
                 message.AddText(Beatmap.Value.BeatmapInfo.GetDisplayTitleRomanisable(), s => s.Font = s.Font.With(weight: FontWeight.SemiBold));
-                message.AddText(" live", s => s.Font = s.Font.With(weight: FontWeight.Bold));
+                message.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5076, s => s.Font = s.Font.With(weight: FontWeight.Bold));
 
                 replayOverlay.SetMessage(new ScrollingMessage(message)
                 {

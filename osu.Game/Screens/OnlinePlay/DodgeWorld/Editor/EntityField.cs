@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using osu.Framework.Localisation;
 using osu.Game.Screens.OnlinePlay.DodgeWorld.View;
 
 namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
@@ -23,8 +24,8 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Editor
     /// the same way it describes anything else.
     /// </param>
     internal sealed record EntityField(
-        string Label,
-        string? Hint,
+        LocalisableString Label,
+        LocalisableString? Hint,
         Func<EditableWorldEntity, string> Read,
         Action<EditableWorldEntity, string> Write,
         bool Toggle = false);

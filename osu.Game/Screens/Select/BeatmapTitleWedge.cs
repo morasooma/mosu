@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,8 @@ using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Localisation;
+using osu.Framework.Logging;
+using osu.Framework.Threading;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.Drawables;
 using osu.Game.Configuration;
@@ -23,6 +26,7 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Localisation;
 using osu.Game.Overlays;
 using osu.Game.Overlays.BeatmapSet;
+using osu.Game.Performance.Debug;
 using osu.Game.Resources.Localisation.Web;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
@@ -78,10 +82,16 @@ namespace osu.Game.Screens.Select
         private RealmAccess realm { get; set; } = null!;
 
         [Resolved]
+        private Online.Leaderboards.LeaderboardManager leaderboardManager { get; set; } = null!;
+
+        [Resolved]
         private OverlayColourProvider colourProvider { get; set; } = null!;
 
+        private readonly Bindable<bool> disableShear = new BindableBool();
         private FillFlowContainer statisticsFlow = null!;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<float>? radiusBindable;
+        private Action<ValueChangedEvent<Guid?>>? onMosuResolvedBeatmapChanged;
 
         public BeatmapTitleWedge()
         {
@@ -94,6 +104,20 @@ namespace osu.Game.Screens.Select
         {
             Masking = true;
             CornerRadius = corner_radius;
+
+            disableShear.BindTo(OsuGame.DisableShear);
+
+            radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Panel, corner_radius);
+
+            void updateRadius()
+            {
+                float target = radiusBindable?.Value ?? corner_radius;
+                float maxSafe = !disableShear.Value ? 12f : 25f;
+                CornerRadius = Math.Min(target, maxSafe);
+            }
+
+            disableShear.BindValueChanged(_ => updateRadius());
+            radiusBindable.BindValueChanged(_ => updateRadius(), true);
 
             InternalChildren = new Drawable[]
             {
@@ -206,6 +230,12 @@ namespace osu.Game.Screens.Select
             working.BindValueChanged(_ => updateDisplay());
             ruleset.BindValueChanged(_ => updateDisplay());
             onlineLookupResult.BindValueChanged(_ => updateDisplay());
+            onMosuResolvedBeatmapChanged = e =>
+            {
+                if (e.NewValue == working.Value?.BeatmapInfo.ID && working.Value.BeatmapInfo.Status == BeatmapOnlineStatus.None)
+                    statusPill.Status = BeatmapOnlineStatus.MosuAvailable;
+            };
+            leaderboardManager.MosuResolvedBeatmap.ValueChanged += onMosuResolvedBeatmapChanged;
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ => updateDisplay());
@@ -226,6 +256,26 @@ namespace osu.Game.Screens.Select
             statisticsFlow.AutoSizeEasing = Easing.OutQuint;
         }
 
+        private int measuredInitialUpdateFrames;
+
+        public override bool UpdateSubTree()
+        {
+            if (!PerformancePhaseLogger.Enabled || measuredInitialUpdateFrames >= 3)
+                return base.UpdateSubTree();
+
+            measuredInitialUpdateFrames++;
+            long start = Stopwatch.GetTimestamp();
+            try
+            {
+                return base.UpdateSubTree();
+            }
+            finally
+            {
+                Logger.Log($"MOSU_SONG_SELECT_INITIAL_TREE component=BeatmapTitleWedge frame={measuredInitialUpdateFrames} "
+                           + $"elapsed_ms={Stopwatch.GetElapsedTime(start).TotalMilliseconds:F2}", LoggingTarget.Performance);
+            }
+        }
+
         protected override void PopIn()
         {
             this.MoveToX(0, SongSelect.ENTER_DURATION, Easing.OutQuint)
@@ -240,72 +290,139 @@ namespace osu.Game.Screens.Select
 
         private void updateDisplay()
         {
+            long started = PerformancePhaseLogger.Enabled ? Stopwatch.GetTimestamp() : 0;
             var metadata = working.Value.Metadata;
             var beatmapInfo = working.Value.BeatmapInfo;
 
-            statusPill.Status = beatmapInfo.Status;
+            statusPill.Status = beatmapInfo.Status == BeatmapOnlineStatus.None
+                                && leaderboardManager.IsMosuResolved(beatmapInfo.ID)
+                ? BeatmapOnlineStatus.MosuAvailable
+                : beatmapInfo.Status;
+            long statusDone = started != 0 ? Stopwatch.GetTimestamp() : 0;
 
             var titleText = new RomanisableString(metadata.TitleUnicode, metadata.Title);
             titleLabel.CreateContent = () => new OsuSpriteText
             {
-                Text = titleText,
+                AsyncText = titleText,
                 Shadow = true,
                 Font = OsuFont.Style.Title,
                 Colour = colourProvider.Content1,
             };
             titleLink.Action = () => songSelect?.AddToSearch(titleText.GetPreferred(localisation.CurrentParameters.Value.PreferOriginalScript));
             DisplayedTitle = titleText.ToString();
+            long titleDone = started != 0 ? Stopwatch.GetTimestamp() : 0;
 
             var artistText = new RomanisableString(metadata.ArtistUnicode, metadata.Artist);
             artistLabel.CreateContent = () => new OsuSpriteText
             {
-                Text = artistText,
+                AsyncText = artistText,
                 Shadow = true,
                 Font = OsuFont.Style.Heading2,
                 Colour = colourProvider.Content2,
             };
             artistLink.Action = () => songSelect?.AddToSearch(artistText.GetPreferred(localisation.CurrentParameters.Value.PreferOriginalScript));
             DisplayedArtist = artistText.ToString();
+            long artistDone = started != 0 ? Stopwatch.GetTimestamp() : 0;
 
             if (metadata.IsServerExclusive())
                 exclusiveBadge.Show();
             else
                 exclusiveBadge.Hide();
 
+            long badgeDone = started != 0 ? Stopwatch.GetTimestamp() : 0;
             updateLengthAndBpmStatistics();
+            long statisticsDone = started != 0 ? Stopwatch.GetTimestamp() : 0;
             updateOnlineDisplay();
+
+            if (started != 0)
+            {
+                long finished = Stopwatch.GetTimestamp();
+                double totalMs = Stopwatch.GetElapsedTime(started, finished).TotalMilliseconds;
+                if (totalMs >= 5)
+                {
+                    Logger.Log($"MOSU_SLOW_TITLE_WEDGE_DISPLAY elapsed_ms={totalMs:F2} "
+                               + $"status_ms={Stopwatch.GetElapsedTime(started, statusDone).TotalMilliseconds:F2} "
+                               + $"title_ms={Stopwatch.GetElapsedTime(statusDone, titleDone).TotalMilliseconds:F2} "
+                               + $"artist_ms={Stopwatch.GetElapsedTime(titleDone, artistDone).TotalMilliseconds:F2} "
+                               + $"badge_ms={Stopwatch.GetElapsedTime(artistDone, badgeDone).TotalMilliseconds:F2} "
+                               + $"statistics_ms={Stopwatch.GetElapsedTime(badgeDone, statisticsDone).TotalMilliseconds:F2} "
+                               + $"online_ms={Stopwatch.GetElapsedTime(statisticsDone, finished).TotalMilliseconds:F2}", LoggingTarget.Performance);
+                }
+            }
         }
 
         private CancellationTokenSource? lengthBpmCancellationSource;
+        private ScheduledDelegate? lengthBpmAdmission;
+        private WorkingBeatmap? statisticsWorkingBeatmap;
+        private double statisticsRate;
+        internal int LengthBpmJobsStarted { get; private set; }
 
         private void updateLengthAndBpmStatistics()
         {
+            // Capture everything the worker needs on the update thread. A ruleset/theme/online refresh
+            // must not cancel an in-flight calculation for the same map and effective rate.
+            WorkingBeatmap selectedBeatmap = working.Value;
+            double rate = ModUtils.CalculateRateWithMods(mods.Value);
+
+            if (ReferenceEquals(statisticsWorkingBeatmap, selectedBeatmap) && statisticsRate == rate)
+                return;
+
             lengthBpmCancellationSource?.Cancel();
+            lengthBpmAdmission?.Cancel();
+            lengthBpmAdmission = null;
             lengthBpmCancellationSource = new CancellationTokenSource();
+            statisticsWorkingBeatmap = selectedBeatmap;
+            statisticsRate = rate;
+            LengthBpmJobsStarted++;
 
             var token = lengthBpmCancellationSource.Token;
+            // Length is already stored with the map. Exact BPM range/drain statistics need the
+            // decoded objects, so wait for selection to settle instead of forcing cold decoding
+            // for every transient map. Never leave the preceding map's BPM/tooltip visible.
+            lengthStatistic.Text = Math.Round(selectedBeatmap.BeatmapInfo.Length / rate).ToFormattedDuration();
+            lengthStatistic.TooltipText = default;
+            bpmStatistic.Text = null;
+
+            if (selectedBeatmap.BeatmapLoaded)
+                calculateLengthAndBpmStatistics(selectedBeatmap, rate, token);
+            else
+                lengthBpmAdmission = Scheduler.AddDelayed(() =>
+                {
+                    lengthBpmAdmission = null;
+                    calculateLengthAndBpmStatistics(selectedBeatmap, rate, token);
+                }, SongSelect.PERFORMANCE_CALCULATION_DEBOUNCE);
+        }
+
+        private void calculateLengthAndBpmStatistics(WorkingBeatmap selectedBeatmap, double rate, CancellationToken token)
+        {
+            if (token.IsCancellationRequested)
+                return;
 
             Task.Run(() =>
             {
-                var beatmapInfo = working.Value.BeatmapInfo;
-                // This can take time as it is a synchronous task.
-                var beatmap = working.Value.Beatmap;
+                if (token.IsCancellationRequested)
+                    return;
 
-                double rate = ModUtils.CalculateRateWithMods(mods.Value);
+                // This can take time as it is a synchronous task.
+                var beatmap = selectedBeatmap.Beatmap;
+                if (token.IsCancellationRequested || beatmap == null)
+                    return;
 
                 int bpmMax = FormatUtils.RoundBPM(beatmap.ControlPointInfo.BPMMaximum, rate);
                 int bpmMin = FormatUtils.RoundBPM(beatmap.ControlPointInfo.BPMMinimum, rate);
                 int mostCommonBPM = FormatUtils.RoundBPM(60000 / beatmap.GetMostCommonBeatLength(), rate);
+                if (token.IsCancellationRequested)
+                    return;
 
                 double drainLength = Math.Round(beatmap.CalculateDrainLength() / rate);
-                double hitLength = Math.Round(beatmapInfo.Length / rate);
+                if (token.IsCancellationRequested)
+                    return;
 
                 Schedule(() =>
                 {
                     if (token.IsCancellationRequested)
                         return;
 
-                    lengthStatistic.Text = hitLength.ToFormattedDuration();
                     lengthStatistic.TooltipText = BeatmapsetsStrings.ShowStatsTotalLength(drainLength.ToFormattedDuration());
 
                     bpmStatistic.Text = bpmMin == bpmMax
@@ -357,7 +474,10 @@ namespace osu.Game.Screens.Select
                             if (token.IsCancellationRequested)
                                 return;
 
-                            statusPill.Status = status.Value;
+                            statusPill.Status = status.Value == BeatmapOnlineStatus.None
+                                                && leaderboardManager.IsMosuResolved(working.Value.BeatmapInfo.ID)
+                                ? BeatmapOnlineStatus.MosuAvailable
+                                : status.Value;
                         });
                     }
                 }, token);
@@ -366,6 +486,14 @@ namespace osu.Game.Screens.Select
 
         protected override void Dispose(bool isDisposing)
         {
+            if (onMosuResolvedBeatmapChanged != null)
+                leaderboardManager.MosuResolvedBeatmap.ValueChanged -= onMosuResolvedBeatmapChanged;
+
+            lengthBpmAdmission?.Cancel();
+            lengthBpmCancellationSource?.Cancel();
+            lengthBpmCancellationSource?.Dispose();
+            lengthBpmCancellationSource = null;
+            settingChangeTracker?.Dispose();
             onlineDisplayCancellationSource?.Dispose();
             onlineDisplayCancellationSource = null;
             base.Dispose(isDisposing);

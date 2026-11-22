@@ -100,6 +100,13 @@ namespace osu.Game.Beatmaps
 
         public event Action<WorkingBeatmap> OnInvalidated;
 
+        /// <summary>Checks live cached instances without detaching or loading any Realm graph.</summary>
+        internal WorkingBeatmap? GetExisting(BeatmapInfo beatmapInfo)
+        {
+            lock (workingCache)
+                return workingCache.FirstOrDefault(w => beatmapInfo.Equals(w.BeatmapInfo));
+        }
+
         public virtual WorkingBeatmap GetWorkingBeatmap(BeatmapInfo? beatmapInfo)
         {
             if (beatmapInfo == null || ReferenceEquals(beatmapInfo, DefaultBeatmap.BeatmapInfo))
@@ -135,6 +142,66 @@ namespace osu.Game.Beatmaps
             }
         }
 
+        public WorkingBeatmap GetWorkingBeatmapForCalculation(BeatmapInfo beatmapInfo)
+        {
+            if (StablePathManager.IsStableBeatmap(beatmapInfo.ID))
+                return new StableWorkingBeatmap(beatmapInfo, audioManager, host, stableBeatmapPanelTextureStore, stableBeatmapLegacyPreviewTextureStore);
+
+            // Background processing owns this snapshot; never publish it to the shared interactive cache.
+            return new BeatmapManagerWorkingBeatmap(beatmapInfo, this);
+        }
+
+        internal WorkingBeatmap GetCarouselBackgroundBeatmap(BeatmapInfo beatmapInfo)
+        {
+            // Card previews only require one file mapping. Detaching a playable beatmap
+            // clones the entire set's files and sibling difficulties on every pool reuse.
+            // Resolve just the background on the caller's worker Realm, then release it.
+            Guid id = beatmapInfo.ID;
+            string? path = realm.Run(r =>
+            {
+                var current = r.Find<BeatmapInfo>(id);
+                string? filename = current?.Metadata?.BackgroundFile;
+                return string.IsNullOrEmpty(filename) ? null : current!.BeatmapSet?.GetPathForFile(filename);
+            });
+            return new CarouselBackgroundBeatmap(beatmapInfo, path, beatmapPanelTextureStore, beatmapLegacyPreviewTextureStore, files);
+        }
+
+        internal sealed class CarouselBackgroundBeatmap : WorkingBeatmap
+        {
+            private readonly string? path;
+
+            internal string? BackgroundHash => path == null ? null : Path.GetFileName(path);
+            private readonly TextureStore panels;
+            private readonly TextureStore legacy;
+            private readonly IResourceStore<byte[]>? files;
+
+            public CarouselBackgroundBeatmap(BeatmapInfo info, string? path, TextureStore panels, TextureStore legacy, IResourceStore<byte[]>? files = null)
+                : base(info, null)
+            {
+                this.path = path;
+                this.panels = panels;
+                this.legacy = legacy;
+                this.files = files;
+            }
+
+            internal override string? BackgroundContentHash => BackgroundHash;
+            internal override Stream? OpenBackgroundStream() => path == null ? null : files?.GetStream(path);
+
+            protected override IBeatmap GetBeatmap() => throw new InvalidOperationException("Carousel artwork is not a playable beatmap.");
+            protected override Track? GetBeatmapTrack() => null;
+            public override Stream? GetStream(string storagePath) => null;
+            protected internal override ISkin? GetSkin() => null;
+            public override Texture? GetBackground() => GetPanelBackground();
+            public override Texture? GetPanelBackground() => get(panels, 100);
+            public override Texture? GetPanelBackground(int resolutionPercent) => get(panels, resolutionPercent);
+            public override Texture? GetLegacyPreviewBackground() => get(legacy, 100);
+            public override Texture? GetLegacyPreviewBackground(int resolutionPercent) => get(legacy, resolutionPercent);
+            public override Texture? GetClassicPreviewBackground(int resolutionPercent)
+                => path == null ? null : legacy.Get(CarouselPreviewTextureRequest.CreateClassic(path, resolutionPercent));
+            private Texture? get(TextureStore store, int resolutionPercent)
+                => path == null ? null : store.Get(CarouselPreviewTextureRequest.Create(path, resolutionPercent));
+        }
+
         private bool confirmFileHashIsUpToDate(BeatmapInfo beatmapInfo)
         {
             string refetchPath = realm.Run(r => r.Find<BeatmapInfo>(beatmapInfo.ID)?.File?.File.Hash);
@@ -168,7 +235,8 @@ namespace osu.Game.Beatmaps
 
             protected override IBeatmap GetBeatmap()
             {
-                var customFormat = BeatmapInfo.Ruleset.CreateInstance() as ICustomBeatmapFormat;
+                // Standard .osu files can still provide timing and previews when their ruleset is not installed.
+                var customFormat = BeatmapInfo.Ruleset.Available ? BeatmapInfo.Ruleset.CreateInstance() as ICustomBeatmapFormat : null;
                 string beatmapFilename = BeatmapInfo.Path;
 
                 // Early custom-format builds stored a combined .osu + sidecar hash in BeatmapInfo.Hash.
@@ -265,6 +333,11 @@ namespace osu.Game.Beatmaps
 
                 return GetLegacyPreviewBackground();
             }
+
+            public override Texture GetClassicPreviewBackground(int resolutionPercent)
+                => resources is WorkingBeatmapCache cache
+                    ? getBackgroundFromStore(cache.beatmapLegacyPreviewTextureStore, name => CarouselPreviewTextureRequest.CreateClassic(name, resolutionPercent))
+                    : GetBackground();
 
             public override Texture GetBackground() => getBackgroundFromStore(resources.LargeTextureStore);
 

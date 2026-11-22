@@ -106,13 +106,15 @@ namespace osu.Game.Screens.Edit
                 MainContent.Add(content);
                 content.FadeInFromZero(300, Easing.OutQuint);
 
-                LoadComponentAsync(TimelineArea = new TimelineArea(CreateTimelineContent()), timeline =>
+                LoadComponentAsync(TimelineArea = new TimelineArea(CreateTimelineContent(), EnableHitSoundTracks), timeline =>
                 {
                     ConfigureTimeline(timeline);
                     timelineContent.Add(timeline);
                 });
             });
         }
+
+        protected virtual bool EnableHitSoundTracks => false;
 
         protected virtual void ConfigureTimeline(TimelineArea timelineArea)
         {

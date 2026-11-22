@@ -54,7 +54,7 @@ using osuTK;
 
 namespace osu.Game.Rulesets.Osu
 {
-    public class OsuRuleset : Ruleset, ILegacyRuleset, IHasLegacyScoreV1Processor, ITagCoopRuleset
+    public class OsuRuleset : Ruleset, ILegacyRuleset, IHasLegacyScoreV1Processor, ITagCoopRuleset, IPpCalculationVerification
     {
         public TagCoopGameplayController CreateTagCoopGameplayController(DrawableRuleset drawableRuleset, TagCoopGameplayConfiguration configuration)
             => new OsuTagCoopGameplayController(drawableRuleset, configuration);
@@ -199,7 +199,10 @@ namespace osu.Game.Rulesets.Osu
                         new OsuModMosuTargetDifficulty(),
                         new OsuModMosuRelax(),
                         new OsuModMosuMalevich(),
+                        new OsuModMosuElementHider(),
                         new OsuModAudioEffects(),
+                        new OsuModGlitch(),
+                        new OsuModFlatline(),
                     };
 
                 case ModType.DifficultyReduction:
@@ -282,10 +285,17 @@ namespace osu.Game.Rulesets.Osu
             if (context.Score != null && context.Score.TotalScoreVersion < 30000017)
                 return new OsuScoreMultiplierCalculatorV1(context);
 
-            return new OsuScoreMultiplierCalculatorV2(context);
+            // Third-party server profiles must use the original RX/DA score multipliers.
+            // Mosu's new scoring applies only to Mosu, not to other server profiles.
+            return new OsuScoreMultiplierCalculatorV2(context,
+                historicalMultipliers: context.UseOriginalMultipliers || osu.Game.Online.MosuServerEnvironment.IsThirdPartyServer || context.Score?.TotalScoreVersion < 30000020);
         }
 
         public override Drawable CreateIcon() => new SpriteIcon { Icon = OsuIcon.RulesetOsu };
+
+        // Verification uses the managed calculators.
+        public string VerifyPpCalculation(IWorkingBeatmap beatmap, Action<string, float> progress, System.Threading.CancellationToken cancellationToken)
+            => Difficulty.Diagnostics.PpCalculationVerification.Run(RulesetInfo, beatmap, progress, cancellationToken);
 
         public override DifficultyCalculator CreateDifficultyCalculator(IWorkingBeatmap beatmap) => new OsuDifficultyCalculator(RulesetInfo, beatmap);
 
@@ -295,7 +305,7 @@ namespace osu.Game.Rulesets.Osu
 
         public override IBeatmapVerifier CreateBeatmapVerifier() => new OsuBeatmapVerifier();
 
-        public override string Description => "osu!";
+        public override string Description => "Standard";
 
         public override string ShortName => SHORT_NAME;
 
@@ -379,12 +389,12 @@ namespace osu.Game.Rulesets.Osu
 
             return new[]
             {
-                new StatisticItem("Performance Breakdown", () => new PerformanceBreakdownChart(score)
+                new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5703, () => new PerformanceBreakdownChart(score)
                 {
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y
                 }),
-                new StatisticItem("Timing Distribution", () => new FillFlowContainer
+                new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5704, () => new FillFlowContainer
                 {
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y,
@@ -403,7 +413,7 @@ namespace osu.Game.Rulesets.Osu
                         })
                     }
                 }, requiresHitEvents: true, fullWidth: false),
-                new StatisticItem("Accuracy Heatmap", () => new AccuracyHeatmap(score, playableBeatmap)
+                new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5705, () => new AccuracyHeatmap(score, playableBeatmap)
                 {
                     RelativeSizeAxes = Axes.X,
                     Height = 150 + 15 + StatisticItem.FONT_SIZE * 2,

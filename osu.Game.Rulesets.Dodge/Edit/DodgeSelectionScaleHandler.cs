@@ -76,7 +76,12 @@ namespace osu.Game.Rulesets.Dodge.Edit
             if ((adjustAxis & Axes.Y) == 0)
                 scale.Y = 1;
 
-            Vector2 actualOrigin = origin ?? defaultOrigin.Value;
+            // A single world arena resizes about its own centre. Translation is
+            // a separate operation; corner handles must not anchor the opposite edge.
+            bool centredArena = originalPoints.Count == 1 && originalPoints.Keys.Single() is DodgeArenaChange { WorldSpace: true };
+            Vector2 actualOrigin = centredArena ? defaultOrigin.Value : origin ?? defaultOrigin.Value;
+            if (centredArena && origin.HasValue)
+                scale = Vector2.One + (scale - Vector2.One) * 2;
 
             foreach (var (item, points) in originalPoints)
             {

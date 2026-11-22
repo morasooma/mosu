@@ -40,6 +40,7 @@ namespace osu.Game.Online
             (typeof(DodgePingRequest), typeof(MatchUserRequest)),
             (typeof(RankedPlayCursorPositionRequest), typeof(MatchUserRequest)),
             (typeof(RankedPlayPingRequest), typeof(MatchUserRequest)),
+            (typeof(RankedPlayModBanRequest), typeof(MatchUserRequest)),
             (typeof(CountdownStartedEvent), typeof(MatchServerEvent)),
             (typeof(CountdownStoppedEvent), typeof(MatchServerEvent)),
             (typeof(RollEvent), typeof(MatchServerEvent)),

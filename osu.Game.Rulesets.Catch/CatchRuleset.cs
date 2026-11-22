@@ -23,6 +23,7 @@ using osu.Game.Rulesets.Catch.Mods;
 using osu.Game.Rulesets.Catch.Objects;
 using osu.Game.Rulesets.Catch.Replays;
 using osu.Game.Rulesets.Catch.Scoring;
+using osu.Game.Rulesets.Catch.Skinning;
 using osu.Game.Rulesets.Catch.Skinning.Argon;
 using osu.Game.Rulesets.Catch.Skinning.Default;
 using osu.Game.Rulesets.Catch.Skinning.Legacy;
@@ -44,9 +45,12 @@ using osuTK;
 
 namespace osu.Game.Rulesets.Catch
 {
-    public class CatchRuleset : Ruleset, ILegacyRuleset
+    public class CatchRuleset : Ruleset, ILegacyRuleset, IHasLegacyScoreV1Processor
     {
-        public override DrawableRuleset CreateDrawableRulesetWith(IBeatmap beatmap, IReadOnlyList<Mod>? mods = null) => new DrawableCatchRuleset(this, beatmap, mods);
+        public override DrawableRuleset CreateDrawableRulesetWith(IBeatmap beatmap, IReadOnlyList<Mod>? mods = null)
+            => mods?.Any(m => m is CatchModFruitNinja) == true
+                ? new DrawableFruitNinjaRuleset(this, beatmap, mods)
+                : new DrawableCatchRuleset(this, beatmap, mods);
 
         public override ScoreProcessor CreateScoreProcessor() => new CatchScoreProcessor();
 
@@ -135,9 +139,12 @@ namespace osu.Game.Rulesets.Catch
                 case ModType.Mosu:
                     return new Mod[]
                     {
+                        new CatchModFruitNinja(),
                         new CatchModMosuStaticBpm(),
                         new CatchModMosuTargetDifficulty(),
                         new CatchModAudioEffects(),
+                        new CatchModGlitch(),
+                        new CatchModFlatline(),
                     };
 
                 case ModType.DifficultyReduction:
@@ -212,6 +219,8 @@ namespace osu.Game.Rulesets.Catch
             return new[]
             {
                 HitResult.Great,
+                HitResult.Ok,
+                HitResult.Meh,
                 HitResult.Miss,
 
                 HitResult.LargeTickHit,
@@ -221,6 +230,7 @@ namespace osu.Game.Rulesets.Catch
                 HitResult.LargeBonus,
                 HitResult.IgnoreHit,
                 HitResult.IgnoreMiss,
+                HitResult.ComboBreak,
             };
         }
 
@@ -245,6 +255,14 @@ namespace osu.Game.Rulesets.Catch
 
         public override ISkin? CreateSkinTransformer(ISkin skin, IBeatmap beatmap)
         {
+            ISkin? transformed = createCatchSkinTransformer(skin);
+            return beatmap.HitObjects.Any(h => h is FruitNinjaFruit)
+                ? new FruitNinjaSkinTransformer(transformed ?? skin, new Osu.OsuRuleset().CreateSkinTransformer(skin, beatmap) ?? skin)
+                : transformed;
+        }
+
+        private static ISkin? createCatchSkinTransformer(ISkin skin)
+        {
             switch (skin)
             {
                 case LegacySkin:
@@ -265,6 +283,9 @@ namespace osu.Game.Rulesets.Catch
         public int LegacyID => 2;
 
         public ILegacyScoreSimulator CreateLegacyScoreSimulator() => new CatchLegacyScoreSimulator();
+
+        public ILegacyScoreV1Processor CreateLegacyScoreV1Processor(IWorkingBeatmap workingBeatmap, IBeatmap playableBeatmap, IReadOnlyList<Mod> mods)
+            => new CatchLegacyScoreV1Processor(workingBeatmap.Beatmap, mods);
 
         public override IConvertibleReplayFrame CreateConvertibleReplayFrame() => new CatchReplayFrame();
 
@@ -300,7 +321,7 @@ namespace osu.Game.Rulesets.Catch
         {
             return new[]
             {
-                new StatisticItem("Performance Breakdown", () => new PerformanceBreakdownChart(score)
+                new StatisticItem(global::osu.Game.Localisation.ClientTranslationStrings.J5674, () => new PerformanceBreakdownChart(score)
                 {
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y

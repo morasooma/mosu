@@ -1,6 +1,8 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
+using osu.Framework.Localisation;
 using osu.Framework.Utils;
 using osu.Game.Rulesets.Difficulty;
 
@@ -35,6 +37,13 @@ namespace osu.Game.Beatmaps
         /// </summary>
         public readonly string? CachedAdditionalInfo;
 
+        /// <summary>
+        /// Small snapshot of the playable map's unmodded counts. Null for older/persisted or star-only results.
+        /// </summary>
+        public readonly IReadOnlyList<CountStatistic>? CountStatistics;
+
+        public readonly record struct CountStatistic(LocalisableString Name, float? BarDisplayLength, string Content);
+
         public StarDifficulty(double stars, int maxCombo, string cachedAdditionalInfo)
         {
             Stars = double.IsFinite(stars) ? stars : 0;
@@ -45,12 +54,13 @@ namespace osu.Game.Beatmaps
         /// <summary>
         /// Creates a <see cref="StarDifficulty"/> structure.
         /// </summary>
-        public StarDifficulty(DifficultyAttributes difficulty, PerformanceAttributes performance)
+        public StarDifficulty(DifficultyAttributes difficulty, PerformanceAttributes performance, IReadOnlyList<CountStatistic>? countStatistics = null)
         {
             Stars = double.IsFinite(difficulty.StarRating) ? difficulty.StarRating : 0;
             MaxCombo = difficulty.MaxCombo;
             DifficultyAttributes = difficulty;
             PerformanceAttributes = performance;
+            CountStatistics = countStatistics;
             // Todo: Add more members (BeatmapInfo.DifficultyRating? Attributes? Etc...)
         }
 

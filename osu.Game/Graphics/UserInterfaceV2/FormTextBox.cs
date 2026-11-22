@@ -223,6 +223,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
             public Action? OnInputError { get; set; }
 
             protected override float LeftRightPadding => 0;
+            protected override bool ApplyGeometryRadius => false;
 
             public InnerTextBox()
             {

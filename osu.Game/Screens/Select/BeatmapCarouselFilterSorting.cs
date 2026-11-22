@@ -30,9 +30,50 @@ namespace osu.Game.Screens.Select
 
             bool groupedSets = BeatmapCarouselFilterGrouping.ShouldGroupBeatmapsTogether(criteria);
 
-            BeatmapItemsCount = items.Count();
+            cancellationToken.ThrowIfCancellationRequested();
+            // The matching stage already supplies a list. Only materialise other inputs,
+            // and do not enumerate a lazy source separately to obtain its count.
+            var itemsToSort = items as List<CarouselItem>;
+            if (itemsToSort == null)
+            {
+                itemsToSort = new List<CarouselItem>();
+                foreach (var item in items)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    itemsToSort.Add(item);
+                }
+            }
 
-            return items.Order(Comparer<CarouselItem>.Create((a, b) =>
+            if (!groupedSets && criteria.Sort is SortMode.Difficulty or SortMode.Performance)
+            {
+                var metricSorted = sortByRating(itemsToSort, criteria, cancellationToken);
+                BeatmapItemsCount = metricSorted.Count;
+                return metricSorted;
+            }
+
+            Func<BeatmapInfo, double>? aggregateSelector = !groupedSets ? null : criteria.Sort switch
+            {
+                SortMode.BPM => static beatmap => beatmap.BPM,
+                SortMode.Length => static beatmap => beatmap.Length,
+                SortMode.LastPlayed => static beatmap => (beatmap.LastPlayed ?? DateTimeOffset.MinValue).ToUnixTimeSeconds(),
+                _ => null
+            };
+            Dictionary<BeatmapSetInfo, double?>? aggregateValues = null;
+            if (aggregateSelector != null)
+            {
+                // Scope the cache to this operation: hidden flags and metadata may change
+                // between filters. Distinct detached objects must keep their own values.
+                aggregateValues = new Dictionary<BeatmapSetInfo, double?>(ReferenceEqualityComparer.Instance);
+                foreach (var item in itemsToSort)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var set = ((BeatmapInfo)item.Model).BeatmapSet!;
+                    if (!aggregateValues.ContainsKey(set))
+                        aggregateValues.Add(set, visibleMaximum(set, aggregateSelector, cancellationToken));
+                }
+            }
+
+            var sorted = itemsToSort.Order(Comparer<CarouselItem>.Create((a, b) =>
             {
                 var ab = (BeatmapInfo)a.Model;
                 var bb = (BeatmapInfo)b.Model;
@@ -40,21 +81,59 @@ namespace osu.Game.Screens.Select
                 if (groupedSets)
                 {
                     if (ab.BeatmapSet!.Equals(bb.BeatmapSet))
-                        return compareDifficulty(ab, bb, criteria.Sort);
+                        return compareDifficulty(ab, bb, criteria);
 
                     // If we're grouping by sets, all fallback sorts need to be aggregates for the set.
-                    return compare(ab, bb, criteria.Sort, aggregate: true);
+                    return compare(ab, bb, criteria, aggregateValues);
                 }
 
-                return compare(ab, bb, criteria.Sort, aggregate: false);
+                return compare(ab, bb, criteria, null);
             })).ToList();
+
+            cancellationToken.ThrowIfCancellationRequested();
+            BeatmapItemsCount = sorted.Count;
+            return sorted;
         }, cancellationToken).ConfigureAwait(false);
 
-        private static int compare(BeatmapInfo a, BeatmapInfo b, SortMode sort, bool aggregate)
+        private readonly record struct RatingSortKey(CarouselItem Item, double Rating, string Title, DateTimeOffset DateAdded, Guid SetId, int Index);
+
+        private static List<CarouselItem> sortByRating(List<CarouselItem> items, FilterCriteria criteria, CancellationToken token)
+        {
+            // Project once per row, not twice per comparison. In particular, Realm
+            // metadata getters and the mod snapshot dictionary must stay out of O(n log n).
+            var keys = new RatingSortKey[items.Count];
+            bool performance = criteria.Sort == SortMode.Performance;
+            for (int i = 0; i < items.Count; i++)
+            {
+                token.ThrowIfCancellationRequested();
+                var map = (BeatmapInfo)items[i].Model;
+                var set = map.BeatmapSet!;
+                keys[i] = new RatingSortKey(items[i], performance ? criteria.GetPp(map) : criteria.GetSortStars(map),
+                    set.Metadata.Title, set.DateAdded, set.ID, i);
+            }
+
+            Array.Sort(keys, Comparer<RatingSortKey>.Create((a, b) =>
+            {
+                int comparison = a.Rating.CompareTo(b.Rating);
+                if (comparison == 0) comparison = OrdinalSortByCaseStringComparer.DEFAULT.Compare(a.Title, b.Title);
+                if (comparison == 0) comparison = b.DateAdded.CompareTo(a.DateAdded);
+                if (comparison == 0) comparison = b.SetId.CompareTo(a.SetId);
+                // Array.Sort is not stable. Retain the original input order for exact
+                // ties, as Enumerable.Order did (including maps from the same set).
+                return comparison != 0 ? comparison : a.Index.CompareTo(b.Index);
+            }));
+
+            token.ThrowIfCancellationRequested();
+            var result = new List<CarouselItem>(keys.Length);
+            foreach (var key in keys) result.Add(key.Item);
+            return result;
+        }
+
+        private static int compare(BeatmapInfo a, BeatmapInfo b, FilterCriteria criteria, IReadOnlyDictionary<BeatmapSetInfo, double?>? aggregateValues)
         {
             int comparison;
 
-            switch (sort)
+            switch (criteria.Sort)
             {
                 case SortMode.Artist:
                     comparison = OrdinalSortByCaseStringComparer.DEFAULT.Compare(a.BeatmapSet!.Metadata.Artist, b.BeatmapSet!.Metadata.Artist);
@@ -75,7 +154,11 @@ namespace osu.Game.Screens.Select
                     break;
 
                 case SortMode.Difficulty:
-                    comparison = a.StarRating.CompareTo(b.StarRating);
+                    comparison = criteria.GetSortStars(a).CompareTo(criteria.GetSortStars(b));
+                    break;
+
+                case SortMode.Performance:
+                    comparison = criteria.GetPp(a).CompareTo(criteria.GetPp(b));
                     break;
 
                 case SortMode.DateAdded:
@@ -91,22 +174,22 @@ namespace osu.Game.Screens.Select
                     break;
 
                 case SortMode.LastPlayed:
-                    if (aggregate)
-                        comparison = compareUsingAggregateMax(b, a, static b => (b.LastPlayed ?? DateTimeOffset.MinValue).ToUnixTimeSeconds());
+                    if (aggregateValues != null)
+                        comparison = Nullable.Compare(aggregateValues[b.BeatmapSet!], aggregateValues[a.BeatmapSet!]);
                     else
                         comparison = Nullable.Compare(b.LastPlayed, a.LastPlayed);
                     break;
 
                 case SortMode.BPM:
-                    if (aggregate)
-                        comparison = compareUsingAggregateMax(a, b, static b => b.BPM);
+                    if (aggregateValues != null)
+                        comparison = Nullable.Compare(aggregateValues[a.BeatmapSet!], aggregateValues[b.BeatmapSet!]);
                     else
                         comparison = a.BPM.CompareTo(b.BPM);
                     break;
 
                 case SortMode.Length:
-                    if (aggregate)
-                        comparison = compareUsingAggregateMax(a, b, static b => b.Length);
+                    if (aggregateValues != null)
+                        comparison = Nullable.Compare(aggregateValues[a.BeatmapSet!], aggregateValues[b.BeatmapSet!]);
                     else
                         comparison = a.Length.CompareTo(b.Length);
                     break;
@@ -131,29 +214,32 @@ namespace osu.Game.Screens.Select
             return comparison;
         }
 
-        private static int compareDifficulty(BeatmapInfo a, BeatmapInfo b, SortMode sort)
+        private static int compareDifficulty(BeatmapInfo a, BeatmapInfo b, FilterCriteria criteria)
         {
             int comparison = a.Ruleset.CompareTo(b.Ruleset);
 
             if (comparison == 0)
-                comparison = a.StarRating.CompareTo(b.StarRating);
+                comparison = criteria.GetSortStars(a).CompareTo(criteria.GetSortStars(b));
 
             return comparison;
         }
 
-        private static int compareUsingAggregateMax(BeatmapInfo a, BeatmapInfo b, Func<BeatmapInfo, double> func)
+        private static double? visibleMaximum(BeatmapSetInfo set, Func<BeatmapInfo, double> selector, CancellationToken cancellationToken)
         {
-            var aMatchedBeatmaps = a.BeatmapSet!.Beatmaps.Where(bb => !bb.Hidden);
-            var bMatchedBeatmaps = b.BeatmapSet!.Beatmaps.Where(bb => !bb.Hidden);
+            double? maximum = null;
+            foreach (var beatmap in set.Beatmaps)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (beatmap.Hidden)
+                    continue;
 
-            bool aAny = aMatchedBeatmaps.Any();
-            bool bAny = bMatchedBeatmaps.Any();
-
-            if (!aAny && !bAny) return 0;
-            if (!aAny) return -1;
-            if (!bAny) return 1;
-
-            return aMatchedBeatmaps.Max(func).CompareTo(bMatchedBeatmaps.Max(func));
+                double value = selector(beatmap);
+                // Match Enumerable.Max(double): a finite value supersedes NaN,
+                // while an all-NaN collection retains NaN.
+                if (!maximum.HasValue || value > maximum.Value || double.IsNaN(maximum.Value))
+                    maximum = value;
+            }
+            return maximum;
         }
     }
 }

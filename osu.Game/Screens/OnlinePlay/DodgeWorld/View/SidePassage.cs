@@ -88,7 +88,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                     Anchor = Anchor.BottomCentre,
                     Origin = Anchor.TopCentre,
                     Y = 5,
-                    Text = "PASSAGE",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4753,
                     Font = OsuFont.Default.With(size: 13, weight: FontWeight.Bold),
                     Colour = colours.GrayA,
                 },

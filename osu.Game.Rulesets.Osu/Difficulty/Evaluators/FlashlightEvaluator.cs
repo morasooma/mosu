@@ -30,6 +30,14 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
             if (current.BaseObject is Spinner)
                 return 0;
 
+            return EvaluateDifficultyOf(current, mods.OfType<OsuModHidden>().Any(m => !m.OnlyFadeApproachCircles.Value), mods.OfType<OsuModHidden>().Any());
+        }
+
+        internal static double EvaluateDifficultyOf(DifficultyHitObject current, bool hiddenOpacity, bool hiddenBonus)
+        {
+            if (current.BaseObject is Spinner)
+                return 0;
+
             const double max_opacity_bonus = 0.4;
             const double hidden_bonus = 0.2;
 
@@ -71,7 +79,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
                     double stackNerf = Math.Min(1.0, (currentObj.LazyJumpDistance / scalingFactor) / 25.0);
 
                     // Bonus based on how visible the object is.
-                    double opacityBonus = 1.0 + max_opacity_bonus * (1.0 - osuCurrent.OpacityAt(currentHitObject.StartTime, mods.OfType<OsuModHidden>().Any(m => !m.OnlyFadeApproachCircles.Value)));
+                    double opacityBonus = 1.0 + max_opacity_bonus * (1.0 - osuCurrent.OpacityAt(currentHitObject.StartTime, hiddenOpacity));
 
                     flashlightDifficulty += stackNerf * opacityBonus * scalingFactor * jumpDistance / cumulativeStrainTime;
 
@@ -89,7 +97,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
             flashlightDifficulty = DiffUtils.Pow(smallDistNerf * flashlightDifficulty, 2);
 
             // Additional bonus for Hidden due to there being no approach circles.
-            if (mods.OfType<OsuModHidden>().Any())
+            if (hiddenBonus)
                 flashlightDifficulty *= 1.0 + hidden_bonus;
 
             // Nerf patterns with repeated angles.

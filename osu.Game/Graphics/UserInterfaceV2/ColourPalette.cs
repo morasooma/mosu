@@ -169,7 +169,7 @@ namespace osu.Game.Graphics.UserInterfaceV2
                         {
                             Anchor = Anchor.TopCentre,
                             Origin = Anchor.TopCentre,
-                            Text = "New"
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J3600
                         }
                     }
                 };

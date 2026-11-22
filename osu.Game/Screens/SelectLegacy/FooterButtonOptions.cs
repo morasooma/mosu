@@ -17,7 +17,7 @@ namespace osu.Game.Screens.SelectLegacy
         {
             SelectedColour = colours.Blue;
             DeselectedColour = SelectedColour.Opacity(0.5f);
-            Text = @"options";
+            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5278;
             Hotkey = GlobalAction.ToggleBeatmapOptions;
         }
     }

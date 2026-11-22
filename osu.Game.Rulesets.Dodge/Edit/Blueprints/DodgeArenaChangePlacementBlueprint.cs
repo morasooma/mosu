@@ -50,6 +50,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
         protected override void LoadComplete()
         {
             base.LoadComplete();
+            HitObject.WorldSpace = settings.ArenaWorldSpace.Value;
             HitObject.TargetRotation = settings.ArenaRotation.Value;
             HitObject.Colour = settings.ArenaBackgroundColour.Value;
             HitObject.Opacity = settings.ArenaBackgroundOpacity.Value;
@@ -66,13 +67,16 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
 
         protected override bool OnMouseDown(MouseDownEvent e)
         {
-            if (e.Button != MouseButton.Left)
+            if (e.Button != MouseButton.Left || !composer.CursorInPlacementArea)
                 return base.OnMouseDown(e);
 
+            UpdateTimeAndPosition(e.ScreenSpaceMousePosition, editorBeatmap.SnapTime(EditorClock.CurrentTime, null));
             switch (PlacementActive)
             {
                 case PlacementState.Waiting:
-                    anchorPosition = HitObject.TargetPosition;
+                    anchorPosition = HitObject.WorldSpace
+                        ? HitObject.TargetPosition + HitObject.TargetSize / 2
+                        : HitObject.TargetPosition;
                     BeginPlacement(true);
                     return true;
 
@@ -95,15 +99,26 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             base.UpdateTimeAndPosition(screenSpacePosition, fallbackTime);
 
             Vector2 position = composer.SnapToPositionGrid(ToLocalSpace(screenSpacePosition));
-            position = Vector2.Clamp(position, Vector2.Zero, UI.DodgePlayfield.BASE_SIZE);
+            if (PlacementActive == PlacementState.Waiting)
+            {
+                HitObject.WorldSpace = settings.ArenaWorldSpace.Value;
+                HitObject.TargetRotation = settings.ArenaRotation.Value;
+                HitObject.Easing = settings.ArenaEasing.Value;
+                HitObject.KiaiShakeAngle = settings.ArenaKiaiShakeAngle.Value;
+            }
+            position = HitObject.WorldSpace
+                ? Vector2.Clamp(position, new Vector2(-DodgeArenaChange.MAX_WORLD_SIZE), new Vector2(DodgeArenaChange.MAX_WORLD_SIZE))
+                : Vector2.Clamp(position, Vector2.Zero, UI.DodgePlayfield.BASE_SIZE);
 
             if (PlacementActive == PlacementState.Waiting)
             {
-                if (!editorBeatmap.HitObjects.OfType<DodgeArenaChange>().Any())
+                if (!HitObject.WorldSpace && !editorBeatmap.HitObjects.OfType<DodgeArenaChange>().Any())
                     HitObject.StartTime = 0;
 
-                HitObject.TargetPosition = position;
-                HitObject.TargetSize = new Vector2(DodgeArenaChange.MIN_SIZE);
+                HitObject.TargetSize = HitObject.WorldSpace
+                    ? new Vector2(settings.ArenaWidth.Value, settings.ArenaHeight.Value)
+                    : new Vector2(DodgeArenaChange.MIN_SIZE);
+                HitObject.TargetPosition = HitObject.WorldSpace ? position - HitObject.TargetSize / 2 : position;
                 // Arena transitions always begin as four beats. Unlike projectiles,
                 // their duration is not a placement-tool setting to inherit from a
                 // previous arena; inheriting it can make a new arena unexpectedly
@@ -112,14 +127,21 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             }
             else if (PlacementActive == PlacementState.Active)
             {
-                Vector2 topLeft = Vector2.ComponentMin(anchorPosition, position);
-                Vector2 bottomRight = Vector2.ComponentMax(anchorPosition, position);
-
-                HitObject.TargetPosition = topLeft;
-                HitObject.TargetSize = new Vector2(
-                    Math.Max(DodgeArenaChange.MIN_SIZE, bottomRight.X - topLeft.X),
-                    Math.Max(DodgeArenaChange.MIN_SIZE, bottomRight.Y - topLeft.Y));
-                HitObject.ClampToBaseBounds();
+                if (HitObject.WorldSpace)
+                {
+                    Vector2 offset = osu.Game.Utils.GeometryUtils.RotateVector(position - anchorPosition, -HitObject.TargetRotation);
+                    HitObject.ResizeFromCentre(new Vector2(Math.Abs(offset.X) * 2, Math.Abs(offset.Y) * 2));
+                }
+                else
+                {
+                    Vector2 topLeft = Vector2.ComponentMin(anchorPosition, position);
+                    Vector2 bottomRight = Vector2.ComponentMax(anchorPosition, position);
+                    HitObject.TargetPosition = topLeft;
+                    HitObject.TargetSize = new Vector2(
+                        Math.Max(DodgeArenaChange.MIN_SIZE, bottomRight.X - topLeft.X),
+                        Math.Max(DodgeArenaChange.MIN_SIZE, bottomRight.Y - topLeft.Y));
+                    HitObject.ClampToBaseBounds();
+                }
             }
 
             DodgeEditorTrackBounds.Constrain(HitObject, EditorClock.TrackLength, true);

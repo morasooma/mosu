@@ -21,9 +21,11 @@ using osu.Game.Audio.Effects;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Database;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Seasonal;
 using osu.Game.Utils;
+using Realms;
 
 namespace osu.Game.Overlays
 {
@@ -68,6 +70,11 @@ namespace osu.Game.Overlays
 
         private ModSettingChangeTracker? modSettingChangeTracker;
 
+        // Playlist order is stable across ordinary beatmap metadata writes (for example LastPlayed).
+        // Keep just IDs and positions; never retain managed Realm objects in this cache.
+        private Dictionary<Guid, int>? playlistPositions;
+        private IDisposable? playlistSubscription;
+
         public DrawableTrack CurrentTrack { get; private set; } = new DrawableTrack(new TrackVirtual(1000));
 
         [Resolved]
@@ -97,6 +104,8 @@ namespace osu.Game.Overlays
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            playlistSubscription = realm.RegisterForNotifications(r => r.All<BeatmapSetInfo>().Where(s => !s.DeletePending), playlistChanged);
 
             beatmap.BindValueChanged(b =>
             {
@@ -466,6 +475,48 @@ namespace osu.Game.Overlays
 
         private TrackChangeDirection? queuedDirection;
 
+        private void playlistChanged(IRealmCollection<BeatmapSetInfo> sets, ChangeSet? changes)
+        {
+            // Realm recycle sends an empty reset first. Until the new initial notification arrives,
+            // use the original lookup rather than making decisions from stale positions.
+            if (sets is RealmResetEmptySet<BeatmapSetInfo>)
+            {
+                playlistPositions = null;
+                return;
+            }
+
+            if (changes != null && playlistPositions != null
+                && changes.InsertedIndices.Length == 0 && changes.DeletedIndices.Length == 0 && changes.Moves.Length == 0)
+            {
+                // LastPlayed and other metadata changes do not affect ordering. Protected/hash changes can.
+                bool membershipChanged = false;
+                foreach (int index in changes.NewModifiedIndices)
+                {
+                    var set = sets[index];
+                    bool eligible = !set.Protected && (SeasonalUIConfig.ENABLED || set.Hash != IntroChristmas.CHRISTMAS_BEATMAP_SET_HASH);
+                    if (playlistPositions.ContainsKey(set.ID) != eligible)
+                    {
+                        membershipChanged = true;
+                        break;
+                    }
+                }
+
+                if (!membershipChanged)
+                    return;
+            }
+
+            var positions = new Dictionary<Guid, int>(sets.Count);
+            foreach (var set in sets)
+            {
+                if (set.Protected || (!SeasonalUIConfig.ENABLED && set.Hash == IntroChristmas.CHRISTMAS_BEATMAP_SET_HASH))
+                    continue;
+
+                positions[set.ID] = positions.Count;
+            }
+
+            playlistPositions = positions;
+        }
+
         private IEnumerable<Live<BeatmapSetInfo>> getBeatmapSets(bool allowProtectedTracks) =>
             realm.Realm.All<BeatmapSetInfo>().Where(s => !s.DeletePending)
                  .AsEnumerable()
@@ -497,20 +548,60 @@ namespace osu.Game.Overlays
                 }
                 else
                 {
-                    // figure out the best direction based on order in playlist.
-                    int last = getBeatmapSets(allowProtectedTracks: false).TakeWhile(b => !b.Value.Equals(current.BeatmapSetInfo)).Count();
-                    int next = getBeatmapSets(allowProtectedTracks: false).TakeWhile(b => !b.Value.Equals(newWorking.BeatmapSetInfo)).Count();
+                    // Unlike TrackSwap, this lookup is also synchronous inside Beatmap.Value notification.
+                    using (PerformancePhaseLogger.Begin("MusicController.TrackDirectionLookup"))
+                    {
+                        if (playlistPositions != null)
+                        {
+                            // TakeWhile used the full playlist count when either set was absent
+                            // (including direct stable-directory sets not present in Realm).
+                            int last = playlistPositions.GetValueOrDefault(current.BeatmapSetInfo.ID, playlistPositions.Count);
+                            int next = playlistPositions.GetValueOrDefault(newWorking.BeatmapSetInfo.ID, playlistPositions.Count);
+                            direction = last > next ? TrackChangeDirection.Prev : TrackChangeDirection.Next;
+                        }
+                        else
+                        {
+                            // The subscription has not delivered its initial snapshot yet, or Realm
+                            // is recycling. Preserve the old lookup until positions are available.
+                            int lastIndex = -1;
+                            int nextIndex = -1;
+                            int index = 0;
 
-                    direction = last > next ? TrackChangeDirection.Prev : TrackChangeDirection.Next;
+                            foreach (var set in realm.Realm.All<BeatmapSetInfo>().Where(s => !s.DeletePending).AsEnumerable())
+                            {
+                                if (set.Protected || (!SeasonalUIConfig.ENABLED && set.Hash == IntroChristmas.CHRISTMAS_BEATMAP_SET_HASH))
+                                    continue;
+
+                                if (lastIndex < 0 && set.ID == current.BeatmapSetInfo.ID)
+                                    lastIndex = index;
+
+                                if (nextIndex < 0 && set.ID == newWorking.BeatmapSetInfo.ID)
+                                    nextIndex = index;
+
+                                index++;
+                                if (lastIndex >= 0 && nextIndex >= 0)
+                                    break;
+                            }
+
+                            // An absent set had the full collection count under the previous TakeWhile lookup.
+                            direction = (lastIndex < 0 ? index : lastIndex) > (nextIndex < 0 ? index : nextIndex)
+                                ? TrackChangeDirection.Prev : TrackChangeDirection.Next;
+                        }
+                    }
                 }
             }
 
             current = newWorking;
 
             if (lastWorking == null || !lastWorking.TryTransferTrack(current))
+            {
+                using var phase = PerformancePhaseLogger.Begin("MusicController.TrackSwap", detail:
+                    $"beatmap_id={newWorking.BeatmapInfo.OnlineID} set_id={newWorking.BeatmapSetInfo.OnlineID}");
                 changeTrack();
+            }
 
-            TrackChanged?.Invoke(current, direction);
+            using (PerformancePhaseLogger.Begin("MusicController.NotifyTrackChanged"))
+                TrackChanged?.Invoke(current, direction);
 
             ResetTrackAdjustments();
 
@@ -529,17 +620,26 @@ namespace osu.Game.Overlays
             const double track_fade_in_time = 220;
             const double track_fade_out_time = 150;
 
-            var queuedTrack = getQueuedTrack();
+            DrawableTrack queuedTrack;
+            using (PerformancePhaseLogger.Begin("MusicController.LoadQueuedTrack"))
+                queuedTrack = getQueuedTrack();
+
             var lastTrack = CurrentTrack;
 
-            lastTrack.Completed -= onTrackCompleted;
-            lastTrack.VolumeTo(0, track_fade_out_time, Easing.Out).Expire();
+            using (PerformancePhaseLogger.Begin("MusicController.FadePreviousTrack"))
+            {
+                lastTrack.Completed -= onTrackCompleted;
+                lastTrack.VolumeTo(0, track_fade_out_time, Easing.Out).Expire();
+            }
 
             CurrentTrack = queuedTrack;
 
-            queuedTrack.Volume.Value = 0;
-            AddInternal(queuedTrack);
-            queuedTrack.Delay(DELAY_BEFORE_FADE).VolumeTo(1, track_fade_in_time);
+            using (PerformancePhaseLogger.Begin("MusicController.AttachQueuedTrack"))
+            {
+                queuedTrack.Volume.Value = 0;
+                AddInternal(queuedTrack);
+                queuedTrack.Delay(DELAY_BEFORE_FADE).VolumeTo(1, track_fade_in_time);
+            }
         }
 
         private DrawableTrack getQueuedTrack()
@@ -624,6 +724,7 @@ namespace osu.Game.Overlays
 
         protected override void Dispose(bool isDisposing)
         {
+            playlistSubscription?.Dispose();
             base.Dispose(isDisposing);
             modSettingChangeTracker?.Dispose();
         }

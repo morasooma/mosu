@@ -38,13 +38,17 @@ namespace osu.Game.Rulesets.Osu.UI
             if (HitObjectContainer == null)
                 throw new InvalidOperationException($"{nameof(HitObjectContainer)} should be set before {nameof(CheckHittable)} is called.");
 
+            if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol && hitObject is DrawableSliderHead head)
+                hitObject = head.DrawableSlider;
+
             var aliveObjects = HitObjectContainer.AliveObjects.ToList();
             int index = aliveObjects.IndexOf(hitObject);
 
             if (index > 0)
             {
                 var previousHitObject = (DrawableOsuHitObject)aliveObjects[index - 1];
-                if (previousHitObject.HitObject.StackHeight > 0 && !previousHitObject.AllJudged)
+                if (previousHitObject.HitObject.StackHeight > 0
+                    && !(osu.Game.Online.MosuServerEnvironment.UsesStableProtocol ? previousHitObject.Judged : previousHitObject.AllJudged))
                     return ClickAction.Ignore;
             }
 
@@ -53,7 +57,7 @@ namespace osu.Game.Rulesets.Osu.UI
 
             foreach (DrawableHitObject testObject in aliveObjects)
             {
-                if (testObject.AllJudged)
+                if (testObject.AllJudged || (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol && testObject.Judged))
                     continue;
 
                 // if we found the object being checked, we can move on to the final timing test.

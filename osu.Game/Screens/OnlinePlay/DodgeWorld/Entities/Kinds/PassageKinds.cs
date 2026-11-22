@@ -47,23 +47,23 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities.Kinds
 
         protected override IEnumerable<EntityField> DescribeFields()
         {
-            yield return Field("ID комнаты назначения", "куда ведёт переход; пусто — вернуть на вход текущей комнаты",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4698, global::osu.Game.Localisation.ClientTranslationStrings.J4699,
                 passage => passage.DestinationRoomId ?? string.Empty,
                 (passage, text) => passage.DestinationRoomId = string.IsNullOrWhiteSpace(text) ? null : text.Trim());
 
-            yield return Field("Подпись перехода", "показывается на экране при входе",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4700, global::osu.Game.Localisation.ClientTranslationStrings.J4701,
                 passage => passage.Destination,
                 (passage, text) => passage.Destination = string.IsNullOrWhiteSpace(text) ? UNLINKED_DESTINATION : text.Trim());
 
-            yield return Field("ID объекта прибытия", "пусто — выйти у обратного прохода, а если его нет, на входе комнаты",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4702, global::osu.Game.Localisation.ClientTranslationStrings.J4703,
                 passage => passage.ArrivalEntityId ?? string.Empty,
                 (passage, text) => passage.ArrivalEntityId = string.IsNullOrWhiteSpace(text) ? null : text.Trim());
 
-            yield return Field("Выход X", "точная точка выхода; пусто — считать автоматически",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4704, global::osu.Game.Localisation.ClientTranslationStrings.J4705,
                 passage => passage.ArrivalPoint is Vector2 point ? EditorValue.Format(point.X) : string.Empty,
                 (passage, text) => passage.ArrivalPoint = readArrival(passage, text, horizontal: true));
 
-            yield return Field("Выход Y", "пусто — считать автоматически",
+            yield return Field(global::osu.Game.Localisation.ClientTranslationStrings.J4706, global::osu.Game.Localisation.ClientTranslationStrings.J4707,
                 passage => passage.ArrivalPoint is Vector2 point ? EditorValue.Format(point.Y) : string.Empty,
                 (passage, text) => passage.ArrivalPoint = readArrival(passage, text, horizontal: false));
         }
@@ -127,7 +127,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities.Kinds
 
             // There was no way at all to flip a doorway, which matters: the side it faces is the side
             // somebody arriving through it stands on.
-            yield return Switch("Смотрит вправо", "выключено — дверь смотрит влево; игрок выходит с той стороны, куда она смотрит",
+            yield return Switch(global::osu.Game.Localisation.ClientTranslationStrings.J4708, global::osu.Game.Localisation.ClientTranslationStrings.J4709,
                 passage => passage.PointsRight, (passage, right) => passage.PointsRight = right);
         }
     }

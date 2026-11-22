@@ -38,7 +38,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                 {
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
-                    Text = "COLLISION",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4724,
                     Font = OsuFont.Default.With(size: 14, weight: FontWeight.Bold),
                     Colour = colours.Red0,
                 },

@@ -54,6 +54,7 @@ using osu.Game.Localisation;
 using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
+using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Chat;
 using osu.Game.Online.Leaderboards;
 using osu.Game.Online.Rooms;
@@ -66,6 +67,7 @@ using osu.Game.Overlays.Notifications;
 using osu.Game.Overlays.OSD;
 using osu.Game.Overlays.SkinEditor;
 using osu.Game.Overlays.Toolbar;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Performance;
 using osu.Game.Performance.Debug;
 using osu.Game.Rulesets.Mods;
@@ -135,6 +137,9 @@ namespace osu.Game
 
         private readonly PerformanceDebugService performanceDebugService = new PerformanceDebugService();
 
+        // Config bindables are weakly linked; retain these copies for the game's lifetime.
+        private readonly List<Bindable<bool>> skinPerformanceSettings = new List<Bindable<bool>>();
+
         // Ported from Torii: keep the top toolbar out of the way, reveal it at the top edge,
         // and hide it again after the cursor leaves it.
         private Bindable<bool> autoHideToolbar;
@@ -168,6 +173,9 @@ namespace osu.Game
         private SkinEditorOverlay skinEditor;
 
         private SupporterQuestsOverlay supporterQuestsOverlay;
+        private ThemeLibraryOverlay themeLibraryOverlay;
+        private Overlays.Discovery.DiscoveryOverlay discoveryOverlay;
+        private SupporterQuestPoller supporterQuestPoller;
         private int lastCompletedQuestsCount = -1;
 
         private Container overlayContent;
@@ -179,6 +187,7 @@ namespace osu.Game
         private Container topMostOverlayContent;
 
         private Container footerBasedOverlayContent;
+        private LibraryLocationOverlay libraryLocationOverlay;
 
         protected ScalingContainer ScreenContainer { get; private set; }
 
@@ -200,6 +209,13 @@ namespace osu.Game
 
         private Bindable<FrameSync> frameSyncMode;
         private Bindable<bool> uncappedFrameRate;
+        private Bindable<bool> customFrameLimits;
+        private Bindable<int> customDrawHz;
+        private Bindable<int> customUpdateHz;
+        private Bindable<int> customInputHz;
+        private Bindable<int> customAudioHz;
+        private Bindable<bool> use8kPollingRate;
+        private double? audioHzBeforeCustomLimits;
         private Bindable<bool> limitMenuFps2x;
         private Bindable<bool> disableShear;
         private bool? benchmarkUnlimitedFramesState;
@@ -217,7 +233,18 @@ namespace osu.Game
 
         public virtual StableStorage GetStorageForStableInstall() => null;
 
-        private float toolbarOffset => (Toolbar?.Position.Y ?? 0) + (Toolbar?.DrawHeight ?? 0);
+        private float toolbarOffset
+        {
+            get
+            {
+                if (Toolbar == null || Toolbar.Height <= 0)
+                    return 0;
+
+                // Layout reservation preserves content's historical 40px toolbar offset regardless of floating visual padding.
+                float progress = Math.Clamp(1f + Toolbar.Position.Y / Toolbar.Height, 0f, 1f);
+                return progress * Toolbar.HEIGHT;
+            }
+        }
 
         private IdleTracker idleTracker;
 
@@ -250,6 +277,7 @@ namespace osu.Game
 
         private OsuLogo osuLogo;
 
+        private bool previousCrashShown;
         private MainMenu menuScreen;
 
         [CanBeNull]
@@ -395,10 +423,25 @@ namespace osu.Game
         private readonly List<string> dragDropFiles = new List<string>();
         private ScheduledDelegate dragDropImportSchedule;
 
+        private bool disableErrorReportingByEnvironment;
+
         public override void SetupLogging(Storage gameStorage, Storage cacheStorage)
         {
             base.SetupLogging(gameStorage, cacheStorage);
+            disableErrorReportingByEnvironment = Environment.GetEnvironmentVariable("OSU_DISABLE_ERROR_REPORTING") == "1";
             sentryLogger = new SentryLogger(this, cacheStorage, LocalConfig?.Get<bool>(OsuSetting.ForkDisableRemoteLogging) == true);
+
+        }
+
+        // Automated desktop diagnostics should not capture the player's OS cursor.
+        protected virtual bool UseSystemCursor => false;
+
+        protected override void ConfigureFrameworkConfig(FrameworkConfigManager config)
+        {
+            base.ConfigureFrameworkConfig(config);
+
+            if (UseSystemCursor)
+                config.SetValue(FrameworkSetting.ConfineMouseMode, ConfineMouseMode.Never);
         }
 
         public override void SetHost(GameHost host)
@@ -422,7 +465,9 @@ namespace osu.Game
 
             if (host.Window != null)
             {
-                host.Window.CursorState |= CursorState.Hidden;
+                if (!UseSystemCursor)
+                    host.Window.CursorState |= CursorState.Hidden;
+
                 host.Window.DragDrop += onWindowDragDrop;
             }
         }
@@ -476,13 +521,24 @@ namespace osu.Game
             frameSyncMode = frameworkConfig.GetBindable<FrameSync>(FrameworkSetting.FrameSync);
             uncappedFrameRate = LocalConfig.GetBindable<bool>(OsuSetting.ForkUncappedFrameRate);
             limitMenuFps2x = LocalConfig.GetBindable<bool>(OsuSetting.ForkLimitMenuFps2x);
+            customFrameLimits = LocalConfig.GetBindable<bool>(OsuSetting.ForkCustomFrameLimits);
+            customDrawHz = LocalConfig.GetBindable<int>(OsuSetting.ForkCustomDrawHz);
+            customUpdateHz = LocalConfig.GetBindable<int>(OsuSetting.ForkCustomUpdateHz);
+            customInputHz = LocalConfig.GetBindable<int>(OsuSetting.ForkCustomInputHz);
+            customAudioHz = LocalConfig.GetBindable<int>(OsuSetting.ForkCustomAudioHz);
             frameSyncMode.BindValueChanged(_ => updateBenchmarkUnlimitedFrameState(), true);
             uncappedFrameRate.BindValueChanged(_ => updateBenchmarkUnlimitedFrameState(), true);
             limitMenuFps2x.BindValueChanged(_ => updateBenchmarkUnlimitedFrameState(), true);
+            customFrameLimits.BindValueChanged(_ => updateBenchmarkUnlimitedFrameState());
+            customDrawHz.BindValueChanged(_ => updateBenchmarkUnlimitedFrameState());
+            customUpdateHz.BindValueChanged(_ => updateBenchmarkUnlimitedFrameState());
+            customInputHz.BindValueChanged(_ => updateBenchmarkUnlimitedFrameState());
+            customAudioHz.BindValueChanged(_ => updateBenchmarkUnlimitedFrameState());
 
             LocalConfig.GetBindable<bool>(OsuSetting.ForkDisableRemoteLogging).BindValueChanged(v =>
             {
-                Environment.SetEnvironmentVariable("OSU_DISABLE_ERROR_REPORTING", v.NewValue ? "1" : null);
+                Environment.SetEnvironmentVariable("OSU_DISABLE_ERROR_REPORTING", v.NewValue || disableErrorReportingByEnvironment ? "1" : null);
+
 
                 if (v.NewValue && sentryLogger?.IsEnabled == true)
                 {
@@ -501,7 +557,9 @@ namespace osu.Game
 
             void bindSkinPerformanceSetting(OsuSetting setting, Action<bool> apply)
             {
-                LocalConfig.GetBindable<bool>(setting).BindValueChanged(v =>
+                var bindable = LocalConfig.GetBindable<bool>(setting);
+                skinPerformanceSettings.Add(bindable);
+                bindable.BindValueChanged(v =>
                 {
                     apply(v.NewValue);
 
@@ -524,13 +582,24 @@ namespace osu.Game
             bindSkinPerformanceSetting(OsuSetting.ForkSkinPerformanceBlackBackground, value => SkinPerformanceMode.BlackBackground = value);
             bindSkinPerformanceSetting(OsuSetting.ForkArgonFollowRing, value => SkinPerformanceMode.ArgonFollowRing = value);
             skinPerformanceSettingsInitialised = true;
-
-            // Standalone public build note: Custom rendering, audio, and threading performance hooks
-            // (DeferredRendererPerformanceSettings, VeldridRendererPerformanceSettings, GraphicsPerformanceSettings,
-            // Host.AllowTearing, Host.UpdateThreadSpinWait, ThreadRunner.Use8kInputRate, exclusive WASAPI)
-            // are optional Mosu framework extensions. In standalone public builds using upstream
-            // ppy.osu.Framework, these runtime toggles are unavailable.
-
+            LocalConfig.GetBindable<bool>(OsuSetting.ForkDeferredVertexUploadBatching).BindValueChanged(
+                v => DeferredRendererPerformanceSettings.CoalesceVertexUploadEvents = v.NewValue, true);
+            LocalConfig.GetBindable<bool>(OsuSetting.ForkDeferredDirectVertexUpload).BindValueChanged(
+                v => DeferredRendererPerformanceSettings.DirectVertexBufferWrites = v.NewValue, true);
+            LocalConfig.GetBindable<bool>(OsuSetting.ForkDeferredDirectUniformUpload).BindValueChanged(
+                v => DeferredRendererPerformanceSettings.DirectUniformBufferWrites = v.NewValue, true);
+            LocalConfig.GetBindable<bool>(OsuSetting.ForkVeldridPipelineLookupCache).BindValueChanged(
+                v => VeldridRendererPerformanceSettings.CachePipelineLookups = v.NewValue, true);
+            LocalConfig.GetBindable<bool>(OsuSetting.ForkStaticChildLifetimeCache).BindValueChanged(
+                v => GraphicsPerformanceSettings.CacheStaticChildLifetimes = v.NewValue, true);
+            LocalConfig.GetBindable<bool>(OsuSetting.ForkAtlasRegionAllocator).BindValueChanged(
+                v => GraphicsPerformanceSettings.AtlasRegionReuse = v.NewValue, true);
+            LocalConfig.BindWith(OsuSetting.ForkAllowTearing, Host.AllowTearing);
+            LocalConfig.BindWith(OsuSetting.ForkUpdateThreadSpinWait, Host.UpdateThreadSpinWait);
+            // Keep the bound copy alive: config bindings are weak, so an unreferenced subscription
+            // can disappear after GC and leave the input runner using an outdated policy.
+            use8kPollingRate = LocalConfig.GetBindable<bool>(OsuSetting.ForkUse8kPollingRate);
+            use8kPollingRate.BindValueChanged(v => ThreadRunner.Use8kInputRate = v.NewValue, true);
             disableShear = LocalConfig.GetBindable<bool>(OsuSetting.ForkDisableInterfaceShear);
             DisableShear.BindTo(disableShear);
 
@@ -627,16 +696,36 @@ namespace osu.Game
                 ScoreManager.PauseImports = p.NewValue != LocalUserPlayingState.NotPlaying;
 
                 // Resetting an inflated exclusive audio queue can create a very short skip.
-                // In standalone public builds using upstream ppy.osu.Framework,
-                // audio latency repair and exclusive WASAPI are unavailable.
+                // Repair it between attempts, never during active gameplay.
+                if (Host.AudioThread != null)
+                    Host.AudioThread.AllowLatencyRepair.Value = p.NewValue == LocalUserPlayingState.NotPlaying;
             }, true);
 
             exclusiveAudio = LocalConfig.GetBindable<bool>(OsuSetting.ForkExclusiveAudio);
+            exclusiveAudio.BindValueChanged(enabled =>
+            {
+                // This is a fork-owned preference. The framework bindable is only the
+                // runtime switch which applies it to the audio backend.
+                if (enabled.NewValue)
+                    Audio.UseExperimentalWasapi.Value = true;
+
+                Audio.UseExclusiveWasapi.Value = enabled.NewValue;
+            }, true);
+
+            Audio.UseExperimentalWasapi.BindValueChanged(enabled =>
+            {
+                // Exclusive WASAPI cannot work on the legacy backend.
+                if (!enabled.NewValue && exclusiveAudio.Value)
+                    exclusiveAudio.Value = false;
+            });
+
             exclusiveAudioGameplayOnly = LocalConfig.GetBindable<bool>(OsuSetting.ForkExclusiveAudioGameplayOnly);
+            exclusiveAudioGameplayOnly.BindValueChanged(_ => updateExclusiveAudioSuspension(), true);
 
             IsActive.BindValueChanged(active =>
             {
                 updateActiveState(active.NewValue);
+                updateExclusiveAudioSuspension();
             }, true);
 
             Audio.AddAdjustment(AdjustableProperty.Volume, inactiveVolumeFade);
@@ -695,6 +784,26 @@ namespace osu.Game
             if (Host == null || frameSyncMode == null || uncappedFrameRate == null || limitMenuFps2x == null)
                 return;
 
+            bool useCustomLimits = uncappedFrameRate.Value && frameSyncMode.Value == FrameSync.Unlimited && customFrameLimits.Value;
+
+            // Input belongs to ThreadRunner: direct ActiveHz writes would be overwritten by frame-sync,
+            // execution-mode and 8 kHz polling changes. Audio's normal rate is restored on leaving custom mode.
+            double? inputLimit = useCustomLimits ? customInputHz.Value : null;
+            if (Host.MaximumInputHz != inputLimit)
+                Host.MaximumInputHz = inputLimit;
+
+            if (useCustomLimits)
+            {
+                audioHzBeforeCustomLimits ??= Host.AudioThread.ActiveHz;
+                if (Host.AudioThread.ActiveHz != customAudioHz.Value)
+                    Host.AudioThread.ActiveHz = customAudioHz.Value;
+            }
+            else if (audioHzBeforeCustomLimits is double previousAudioHz)
+            {
+                Host.AudioThread.ActiveHz = previousAudioHz;
+                audioHzBeforeCustomLimits = null;
+            }
+
             bool isInGameplayOrReplay = ScreenStack?.CurrentScreen is Player || ScreenStack?.CurrentScreen is PlayerLoader;
 
             if (limitMenuFps2x.Value && !isInGameplayOrReplay)
@@ -723,20 +832,22 @@ namespace osu.Game
             {
                 benchmarkUnlimitedFramesState = true;
                 Host.AllowBenchmarkUnlimitedFrames = true;
-                applyFrameRateLimit(uncapped_frame_limit, 8000);
+                applyFrameRateLimit(
+                    customFrameLimits.Value && customDrawHz.Value > 0 ? customDrawHz.Value : uncapped_frame_limit,
+                    customFrameLimits.Value ? (customUpdateHz.Value > 0 ? customUpdateHz.Value : uncapped_frame_limit) : 8000);
                 return;
             }
 
             if (benchmarkUnlimitedFramesState == true)
             {
                 Host.AllowBenchmarkUnlimitedFrames = false;
-                applyFrameRateLimit(applySaneFrameLimit(Host.MaximumDrawHz), applySaneFrameLimit(Host.MaximumUpdateHz));
+                // Headless hosts have no display mode to reapply. Clear custom limits there too.
+                applyFrameRateLimit(framework_unlimited_frame_limit);
+                Host.ReapplyFrameSyncMode();
             }
 
             benchmarkUnlimitedFramesState = false;
         }
-
-        private static double applySaneFrameLimit(double currentLimit) => currentLimit <= 0 ? framework_unlimited_frame_limit : Math.Min(framework_unlimited_frame_limit, currentLimit);
 
         private void applyFrameRateLimit(double drawLimit, double? updateLimit = null)
         {
@@ -933,6 +1044,18 @@ namespace osu.Game
         /// Show the performance diagnostics setup overlay.
         /// </summary>
         public void ShowPerformanceDiagnosticsSetup() => waitForReady(() => performanceDiagnosticsOverlay, overlay => overlay.ShowSetup());
+
+        public void ShowDiscovery() => waitForReady(() => discoveryOverlay, overlay =>
+        {
+            Settings?.Hide();
+            overlay.Show();
+        });
+
+        public void ShowThemeLibrary() => waitForReady(() => themeLibraryOverlay, overlay =>
+        {
+            Settings?.Hide();
+            overlay.Show();
+        });
 
         /// <summary>
         /// Joins a multiplayer or playlists room with the given <paramref name="id"/>.
@@ -1255,9 +1378,40 @@ namespace osu.Game
 
         private void beatmapChanged(ValueChangedEvent<WorkingBeatmap> beatmap)
         {
+            using var phase = PerformancePhaseLogger.Begin("OsuGame.BeatmapChanged");
+
             beatmap.OldValue?.CancelAsyncLoad();
-            beatmap.NewValue?.BeginAsyncLoad();
+            preloadSelectedBeatmap(beatmap.NewValue);
             updateWindowTitle();
+        }
+
+        private ScheduledDelegate beatmapPreload;
+
+        private void preloadSelectedBeatmap(WorkingBeatmap selected)
+        {
+            beatmapPreload?.Cancel();
+            beatmapPreload = null;
+
+            if (selected == null)
+                return;
+
+            if (ScreenStack?.CurrentScreen is ISongSelect or Screens.SelectLegacy.SongSelect)
+            {
+                // Preloading is optional: explicit gameplay/editor/difficulty demand still loads
+                // through WorkingBeatmap.Beatmap immediately. Do not parse transient selections
+                // solely to prime menu beat sync while the user traverses the carousel.
+                if (!selected.BeatmapLoaded)
+                {
+                    beatmapPreload = Scheduler.AddDelayed(() =>
+                    {
+                        beatmapPreload = null;
+                        if (ReferenceEquals(Beatmap.Value, selected))
+                            selected.BeginAsyncLoad();
+                    }, SongSelect.PERFORMANCE_CALCULATION_DEBOUNCE);
+                }
+            }
+            else
+                selected.BeginAsyncLoad();
         }
 
         private void updateWindowTitle()
@@ -1338,11 +1492,19 @@ namespace osu.Game
         {
             // Without this, tests may deadlock due to cancellation token not becoming cancelled before disposal.
             // To reproduce, run `TestSceneButtonSystemNavigation` ensuring `TestConstructor` runs before `TestFastShortcutKeys`.
+            beatmapPreload?.Cancel();
+
+            foreach (var setting in skinPerformanceSettings)
+                setting.UnbindAll();
+
+            skinPerformanceSettings.Clear();
             detachedBeatmapStore?.Dispose();
+            supporterQuestPoller?.Dispose();
 
             base.Dispose(isDisposing);
 
             sentryLogger?.Dispose();
+
 
             if (Host?.Window != null)
                 Host.Window.DragDrop -= onWindowDragDrop;
@@ -1365,52 +1527,26 @@ namespace osu.Game
             };
         }
 
-        private void offerNewerVersionDatabaseConversion()
+        public void ShowInitialSetupAfterLibrarySelection()
         {
-            ulong? schemaVersion = MainRealm.NewerVersionDatabaseSchemaVersion;
-            string databaseFilename = MainRealm.NewerVersionDatabaseFilename;
-
-            if (schemaVersion == null || databaseFilename == null)
-                return;
-
-            Logger.Log($"Offering conversion of newer version database {databaseFilename} (schema version {schemaVersion}).", LoggingTarget.Database);
-
-            dialogOverlay.Push(new NewerVersionDatabaseDialog(
-                @"Database created by a newer version of osu!",
-                $"The local database ({databaseFilename}) was created by osu!lazer tachyon or another newer osu! version "
-                + $"(schema version {schemaVersion}), which this client cannot open (supported schema version {MainRealm.SupportedSchemaVersion}). "
-                + @"You can convert it for use with this client. Unknown data from the newer version will be dropped, and the original file will be kept as a backup.",
-                onConvert: () =>
-                {
-                    if (!MainRealm.TryConvertNewerVersionedDatabase())
-                    {
-                        Notifications.Post(new SimpleErrorNotification
-                        {
-                            Text = @"The database conversion failed. The original database was not modified.",
-                        });
-                        return;
-                    }
-
-                    dialogOverlay.Push(new ConfirmDialog(@"Conversion complete. Restart osu! to load the converted database.", () =>
-                    {
-                        RestartAppWhenExited();
-                        AttemptExit();
-                    }));
-                }));
+            waitForReady(() => FirstRunOverlay, overlay =>
+            {
+                if (LocalConfig.Get<bool>(OsuSetting.ShowFirstRunSetup))
+                    overlay.Show();
+            });
         }
 
         protected override void LoadComplete()
         {
-            base.LoadComplete();
+            using var startup = PerformancePhaseLogger.Begin("OsuGame.LoadComplete");
+            using (PerformancePhaseLogger.Begin("OsuGame.BaseLoadComplete"))
+                base.LoadComplete();
 
-            // If a foreign database created by a newer osu! version (e.g. osu!lazer tachyon) was moved aside at
-            // startup, offer the user a conversion to the schema version supported by this client.
-            Schedule(offerNewerVersionDatabaseConversion);
-
+            using var layout = PerformancePhaseLogger.Begin("OsuGame.CreateRootLayout");
             // The next time this is updated is in UpdateAfterChildren, which occurs too late and results
             // in the cursor being shown for a few frames during the intro.
             // This prevents the cursor from showing until we have a screen with CursorVisible = true
-            GlobalCursorDisplay.ShowCursor = menuScreen?.CursorVisible ?? false;
+            GlobalCursorDisplay.ShowCursor = !UseSystemCursor && menuScreen?.CursorVisible == true;
 
             // todo: all archive managers should be able to be looped here.
             SkinManager.PostNotification = n => Notifications.Post(n);
@@ -1469,7 +1605,11 @@ namespace osu.Game
                                     Children = new Drawable[]
                                     {
                                         backReceptor = new ScreenFooter.BackReceptor(),
-                                        ScreenStack = new OsuScreenStack { RelativeSizeAxes = Axes.Both },
+                                        ScreenStack = new OsuScreenStack
+                                        {
+                                            RelativeSizeAxes = Axes.Both,
+                                            BackgroundViewport = () => ScreenOffsetContainer,
+                                        },
                                     }
                                 }
                             },
@@ -1515,11 +1655,22 @@ namespace osu.Game
                 },
                 topMostOverlayContent = new Container { RelativeSizeAxes = Axes.Both },
                 idleTracker,
-                new ConfineMouseTracker()
             });
 
+            // The startup override must not be replaced on fullscreen or gameplay state changes.
+            if (!UseSystemCursor)
+                Add(new ConfineMouseTracker());
+
+            layout.End();
+            using var components = PerformancePhaseLogger.Begin("OsuGame.SetupComponents");
+            using var coreComponents = PerformancePhaseLogger.Begin("OsuGame.SetupCoreComponents");
             dependencies.Cache(ScreenFooter);
-            dependencies.CacheAs<IBackdropBlurSource>(backdropBlurContainer);
+            // Overlays sample the shared background, never capture carousel text/previews.
+            dependencies.CacheAs<IBackdropBlurSource>(ScreenStack.BackgroundBlurSource);
+            var songSelectBackground = ScreenStack.DetachBackgroundSource();
+            songSelectBackground.Depth = float.MaxValue;
+            Add(songSelectBackground);
+            dependencies.CacheAs<ISongSelectBackdropBlurSource>(ScreenStack);
             loadComponentSingleFile(performanceDebugService, Add, true);
 
             ScreenStack.ScreenPushed += screenPushed;
@@ -1555,6 +1706,7 @@ namespace osu.Game
             loadComponentSingleFile(statisticsProvider = new LocalUserStatisticsProvider(), Add, true);
             loadComponentSingleFile(difficultyRecommender = new DifficultyRecommender(statisticsProvider), Add, true);
             loadComponentSingleFile(new UserStatisticsWatcher(statisticsProvider), Add, true);
+            loadComponentSingleFile(new QueueController(), Add, true);
             loadComponentSingleFile(Toolbar = new Toolbar
             {
                 OnHome = delegate
@@ -1602,53 +1754,63 @@ namespace osu.Game
             // dependency on notification overlay, dependent by settings overlay
             loadComponentSingleFile(CreateUpdateManager(), Add, true);
 
+            coreComponents.End();
+            using var overlays = PerformancePhaseLogger.Begin("OsuGame.SetupOverlays");
             // overlay elements
-            loadComponentSingleFile(FirstRunOverlay = new FirstRunSetupOverlay(), footerBasedOverlayContent.Add, true);
-            loadComponentSingleFile(new ManageCollectionsDialog(), overlayContent.Add, true);
-            loadComponentSingleFile(beatmapListing = new BeatmapListingOverlay(), overlayContent.Add, true);
-            loadComponentSingleFile(dashboard = new DashboardOverlay(), overlayContent.Add, true);
-            loadComponentSingleFile(news = new NewsOverlay(), overlayContent.Add, true);
-            var rankingsOverlay = loadComponentSingleFile(new RankingsOverlay(), overlayContent.Add, true);
-            loadComponentSingleFile(channelManager = new ChannelManager(API), Add, true);
-            loadComponentSingleFile(chatOverlay = new ChatOverlay(), overlayContent.Add, true);
-            loadComponentSingleFile(new MessageNotifier(), Add, true);
-            loadComponentSingleFile(Settings = new SettingsOverlay(), leftFloatingOverlayContent.Add, true);
-            loadComponentSingleFile(changelogOverlay = new ChangelogOverlay(), overlayContent.Add, true);
-            loadComponentSingleFile(userProfile = new UserProfileOverlay(), overlayContent.Add, true);
-            loadComponentSingleFile(beatmapSetOverlay = new BeatmapSetOverlay(), overlayContent.Add, true);
-            loadComponentSingleFile(wikiOverlay = new WikiOverlay(), overlayContent.Add, true);
-            loadComponentSingleFile(skinEditor = new SkinEditorOverlay(ScreenContainer), overlayContent.Add, true);
-            loadComponentSingleFile(supporterQuestsOverlay = new SupporterQuestsOverlay(), overlayContent.Add, true);
+            loadComponentSingleFile(FirstRunOverlay = createStartupOverlay(() => new FirstRunSetupOverlay()), footerBasedOverlayContent.Add, true);
+            loadComponentSingleFile(libraryLocationOverlay = createStartupOverlay(() => new LibraryLocationOverlay()), footerBasedOverlayContent.Add, true);
+            loadComponentSingleFile(createStartupOverlay(() => new ManageCollectionsDialog()), overlayContent.Add, true);
+            loadComponentSingleFile(beatmapListing = createStartupOverlay(() => new BeatmapListingOverlay()), overlayContent.Add, true);
+            loadComponentSingleFile(dashboard = createStartupOverlay(() => new DashboardOverlay()), overlayContent.Add, true);
+            loadComponentSingleFile(news = createStartupOverlay(() => new NewsOverlay()), overlayContent.Add, true);
+            var rankingsOverlay = loadComponentSingleFile(createStartupOverlay(() => new RankingsOverlay()), overlayContent.Add, true);
+            loadComponentSingleFile(channelManager = createStartupOverlay(() => new ChannelManager(API)), Add, true);
+            loadComponentSingleFile(chatOverlay = createStartupOverlay(() => new ChatOverlay()), overlayContent.Add, true);
+            loadComponentSingleFile(createStartupOverlay(() => new MessageNotifier()), Add, true);
+            using (PerformancePhaseLogger.Begin("OsuGame.CreateSettingsOverlay"))
+                loadComponentSingleFile(Settings = createStartupOverlay(() => new SettingsOverlay()), leftFloatingOverlayContent.Add, true);
+            loadComponentSingleFile(changelogOverlay = createStartupOverlay(() => new ChangelogOverlay()), overlayContent.Add, true);
+            loadComponentSingleFile(userProfile = createStartupOverlay(() => new UserProfileOverlay()), overlayContent.Add, true);
+            loadComponentSingleFile(beatmapSetOverlay = createStartupOverlay(() => new BeatmapSetOverlay()), overlayContent.Add, true);
+            loadComponentSingleFile(wikiOverlay = createStartupOverlay(() => new WikiOverlay()), overlayContent.Add, true);
+            using (PerformancePhaseLogger.Begin("OsuGame.CreateSkinEditorOverlay"))
+                loadComponentSingleFile(skinEditor = createStartupOverlay(() => new SkinEditorOverlay(ScreenContainer)), overlayContent.Add, true);
+            loadComponentSingleFile(supporterQuestsOverlay = createStartupOverlay(() => new SupporterQuestsOverlay()), overlayContent.Add, true);
+            loadComponentSingleFile(themeLibraryOverlay = createStartupOverlay(() => new ThemeLibraryOverlay()), overlayContent.Add, true);
+            loadComponentSingleFile(discoveryOverlay = createStartupOverlay(() => new Overlays.Discovery.DiscoveryOverlay()), overlayContent.Add, true);
             supporterQuestsOverlay.QuestsLoaded += count => lastCompletedQuestsCount = count;
 
-            loadComponentSingleFile(new LoginOverlay
+            loadComponentSingleFile(createStartupOverlay(() => new LoginOverlay
             {
                 Anchor = Anchor.TopRight,
                 Origin = Anchor.TopRight,
-            }, rightFloatingOverlayContent.Add, true);
+            }), rightFloatingOverlayContent.Add, true);
 
-            loadComponentSingleFile(new NowPlayingOverlay
+            loadComponentSingleFile(createStartupOverlay(() => new NowPlayingOverlay
             {
                 Anchor = Anchor.TopRight,
                 Origin = Anchor.TopRight,
-            }, rightFloatingOverlayContent.Add, true);
+            }), rightFloatingOverlayContent.Add, true);
 
-            loadComponentSingleFile(new AccountCreationOverlay(), topMostOverlayContent.Add, true);
-            loadComponentSingleFile<IDialogOverlay>(dialogOverlay = new DialogOverlay(), topMostOverlayContent.Add, true);
-            loadComponentSingleFile(performanceDiagnosticsOverlay = new PerformanceDiagnosticsOverlay(), topMostOverlayContent.Add, true);
-            loadComponentSingleFile(new MedalOverlay(), topMostOverlayContent.Add);
+            loadComponentSingleFile(createStartupOverlay(() => new AccountCreationOverlay()), topMostOverlayContent.Add, true);
+            loadComponentSingleFile<IDialogOverlay>(dialogOverlay = createStartupOverlay(() => new DialogOverlay()), topMostOverlayContent.Add, true);
+            loadComponentSingleFile(performanceDiagnosticsOverlay = createStartupOverlay(() => new PerformanceDiagnosticsOverlay()), topMostOverlayContent.Add, true);
+            loadComponentSingleFile(createStartupOverlay(() => new MedalOverlay()), topMostOverlayContent.Add);
 
+            overlays.End();
+            using var services = PerformancePhaseLogger.Begin("OsuGame.SetupServices");
             loadComponentSingleFile(new BackgroundDataStoreProcessor(), Add);
             loadComponentSingleFile<BeatmapStore>(detachedBeatmapStore = new RealmDetachedBeatmapStore(), Add, true);
-            loadComponentSingleFile(new QueueController(), Add, true);
-
             Add(externalLinkOpener = new ExternalLinkOpener());
             Add(new MusicKeyBindingHandler());
             Add(new OnlineStatusNotifier(() => ScreenStack.CurrentScreen));
             Add(new FriendPresenceNotifier());
 
+            services.End();
+            components.End();
+            using var subscriptions = PerformancePhaseLogger.Begin("OsuGame.SetupSubscriptionsAndConfig");
             // side overlays which cancel each other.
-            var singleDisplaySideOverlays = new OverlayContainer[] { Settings, Notifications, FirstRunOverlay };
+            var singleDisplaySideOverlays = new OverlayContainer[] { Settings, Notifications, FirstRunOverlay, libraryLocationOverlay };
 
             foreach (var overlay in singleDisplaySideOverlays)
             {
@@ -1695,11 +1857,16 @@ namespace osu.Game
             // Importantly, this should be run after binding PostNotification to the import handlers so they can present the import after game startup.
             handleStartupImport();
 
-            // Start supporter quests background polling
-            Scheduler.AddDelayed(checkSupporterQuests, 15000, true);
+            // Screen changes and the timer share one throttled request, suspended throughout gameplay.
+            supporterQuestPoller = new SupporterQuestPoller(API, processSupporterQuests)
+            {
+                Suspended = ShouldPauseSupporterQuestPolling(ScreenStack.CurrentScreen as IOsuScreen),
+            };
+            Scheduler.AddDelayed(checkSupporterQuests, SupporterQuestPoller.POLL_INTERVAL, true);
 
             // Show server information notification on startup
             showServerInfoNotification();
+            showPerformanceLoggingNotification();
 
             applyConfigMigrations();
 
@@ -1714,6 +1881,7 @@ namespace osu.Game
             // this MUST happen after `applyConfigMigrations()` call, as it relies on comparing the previous version.
             // debug / local compilations will reset to a non-release string.
             LocalConfig.SetValue(OsuSetting.Version, version);
+            subscriptions.End();
         }
 
         /// <summary>
@@ -1800,6 +1968,24 @@ namespace osu.Game
                 string currentServerUrl = API.Endpoints.APIUrl;
                 Notifications.Post(new ServerInfoNotification(currentServerUrl) { IsImportant = false, Transient = true });
             }, 2000);
+        }
+
+        private void showPerformanceLoggingNotification()
+        {
+            if (!LocalConfig.Get<bool>(OsuSetting.ForkPerformanceLogging))
+                return;
+
+            // Give the notification overlay time to load; do not warn if logging was turned off meanwhile.
+            Scheduler.AddDelayed(() =>
+            {
+                if (LocalConfig.Get<bool>(OsuSetting.ForkPerformanceLogging))
+                    Notifications.Post(new SimpleNotification
+                    {
+                        Text = ForkSettingsStrings.PerfLoggingStartupWarning,
+                        IsImportant = false,
+                        Transient = true
+                    });
+            }, 3000);
         }
 
         private void showOverlayAboveOthers(OverlayContainer overlay, OverlayContainer[] otherOverlays)
@@ -1922,6 +2108,12 @@ namespace osu.Game
         /// <param name="component">The component to load.</param>
         /// <param name="loadCompleteAction">An action to invoke on load completion (generally to add the component to the hierarchy).</param>
         /// <param name="cache">Whether to cache the component as type <typeparamref name="T"/> into the game dependencies before any scheduling.</param>
+        private static T createStartupOverlay<T>(Func<T> create) where T : Drawable
+        {
+            using var phase = PerformancePhaseLogger.Begin("OsuGame.CreateOverlay", detail: typeof(T).Name);
+            return create();
+        }
+
         private T loadComponentSingleFile<T>(T component, Action<Drawable> loadCompleteAction, bool cache = false)
             where T : class
         {
@@ -2004,6 +2196,10 @@ namespace osu.Game
 
                 case GlobalAction.ToggleFPSDisplay:
                     fpsCounter.ToggleVisibility();
+                    return true;
+
+                case GlobalAction.ToggleFavouriteSettings:
+                    Settings?.ToggleFavouriteSettings();
                     return true;
 
                 case GlobalAction.ToggleSkinEditor:
@@ -2129,7 +2325,10 @@ namespace osu.Game
 
         private void updateExclusiveAudioSuspension()
         {
-            // Standalone public build note: Exclusive WASAPI is an optional Mosu framework extension.
+            // Losing focus always releases the endpoint. When gameplay-only mode is enabled,
+            // acquire it early on PlayerLoader so device initialisation completes before play.
+            Audio.ExclusiveWasapiSuspended.Value = !IsActive.Value
+                                                   || exclusiveAudioGameplayOnly?.Value == true && !exclusiveAudioGameplayScreenActive;
         }
 
         #endregion
@@ -2166,9 +2365,33 @@ namespace osu.Game
 
             adjustGlobalScreenOffset();
 
-            GlobalCursorDisplay.ShowCursor = (ScreenStack.CurrentScreen as IOsuScreen)?.CursorVisible ?? false;
+            GlobalCursorDisplay.ShowCursor = !UseSystemCursor && (ScreenStack.CurrentScreen as IOsuScreen)?.CursorVisible == true;
 
             updateAutoHideToolbar();
+
+            // Each overlay supplies its real background; never infer opacity from its
+            // local Alpha alone. GameHost carries this request with the same draw tree.
+            Host.PreferFrontToBackPass = shouldUseOverlayDrawPrepass();
+        }
+
+        private bool shouldUseOverlayDrawPrepass()
+        {
+            if (ScreenStack.CurrentScreen is not IOsuScreen screen
+                || screen is Player or PlayerLoader
+                || screen.DisallowExternalBeatmapRulesetChanges
+                || UserPlayingState.Value != LocalUserPlayingState.NotPlaying
+                || OverlayTransparency.Enabled.Value)
+                return false;
+
+            foreach (var overlay in focusedOverlays)
+            {
+                if (overlay.CanUseOpaqueDrawPrepass)
+                    return true;
+            }
+
+            // Footer-based overlays (such as mod select) are owned by the screen,
+            // rather than by the global overlay loader.
+            return ScreenFooter.ActiveOverlay?.CanUseOpaqueDrawPrepass == true;
         }
 
         private void updateAutoHideToolbar()
@@ -2201,7 +2424,7 @@ namespace osu.Game
             }
             else if (Toolbar.State.Value == Visibility.Visible)
             {
-                if (mouseY <= Toolbar.HEIGHT || Toolbar.IsHovered)
+                if (mouseY <= (Toolbar?.DrawHeight ?? Toolbar.HEIGHT) || Toolbar.IsHovered)
                     toolbarAutoHideTime = null;
                 else
                 {
@@ -2239,8 +2462,14 @@ namespace osu.Game
             overlayContent.X = horizontalOffsetAdjust * 1.2f;
         }
 
+        internal static bool ShouldPauseSupporterQuestPolling(IOsuScreen screen) => screen is PlayerLoader or Player;
+
         protected virtual void ScreenChanged([CanBeNull] IOsuScreen current, [CanBeNull] IOsuScreen newScreen)
         {
+            if (supporterQuestPoller != null)
+                supporterQuestPoller.Suspended = ShouldPauseSupporterQuestPolling(newScreen);
+
+            Toolbar.SongSelectActive = newScreen is ISongSelect or Screens.SelectLegacy.SongSelect;
             updateOutsideGameplayVolume(newScreen);
             exclusiveAudioGameplayScreenActive = newScreen is PlayerLoader or Player;
             updateExclusiveAudioSuspension();
@@ -2316,6 +2545,12 @@ namespace osu.Game
                 skinEditor.SetTarget(newOsuScreen);
             }
 
+            if (newScreen is MainMenu && !previousCrashShown && CrashReports?.Previous is { } previousCrash)
+            {
+                previousCrashShown = true;
+                Schedule(() => dialogOverlay.Push(new osu.Game.Overlays.Dialog.CrashReportDialog(CrashReports, previousCrash)));
+            }
+
             // Check supporter quests when screen changes (e.g. gameplay ends)
             checkSupporterQuests();
         }
@@ -2330,51 +2565,45 @@ namespace osu.Game
                 Exit();
         }
 
-        private void checkSupporterQuests()
+        private void checkSupporterQuests() => supporterQuestPoller?.Poll(Time.Current);
+
+        private void processSupporterQuests(List<APISupporterQuest> quests)
         {
-            if (API == null || API.State.Value != APIState.Online)
+            if (quests == null || quests.Count == 0)
                 return;
 
-            var req = new GetSupporterQuestsRequest();
-            req.Success += quests => Schedule(() =>
+            int completedCount = quests.Count(q => q.Completed);
+
+            if (lastCompletedQuestsCount == -1)
             {
-                if (quests == null || quests.Count == 0)
-                    return;
+                lastCompletedQuestsCount = completedCount;
+                return;
+            }
 
-                int completedCount = quests.Count(q => q.Completed);
-
-                if (lastCompletedQuestsCount == -1)
+            if (completedCount > lastCompletedQuestsCount)
+            {
+                var completedList = quests.Where(q => q.Completed).ToList();
+                if (lastCompletedQuestsCount < completedList.Count)
                 {
-                    lastCompletedQuestsCount = completedCount;
-                    return;
-                }
-
-                if (completedCount > lastCompletedQuestsCount)
-                {
-                    var completedList = quests.Where(q => q.Completed).ToList();
-                    if (lastCompletedQuestsCount < completedList.Count)
+                    var newlyCompleted = completedList[lastCompletedQuestsCount];
+                    Notifications.Post(new SimpleNotification
                     {
-                        var newlyCompleted = completedList[lastCompletedQuestsCount];
-                        Notifications.Post(new SimpleNotification
+                        Text = ForkSettingsStrings.SupporterQuestCompletedNotification(getQuestName(newlyCompleted.Id, newlyCompleted.Name)),
+                        Icon = FontAwesome.Solid.CheckCircle,
+                        Activated = () =>
                         {
-                            Text = ForkSettingsStrings.SupporterQuestCompletedNotification(getQuestName(newlyCompleted.Id, newlyCompleted.Name)),
-                            Icon = FontAwesome.Solid.CheckCircle,
-                            Activated = () =>
-                            {
-                                Schedule(() => supporterQuestsOverlay.Show());
-                                return true;
-                            }
-                        });
-                    }
+                            Schedule(() => supporterQuestsOverlay.Show());
+                            return true;
+                        }
+                    });
+                }
 
-                    lastCompletedQuestsCount = completedCount;
-                }
-                else if (completedCount < lastCompletedQuestsCount)
-                {
-                    lastCompletedQuestsCount = completedCount;
-                }
-            });
-            API.Queue(req);
+                lastCompletedQuestsCount = completedCount;
+            }
+            else if (completedCount < lastCompletedQuestsCount)
+            {
+                lastCompletedQuestsCount = completedCount;
+            }
         }
 
         private static LocalisableString getQuestName(int id, string defaultName)

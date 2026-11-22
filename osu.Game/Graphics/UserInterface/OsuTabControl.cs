@@ -112,7 +112,7 @@ namespace osu.Game.Graphics.UserInterface
 
             // The overflow dropdown's menu defaults to the compact "..." header width when presented
             // in the global dropdown layer, which truncates item labels. Feed it the widest tab's width
-            // so overflowing tabs retain readable dropdown items without clipped text.
+            // (tab labels match the dropdown item labels) so the menu stays readable.
             if (Dropdown is OsuTabDropdown<T> tabDropdown)
             {
                 float widestTab = 0;

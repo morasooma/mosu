@@ -279,7 +279,7 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
 
             if (room.Host != null)
             {
-                hostText.AddText("hosted by ");
+                hostText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4797);
                 hostText.AddUserLink(room.Host);
             }
         }

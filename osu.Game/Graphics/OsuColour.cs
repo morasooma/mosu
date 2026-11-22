@@ -178,6 +178,8 @@ namespace osu.Game.Graphics
                 case BeatmapOnlineStatus.WIP:
                     return Color4Extensions.FromHex(@"ff9966");
 
+                case BeatmapOnlineStatus.MosuAvailable:
+                case BeatmapOnlineStatus.ArchivedMirror:
                 case BeatmapOnlineStatus.Graveyard:
                     return Color4.Black;
 

@@ -21,6 +21,7 @@ using osu.Framework.Utils;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Graphics.Containers;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 
 namespace osu.Game.Graphics.UserInterface
@@ -100,6 +101,9 @@ namespace osu.Game.Graphics.UserInterface
 
         protected OverlayColourProvider? ColourProvider { get; private set; }
         protected OsuColour? Colours { get; private set; }
+        private IBindable<float>? cornerRadius;
+
+        protected virtual bool ApplyGeometryRadius => true;
 
         protected virtual void UpdateThemeColours()
         {
@@ -131,6 +135,12 @@ namespace osu.Game.Graphics.UserInterface
             {
                 themeMode = OverlayColourProvider.CurrentTheme.GetBoundCopy();
                 themeMode.BindValueChanged(_ => UpdateThemeColours(), true);
+            }
+
+            if (ApplyGeometryRadius)
+            {
+                cornerRadius = colourProvider?.GetRadiusBindable(GeometryRole.Input) ?? OverlayColourProvider.GetGeometryRadius(GeometryRole.Input);
+                cornerRadius.BindValueChanged(r => CornerRadius = r.NewValue, true);
             }
 
             // Note that `KeyBindingRow` uses similar logic for input feedback, so remember to update there if changing here.

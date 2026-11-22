@@ -9,8 +9,7 @@ namespace osu.Game.Performance
     /// Allows creating a temporary "high performance" session, with the goal of optimising runtime
     /// performance for gameplay purposes.
     ///
-    /// On desktop platforms, this will set a low latency GC mode which collects more frequently to avoid
-    /// GC spikes.
+    /// On desktop platforms, this may temporarily tune the GC latency mode for gameplay.
     /// </summary>
     public interface IHighPerformanceSessionManager
     {

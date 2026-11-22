@@ -13,6 +13,7 @@ using osu.Framework.Logging;
 using osu.Framework.Timing;
 using osu.Game.Beatmaps;
 using osu.Game.Overlays;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Screens;
 using osu.Game.Storyboards.Drawables;
@@ -69,6 +70,9 @@ namespace osu.Game.Graphics.Backgrounds
 
             if (!Beatmap.Storyboard.HasDrawable)
                 return;
+
+            using var phase = PerformancePhaseLogger.Begin("SongSelect.StoryboardLoad", detail:
+                $"beatmap_id={Beatmap.BeatmapInfo.OnlineID}");
 
             try
             {
@@ -149,7 +153,11 @@ namespace osu.Game.Graphics.Backgrounds
             Sprite.FadeTo(showBackground ? 1 : 0, BackgroundScreen.TRANSITION_LENGTH, Easing.OutQuint);
         }
 
-        private void onTrackChanged(WorkingBeatmap newBeatmap, TrackChangeDirection _) => updateStoryboardClockSource(newBeatmap);
+        private void onTrackChanged(WorkingBeatmap newBeatmap, TrackChangeDirection _)
+        {
+            using var phase = PerformancePhaseLogger.Begin("StoryboardBackground.TrackChanged");
+            updateStoryboardClockSource(newBeatmap);
+        }
 
         private void updateStoryboardClockSource(WorkingBeatmap newBeatmap)
         {

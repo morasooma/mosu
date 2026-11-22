@@ -86,6 +86,8 @@ namespace osu.Game.Skinning
 
         protected abstract void SetTextColour(Colour4 textColour);
 
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+
         protected override void LoadComplete()
         {
             base.LoadComplete();
@@ -96,7 +98,9 @@ namespace osu.Game.Skinning
 
             TextWeight.BindValueChanged(_ => updateFont(), true);
 
-            TextColour.BindValueChanged(e => SetTextColour(e.NewValue), true);
+            void updateColour() => SetTextColour(themeColours.GetColour(Overlays.OverlayColour.Content1, TextColour));
+            TextColour.BindValueChanged(_ => updateColour());
+            themeColours.Bind(action => Scheduler.Add(action), updateColour);
 
             syncFontDisplay();
         }

@@ -1,0 +1,41 @@
+Background safety classifiers (weights downloaded on demand, not embedded)
+
+SwiftFormer XS image safety classifier
+Author / model source: Owen Elliott
+https://huggingface.co/OwenElliott/image-safety-classifier-xs
+Revision: 54f4560bd9c5ee92d45dc30418a8f8680e80de6d
+File: onnx/image-safety-classifier-xs.onnx
+SHA-256: 8c28c49d9075f3ad15ebdc2961f02d5b3f99be944815b848b49c9f0e6f3fb689
+Model card license: MIT.
+SwiftFormer backbone: Apache-2.0, https://github.com/Amshaker/SwiftFormer
+
+Anime Rating, mobilenetv3_v1_pruned_ls0.1
+Author / model source: DeepGHS
+https://huggingface.co/deepghs/anime_rating
+Revision: 46be80bfe01a415efa5aa7c025528cac82a8b88a
+SHA-256: 76e5c44704421e2b6431a2dbb395f8943e205e59f415a5614b16f0601b55544d
+Model card license: MIT.
+Copyright (c) 2023 DeepGHS
+
+The classifiers and the local censorship decisions may be inaccurate. They are
+not a guarantee that an image is safe, and do not filter video or storyboards.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

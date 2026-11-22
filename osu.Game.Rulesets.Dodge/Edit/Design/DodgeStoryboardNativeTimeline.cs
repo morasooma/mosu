@@ -47,6 +47,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
         private Timeline editorTimeline { get; set; } = null!;
 
         public Action<double, double>? ObjectRangeChanged;
+        public Action<IReadOnlyList<(StoryboardLayer Layer, StoryboardSprite Sprite, double Start, double End)>>? ObjectRangesChanged;
         public Action<IStoryboardCommand, double, double>? CommandRangeChanged;
         public Action<IStoryboardCommand>? CommandSelected;
         public Action<StoryboardLayer, StoryboardSprite>? SpriteSelected;
@@ -110,6 +111,9 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
 
         public void Refresh() => rebuild();
 
+        public void RestoreObjectSelection(IReadOnlyList<StoryboardSprite> sprites)
+            => blueprintContainer?.RestoreSelection(sprites);
+
         public void RestoreCommandSelection(IStoryboardCommand command)
         {
             if (selectedSprite?.Commands.AllCommands.Any(candidate => ReferenceEquals(candidate, command)) != true)
@@ -169,6 +173,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                     selectedSprite = sprite;
                     ObjectRangeChanged?.Invoke(start, end);
                 },
+                onRangesChanged: ranges => ObjectRangesChanged?.Invoke(ranges),
                 onDelete: sprites => SpritesDeleteRequested?.Invoke(
                     sprites.Select(sprite => (
                                Layer: beatmap.Storyboard.Layers.First(layer => layer.Elements.Contains(sprite)),
@@ -212,7 +217,11 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                     markerY,
                     ReferenceEquals(command, selectedCommand),
                     colourProvider,
-                    () => selectCommand(command, true));
+                    () => selectCommand(command, true),
+                    () => selectCommand(command, false),
+                    screenDeltaToTime,
+                    DodgeStoryboardEditing.CanRetime(selectedSprite),
+                    (start, end) => CommandRangeChanged?.Invoke(command, start, end));
                 commandMarkers.Add(marker);
                 commandContent.Add(marker);
             }
@@ -247,6 +256,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
             private readonly Action<StoryboardLayer, StoryboardSprite> onSelected;
             private readonly Action<StoryboardLayer, StoryboardSprite, double, double> onRangeChanged;
             private readonly Action<IReadOnlyList<StoryboardSprite>> onDelete;
+            private readonly Action<IReadOnlyList<(StoryboardLayer Layer, StoryboardSprite Sprite, double Start, double End)>> onRangesChanged;
 
             [Resolved]
             private IBeatSnapProvider beatSnapProvider { get; set; } = null!;
@@ -263,6 +273,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                 Func<float, double> screenDeltaToTime,
                 Action<StoryboardLayer, StoryboardSprite> onSelected,
                 Action<StoryboardLayer, StoryboardSprite, double, double> onRangeChanged,
+                Action<IReadOnlyList<(StoryboardLayer Layer, StoryboardSprite Sprite, double Start, double End)>> onRangesChanged,
                 Action<IReadOnlyList<StoryboardSprite>> onDelete)
             {
                 itemInfo = items.ToDictionary(item => item.Sprite, item => (item.Layer, item.Y));
@@ -270,6 +281,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                 this.screenDeltaToTime = screenDeltaToTime;
                 this.onSelected = onSelected;
                 this.onRangeChanged = onRangeChanged;
+                this.onRangesChanged = onRangesChanged;
                 this.onDelete = onDelete;
             }
 
@@ -292,13 +304,18 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                 if (sprite != null && !itemInfo.ContainsKey(sprite))
                     return;
 
-                if (SelectedItems.Count == (sprite == null ? 0 : 1) &&
-                    (sprite == null || ReferenceEquals(SelectedItems.Single(), sprite)))
+                if ((sprite != null && SelectedItems.Contains(sprite)) || (sprite == null && SelectedItems.Count == 0))
                     return;
 
                 SelectedItems.Clear();
                 if (sprite != null)
                     SelectedItems.Add(sprite);
+            }
+
+            public void RestoreSelection(IReadOnlyList<StoryboardSprite> sprites)
+            {
+                SelectedItems.Clear();
+                SelectedItems.AddRange(sprites.Where(itemInfo.ContainsKey));
             }
 
             protected override SelectionBlueprint<StoryboardSprite>? CreateBlueprintFor(StoryboardSprite sprite)
@@ -330,7 +347,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                 DragEvent e,
                 IList<(SelectionBlueprint<StoryboardSprite> blueprint, Vector2[] originalSnapPositions)> blueprints)
             {
-                if (blueprints.Count == 0)
+                if (blueprints.Count == 0 || blueprints.Any(item => !DodgeStoryboardEditing.CanRetime(item.blueprint.Item)))
                     return false;
 
                 double delta = screenDeltaToTime(e.ScreenSpaceMousePosition.X - e.ScreenSpaceMouseDownPosition.X);
@@ -338,9 +355,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
 
                 if (!e.AltPressed && editorClock.TrackLength > 0)
                 {
-                    double snappedDelta = beatSnapProvider.SnapTime(reference.OriginalStart + delta) - reference.OriginalStart;
-                    if (Math.Abs(snappedDelta) > 0.001)
-                        delta = snappedDelta;
+                    delta = beatSnapProvider.SnapTime(reference.OriginalStart + delta) - reference.OriginalStart;
                 }
 
                 delta = Math.Max(delta, -blueprints.Min(item => ((StoryboardObjectBlueprint)item.blueprint).OriginalStart));
@@ -355,16 +370,12 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
             {
                 base.DragOperationCompleted();
 
-                foreach (StoryboardObjectBlueprint blueprint in SelectionHandler.SelectedBlueprints.OfType<StoryboardObjectBlueprint>().ToArray())
-                {
-                    if (!blueprint.HasPendingRangeChange)
-                        continue;
-
-                    (double start, double end) = blueprint.PreviewRange;
-                    (StoryboardLayer layer, _) = itemInfo[blueprint.Item];
-                    onRangeChanged(layer, blueprint.Item, start, end);
-                    break;
-                }
+                var ranges = SelectionHandler.SelectedBlueprints.OfType<StoryboardObjectBlueprint>()
+                    .Where(blueprint => blueprint.HasPendingRangeChange)
+                    .Select(blueprint => (itemInfo[blueprint.Item].Layer, blueprint.Item, blueprint.PreviewRange.Start, blueprint.PreviewRange.End))
+                    .ToArray();
+                if (ranges.Length > 0)
+                    onRangesChanged(ranges);
             }
 
             protected override void SelectAll()
@@ -481,10 +492,6 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                             Colour = normalColour,
                             Alpha = 0.78f,
                         },
-                        new TimelineMoveArea(beginMove, updateMove, finishMove)
-                        {
-                            RelativeSizeAxes = Axes.Both,
-                        },
                     },
                 };
                 startHandle = new TimelineRangeHandle("Storyboard start handle", Anchor.CentreLeft, beginResize, updateStart, finishResize);
@@ -527,34 +534,6 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                 updateVisual();
             }
 
-            private void beginMove()
-            {
-                resizeStart = OriginalStart;
-                resizeEnd = originalEnd;
-            }
-
-            private void updateMove(DragEvent e)
-            {
-                double delta = screenDeltaToTime(e.ScreenSpaceMousePosition.X - e.ScreenSpaceMouseDownPosition.X);
-                if (!e.AltPressed && editorClock.TrackLength > 0)
-                {
-                    double snappedDelta = beatSnapProvider.SnapTime(resizeStart + delta) - resizeStart;
-                    if (Math.Abs(snappedDelta) > 0.001)
-                        delta = snappedDelta;
-                }
-
-                delta = Math.Max(delta, -resizeStart);
-                previewStart = resizeStart + delta;
-                previewEnd = resizeEnd + delta;
-                updateVisual();
-            }
-
-            private void finishMove()
-            {
-                if (HasPendingRangeChange)
-                    rangeChanged(previewStart, previewEnd);
-            }
-
             private void beginResize()
             {
                 resizeStart = previewStart;
@@ -595,7 +574,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
             {
                 fill.Colour = IsSelected ? Color4.White : normalColour;
                 fill.Alpha = IsSelected || IsHovered ? 1 : 0.78f;
-                startHandle.Alpha = endHandle.Alpha = IsSelected ? 1 : 0;
+                startHandle.Alpha = endHandle.Alpha = IsSelected && DodgeStoryboardEditing.CanRetime(Item) ? 1 : 0;
             }
 
             private static Color4 colourForLayer(string layerName, OverlayColourProvider colours) => layerName switch
@@ -659,54 +638,30 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                     base.OnDragEnd(e);
                 }
             }
-
-            private partial class TimelineMoveArea : CompositeDrawable
-            {
-                private readonly Action begin;
-                private readonly Action<DragEvent> update;
-                private readonly Action finish;
-
-                public TimelineMoveArea(Action begin, Action<DragEvent> update, Action finish)
-                {
-                    this.begin = begin;
-                    this.update = update;
-                    this.finish = finish;
-                    Name = "Storyboard timeline move area";
-                }
-
-                protected override bool OnMouseDown(MouseDownEvent e) => e.Button == MouseButton.Left;
-
-                protected override bool OnClick(ClickEvent e) => e.Button == MouseButton.Left;
-
-                protected override bool OnDragStart(DragStartEvent e)
-                {
-                    if (e.Button != MouseButton.Left)
-                        return false;
-
-                    begin();
-                    return true;
-                }
-
-                protected override void OnDrag(DragEvent e)
-                {
-                    base.OnDrag(e);
-                    update(e);
-                }
-
-                protected override void OnDragEnd(DragEndEvent e)
-                {
-                    finish();
-                    base.OnDragEnd(e);
-                }
-            }
         }
 
         private partial class StoryboardCommandMarker : CompositeDrawable
         {
             private readonly Box line;
+            private readonly Box range;
+            private readonly Container startHandle;
+            private readonly Container endHandle;
             private readonly Action select;
+            private readonly Action selectForDrag;
             private readonly OverlayColourProvider colourProvider;
+            private readonly Func<float, double> screenDeltaToTime;
+            private readonly bool editable;
+            private readonly Action<double, double> rangeChanged;
+            private double previewStart;
+            private double previewEnd;
+            private CommandDragMode dragMode;
             private bool selected;
+
+            [Resolved]
+            private IBeatSnapProvider beatSnapProvider { get; set; } = null!;
+
+            [Resolved]
+            private EditorClock editorClock { get; set; } = null!;
 
             public readonly IStoryboardCommand Command;
 
@@ -718,6 +673,9 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                     selected = value;
                     line.Colour = value ? Color4.White : colourProvider.Colour2;
                     line.Alpha = value ? 1 : 0.75f;
+                    range.Colour = line.Colour;
+                    range.Alpha = value ? 0.8f : 0.4f;
+                    startHandle.Alpha = endHandle.Alpha = value && editable ? 1 : 0;
                 }
             }
 
@@ -726,32 +684,129 @@ namespace osu.Game.Rulesets.Dodge.Edit.Design
                 float y,
                 bool selected,
                 OverlayColourProvider colourProvider,
-                Action select)
+                Action select,
+                Action selectForDrag,
+                Func<float, double> screenDeltaToTime,
+                bool editable,
+                Action<double, double> rangeChanged)
             {
                 Command = command;
                 this.colourProvider = colourProvider;
                 this.select = select;
+                this.selectForDrag = selectForDrag;
+                this.screenDeltaToTime = screenDeltaToTime;
+                this.editable = editable;
+                this.rangeChanged = rangeChanged;
+                previewStart = command.StartTime;
+                previewEnd = command.EndTime;
 
-                RelativePositionAxes = Axes.X;
-                X = (float)command.StartTime;
-                Y = y - 2;
-                Width = 7;
-                Height = 15;
-                Origin = Anchor.TopCentre;
+                Name = $"Storyboard command range: {command.GetType().Name}";
+                RelativePositionAxes = RelativeSizeAxes = Axes.X;
+                Y = y - 3;
+                Height = 5;
                 Depth = float.MinValue;
-                InternalChild = line = new Box
+                InternalChildren = new Drawable[]
                 {
-                    Anchor = Anchor.Centre,
-                    Origin = Anchor.Centre,
-                    Size = new Vector2(3, 15),
+                    range = new Box { RelativeSizeAxes = Axes.Both },
+                    line = new Box
+                    {
+                        Anchor = Anchor.CentreLeft,
+                        Origin = Anchor.Centre,
+                        Size = new Vector2(3, 15),
+                    },
+                    startHandle = new Container
+                    {
+                        Name = "Storyboard command start handle",
+                        Anchor = Anchor.CentreLeft,
+                        Origin = Anchor.Centre,
+                        Size = new Vector2(7, 17),
+                        Child = new Box { RelativeSizeAxes = Axes.Both, Colour = Color4.White },
+                    },
+                    endHandle = new Container
+                    {
+                        Name = "Storyboard command end handle",
+                        Anchor = Anchor.CentreRight,
+                        Origin = Anchor.Centre,
+                        Size = new Vector2(7, 17),
+                        Child = new Box { RelativeSizeAxes = Axes.Both, Colour = Color4.White },
+                    },
                 };
+                updateRange();
                 Selected = selected;
             }
 
+            public override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
+                => Selected && base.ReceivePositionalInputAt(screenSpacePos)
+                   || line.ScreenSpaceDrawQuad.AABBFloat.Inflate(new Vector2(3)).Contains(screenSpacePos)
+                   || Selected && editable && (startHandle.ReceivePositionalInputAt(screenSpacePos) || endHandle.ReceivePositionalInputAt(screenSpacePos));
+
+            protected override bool OnMouseDown(MouseDownEvent e) => e.Button == MouseButton.Left;
+
             protected override bool OnClick(ClickEvent e)
             {
+                if (e.Button != MouseButton.Left)
+                    return false;
                 select();
                 return true;
+            }
+
+            protected override bool OnDragStart(DragStartEvent e)
+            {
+                if (!editable || e.Button != MouseButton.Left)
+                    return false;
+
+                // Capture the handle before selection makes both handles visible.
+                dragMode = Selected && endHandle.ReceivePositionalInputAt(e.ScreenSpaceMouseDownPosition)
+                    ? CommandDragMode.End
+                    : Selected && startHandle.ReceivePositionalInputAt(e.ScreenSpaceMouseDownPosition)
+                        ? CommandDragMode.Start
+                        : CommandDragMode.Move;
+                selectForDrag();
+                return true;
+            }
+
+            protected override void OnDrag(DragEvent e)
+            {
+                double delta = screenDeltaToTime(e.ScreenSpaceMousePosition.X - e.ScreenSpaceMouseDownPosition.X);
+                switch (dragMode)
+                {
+                    case CommandDragMode.Move:
+                        delta = snap(Command.StartTime + delta, e.AltPressed) - Command.StartTime;
+                        delta = Math.Max(delta, -Command.StartTime);
+                        previewStart = Command.StartTime + delta;
+                        previewEnd = Command.EndTime + delta;
+                        break;
+                    case CommandDragMode.Start:
+                        previewStart = Math.Clamp(snap(Command.StartTime + delta, e.AltPressed), 0, previewEnd);
+                        break;
+                    case CommandDragMode.End:
+                        previewEnd = Math.Max(previewStart, snap(Command.EndTime + delta, e.AltPressed));
+                        break;
+                }
+                updateRange();
+            }
+
+            protected override void OnDragEnd(DragEndEvent e)
+            {
+                base.OnDragEnd(e);
+                if (Math.Abs(previewStart - Command.StartTime) > 0.001 || Math.Abs(previewEnd - Command.EndTime) > 0.001)
+                    rangeChanged(previewStart, previewEnd);
+            }
+
+            private double snap(double time, bool disableSnap)
+                => !disableSnap && editorClock.TrackLength > 0 ? beatSnapProvider.SnapTime(time) : time;
+
+            private void updateRange()
+            {
+                X = (float)previewStart;
+                Width = (float)Math.Max(0, previewEnd - previewStart);
+            }
+
+            private enum CommandDragMode
+            {
+                Move,
+                Start,
+                End,
             }
 
             protected override bool OnHover(HoverEvent e)

@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using JetBrains.Annotations;
@@ -15,12 +16,15 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Cursor;
 using osu.Framework.Input;
+using osu.Framework.Input.Bindings;
 using osu.Framework.Input.Events;
+using osu.Framework.Logging;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Graphics.Cursor;
 using osu.Game.Input.Handlers;
 using osu.Game.Overlays;
+using osu.Game.Performance.Debug;
 using osu.Game.Replays;
 using osu.Game.Rulesets.Configuration;
 using osu.Game.Rulesets.Judgements;
@@ -55,6 +59,9 @@ namespace osu.Game.Rulesets.UI
         /// The key conversion input manager for this DrawableRuleset.
         /// </summary>
         protected PassThroughInputManager KeyBindingInputManager { get; }
+
+        public override IEnumerable<IKeyBinding> GameplayKeyBindings => (KeyBindingInputManager as IHasGameplayKeyBindings)?.GameplayKeyBindings
+            ?? base.GameplayKeyBindings;
 
         /// <summary>
         /// This configuration for this DrawableRuleset.
@@ -146,6 +153,7 @@ namespace osu.Game.Rulesets.UI
 
         protected override void LoadComplete()
         {
+            using var phase = PerformancePhaseLogger.Begin("DrawableRuleset.LoadComplete");
             base.LoadComplete();
 
             if (Config != null)
@@ -158,6 +166,40 @@ namespace osu.Game.Rulesets.UI
 
                 KeyBindingInputManager.UseParentInput = !paused.NewValue;
             };
+        }
+
+        private long initialUpdateWindowStart;
+        private bool initialUpdateWindowExpired;
+        private int initialUpdateFrameIndex;
+
+        public override bool UpdateSubTree()
+        {
+            if (!PerformancePhaseLogger.Enabled || initialUpdateWindowExpired)
+                return base.UpdateSubTree();
+
+            if (initialUpdateWindowStart == 0)
+                initialUpdateWindowStart = Stopwatch.GetTimestamp();
+            else if (Stopwatch.GetElapsedTime(initialUpdateWindowStart).TotalMilliseconds > 1000)
+            {
+                initialUpdateWindowExpired = true;
+                return base.UpdateSubTree();
+            }
+
+            int frame = ++initialUpdateFrameIndex;
+            long start = Stopwatch.GetTimestamp();
+            try
+            {
+                return base.UpdateSubTree();
+            }
+            finally
+            {
+                double elapsedMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+                if (frame <= 3 || elapsedMs > 8)
+                {
+                    Logger.Log($"MOSU_DRAWABLE_RULESET_INITIAL_UPDATE frame={frame} "
+                               + $"elapsed_ms={elapsedMs:F2}", LoggingTarget.Performance);
+                }
+            }
         }
 
         protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
@@ -497,6 +539,11 @@ namespace osu.Game.Rulesets.UI
         /// All the converted hit objects contained by this hit renderer.
         /// </summary>
         public abstract IEnumerable<HitObject> Objects { get; }
+
+        /// <summary>
+        /// Active gameplay mappings, including user overrides and the current ruleset variant.
+        /// </summary>
+        public virtual IEnumerable<IKeyBinding> GameplayKeyBindings => Array.Empty<IKeyBinding>();
 
         /// <summary>
         /// The point in time at which gameplay starts, including any required lead-in for display purposes.

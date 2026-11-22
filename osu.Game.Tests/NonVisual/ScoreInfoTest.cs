@@ -1,7 +1,10 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Linq;
+using osu.Framework.Testing;
+using osu.Game.Database;
 using NUnit.Framework;
 using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer.MatchTypes.TagCoop;
@@ -89,6 +92,29 @@ namespace osu.Game.Tests.NonVisual
             Assert.That(restored.TagCoopReplay?.Players.Select(player => player.Username), Is.EqualTo(new[] { "first", "second" }));
             Assert.That(restored.TagCoopReplay?.Frames, Has.Count.EqualTo(1));
             Assert.That(restored.TagCoopReplay?.Frames[0].UserID, Is.EqualTo(2));
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void TestSessionCloningDoesNotWriteOptionalReplayToStore()
+        {
+            using var storage = new TemporaryNativeStorage($"score-clone-{Guid.NewGuid():N}");
+            using var store = new ForkDataStore(storage);
+            var score = new ScoreInfo
+            {
+                TagCoopReplay = new TagCoopReplayMetadata
+                {
+                    Players = [new TagCoopReplayPlayer { UserID = 1, Username = "test" }]
+                }
+            };
+            string persisted = store.GetTagCoopReplay(score.ID);
+            score.TagCoopReplay!.Frames.Add(new TagCoopReplayFrame { UserID = 1, GameplayTime = 100 });
+            var clone = score.DeepClone();
+            var session = score.DeepCloneForSessionState();
+            Assert.That(store.GetTagCoopReplay(score.ID), Is.EqualTo(persisted), "cloning is not a persistence operation");
+            Assert.That(clone.TagCoopReplay!.Frames, Has.Count.EqualTo(1));
+            Assert.That(session.TagCoopReplay!.Frames, Has.Count.EqualTo(1));
+            Assert.That(clone.TagCoopReplay, Is.Not.SameAs(score.TagCoopReplay));
         }
 
         [Test]

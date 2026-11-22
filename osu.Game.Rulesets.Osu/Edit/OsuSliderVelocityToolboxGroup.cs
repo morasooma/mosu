@@ -120,7 +120,7 @@ namespace osu.Game.Rulesets.Osu.Edit
 
         private void updateContractedText()
         {
-            sliderControl.ContractedLabelText = LocalisableString.Interpolate($@"SV: {sliderControl.Current.Value.ToLocalisableString("N2")}x");
+            sliderControl.ContractedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3305(sliderControl.Current.Value.ToLocalisableString("N2"));
         }
 
         private void invalidateSliderVelocitySourceObject(HitObject _) => sliderVelocitySource.Invalidate();
@@ -154,7 +154,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                     overridingSliderVelocitySource = false;
 
                     useLastSliderButton.Enabled.Value = false;
-                    useLastSliderButton.ExpandedLabelText = "Adjusting velocity of selection";
+                    useLastSliderButton.ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3306;
                     useLastSliderButton.ContractedLabelText = default;
 
                     sliderControl.ObjectsToAdjust.Clear();
@@ -172,16 +172,16 @@ namespace osu.Game.Rulesets.Osu.Edit
                     if (lastSlider == null)
                     {
                         useLastSliderButton.Enabled.Value = false;
-                        useLastSliderButton.ExpandedLabelText = "No sliders to get velocity from";
+                        useLastSliderButton.ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3307;
                         useLastSliderButton.ContractedLabelText = default;
                     }
                     else
                     {
                         useLastSliderButton.Enabled.Value = useLastSliderButton.Expanded.Value && overridingSliderVelocitySource;
                         useLastSliderButton.ExpandedLabelText = overridingSliderVelocitySource
-                            ? LocalisableString.Interpolate($@"Use last slider's velocity ({lastSlider.SliderVelocityMultiplier.ToLocalisableString("N2")}x)")
-                            : "Using last slider's velocity";
-                        useLastSliderButton.ContractedLabelText = $@"current {lastSlider.SliderVelocityMultiplier.ToLocalisableString("N2")}x";
+                            ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3308(lastSlider.SliderVelocityMultiplier.ToLocalisableString("N2"))
+                            : global::osu.Game.Localisation.ClientTranslationStrings.J3309;
+                        useLastSliderButton.ContractedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ3310(lastSlider.SliderVelocityMultiplier.ToLocalisableString("N2"));
 
                         if (!overridingSliderVelocitySource)
                             sliderControl.Current.Value = lastSlider.SliderVelocityMultiplier;

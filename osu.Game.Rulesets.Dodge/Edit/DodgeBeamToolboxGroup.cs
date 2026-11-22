@@ -70,14 +70,28 @@ namespace osu.Game.Rulesets.Dodge.Edit
         {
             base.LoadComplete();
 
-            settings.BeamWidth.BindValueChanged(_ => applyToSelection());
-            settings.BeamColour.BindValueChanged(_ => applyToSelection());
-            settings.BeamOutlineColour.BindValueChanged(_ => applyToSelection());
-            settings.BeamOpacity.BindValueChanged(_ => applyToSelection());
-            settings.BeamOutlineThickness.BindValueChanged(_ => applyToSelection());
+            settings.BeamWidth.BindValueChanged(value => applyToSelection(beam => beam.BeamWidth = value.NewValue));
+            settings.BeamColour.BindValueChanged(value => applyToSelection(beam => beam.Colour = value.NewValue));
+            settings.BeamOutlineColour.BindValueChanged(value => applyToSelection(beam => beam.OutlineColour = value.NewValue));
+            settings.BeamOpacity.BindValueChanged(value => applyToSelection(beam => beam.Opacity = value.NewValue));
+            settings.BeamOutlineThickness.BindValueChanged(value => applyToSelection(beam => beam.OutlineThickness = value.NewValue));
 
             selectedHitObjects.BindTo(editorBeatmap.SelectedHitObjects);
-            selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection());
+            selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection(), true);
+            editorBeatmap.HitObjectUpdated += onHitObjectUpdated;
+        }
+
+        private void onHitObjectUpdated(HitObject item)
+        {
+            if (selectedHitObjects.Contains(item))
+                Scheduler.AddOnce(readFromSelection);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (editorBeatmap != null)
+                editorBeatmap.HitObjectUpdated -= onHitObjectUpdated;
+            base.Dispose(isDisposing);
         }
 
         private void readFromSelection()
@@ -96,7 +110,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             syncingSelection = false;
         }
 
-        private void applyToSelection()
+        private void applyToSelection(Action<DodgeBeam> apply)
         {
             if (syncingSelection)
                 return;
@@ -108,17 +122,18 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
             editorBeatmap.BeginChange();
 
-            foreach (var beam in beams)
+            try
             {
-                beam.BeamWidth = settings.BeamWidth.Value;
-                beam.Colour = settings.BeamColour.Value;
-                beam.OutlineColour = settings.BeamOutlineColour.Value;
-                beam.Opacity = settings.BeamOpacity.Value;
-                beam.OutlineThickness = settings.BeamOutlineThickness.Value;
-                editorBeatmap.Update(beam);
+                foreach (var beam in beams)
+                {
+                    apply(beam);
+                    editorBeatmap.Update(beam);
+                }
             }
-
-            editorBeatmap.EndChange();
+            finally
+            {
+                editorBeatmap.EndChange();
+            }
         }
 
         private static Drawable createColourControl(LocalisableString label, Bindable<Colour4> colour) => new FillFlowContainer

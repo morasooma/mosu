@@ -21,7 +21,7 @@ namespace osu.Game.Rulesets.Mania.Mods
 
         public override string Acronym => "HO";
 
-        public override LocalisableString Description => @"Replaces all hold notes with normal notes.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3636;
 
         public override IconUsage? Icon => OsuIcon.ModHoldOff;
 

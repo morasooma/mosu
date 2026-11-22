@@ -17,7 +17,7 @@ namespace osu.Game.Rulesets.Mods
         public override string Acronym => "AT";
         public override IconUsage? Icon => OsuIcon.ModAutoplay;
         public override ModType Type => ModType.Automation;
-        public override LocalisableString Description => "Watch a perfect automated play through the song.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4191;
 
         public sealed override bool UserPlayable => false;
         public sealed override bool ValidForMultiplayer => false;
@@ -27,6 +27,6 @@ namespace osu.Game.Rulesets.Mods
 
         public override bool HasImplementation => GetType().GenericTypeArguments.Length == 0;
 
-        public virtual ModReplayData CreateReplayData(IBeatmap beatmap, IReadOnlyList<Mod> mods) => new ModReplayData(new Replay(), new ModCreatedUser { Username = @"autoplay" });
+        public virtual ModReplayData CreateReplayData(IBeatmap beatmap, IReadOnlyList<Mod> mods) => new ModReplayData(new Replay(), new ModCreatedUser { Username = @"MoraBot" });
     }
 }

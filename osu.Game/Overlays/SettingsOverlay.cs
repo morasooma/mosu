@@ -32,6 +32,14 @@ namespace osu.Game.Overlays
         private readonly List<SettingsSubPanel> subPanels = new List<SettingsSubPanel>();
 
         private SettingsSubPanel? lastOpenedSubPanel;
+        // Historical sound-pack data remains readable, but no editor is mounted.
+        [Obsolete("The sound editor has been replaced by resource packs.")]
+        public void ShowSoundEditor() { }
+
+        protected override bool StaggerSectionFirstUpdates => true;
+
+        protected override bool HasOpaqueBackground => base.HasOpaqueBackground
+                                                      && (lastOpenedSubPanel?.State.Value != Visibility.Visible || lastOpenedSubPanel.CanUseOpaqueDrawPrepass);
 
         protected override Drawable CreateHeader() => new SettingsHeader(Title, Description);
 
@@ -69,14 +77,19 @@ namespace osu.Game.Overlays
         protected override float ExpandedPosition => lastOpenedSubPanel?.State.Value == Visibility.Visible ? -PANEL_WIDTH : base.ExpandedPosition;
 
         [BackgroundDependencyLoader]
-        private void load(RulesetStore rulesets)
+        private void load(RulesetStore rulesets, osu.Game.Configuration.OsuConfigManager config)
         {
+            Favourites = new FavouriteSettingsStore(config.GetBindable<string>(osu.Game.Configuration.OsuSetting.ForkFavouriteSettings));
+            favouritePanel = createSubPanel(new FavouriteSettingsPanel(this));
+            SectionsLoaded += () => registerFavouriteRows(this);
+            var skinVisibility = createSubPanel(new SkinVisibilitySettingsPanel());
+
             var sections = new List<SettingsSection>
             {
                 // This list should be kept in sync with ScreenBehaviour.
-                new ForkSection(createSubPanel(new PerformanceOptimisationSettingsPanel())),
+                new ForkSection(createSubPanel(new PerformanceOptimisationSettingsPanel()), createSubPanel(new CustomThemeSettingsPanel()), skinVisibility, createSubPanel(new BackgroundCalculationSettingsPanel()), createSubPanel(new AiFunctionSettingsPanel())),
                 new GeneralSection(),
-                new SkinSection(),
+                new SkinSection(skinVisibility),
                 new InputSection(createSubPanel(new KeyBindingPanel())),
                 new UserInterfaceSection(),
                 new GameplaySection()
@@ -124,6 +137,8 @@ namespace osu.Game.Overlays
             subPanel.Anchor = Anchor.TopRight;
             subPanel.State.ValueChanged += e => subPanelStateChanged(subPanel, e);
 
+            if (subPanel is not FavouriteSettingsPanel)
+                subPanel.SectionsLoaded += () => registerFavouriteRows(subPanel);
             subPanels.Add(subPanel);
 
             return subPanel;
@@ -134,11 +149,13 @@ namespace osu.Game.Overlays
             switch (state.NewValue)
             {
                 case Visibility.Visible:
+                    foreach (var other in subPanels.Where(p => p != panel && p.State.Value == Visibility.Visible))
+                        other.Hide();
                     Sidebar.Expanded.Value = false;
                     Sidebar.FadeColour(Color4.DarkGray, 300, Easing.OutQuint);
 
-                    SectionsContainer.FadeOut(300, Easing.OutQuint);
-                    ContentContainer.MoveToX(-PANEL_WIDTH, 500, Easing.OutQuint);
+                    SectionsContainer.FadeOut(InterfaceAnimation.TransitionFadeDuration(300), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+                    ContentContainer.MoveToX(-PANEL_WIDTH, InterfaceAnimation.TransitionDuration(500), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
 
                     lastOpenedSubPanel = panel;
 
@@ -148,8 +165,8 @@ namespace osu.Game.Overlays
                     Sidebar.Expanded.Value = true;
                     Sidebar.FadeColour(Color4.White, 300, Easing.OutQuint);
 
-                    SectionsContainer.FadeIn(500, Easing.OutQuint);
-                    ContentContainer.MoveToX(0, 500, Easing.OutQuint);
+                    SectionsContainer.FadeIn(InterfaceAnimation.TransitionFadeDuration(500), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+                    ContentContainer.MoveToX(0, InterfaceAnimation.TransitionDuration(500), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
                     break;
             }
         }

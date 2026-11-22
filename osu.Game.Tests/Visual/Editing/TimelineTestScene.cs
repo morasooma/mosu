@@ -70,7 +70,7 @@ namespace osu.Game.Tests.Visual.Editing
                             new AudioVisualiser(),
                         }
                     },
-                    TimelineArea = new TimelineArea(CreateTestComponent())
+                    TimelineArea = new TimelineArea(CreateTestComponent(), EnableHitSoundTracks)
                     {
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre,
@@ -85,6 +85,8 @@ namespace osu.Game.Tests.Visual.Editing
             AddUntilStep("wait for track loaded", () => MusicController.TrackLoaded);
             AddStep("seek forward", () => EditorClock.Seek(2500));
         }
+
+        protected virtual bool EnableHitSoundTracks => false;
 
         public abstract Drawable CreateTestComponent();
 

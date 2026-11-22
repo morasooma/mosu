@@ -13,5 +13,7 @@ namespace osu.Game.Database
         public Guid ScoreID { get; set; }
 
         public string TagCoopReplayJson { get; set; } = string.Empty;
+
+        public long? MosuTotalScore { get; set; }
     }
 }

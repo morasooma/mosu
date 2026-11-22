@@ -7,6 +7,8 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Configuration;
 using osu.Game.Localisation;
+using osu.Game.Localisation.SkinComponents;
+using osu.Game.Skinning;
 using osu.Game.Overlays.Settings;
 using osu.Game.Screens.Edit;
 using osu.Game.Screens.Edit.Components;
@@ -21,6 +23,9 @@ namespace osu.Game.Overlays.SkinEditor
 
         protected override Container<Drawable> Content { get; }
 
+        internal Drawable Component => component;
+        internal SkinFontDropdown? FontControl { get; private set; }
+        internal SettingsSlider<float>? CornerRadiusControl { get; private set; }
         private readonly Drawable component;
 
         public SkinSettingsToolbox(Drawable component)
@@ -40,7 +45,23 @@ namespace osu.Game.Overlays.SkinEditor
         [BackgroundDependencyLoader]
         private void load()
         {
-            var controls = component.CreateSettingsControls().ToArray();
+            var controls = component.CreateSettingsControls().ToList();
+            if (component is CompositeDrawable && !SkinComponentGeometry.HasNativeSetting(component))
+                controls.Add(CornerRadiusControl = new SettingsSlider<float>
+                {
+                    LabelText = SkinnableComponentStrings.CornerRadius,
+                    Current = SkinComponentGeometry.For(component).Radius,
+                    KeyboardStep = 0.5f,
+                    DisplayAsPercentage = false,
+                });
+
+            if (component is not FontAdjustableSkinComponent)
+                controls.Add(FontControl = new SkinFontDropdown
+                {
+                    LabelText = SkinnableComponentStrings.Font,
+                    IncludeOriginalFont = true,
+                    Current = SkinComponentFont.For(component).Family,
+                });
 
             Content.AddRange(controls);
 

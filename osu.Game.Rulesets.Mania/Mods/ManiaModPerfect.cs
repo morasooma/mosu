@@ -11,7 +11,7 @@ namespace osu.Game.Rulesets.Mania.Mods
 {
     public class ManiaModPerfect : ModPerfect
     {
-        [SettingSource("Require perfect hits")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3650))]
         public BindableBool RequirePerfectHits { get; } = new BindableBool();
 
         protected override bool FailCondition(HealthProcessor healthProcessor, JudgementResult result)

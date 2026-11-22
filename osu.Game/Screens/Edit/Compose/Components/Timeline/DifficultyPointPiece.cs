@@ -92,7 +92,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                                 {
                                     AutoSizeAxes = Axes.Y,
                                     RelativeSizeAxes = Axes.X,
-                                    Text = "Hold shift while dragging the end of an object to adjust velocity while snapping."
+                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J4312
                                 },
                                 new SliderVelocityInspector(adjustmentControl.Current),
                             }

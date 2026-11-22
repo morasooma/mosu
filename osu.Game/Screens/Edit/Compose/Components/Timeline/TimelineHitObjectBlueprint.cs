@@ -331,7 +331,8 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 
             public Action<DragEvent?>? OnDragHandled;
 
-            public override bool HandlePositionalInput => hitObject != null;
+            public override bool HandlePositionalInput => hitObject != null
+                && (hitObject is not IEditorTimelineEndTimeAdjustable adjustable || adjustable.CanAdjustEditorTimelineEndTime);
 
             public DragArea(HitObject? hitObject)
             {
@@ -415,7 +416,8 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 
                 foreach (var item in selectionItems)
                 {
-                    if (item == hitObject || item is not IHasDuration durationItem) continue;
+                    if (item == hitObject || item is not IHasDuration durationItem
+                        || item is IEditorTimelineEndTimeAdjustable { CanAdjustEditorTimelineEndTime: false }) continue;
 
                     if (Precision.AlmostEquals(durationItem.Duration, (hitObject as IHasDuration)!.Duration, 1) &&
                         Precision.AlmostEquals(item.StartTime, hitObject!.StartTime, 1))

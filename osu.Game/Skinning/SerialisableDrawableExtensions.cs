@@ -18,6 +18,8 @@ namespace osu.Game.Skinning
             // todo: can probably make this better via deserialisation directly using a common interface.
             component.Position = drawableInfo.Position;
             component.Rotation = drawableInfo.Rotation;
+            if (component is Components.BeatmapAttributeText attributeText)
+                attributeText.RestoreTextArea(drawableInfo);
             if (drawableInfo.Width is float width && width != 0 && (component as CompositeDrawable)?.AutoSizeAxes.HasFlag(Axes.X) != true)
                 component.Width = width;
             if (drawableInfo.Height is float height && height != 0 && (component as CompositeDrawable)?.AutoSizeAxes.HasFlag(Axes.Y) != true)
@@ -44,6 +46,15 @@ namespace osu.Game.Skinning
                     serialisableDrawable.CopyAdjustedSetting(bindable, settingValue);
                 }
             }
+
+            SkinComponentFont.Restore(component, drawableInfo.Settings.TryGetValue(SkinComponentFont.SERIALISATION_KEY, out var family) ? family as string : null);
+
+            float? radius = null;
+            if (drawableInfo.Settings.TryGetValue(SkinComponentGeometry.SERIALISATION_KEY, out var radiusValue)
+                && float.TryParse(System.Convert.ToString(radiusValue, System.Globalization.CultureInfo.InvariantCulture), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out float parsedRadius))
+                radius = parsedRadius;
+            SkinComponentGeometry.Restore(component, radius);
 
             if (component is Container container)
             {

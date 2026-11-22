@@ -13,6 +13,8 @@ namespace osu.Game.Rulesets.Catch.Scoring
         public CatchScoreMultiplierCalculator(ScoreMultiplierContext context)
             : base(context)
         {
+            Single<CatchModFruitNinja>(hasMultiplier: 0.1);
+
             #region Difficulty Reduction
 
             Single<CatchModEasy>(hasMultiplier: 0.5);

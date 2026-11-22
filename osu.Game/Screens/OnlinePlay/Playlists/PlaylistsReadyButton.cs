@@ -30,7 +30,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
         public PlaylistsReadyButton(Room room)
         {
             this.room = room;
-            Text = "Start";
+            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5015;
         }
 
         [BackgroundDependencyLoader]
@@ -77,10 +77,10 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             get
             {
                 if (!enoughTimeLeft())
-                    return "No time left!";
+                    return global::osu.Game.Localisation.ClientTranslationStrings.J5016;
 
                 if (!hasRemainingAttempts)
-                    return "Attempts exhausted!";
+                    return global::osu.Game.Localisation.ClientTranslationStrings.J5017;
 
                 return base.TooltipText;
             }

@@ -1,11 +1,13 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Linq;
 using NUnit.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Testing;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Chat;
@@ -13,6 +15,7 @@ using osu.Game.Overlays;
 using osu.Game.Overlays.Chat.ChannelList;
 using osu.Game.Overlays.Chat.Listing;
 using osu.Game.Tests.Resources;
+using osu.Game.Users.Drawables;
 
 namespace osu.Game.Tests.Visual.Online
 {
@@ -149,6 +152,43 @@ namespace osu.Game.Tests.Visual.Online
                 if (validItem)
                     channelList.GetItem(selected.Value).Mentions.Value = 0;
             });
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TestPrivateChannelWithoutUsers(bool clearBeforeDelayedLoad)
+        {
+            Channel channel = null!;
+
+            AddStep("add private channel without users", () =>
+            {
+                channel = clearBeforeDelayedLoad
+                    ? createRandomPrivateChannel()
+                    : new Channel
+                    {
+                        Id = TestResources.GetNextTestID(),
+                        Name = "PM with unavailable participant",
+                        Type = ChannelType.PM,
+                    };
+
+                channelList.AddChannel(channel);
+
+                if (clearBeforeDelayedLoad)
+                    channel.Users.Clear();
+            });
+
+            AddUntilStep("fallback avatar loaded", () => channelList.GetItem(channel).ChildrenOfType<UpdateableAvatar>().Any());
+            AddAssert("avatar has no user", () => channelList.GetItem(channel).ChildrenOfType<UpdateableAvatar>().Single().User == null);
+        }
+
+        [Test]
+        public void TestPrivateChannelAvatar()
+        {
+            Channel channel = null!;
+
+            AddStep("add private channel", () => channelList.AddChannel(channel = createRandomPrivateChannel()));
+            AddUntilStep("avatar loaded", () => channelList.GetItem(channel).ChildrenOfType<UpdateableAvatar>().Any());
+            AddAssert("avatar displays participant", () => channelList.GetItem(channel).ChildrenOfType<UpdateableAvatar>().Single().User == channel.Users.Single());
         }
 
         [Test]

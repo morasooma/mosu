@@ -130,7 +130,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer
             else if (!lowLatency && ping < low_latency_enter_threshold)
                 lowLatency = true;
 
-            label.Text = automated ? $"{username}  [BOT]  {ping} ms" : $"{username}  {ping} ms";
+            label.Text = automated ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4955(username, ping) : global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4954(username, ping);
         }
 
         protected override void Update()

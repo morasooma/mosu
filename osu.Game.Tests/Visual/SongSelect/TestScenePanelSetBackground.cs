@@ -1,13 +1,16 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using NUnit.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Testing;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Overlays;
+using osu.Game.Models;
 using osu.Game.Screens.Select;
 using osu.Game.Tests.Beatmaps;
 using osu.Game.Tests.Visual.UserInterface;
@@ -46,6 +49,39 @@ namespace osu.Game.Tests.Visual.SongSelect
             });
         }
 
+        [SetUpSteps]
+        public void ResetPreviewSettings() => AddStep("reset enabled previews", () => config.SetValue(OsuSetting.ForkSongSelectCarouselPreviews, true));
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void TestIdleBackgroundUpdateDoesNotAllocate(bool previewsEnabled)
+        {
+            UpdateProbeBackground probe = null!;
+            AddStep("show background probe", () =>
+            {
+                config.SetValue(OsuSetting.ForkSongSelectCarouselPreviews, previewsEnabled);
+                CreateThemedContent(OverlayColourScheme.Aquamarine);
+                probe = (UpdateProbeBackground)background;
+            });
+            AddUntilStep("probe ready", () => probe.IsLoaded && (!previewsEnabled || probe.HasLoadedBackground));
+            AddStep("measure repeated idle updates", () =>
+            {
+                for (int i = 0; i < 20; i++)
+                    probe.RunUpdate();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < 1000; i++)
+                    probe.RunUpdate();
+                long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                TestContext.WriteLine($"Idle panel updates previews={previewsEnabled}: {allocated} bytes / 1000 updates");
+                Assert.That(allocated, Is.Zero, "loaded/disabled panels must not allocate loading callback closures each frame");
+            });
+        }
+
+        private partial class UpdateProbeBackground : PanelSetBackground
+        {
+            public void RunUpdate() => base.Update();
+        }
+
         [Test]
         public void TestLazyLoadingUsesToriiDelay()
         {
@@ -74,6 +110,56 @@ namespace osu.Game.Tests.Visual.SongSelect
             AddStep("record load count", () => previousLoadCount = background.BackgroundLoadCount);
             AddStep("disable old preview", () => config.SetValue(OsuSetting.ForkSongSelectOldCarouselPreviews, false));
             AddUntilStep("modern background reloaded", () => background.HasLoadedBackground && !background.IsShowingLegacyPreview && background.BackgroundLoadCount > previousLoadCount);
+        }
+
+        [Test]
+        public void TestLoadedBackgroundIsReusedAcrossDifficultiesWithoutRetainingMap()
+        {
+            TestWorkingBeatmap next = null!;
+            AddStep("give maps identical background identity", () =>
+            {
+                workingBeatmap.BeatmapSetInfo.Files.Add(new RealmNamedFileUsage(new RealmFile { Hash = "shared-background" }, "missing-background.jpg"));
+                var info = new BeatmapInfo(metadata: new BeatmapMetadata { BackgroundFile = "missing-background.jpg" })
+                {
+                    BeatmapSet = workingBeatmap.BeatmapSetInfo
+                };
+                next = new TestWorkingBeatmap(new Beatmap { BeatmapInfo = info });
+            });
+            AddStep("display", () => CreateThemedContent(OverlayColourScheme.Aquamarine));
+            AddUntilStep("loaded and source released", () => background.HasLoadedBackground && !background.RetainsWorkingBeatmap);
+            AddStep("switch difficulty", () =>
+            {
+                previousLoadCount = background.BackgroundLoadCount;
+                background.Beatmap = next;
+            });
+            AddAssert("existing preview stays loaded", () => background.HasLoadedBackground);
+            AddAssert("new source held weakly", () => !background.RetainsWorkingBeatmap && ReferenceEquals(background.Beatmap, next));
+            AddWaitStep("wait beyond load delay", 5);
+            AddAssert("no duplicate background load", () => background.BackgroundLoadCount, () => Is.EqualTo(previousLoadCount));
+        }
+
+        [Test]
+        public void TestCarouselArtworkIdentityReusesLoadedBackground()
+        {
+            WorkingBeatmap preview = null!;
+            AddStep("display playable background", () =>
+            {
+                workingBeatmap.BeatmapSetInfo.Files.Add(new RealmNamedFileUsage(new RealmFile { Hash = "shared-background" }, "missing-background.jpg"));
+                preview = new WorkingBeatmapCache.CarouselBackgroundBeatmap(workingBeatmap.BeatmapInfo,
+                    "s/h/shared-background", null!, null!);
+                CreateThemedContent(OverlayColourScheme.Aquamarine);
+            });
+            AddUntilStep("background loaded", () => background.HasLoadedBackground);
+            AddStep("replace with lightweight source", () =>
+            {
+                previousLoadCount = background.BackgroundLoadCount;
+                background.Beatmap = preview;
+            });
+            AddAssert("loaded texture retained", () => background.HasLoadedBackground && !background.RetainsWorkingBeatmap);
+            AddStep("same artwork from another preview", () => background.Beatmap = new WorkingBeatmapCache.CarouselBackgroundBeatmap(
+                workingBeatmap.BeatmapInfo, "s/h/shared-background", null!, null!));
+            AddWaitStep("allow potential reload", 5);
+            AddAssert("no duplicate load", () => background.BackgroundLoadCount, () => Is.EqualTo(previousLoadCount));
         }
 
         [Test]
@@ -158,7 +244,7 @@ namespace osu.Game.Tests.Visual.SongSelect
                 Width = 0.75f,
                 Height = PanelBeatmapSet.HEIGHT,
                 RelativeSizeAxes = Axes.X,
-                Child = background = new PanelSetBackground
+                Child = background = new UpdateProbeBackground
                 {
                     Beatmap = workingBeatmap,
                 },

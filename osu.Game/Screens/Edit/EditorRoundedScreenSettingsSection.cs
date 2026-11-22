@@ -1,7 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable enable
+#nullable disable
 
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
@@ -21,7 +21,7 @@ namespace osu.Game.Screens.Edit
 
         protected abstract string HeaderText { get; }
 
-        protected FillFlowContainer Flow { get; private set; } = null!;
+        protected FillFlowContainer Flow { get; private set; }
 
         private OsuSpriteText headerText = null!;
         private IBindable<Colour4>? themeColour;

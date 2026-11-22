@@ -34,7 +34,7 @@ namespace osu.Game.Screens.Edit.Timing.RowAttributes
             Content.AddRange(new[]
             {
                 text = new AttributeText(Point),
-                omitBarLineBubble = new AttributeText(Point) { Text = "no barline" },
+                omitBarLineBubble = new AttributeText(Point) { Text = global::osu.Game.Localisation.ClientTranslationStrings.J4345 },
             });
 
             Background.Colour = colourProvider.Background4;
@@ -45,6 +45,6 @@ namespace osu.Game.Screens.Edit.Timing.RowAttributes
         }
 
         private void updateText() =>
-            text.Text = $"{60000 / beatLength.Value:n1}bpm {timeSignature.Value.GetDescription()}";
+            text.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4346(60000 / beatLength.Value, timeSignature.Value.GetDescription());
     }
 }

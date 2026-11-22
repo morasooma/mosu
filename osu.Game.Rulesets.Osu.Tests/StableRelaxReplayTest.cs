@@ -98,6 +98,96 @@ namespace osu.Game.Rulesets.Osu.Tests
             runReplay(beatmap, replay, relax, expected);
         }
 
+        [TestCase(20150414)]
+        [TestCase(20260924)]
+        public void TestSimultaneousPressUsesLeftKeyPriority(int version)
+        {
+            var origin = new Vector2(150, 150);
+            var beatmap = createBeatmap();
+            beatmap.HitObjects.Add(new Slider
+            {
+                StartTime = 1000,
+                Position = origin,
+                RepeatCount = 1,
+                Path = new SliderPath(PathType.LINEAR, new[] { Vector2.Zero, new Vector2(140, 0) }, 140),
+            });
+            var replay = new Replay
+            {
+                LegacyClientVersion = version,
+                Frames =
+                {
+                    new OsuReplayFrame(0, origin),
+                    new OsuReplayFrame(1000, origin, OsuAction.LeftButton, OsuAction.RightButton),
+                    new OsuReplayFrame(1050, origin + new Vector2(70, 0), OsuAction.LeftButton),
+                    new OsuReplayFrame(1100, origin + new Vector2(140, 0), OsuAction.LeftButton),
+                    new OsuReplayFrame(1164, origin + new Vector2(50, 0), OsuAction.LeftButton),
+                    new OsuReplayFrame(1250, origin),
+                },
+            };
+            runReplay(beatmap, replay, false, new[] { HitResult.LargeTickHit, HitResult.LargeTickHit, HitResult.SmallTickHit, HitResult.Great });
+        }
+
+        [TestCase(20150414)]
+        [TestCase(20260924)]
+        public void TestFractionalRepeatUsesTruncatedCheckpoint(int version)
+        {
+            var origin = new Vector2(150, 150);
+            var beatmap = createBeatmap();
+            beatmap.HitObjects.Add(new Slider
+            {
+                StartTime = 1000,
+                Position = origin,
+                RepeatCount = 1,
+                Path = new SliderPath(PathType.LINEAR, new[] { Vector2.Zero, new Vector2(140.7f, 0) }, 140.7),
+            });
+            var replay = new Replay
+            {
+                LegacyClientVersion = version,
+                Frames =
+                {
+                    new OsuReplayFrame(0, origin),
+                    new OsuReplayFrame(1000, origin, OsuAction.LeftButton),
+                    new OsuReplayFrame(1064, origin + new Vector2(90, 0), OsuAction.LeftButton),
+                    // Repeat is at 1100.5. Stable checks it on the 1100 frame,
+                    // before the key is released at 1101, rather than interpolating.
+                    new OsuReplayFrame(1100, origin + new Vector2(140.7f, 0), OsuAction.LeftButton),
+                    new OsuReplayFrame(1101, origin + new Vector2(140.7f, 0)),
+                    new OsuReplayFrame(1250, origin),
+                },
+            };
+            runReplay(beatmap, replay, false, new[] { HitResult.LargeTickHit, HitResult.LargeTickHit, HitResult.SmallTickMiss, HitResult.Ok });
+        }
+
+        [TestCase(20150414, 1064, true)]
+        [TestCase(20150414, 1065, false)]
+        [TestCase(20260924, 1064, true)]
+        [TestCase(20260924, 1065, false)]
+        public void TestFractionalTailCannotRecoverAfterCheckpoint(int version, int acquireTime, bool hit)
+        {
+            var origin = new Vector2(150, 150);
+            var beatmap = createBeatmap();
+            beatmap.HitObjects.Add(new Slider
+            {
+                StartTime = 1000,
+                Position = origin,
+                Path = new SliderPath(PathType.LINEAR, new[] { Vector2.Zero, new Vector2(140.7f, 0) }, 140.7),
+            });
+            var replay = new Replay
+            {
+                LegacyClientVersion = version,
+                Frames =
+                {
+                    new OsuReplayFrame(0, origin),
+                    new OsuReplayFrame(1000, origin, OsuAction.LeftButton),
+                    new OsuReplayFrame(1030, new Vector2(450, 350), OsuAction.LeftButton),
+                    new OsuReplayFrame(acquireTime, origin + new Vector2(90, 0), OsuAction.LeftButton),
+                    new OsuReplayFrame(1101, origin + new Vector2(140.7f, 0), OsuAction.LeftButton),
+                    new OsuReplayFrame(1250, origin),
+                },
+            };
+            runReplay(beatmap, replay, false, new[] { HitResult.LargeTickHit, hit ? HitResult.SmallTickHit : HitResult.SmallTickMiss, hit ? HitResult.Great : HitResult.Ok });
+        }
+
         private static OsuBeatmap createBeatmap()
         {
             var controlPoints = new ControlPointInfo();

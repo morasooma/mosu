@@ -28,6 +28,8 @@ namespace osu.Game.Tests.Beatmaps
     [HeadlessTest]
     public partial class WorkingBeatmapManagerTest : OsuTestScene
     {
+        protected override bool UseFreshStoragePerRun => true;
+
         private BeatmapManager beatmaps = null!;
 
         private BeatmapSetInfo importedSet = null!;
@@ -43,7 +45,7 @@ namespace osu.Game.Tests.Beatmaps
         [BackgroundDependencyLoader]
         private void load(GameHost host, AudioManager audio, RulesetStore rulesets)
         {
-            rulesetStore = rulesets;
+            rulesetStore = new RealmRulesetStore(Realm);
             Dependencies.Cache(beatmaps = new BeatmapManager(LocalStorage, Realm, null, audio, Resources, host, Beatmap.Default));
         }
 
@@ -62,6 +64,106 @@ namespace osu.Game.Tests.Beatmaps
         public void TestGetWorkingBeatmap() => AddStep("run test", () =>
         {
             Assert.That(beatmaps.GetWorkingBeatmap(importedSet.Beatmaps.First()), Is.Not.Null);
+        });
+
+        [Test]
+        public void TestCarouselArtworkDoesNotPopulatePlayableCache() => AddStep("resolve preview without gameplay graph", () =>
+        {
+            var info = importedSet.Beatmaps.First();
+            var preview = ((IWorkingBeatmapCache)beatmaps).GetCarouselBackgroundBeatmap(info);
+            Assert.That(preview.BeatmapInfo.ID, Is.EqualTo(info.ID));
+            Assert.That(preview.TrackLoaded, Is.False);
+
+            var playable = beatmaps.GetWorkingBeatmap(info);
+            Assert.That(playable, Is.Not.SameAs(preview));
+            Assert.That(playable.Beatmap, Is.Not.Null);
+            Assert.That(beatmaps.GetWorkingBeatmap(info), Is.SameAs(playable));
+        });
+
+        [Test]
+        public void TestCarouselArtworkHandlesMissingBackground() => AddStep("missing artwork is optional", () =>
+        {
+            var preview = ((IWorkingBeatmapCache)beatmaps).GetCarouselBackgroundBeatmap(new BeatmapInfo());
+            Assert.That(preview.GetPanelBackground(), Is.Null);
+            Assert.That(preview.GetLegacyPreviewBackground(50), Is.Null);
+            Assert.That(preview.TrackLoaded, Is.False);
+        });
+
+        [Test]
+        public void TestCarouselArtworkForEmptySetUsesDefault() => AddStep("empty set keeps nullable cache contract", () =>
+        {
+            var info = new BeatmapSetInfo().Beatmaps.MinBy(b => b.OnlineID);
+            Assert.That(((IWorkingBeatmapCache)beatmaps).GetCarouselBackgroundBeatmap(info), Is.SameAs(beatmaps.GetWorkingBeatmap(null)));
+        });
+
+        [Test]
+        public void TestCarouselArtworkHandlesNullMetadata() => AddStep("corrupt metadata has no artwork", () =>
+        {
+            var info = importedSet.Beatmaps.First();
+            var metadata = info.Metadata;
+            try
+            {
+                Realm.Write(r => r.Find<BeatmapInfo>(info.ID)!.Metadata = null!);
+                var preview = ((IWorkingBeatmapCache)beatmaps).GetCarouselBackgroundBeatmap(info);
+                Assert.That(preview.GetPanelBackground(), Is.Null);
+            }
+            finally
+            {
+                // The visual fixture reuses imported maps between its test cases.
+                // Corruption injection must not poison subsequent gameplay tests.
+                Realm.Write(r => r.Find<BeatmapInfo>(info.ID)!.Metadata = r.Add(metadata));
+            }
+        });
+
+        [Test]
+        public void TestDecodeWithUnavailableRuleset() => AddStep("decode without installed ruleset", () =>
+        {
+            var info = importedSet.Beatmaps.First().Clone();
+            info.Ruleset = new RulesetInfo
+            {
+                ShortName = "unavailable-test-ruleset",
+                Available = false,
+            };
+
+            var working = beatmaps.GetWorkingBeatmap(info);
+            Assert.That(working.Beatmap, Is.Not.Null);
+            Assert.That(working.Beatmap.ControlPointInfo.TimingPoints, Is.Not.Empty);
+        });
+
+        [TestCase("")]
+        [TestCase("stale-online-checksum")]
+        public void TestQueryOnlineBeatmapUsesMatchChecksumBeforeMetadataProcessing(string onlineChecksum) => AddStep("resolve fresh import using match checksum", () =>
+        {
+            var info = importedSet.Beatmaps.First();
+            string originalOnlineChecksum = info.OnlineMD5Hash;
+
+            try
+            {
+                Realm.Write(r => r.Find<BeatmapInfo>(info.ID)!.OnlineMD5Hash = onlineChecksum);
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(beatmaps.QueryOnlineBeatmapId(info.OnlineID, info.MD5Hash)?.ID, Is.EqualTo(info.ID));
+                    Assert.That(beatmaps.QueryOnlineBeatmapId(info.OnlineID, new string('0', 32)), Is.Null, "A different match revision must still be rejected.");
+                    Assert.That(beatmaps.QueryOnlineBeatmapId(int.MaxValue, info.MD5Hash), Is.Null, "The online ID must still match.");
+                    Assert.That(beatmaps.QueryOnlineBeatmapId(info.OnlineID), Is.Null, "Without a match checksum, online metadata remains authoritative.");
+                });
+
+                var working = beatmaps.GetWorkingBeatmap(beatmaps.QueryOnlineBeatmapId(info.OnlineID, info.MD5Hash)!);
+                Assert.That(working.Beatmap.HitObjects, Is.Not.Empty, "The newly imported file must actually decode.");
+                Assert.That(working.BeatmapInfo.MD5Hash, Is.EqualTo(info.MD5Hash));
+
+                Realm.Write(r => r.Find<BeatmapSetInfo>(info.BeatmapSet!.ID)!.DeletePending = true);
+                Assert.That(beatmaps.QueryOnlineBeatmapId(info.OnlineID, info.MD5Hash), Is.Null, "Deleted imports must not become playable.");
+            }
+            finally
+            {
+                Realm.Write(r =>
+                {
+                    r.Find<BeatmapInfo>(info.ID)!.OnlineMD5Hash = originalOnlineChecksum;
+                    r.Find<BeatmapSetInfo>(info.BeatmapSet!.ID)!.DeletePending = false;
+                });
+            }
         });
 
         [Test]
@@ -233,6 +335,27 @@ namespace osu.Game.Tests.Beatmaps
 
             Assert.That(first, Is.SameAs(second));
             Assert.That(first.BeatmapInfo.BeatmapSet?.Files, Has.Count.GreaterThan(0));
+        });
+
+        [Test]
+        public void TestCachedManagedRetrievalAvoidsDetachingAgain() => AddStep("cached managed lookup", () =>
+        {
+            Realm.Run(realm =>
+            {
+                var managed = realm.Find<BeatmapInfo>(importedSet.Beatmaps.First().ID)!;
+                var first = beatmaps.GetWorkingBeatmap(managed);
+                // Warm cache enumeration before measuring. This path used to copy the entire
+                // managed set/files even though GetWorkingBeatmap returned the cached instance.
+                _ = beatmaps.GetWorkingBeatmap(managed);
+                long start = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < 10; i++)
+                    _ = beatmaps.GetWorkingBeatmap(managed);
+                long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+                TestContext.WriteLine($"Ten managed cached lookups allocated {allocated} B");
+                Assert.That(allocated, Is.LessThan(16 * 1024));
+                Assert.That(beatmaps.GetWorkingBeatmap(managed), Is.SameAs(first));
+                Assert.That(first.BeatmapInfo.IsManaged, Is.False);
+            });
         });
 
         [Test]

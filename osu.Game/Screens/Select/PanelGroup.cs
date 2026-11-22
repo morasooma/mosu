@@ -13,12 +13,14 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.UserInterface;
+using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Backgrounds;
 using osu.Game.Graphics.Carousel;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Configuration;
+using osu.Game.Localisation;
 using osu.Game.Overlays;
 using osuTK;
 using osuTK.Graphics;
@@ -140,6 +142,7 @@ namespace osu.Game.Screens.Select
                 legacyMenuButtonBackground.Alpha = legacy.NewValue ? 1 : 0;
                 modernBackground.Alpha = legacy.NewValue ? 0 : 1;
                 triangles.Alpha = legacy.NewValue ? 0 : 1;
+                updateTitle();
                 onExpanded();
             }, true);
 
@@ -169,6 +172,21 @@ namespace osu.Game.Screens.Select
         {
             double duration = OverlayColourProvider.ThemeTransitionDuration(500);
 
+            if (useSkinnedLegacyCarousel.Value)
+            {
+                legacyMenuButtonBackground.FadeColour(Expanded.Value ? StableCarouselLayout.ExpandedGroup : StableCarouselLayout.Group, StableCarouselLayout.ColourDuration);
+                titleText.Colour = Expanded.Value ? legacyMenuButtonBackground.ActiveTextColour : legacyMenuButtonBackground.InactiveTextColour;
+                backgroundBorder.Hide();
+                countPill.Hide();
+                iconContainer.Hide();
+                glow.Hide();
+                return;
+            }
+
+            legacyMenuButtonBackground.Colour = Color4.White;
+            titleText.Colour = colourProvider.Content1;
+            backgroundBorder.Show();
+            countPill.Show();
             iconContainer.ResizeWidthTo(Expanded.Value ? 20f : 5f, duration, Easing.OutQuint);
             iconContainer.FadeTo(Expanded.Value ? 1f : 0f, duration, Easing.OutQuint);
 
@@ -187,9 +205,23 @@ namespace osu.Game.Screens.Select
             Debug.Assert(Item != null);
 
             GroupDefinition group = (GroupDefinition)Item.Model;
+            Height = Item.DrawHeight;
+            titleText.Font = useSkinnedLegacyCarousel.Value
+                ? OsuFont.GetFont(size: StableCarouselLayout.FontPixels(24))
+                : OsuFont.Style.Heading2;
 
-            titleText.Text = group.Title;
+            updateTitle();
             countText.Text = Item.NestedItemCount.ToString("N0");
+        }
+
+        private void updateTitle()
+        {
+            if (Item?.Model is not GroupDefinition group)
+                return;
+
+            titleText.Text = useSkinnedLegacyCarousel.Value
+                ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5184(group.Title, Item.NestedItemCount.ToLocalisableString())
+                : group.Title;
         }
 
         protected override void UpdateAfterChildren()
@@ -209,7 +241,12 @@ namespace osu.Game.Screens.Select
 
                 return new MenuItem[]
                 {
-                    new OsuMenuItem(Expanded.Value ? WebCommonStrings.ButtonsCollapse.ToSentence() : WebCommonStrings.ButtonsExpand.ToSentence(), MenuItemType.Highlighted, () => TriggerClick())
+                    new OsuMenuItem(Expanded.Value ? WebCommonStrings.ButtonsCollapse.ToSentence() : WebCommonStrings.ButtonsExpand.ToSentence(), MenuItemType.Highlighted, () => TriggerClick()),
+                    new OsuMenuItem(BeatmapGroupDeletionStrings.Open, MenuItemType.Destructive, () =>
+                    {
+                        if (Item?.Model is GroupDefinition group)
+                            songSelect?.DeleteGroup(group);
+                    })
                 };
             }
         }

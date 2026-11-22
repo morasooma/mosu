@@ -226,6 +226,9 @@ namespace osu.Game.Skinning
         public void ResetDrawableTarget(SkinnableContainer targetContainer)
         {
             LayoutInfos.Remove(targetContainer.Lookup.Lookup);
+            // Reset removes all ruleset layouts for this target, so remove their geometry too.
+            MosuSettings.ComponentGeometry.RemoveAll(o => o.Container == targetContainer.Lookup.Lookup.ToString());
+            MosuSettings.ComponentSettings.RemoveAll(o => o.Container == targetContainer.Lookup.Lookup.ToString());
         }
 
         /// <summary>
@@ -237,7 +240,9 @@ namespace osu.Game.Skinning
             if (!LayoutInfos.TryGetValue(targetContainer.Lookup.Lookup, out var layoutInfo))
                 layoutInfos[targetContainer.Lookup.Lookup] = layoutInfo = new SkinLayoutInfo();
 
-            layoutInfo.Update(targetContainer.Lookup.Ruleset, ((ISerialisableDrawableContainer)targetContainer).CreateSerialisedInfo().ToArray());
+            var infos = ((ISerialisableDrawableContainer)targetContainer).CreateSerialisedInfo().ToArray();
+            SkinComponentGeometrySerializer.Store(MosuSettings, targetContainer.Lookup.Lookup, targetContainer.Lookup.Ruleset, infos);
+            layoutInfo.Update(targetContainer.Lookup.Ruleset, infos);
 
             CustomFontInfo.SetOverridesForTarget(
                 targetContainer.Lookup.Lookup,
@@ -277,6 +282,8 @@ namespace osu.Game.Skinning
                                 containerLookup.Ruleset,
                                 drawableInfos,
                                 componentsContainer.Children.ToArray());
+
+                            SkinComponentGeometrySerializer.Apply(MosuSettings, containerLookup.Lookup, containerLookup.Ruleset, componentsContainer.Children.ToArray());
 
                             return componentsContainer;
                     }

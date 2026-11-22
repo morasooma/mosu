@@ -3,11 +3,13 @@
 
 using System.Linq;
 using NUnit.Framework;
+using osu.Framework.Localisation;
 using osu.Framework.Screens;
 using osu.Framework.Testing;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Localisation;
+using osu.Game.Online.API;
 using osu.Game.Online.Rooms;
 using osu.Game.Rulesets.Catch;
 using osu.Game.Rulesets.Mania;
@@ -58,6 +60,56 @@ namespace osu.Game.Tests.Visual.Playlists
             AddUntilStep("empty state visible", () => roomListing.ChildrenOfType<OsuSpriteText>()
                                                                     .Single(t => t.Text.ToString() == OnlinePlayStrings.NoPlaylistsForSelectedMode.ToString()).IsPresent);
             AddStep("restore osu! mode", () => Ruleset.Value = new OsuRuleset().RulesetInfo);
+        }
+
+        [Test]
+        public void TestAdministratorPinsAndUnpinsExistingPlaylist()
+        {
+            DummyAPIAccess api = null!;
+            createRooms(GenerateRooms(2));
+            AddUntilStep("wait for playlists", () => roomListing.DrawableRooms.Count == 2);
+
+            RoomPanel older = null!;
+            string originalUrl = string.Empty;
+            AddStep("simulate Mosu server pin persistence", () =>
+            {
+                api = (DummyAPIAccess)API;
+                older = roomListing.DrawableRooms.Last();
+                originalUrl = api.Endpoints.APIUrl;
+                api.Endpoints.APIUrl = "http://127.0.0.1:18082";
+                var handleRequest = api.HandleRequest!;
+                api.HandleRequest = request =>
+                {
+                    if (request is not SetPlaylistPinnedRequest pin)
+                        return handleRequest(request);
+
+                    var serverRoom = OnlinePlayDependencies.RequestsHandler.ServerSideRooms.Single(room => room.RoomID == pin.RoomId);
+                    serverRoom.Pinned = pin.Pinned;
+                    pin.TriggerSuccess();
+                    return true;
+                };
+            });
+
+            AddAssert("pin is hidden for the playlist owner without admin rights", () => !older.ContextMenuItems.Any(item => item.Text.Value == PlaylistPinStrings.Pin));
+            AddStep("enable administrator", () => api.LocalUser.Value.IsAdmin = true);
+            AddStep("pin older playlist from its context menu", () => invoke(PlaylistPinStrings.Pin));
+            AddUntilStep("same playlist card moves to the top", () => older.Room.Pinned && roomListing.DrawableRooms.FirstOrDefault() == older);
+            AddStep("unpin older playlist from its context menu", () => invoke(PlaylistPinStrings.Unpin));
+            AddUntilStep("same playlist card returns below the newer room", () => !older.Room.Pinned && roomListing.DrawableRooms.LastOrDefault() == older);
+            AddStep("another admin pins the playlist", () =>
+            {
+                OnlinePlayDependencies.RequestsHandler.ServerSideRooms.Single(room => room.RoomID == older.Room.RoomID).Pinned = true;
+                loungeScreen.RefreshRooms();
+            });
+            AddUntilStep("polling also moves the existing playlist to the top", () => older.Room.Pinned && roomListing.DrawableRooms.FirstOrDefault() == older);
+            AddStep("restore account and server", () =>
+            {
+                api.LocalUser.Value.IsAdmin = false;
+                api.Endpoints.APIUrl = originalUrl;
+            });
+
+            void invoke(LocalisableString text)
+                => older.ContextMenuItems.Single(item => item.Text.Value == text).Action.Value!.Invoke();
         }
 
         [Test]

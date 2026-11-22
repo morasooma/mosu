@@ -28,7 +28,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 {
     public partial class ResultsScreen : RankedPlaySubScreen
     {
-        public override LocalisableString StageHeading => "Results";
+        public override LocalisableString StageHeading => global::osu.Game.Localisation.ClientTranslationStrings.J4899;
 
         public override bool ShowBeatmapBackground => true;
 
@@ -98,7 +98,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                 long roomId = room.RoomID;
                 long playlistItemId = room.Settings.PlaylistItemId;
 
-                int localUserId = api.LocalUser.Value.OnlineID;
+                int localUserId = matchInfo.PlayerId;
                 int opponentId = matchInfo.RoomState.Users.Keys.Single(it => it != localUserId);
                 List<MultiplayerScore> apiScores = await getFinalScoresAsync(roomId, playlistItemId, localUserId, opponentId).ConfigureAwait(false);
 
@@ -132,7 +132,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                 RankedPlayDamageInfo opponentDamageInfo = getDamageInfoOrDefault(opponentUserInfo, opponentScore, maxTotalScore, damageMultiplier);
 
                 // Should complete instantaneously due to prior lookups.
-                APIBeatmap beatmap = (await beatmapLookupCache.GetBeatmapAsync(globalBeatmap.Value.BeatmapInfo.OnlineID).ConfigureAwait(false))!;
+                APIBeatmap beatmap = (await beatmapLookupCache.GetBeatmapAsync(room.CurrentPlaylistItem.BeatmapID).ConfigureAwait(false))!;
+                if (beatmap?.BeatmapSet == null)
+                {
+                    Logger.Log("Ranked results metadata is unavailable.", LoggingTarget.Runtime, LogLevel.Important);
+                    return;
+                }
 
                 Schedule(() =>
                 {

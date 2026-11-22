@@ -41,6 +41,8 @@ namespace osu.Game.Rulesets.Osu.Objects
         /// </summary>
         public int SpinsRequired { get; protected set; } = 1;
 
+        public double StableOverallDifficulty { get; private set; }
+
         /// <summary>
         /// The number of spins required to start receiving bonus score. The first bonus is awarded on this spin count.
         /// </summary>
@@ -61,6 +63,7 @@ namespace osu.Game.Rulesets.Osu.Objects
         protected override void ApplyDefaultsToSelf(ControlPointInfo controlPointInfo, IBeatmapDifficultyInfo difficulty)
         {
             base.ApplyDefaultsToSelf(controlPointInfo, difficulty);
+            StableOverallDifficulty = difficulty.OverallDifficulty;
 
             // The average RPS required over the length of the spinner to clear the spinner.
             double minRps = IBeatmapDifficultyInfo.DifficultyRange(difficulty.OverallDifficulty, CLEAR_RPM_RANGE) / 60;

@@ -19,40 +19,40 @@ namespace osu.Game.Rulesets.Dodge
 
     public enum DodgeAction
     {
-        [Description("Move left")]
+        [Description("Move left"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5675))]
         MoveLeft,
 
-        [Description("Move right")]
+        [Description("Move right"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5676))]
         MoveRight,
 
-        [Description("Move up")]
+        [Description("Move up"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5677))]
         MoveUp,
 
-        [Description("Move down")]
+        [Description("Move down"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5678))]
         MoveDown,
 
-        [Description("Slow movement")]
+        [Description("Slow movement"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5679))]
         Slow,
 
-        [Description("Toggle interface")]
+        [Description("Toggle interface"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5680))]
         ToggleHud,
 
-        [Description("Editor: bullet tool")]
+        [Description("Editor: bullet tool"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5681))]
         EditorBulletTool = 10000,
 
-        [Description("Editor: arena change tool")]
+        [Description("Editor: arena change tool"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5682))]
         EditorArenaChangeTool,
 
-        [Description("Editor: emitter tool")]
+        [Description("Editor: emitter tool"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5683))]
         EditorEmitterTool,
 
-        [Description("Editor: beam tool")]
+        [Description("Editor: beam tool"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5684))]
         EditorBeamTool,
 
-        [Description("Editor: camera change tool")]
+        [Description("Editor: camera change tool"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5685))]
         EditorCameraChangeTool,
 
-        [Description("Editor: trigger tool")]
+        [Description("Editor: trigger tool"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5686))]
         EditorTriggerTool,
     }
 }

@@ -13,10 +13,14 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Testing;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
+using osu.Game.Database;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Online.Multiplayer.MatchTypes.TeamVersus;
+using osu.Game.Online.Multiplayer.MatchTypes.RankedPlay;
+using osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay;
+using osu.Game.Graphics.Sprites;
 using osu.Game.Online.Rooms;
 using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.UI;
@@ -98,6 +102,81 @@ namespace osu.Game.Tests.Visual.Multiplayer
 
             sendFrames(userIds, 1000);
             AddWaitStep("wait a bit", 20);
+        }
+
+        [Test]
+        public void TestRankedPlayTwoFieldsAndScoreDisplay()
+        {
+            AddStep("import map into isolated test storage", () =>
+            {
+                var imported = beatmapManager.Import(new ImportTask(osu.Game.Tests.Resources.TestResources.GetTestBeatmapForImport(true))).GetResultSafely()!;
+                importedSet = beatmapManager.GetAllUsableBeatmapSets().Single(set => set.ID == imported.ID);
+                importedBeatmap = importedSet.Beatmaps.First(b => b.Ruleset.OnlineID == 0);
+                importedBeatmapId = importedBeatmap.OnlineID;
+                game.Dependencies.Get<RealmAccess>().Write(r =>
+                {
+                    foreach (var info in r.All<BeatmapInfo>())
+                        info.OnlineMD5Hash = info.MD5Hash;
+                });
+            });
+            start(new[] { PLAYER_1_ID, PLAYER_2_ID });
+            AddStep("ranked room type", () => room.Type = MatchType.RankedPlay);
+            AddStep("ranked state", () => MultiplayerClient.ChangeMatchRoomState(new RankedPlayRoomState
+            {
+                Stage = RankedPlayStage.Gameplay,
+                Users = new()
+                {
+                    [PLAYER_1_ID] = new RankedPlayUserInfo { Rating = 1500, Life = 800_000 },
+                    [PLAYER_2_ID] = new RankedPlayUserInfo { Rating = 1600, Life = 600_000 }
+                }
+            }).WaitSafely());
+            loadSpectateScreen(false);
+            sendFrames(PLAYER_1_ID, 1000);
+            sendFrames(PLAYER_2_ID, 1000);
+            AddUntilStep("both spectator states received", () => SpectatorClient.WatchedUserStates.ContainsKey(PLAYER_1_ID) && SpectatorClient.WatchedUserStates.ContainsKey(PLAYER_2_ID));
+            AddAssert("beatmap available for spectator", () => beatmapManager.QueryOnlineBeatmapId(importedBeatmapId) != null);
+            AddUntilStep("both scores loaded", () => spectatorScreen.ChildrenOfType<PlayerArea>().All(area => area.Score != null));
+            AddUntilStep("two gameplay fields loaded", () => spectatorScreen.AllPlayersLoaded);
+            AddAssert("two player areas", () => spectatorScreen.ChildrenOfType<PlayerArea>().Count() == 2);
+            AddUntilStep("live replay scores are non-zero for both users", () =>
+            {
+                var scores = spectatorScreen.ChildrenOfType<osu.Game.Screens.Play.Leaderboards.MultiSpectatorLeaderboardProvider>().Single().Scores;
+                return scores.Count == 2 && scores.All(score => score.TotalScore.Value > 0);
+            });
+            AddUntilStep("ranked header shows names without duplicate scores", () =>
+            {
+                var header = spectatorScreen.ChildrenOfType<RankedPlaySpectatorScoreDisplay>().Single();
+                var labels = header.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Where(label => label.Name == "Participant username").ToArray();
+                var scores = spectatorScreen.ChildrenOfType<osu.Game.Screens.Play.Leaderboards.MultiSpectatorLeaderboardProvider>().Single().Scores;
+                return labels.Length == 2 && labels.Select(label => label.Text.ToString()).OrderBy(name => name)
+                    .SequenceEqual(scores.Select(score => score.User.Username).OrderBy(name => name));
+            });
+            AddAssert("no spectator chat", () => !spectatorScreen.ChildrenOfType<osu.Game.Screens.OnlinePlay.Multiplayer.GameplayChatDisplay>().Any());
+            AddAssert("no duplicate ranked sidebar leaderboard", () => spectatorScreen.Leaderboard == null);
+            AddUntilStep("both headers have participant avatars", () =>
+            {
+                var avatars = spectatorScreen.ChildrenOfType<RankedPlaySpectatorScoreDisplay>().Single()
+                    .ChildrenOfType<osu.Game.Users.Drawables.UpdateableAvatar>().ToArray();
+                return avatars.Length == 2 && avatars.Select(avatar => avatar.User?.Id).OrderBy(id => id)
+                    .SequenceEqual(new int?[] { PLAYER_1_ID, PLAYER_2_ID }.OrderBy(id => id))
+                    && avatars.All(avatar => avatar.DrawWidth > 0 && avatar.DrawHeight > 0);
+            });
+            AddUntilStep("fields evenly use full screen width", () =>
+            {
+                var fields = spectatorScreen.ChildrenOfType<PlayerArea>().Select(area => area.ScreenSpaceDrawQuad.AABBFloat).OrderBy(bounds => bounds.Left).ToArray();
+                var bounds = spectatorScreen.ScreenSpaceDrawQuad.AABBFloat;
+                return fields.Length == 2 && System.Math.Abs(fields[0].Width - fields[1].Width) < 1
+                       && System.Math.Abs(fields[0].Left - bounds.Left - 6) < 1
+                       && System.Math.Abs(bounds.Right - fields[1].Right - 6) < 1
+                       && System.Math.Abs(fields[1].Left - fields[0].Right - 6) < 1;
+            });
+            AddUntilStep("ranked scoreboard shows both health bars", () =>
+            {
+                var bars = spectatorScreen.ChildrenOfType<RankedPlaySpectatorScoreDisplay>().Single()
+                    .ChildrenOfType<osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Components.RankedPlayUserDisplay.HealthBar>().ToArray();
+                return bars.Length == 2 && bars[0].Health.Value == 800_000 && bars[1].Health.Value == 600_000
+                       && bars.All(bar => bar.DrawWidth > 0 && bar.DrawHeight > 0);
+            });
         }
 
         [Test]

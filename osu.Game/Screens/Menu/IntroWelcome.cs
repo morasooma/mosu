@@ -13,7 +13,6 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
-using osu.Game.Audio;
 using osu.Game.Online.API;
 using osu.Game.Skinning;
 using osuTK;
@@ -23,15 +22,13 @@ namespace osu.Game.Screens.Menu
 {
     public partial class IntroWelcome : IntroScreen
     {
-        protected override string BeatmapHash => "64e00d7022195959bfa3109d09c2e2276c8f12f486b91fcf6175583e973b48f2";
-        protected override string BeatmapFile => "welcome.osz";
+        internal const string BEATMAP_SET_HASH = "64e00d7022195959bfa3109d09c2e2276c8f12f486b91fcf6175583e973b48f2";
+
+        protected override string BeatmapHash => BEATMAP_SET_HASH;
+
         private const double delay_step_two = 2142;
 
-        private SkinnableSound skinnableWelcome;
-        private ISample welcome;
-
         private ISample pianoReverb;
-        protected override string SeeyaSampleName => "Intro/Welcome/seeya";
 
         public IntroWelcome([CanBeNull] Func<MainMenu> createNextScreen = null)
             : base(createNextScreen)
@@ -39,16 +36,8 @@ namespace osu.Game.Screens.Menu
         }
 
         [BackgroundDependencyLoader]
-        private void load(AudioManager audio, IAPIProvider api)
+        private void load(AudioManager audio)
         {
-            if (MenuVoice.Value)
-            {
-                if (api.LocalUser.Value.IsSupporter)
-                    AddInternal(skinnableWelcome = new SkinnableSound(new SampleInfo(@"Intro/Welcome/welcome")));
-                else
-                    welcome = audio.Samples.Get(@"Intro/Welcome/welcome");
-            }
-
             pianoReverb = audio.Samples.Get(@"Intro/Welcome/welcome_piano");
         }
 
@@ -69,11 +58,6 @@ namespace osu.Game.Screens.Menu
 
                     AddInternal(intro);
 
-                    if (skinnableWelcome != null)
-                        skinnableWelcome.Play();
-                    else
-                        welcome?.Play();
-
                     var reverbChannel = pianoReverb?.Play();
                     if (reverbChannel != null)
                         intro.LogoVisualisation.AddAmplitudeSource(reverbChannel);
@@ -84,11 +68,7 @@ namespace osu.Game.Screens.Menu
                     Scheduler.AddDelayed(() =>
                     {
                         if (UsingThemedIntro)
-                        {
                             StartTrack();
-                            // this classic intro loops forever.
-                            Track.Looping = true;
-                        }
 
                         const float fade_in_time = 200;
 

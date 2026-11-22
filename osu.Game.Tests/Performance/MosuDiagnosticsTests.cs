@@ -76,6 +76,31 @@ namespace osu.Game.Tests.Performance
         }
 
         [Test]
+        public void TestSessionCheckpointReplacementLeavesNoTemporaryFiles()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), $"mosu-checkpoint-{Guid.NewGuid():N}");
+            var storage = new NativeStorage(directory);
+            try
+            {
+                var session = new MosuDiagnosticsSession
+                {
+                    SchemaVersion = MosuDiagnosticsDefaults.SchemaVersion,
+                    SessionId = "checkpoint",
+                    Phase = MosuDiagnosticsPhase.RunningBenchmark,
+                };
+                MosuDiagnosticsSessionStore.Save(storage, session);
+                session.Phase = MosuDiagnosticsPhase.Paused;
+                MosuDiagnosticsSessionStore.Save(storage, session);
+                Assert.That(MosuDiagnosticsSessionStore.TryLoad(storage)?.Phase, Is.EqualTo(MosuDiagnosticsPhase.Paused));
+                Assert.That(Directory.GetFiles(directory, "*.tmp", SearchOption.AllDirectories), Is.Empty);
+            }
+            finally
+            {
+                Directory.Delete(directory, true);
+            }
+        }
+
+        [Test]
         public void TestResultParserReadsMeasuredSegmentsOnly()
         {
             string tempDirectory = Path.Combine(Path.GetTempPath(), $"mosu-diagnostics-parser-{Guid.NewGuid():N}");
@@ -104,6 +129,62 @@ namespace osu.Game.Tests.Performance
             Assert.That(metrics.QualityReason, Is.Null);
 
             Directory.Delete(tempDirectory, true);
+        }
+
+        [TestCase("\"Argon (upstream, 2022)\"")]
+        [TestCase("\"Skin \"\"quoted\"\", name\"")]
+        [TestCase("\"Skin with\nmultiple lines, name\"")]
+        public void TestResultParserHandlesQuotedNamesWithoutShiftingMetrics(string skinName)
+        {
+            string tempDirectory = Path.Combine(Path.GetTempPath(), $"mosu-diagnostics-quoted-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempDirectory);
+            try
+            {
+                File.WriteAllText(Path.Combine(tempDirectory, "mosu-performance-test.segments.csv"), string.Join('\n', new[]
+                {
+                    "segment,benchmark_id,benchmark_mode,benchmark_warmup,skin_name,active_ratio,health_end,draw_fps_avg,draw_fps_p1,draw_fps_p5,draw_fps_min,draw_work_ms_max_p99,update_work_ms_max_p99,input_ms_max_p99",
+                    $"1,diagnostics-test,diagnostics,True,{skinName},1,0.992,50,20,30,10,90,90,90",
+                    $"2,diagnostics-test,diagnostics,False,{skinName},1,0.992,163.869,140.61,148,128,10.434,16.159,1.322",
+                    $"3,diagnostics-test,diagnostics,False,{skinName},1,0.992,163.732,140.97,147,140,9.81,14.397,1.528",
+                }));
+                var metrics = MosuDiagnosticsResultParser.TryParseSegments(tempDirectory, "diagnostics-test");
+                Assert.That(metrics, Is.Not.Null);
+                Assert.That(metrics!.AvgFps, Is.EqualTo(163.8005).Within(0.0001));
+                Assert.That(metrics.P1Fps, Is.EqualTo(140.79).Within(0.0001));
+                Assert.That(metrics.P5Fps, Is.EqualTo(147.5).Within(0.0001));
+                Assert.That(metrics.MinFps, Is.EqualTo(128));
+                Assert.That(metrics.DrawWorkP99Ms, Is.EqualTo(10.122).Within(0.0001));
+                Assert.That(metrics.UpdateWorkP99Ms, Is.EqualTo(15.278).Within(0.0001));
+                Assert.That(metrics.InputP99Ms, Is.EqualTo(1.425).Within(0.0001));
+                Assert.That(metrics.MeasuredRunCount, Is.EqualTo(2));
+                Assert.That(metrics.Quality, Is.EqualTo(MosuDiagnosticsQuality.Reliable));
+            }
+            finally { Directory.Delete(tempDirectory, true); }
+        }
+
+        [Test]
+        public void TestResultParserSkipsMalformedAndWrongWidthRows()
+        {
+            string tempDirectory = Path.Combine(Path.GetTempPath(), $"mosu-diagnostics-malformed-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempDirectory);
+            try
+            {
+                File.WriteAllText(Path.Combine(tempDirectory, "mosu-performance-test.segments.csv"), string.Join('\n', new[]
+                {
+                    "benchmark_id,benchmark_mode,benchmark_warmup,draw_fps_avg,draw_fps_min",
+                    "diagnostics-test,diagnostics,False,9999",
+                    "diagnostics-test,diagnostics,False,9999,1,extra",
+                    "\"diagnostics-test\"broken,diagnostics,False,9999,1",
+                    "diagnostics-test,diagnostics,False,180,150",
+                    "diagnostics-test,diagnostics,False,182,140",
+                }));
+                var metrics = MosuDiagnosticsResultParser.TryParseSegments(tempDirectory, "diagnostics-test");
+                Assert.That(metrics, Is.Not.Null);
+                Assert.That(metrics!.AvgFps, Is.EqualTo(181));
+                Assert.That(metrics.MinFps, Is.EqualTo(140));
+                Assert.That(metrics.MeasuredRunCount, Is.EqualTo(2));
+            }
+            finally { Directory.Delete(tempDirectory, true); }
         }
 
         [Test]

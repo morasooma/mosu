@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework;
@@ -60,6 +60,7 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                     Current = relativeMode,
                 })
                 {
+                    FavouriteId = "ui:MouseSettingsStrings.HighPrecisionMouse",
                     Keywords = new[] { @"raw", @"input", @"relative", @"cursor", "sensitivity", "speed", "velocity" },
                     Note = { BindTarget = highPrecisionMouseNote },
                 },
@@ -73,6 +74,7 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                     TooltipFormat = v => localSensitivity.Disabled ? MouseSettingsStrings.EnableHighPrecisionForSensitivityAdjust : $@"{v:0.##}x",
                 })
                 {
+                    FavouriteId = "ui:MouseSettingsStrings.CursorSensitivity",
                     Keywords = new[] { "speed", "velocity" },
                     Note = { Value = FrameworkEnvironment.UseSDL3 ? new SettingsNote.Data(MouseSettingsStrings.CursorSensitivityForTabletsElsewhere, SettingsNote.Type.Informational) : null }
                 },
@@ -80,18 +82,27 @@ namespace osu.Game.Overlays.Settings.Sections.Input
                 {
                     Caption = MouseSettingsStrings.ConfineMouseMode,
                     Current = osuConfig.GetBindable<OsuConfineMouseMode>(OsuSetting.ConfineMouseMode)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.ConfineMouseMode",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = MouseSettingsStrings.DisableMouseWheelVolumeAdjust,
                     HintText = MouseSettingsStrings.DisableMouseWheelVolumeAdjustTooltip,
                     Current = osuConfig.GetBindable<bool>(OsuSetting.MouseDisableWheel)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.MouseDisableWheel",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = MouseSettingsStrings.DisableClicksDuringGameplay,
                     Current = osuConfig.GetBindable<bool>(OsuSetting.MouseDisableButtons)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.MouseDisableButtons",
+                },
             });
         }
 

@@ -56,12 +56,15 @@ namespace osu.Game.Overlays.Mods
         protected readonly Container ControlContainer;
         protected readonly ModSearchContainer ItemsFlow;
 
+        private readonly Container headerContainer;
         private readonly TextFlowContainer headerText;
         private readonly Box headerBackground;
         private readonly Container contentContainer;
         private readonly BackdropBlurSurface contentBackground;
+        internal BackdropBlurSurface OpaqueBackground => contentBackground;
         private readonly TrianglesV2 triangles;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<float>? panelRadius;
 
         private const float header_height = 42;
 
@@ -82,7 +85,7 @@ namespace osu.Game.Overlays.Mods
                     Masking = true,
                     Children = new Drawable[]
                     {
-                        new Container
+                        headerContainer = new Container
                         {
                             RelativeSizeAxes = Axes.X,
                             Height = header_height + ModSelectPanel.CORNER_RADIUS,
@@ -90,33 +93,35 @@ namespace osu.Game.Overlays.Mods
                             {
                                 headerBackground = new Box
                                 {
-                                    RelativeSizeAxes = Axes.X,
-                                    Height = header_height + ModSelectPanel.CORNER_RADIUS
+                                    RelativeSizeAxes = Axes.Both,
                                 },
-                                triangles = new TrianglesV2
+                                new Container
                                 {
                                     RelativeSizeAxes = Axes.X,
                                     Height = header_height,
-                                    Shear = -OsuGame.SHEAR,
-                                    Velocity = 0.7f,
-                                    ClampAxes = Axes.Y
-                                },
-                                headerText = new OsuTextFlowContainer(t =>
-                                {
-                                    t.Font = OsuFont.TorusAlternate.With(size: 17);
-                                    t.Shadow = false;
-                                    t.Colour = Colour4.Black;
-                                })
-                                {
-                                    RelativeSizeAxes = Axes.X,
-                                    AutoSizeAxes = Axes.Y,
-                                    Anchor = Anchor.CentreLeft,
-                                    Origin = Anchor.CentreLeft,
-                                    Shear = -OsuGame.SHEAR,
-                                    Padding = new MarginPadding
+                                    Children = new Drawable[]
                                     {
-                                        Horizontal = 17,
-                                        Bottom = ModSelectPanel.CORNER_RADIUS
+                                        triangles = new TrianglesV2
+                                        {
+                                            RelativeSizeAxes = Axes.Both,
+                                            Shear = -OsuGame.SHEAR,
+                                            Velocity = 0.7f,
+                                            ClampAxes = Axes.Y
+                                        },
+                                        headerText = new OsuTextFlowContainer(t =>
+                                        {
+                                            t.Font = OsuFont.TorusAlternate.With(size: 17);
+                                            t.Shadow = false;
+                                            t.Colour = Colour4.Black;
+                                        })
+                                        {
+                                            RelativeSizeAxes = Axes.X,
+                                            AutoSizeAxes = Axes.Y,
+                                            Anchor = Anchor.CentreLeft,
+                                            Origin = Anchor.CentreLeft,
+                                            Shear = -OsuGame.SHEAR,
+                                            Padding = new MarginPadding { Horizontal = 17 }
+                                        }
                                     }
                                 }
                             }
@@ -200,6 +205,16 @@ namespace osu.Game.Overlays.Mods
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
+            panelRadius = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Panel, ModSelectPanel.CORNER_RADIUS);
+            panelRadius.BindValueChanged(r =>
+            {
+                float radius = r.NewValue;
+                TopLevelContent.CornerRadius = radius;
+                contentContainer.CornerRadius = radius;
+                headerContainer.Height = header_height + System.Math.Max(ModSelectPanel.CORNER_RADIUS, radius + 2f);
+            }, true);
+
+            colourProvider.PaletteVersion.BindValueChanged(_ => updateThemeColours(colourProvider));
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ => updateThemeColours(colourProvider), true);
         }

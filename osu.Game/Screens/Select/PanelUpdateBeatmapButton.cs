@@ -57,6 +57,7 @@ namespace osu.Game.Screens.Select
         private OsuSpriteText text = null!;
         private Box progressFill = null!;
         private ButtonMode mode;
+        private MarginPadding visibleMargin;
 
         [Resolved]
         private BeatmapModelDownloader beatmapDownloader { get; set; } = null!;
@@ -130,7 +131,7 @@ namespace osu.Game.Screens.Select
                             Anchor = Anchor.CentreLeft,
                             Origin = Anchor.CentreLeft,
                             Font = OsuFont.Style.Body.With(weight: FontWeight.SemiBold),
-                            Text = "Update",
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5185,
                         }
                     }
                 },
@@ -142,6 +143,7 @@ namespace osu.Game.Screens.Select
         protected override void LoadComplete()
         {
             base.LoadComplete();
+            visibleMargin = Margin;
             beatmapChanged();
         }
 
@@ -185,6 +187,15 @@ namespace osu.Game.Screens.Select
                     text.Text = string.Empty;
                     break;
             }
+
+            // AlwaysPresent keeps polling metadata even while hidden, so the flow
+            // still includes this button. Collapse both axes and spacing; retaining
+            // its height would enlarge the status row and shift centred metadata up.
+            Margin = mode == ButtonMode.Hidden ? new MarginPadding() : visibleMargin;
+            AutoSizeAxes = mode == ButtonMode.Hidden ? Axes.None : Axes.X;
+            Height = mode == ButtonMode.Hidden ? 0 : 22f;
+            if (mode == ButtonMode.Hidden)
+                Width = 0;
         }
 
         protected override bool OnHover(HoverEvent e)

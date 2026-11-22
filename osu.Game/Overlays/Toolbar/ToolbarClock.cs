@@ -14,6 +14,7 @@ using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
+using osu.Game.Overlays.CustomTheme;
 using osuTK;
 using osuTK.Graphics;
 
@@ -30,15 +31,24 @@ namespace osu.Game.Overlays.Toolbar
         private DigitalClockDisplay digital;
         private AnalogClockDisplay analog;
 
+        private Container backgroundContent;
+        private OverlayColourProvider? colourProvider;
+        private IBindable<float>? topBarRadiusBindable;
+        private IBindable<Colour4>? hoverColourBindable;
+        private IBindable<Colour4>? textColourBindable;
+        private IBindable<ThemeMode>? themeModeBindable;
+        private IBindable<CustomThemeDefinition>? customThemeBindable;
+
         public ToolbarClock()
         {
             RelativeSizeAxes = Axes.Y;
             AutoSizeAxes = Axes.X;
         }
 
-        [BackgroundDependencyLoader]
-        private void load(OsuConfigManager config)
+        [BackgroundDependencyLoader(true)]
+        private void load(OsuConfigManager config, OverlayColourProvider? colourProvider)
         {
+            this.colourProvider = colourProvider;
             clockDisplayMode = config.GetBindable<ToolbarClockDisplayMode>(OsuSetting.ToolbarClockDisplayMode);
             prefer24HourTime = config.GetBindable<bool>(OsuSetting.Prefer24HourTime);
 
@@ -51,12 +61,12 @@ namespace osu.Game.Overlays.Toolbar
                     Padding = new MarginPadding(ToolbarButton.PADDING),
                     Children = new Drawable[]
                     {
-                        new Container
+                        backgroundContent = new Container
                         {
                             RelativeSizeAxes = Axes.Both,
                             Masking = true,
                             CornerRadius = 6,
-                            CornerExponent = 3f,
+                            CornerExponent = 2f,
                             Children = new Drawable[]
                             {
                                 hoverBackground = new Box
@@ -118,6 +128,44 @@ namespace osu.Game.Overlays.Toolbar
             }, true);
 
             prefer24HourTime.BindValueChanged(prefer24H => digital.Use24HourDisplay = prefer24H.NewValue, true);
+
+            topBarRadiusBindable = OverlayColourProvider.GetTopBarRadius();
+            topBarRadiusBindable.BindValueChanged(r =>
+            {
+                float radius = r.NewValue;
+                backgroundContent.CornerRadius = radius <= 0 ? 0 : System.Math.Clamp(radius, 0f, 17f);
+            }, true);
+
+            if (colourProvider != null)
+            {
+                hoverColourBindable = colourProvider.GetColourBindable(OverlayColour.Light4);
+                hoverColourBindable.BindValueChanged(_ => updateThemeColours(colourProvider));
+
+                textColourBindable = colourProvider.GetColourBindable(OverlayColour.Content1);
+                textColourBindable.BindValueChanged(_ => updateThemeColours(colourProvider));
+
+                themeModeBindable = OverlayColourProvider.CurrentTheme.GetBoundCopy();
+                themeModeBindable.BindValueChanged(_ => updateThemeColours(colourProvider));
+
+                customThemeBindable = OverlayColourProvider.CustomTheme.GetBoundCopy();
+                customThemeBindable.BindValueChanged(_ => updateThemeColours(colourProvider), true);
+            }
+        }
+
+        private void updateThemeColours(OverlayColourProvider colourProvider)
+        {
+            if (OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom)
+            {
+                hoverBackground.Colour = colourProvider.Light4.Opacity(0.5f);
+                digital.Colour = colourProvider.Content1;
+                analog.Colour = colourProvider.Content1;
+            }
+            else
+            {
+                hoverBackground.Colour = OsuColour.Gray(80).Opacity(180);
+                digital.Colour = Color4.White;
+                analog.Colour = Color4.White;
+            }
         }
 
         protected override bool OnClick(ClickEvent e)

@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using osu.Game.Database;
+using osu.Game.Online;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Online.Rooms;
 using osu.Game.Rulesets.Scoring;
@@ -13,10 +15,22 @@ namespace osu.Game.Scoring.Legacy
     public static class ScoreInfoExtensions
     {
         public static long GetDisplayScore(this ScoreProcessor scoreProcessor, ScoringMode mode)
-            => getDisplayScore(scoreProcessor.Ruleset.RulesetInfo.OnlineID, scoreProcessor.TotalScore.Value, mode, scoreProcessor.MaximumStatistics);
+            => scoreProcessor.LegacyTotalScoreSource != null
+                ? scoreProcessor.TotalScore.Value
+                : getDisplayScore(scoreProcessor.Ruleset.RulesetInfo.OnlineID, scoreProcessor.TotalScore.Value, mode, scoreProcessor.MaximumStatistics);
 
         public static long GetDisplayScore(this ScoreInfo scoreInfo, ScoringMode mode)
-            => getDisplayScore(scoreInfo.Ruleset.OnlineID, scoreInfo.TotalScore, mode, scoreInfo.MaximumStatistics);
+        {
+            // ScoreV1 is already the final score, not an input to lazer's approximate
+            // classic conversion. Keep results, local scores and online tops consistent.
+            if (MosuServerEnvironment.UsesStableProtocol && scoreInfo.LegacyTotalScore is long legacyScore)
+                return legacyScore;
+
+            return getDisplayScore(scoreInfo.Ruleset.OnlineID,
+                MosuServerEnvironment.IsThirdPartyServer ? scoreInfo.TotalScore
+                    : scoreInfo.MosuTotalScore ?? ForkDataStore.Instance?.GetMosuTotalScore(scoreInfo.ID) ?? scoreInfo.TotalScore,
+                mode, scoreInfo.MaximumStatistics);
+        }
 
         public static long GetDisplayScore(this SoloScoreInfo soloScoreInfo, ScoringMode mode)
             => getDisplayScore(soloScoreInfo.RulesetID, soloScoreInfo.TotalScore, mode, soloScoreInfo.MaximumStatistics);

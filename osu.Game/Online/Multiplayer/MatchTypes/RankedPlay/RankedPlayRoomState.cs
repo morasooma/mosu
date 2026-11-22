@@ -62,6 +62,27 @@ namespace osu.Game.Online.Multiplayer.MatchTypes.RankedPlay
         [Key(9)]
         public string[] AvailableRandomMods { get; set; } = [];
 
+        [Key(10)]
+        public RankedPlayCardItem? LastPlayedCard { get; set; }
+
+        /// <summary>
+        /// Mods eligible for a ban. Separate from the per-beatmap roulette candidates.
+        /// </summary>
+        [Key(11)]
+        public string[] BannableRandomMods { get; set; } = [];
+
+        /// <summary>
+        /// Confirmed bans by participant. Null means the player chose not to ban.
+        /// </summary>
+        [Key(12)]
+        public Dictionary<int, string?> RandomModBans { get; set; } = [];
+
+        [Key(13)]
+        public int RandomModRulesetId { get; set; }
+
+        [Key(14)]
+        public Dictionary<int, string?> RandomModBanSelections { get; set; } = [];
+
         /// <summary>
         /// The user currently playing a card.
         /// </summary>

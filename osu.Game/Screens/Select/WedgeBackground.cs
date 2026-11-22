@@ -34,6 +34,10 @@ namespace osu.Game.Screens.Select
 
             InternalChildren = new Drawable[]
             {
+                new osu.Game.Graphics.Containers.SongSelectBackdropSurface
+                {
+                    GetCornerRadius = () => (Parent as osu.Framework.Graphics.Containers.CompositeDrawable)?.CornerRadius ?? 0,
+                },
                 additiveBackground = new Box
                 {
                     Blending = BlendingParameters.Additive,
@@ -60,6 +64,15 @@ namespace osu.Game.Screens.Select
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background5);
             themeColour.BindValueChanged(_ => updateColours(), true);
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+            float tintAlpha = OverlayTransparency.SongSelectActive ? 0.35f : 1;
+            mainBackground.Alpha = tintAlpha;
+            gradientBackground.Alpha = tintAlpha;
+            additiveBackground.Alpha = OverlayTransparency.SongSelectActive ? 0 : 0.5f;
         }
 
         private void updateColours()

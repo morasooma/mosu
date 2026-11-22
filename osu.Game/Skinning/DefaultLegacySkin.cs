@@ -38,7 +38,9 @@ namespace osu.Game.Skinning
             : base(
                 skin,
                 resources,
-                MorasoomaSkin.CreateResourceStore()
+                // Preserve the historical GUID/type and legacy colour settings, but
+                // never load the retired upstream artwork/configuration/audio bank.
+                MorasoomaSkin.CreateResourceStore(resources.Resources)
             )
         {
             Configuration.CustomColours["SliderBall"] = new Color4(2, 170, 255, 255);

@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -30,13 +30,17 @@ namespace osu.Game.Rulesets.Osu.UI
                 {
                     Caption = RulesetSettingsStrings.SnakingInSliders,
                     Current = config.GetBindable<bool>(OsuRulesetSetting.SnakingInSliders)
-                }),
+                })
+                {
+                    FavouriteId = "OsuRulesetSetting.SnakingInSliders",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = RulesetSettingsStrings.SnakingOutSliders,
                     Current = config.GetBindable<bool>(OsuRulesetSetting.SnakingOutSliders)
                 })
                 {
+                    FavouriteId = "OsuRulesetSetting.SnakingOutSliders",
                     ApplyClassicDefault = c => ((IHasCurrentValue<bool>)c).Current.Value = false,
                 },
                 new SettingsItemV2(new FormCheckBox
@@ -44,22 +48,34 @@ namespace osu.Game.Rulesets.Osu.UI
                     Caption = RulesetSettingsStrings.HitAnimations,
                     HintText = RulesetSettingsStrings.HitAnimationsOsuTooltip,
                     Current = config.GetBindable<bool>(OsuRulesetSetting.HitAnimations)
-                }),
+                })
+                {
+                    FavouriteId = "OsuRulesetSetting.HitAnimations",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = RulesetSettingsStrings.CursorTrail,
                     Current = config.GetBindable<bool>(OsuRulesetSetting.ShowCursorTrail)
-                }),
+                })
+                {
+                    FavouriteId = "OsuRulesetSetting.ShowCursorTrail",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = RulesetSettingsStrings.CursorRipples,
                     Current = config.GetBindable<bool>(OsuRulesetSetting.ShowCursorRipples)
-                }),
+                })
+                {
+                    FavouriteId = "OsuRulesetSetting.ShowCursorRipples",
+                },
                 new SettingsItemV2(new FormEnumDropdown<PlayfieldBorderStyle>
                 {
                     Caption = RulesetSettingsStrings.PlayfieldBorderStyle,
                     Current = config.GetBindable<PlayfieldBorderStyle>(OsuRulesetSetting.PlayfieldBorderStyle),
-                }),
+                })
+                {
+                    FavouriteId = "OsuRulesetSetting.PlayfieldBorderStyle",
+                },
             };
         }
     }

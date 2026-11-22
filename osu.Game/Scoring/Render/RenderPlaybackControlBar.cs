@@ -141,7 +141,7 @@ namespace osu.Game.Scoring.Render
         private void updateText()
         {
             timecodeText.Text = $"{formatTime(CurrentTime.Value)} / {formatTime(TotalDuration)}";
-            periodText.Text = $"Selected: {formatTime(TrimStartTime.Value)} → {formatTime(TrimEndTime.Value)} ({formatTime(TrimEndTime.Value - TrimStartTime.Value)})";
+            periodText.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4282(formatTime(TrimStartTime.Value), formatTime(TrimEndTime.Value), formatTime(TrimEndTime.Value - TrimStartTime.Value));
         }
 
         private string formatTime(double ms)

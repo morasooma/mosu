@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
@@ -22,10 +23,15 @@ namespace osu.Game.Rulesets.Dodge.Edit
         private DodgeEditorSettings settings { get; set; } = null!;
 
         [Resolved]
+        private IBeatSnapProvider beatSnapProvider { get; set; } = null!;
+
+        [Resolved]
         private EditorBeatmap editorBeatmap { get; set; } = null!;
 
         private readonly BindableList<HitObject> selectedHitObjects = new BindableList<HitObject>();
         private bool syncingSelection;
+        private Drawable scrollControl = null!;
+        private Drawable easingControl = null!;
 
         public DodgeCameraToolboxGroup()
             : base(DodgeEditorStrings.Camera)
@@ -38,13 +44,14 @@ namespace osu.Game.Rulesets.Dodge.Edit
             Spacing = new Vector2(5);
             Children = new Drawable[]
             {
-                new SettingsCheckbox
+                new SettingsEnumDropdown<DodgeCameraMode> { LabelText = DodgeEditorStrings.CameraMode, Current = settings.CameraMode },
+                scrollControl = new SettingsCheckbox
                 {
                     LabelText = DodgeEditorStrings.CameraContinuousScroll,
                     Current = settings.CameraContinuousScroll,
                     TooltipText = DodgeEditorStrings.CameraContinuousScrollHint,
                 },
-                new SettingsEnumDropdown<DodgeCameraEasing>
+                easingControl = new SettingsEnumDropdown<DodgeCameraEasing>
                 {
                     LabelText = DodgeEditorStrings.CameraEasing,
                     Current = settings.CameraEasing,
@@ -57,10 +64,35 @@ namespace osu.Game.Rulesets.Dodge.Edit
         {
             base.LoadComplete();
 
-            settings.CameraContinuousScroll.BindValueChanged(_ => applyToSelection());
-            settings.CameraEasing.BindValueChanged(_ => applyToSelection());
+            settings.CameraMode.BindValueChanged(value =>
+            {
+                applyToSelection(change =>
+                {
+                    bool wasInstant = change.Mode != DodgeCameraMode.Scroll;
+                    change.Mode = value.NewValue;
+                    if (wasInstant && value.NewValue == DodgeCameraMode.Scroll)
+                        change.Duration = beatSnapProvider.GetBeatLengthAtTime(change.StartTime) * 4;
+                });
+                scrollControl.Alpha = easingControl.Alpha = value.NewValue == DodgeCameraMode.Scroll ? 1 : 0;
+            }, true);
+            settings.CameraContinuousScroll.BindValueChanged(value => applyToSelection(change => change.Continuous = value.NewValue));
+            settings.CameraEasing.BindValueChanged(value => applyToSelection(change => change.Easing = value.NewValue));
             selectedHitObjects.BindTo(editorBeatmap.SelectedHitObjects);
-            selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection());
+            selectedHitObjects.BindCollectionChanged((_, _) => readFromSelection(), true);
+            editorBeatmap.HitObjectUpdated += onHitObjectUpdated;
+        }
+
+        private void onHitObjectUpdated(HitObject hitObject)
+        {
+            if (selectedHitObjects.Contains(hitObject))
+                Scheduler.AddOnce(readFromSelection);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (editorBeatmap != null)
+                editorBeatmap.HitObjectUpdated -= onHitObjectUpdated;
+            base.Dispose(isDisposing);
         }
 
         private void readFromSelection()
@@ -71,12 +103,13 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 return;
 
             syncingSelection = true;
+            settings.CameraMode.Value = change.Mode;
             settings.CameraContinuousScroll.Value = change.Continuous;
             settings.CameraEasing.Value = change.Easing;
             syncingSelection = false;
         }
 
-        private void applyToSelection()
+        private void applyToSelection(Action<DodgeCameraChange> apply)
         {
             if (syncingSelection)
                 return;
@@ -88,14 +121,18 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
             editorBeatmap.BeginChange();
 
-            foreach (DodgeCameraChange change in changes)
+            try
             {
-                change.Continuous = settings.CameraContinuousScroll.Value;
-                change.Easing = settings.CameraEasing.Value;
-                editorBeatmap.Update(change);
+                foreach (DodgeCameraChange change in changes)
+                {
+                    apply(change);
+                    editorBeatmap.Update(change);
+                }
             }
-
-            editorBeatmap.EndChange();
+            finally
+            {
+                editorBeatmap.EndChange();
+            }
         }
     }
 }

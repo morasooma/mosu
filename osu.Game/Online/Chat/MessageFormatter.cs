@@ -299,31 +299,52 @@ namespace osu.Game.Online.Chat
         {
             var result = new MessageFormatterResult(toFormat);
 
-            // handle the [link display] format
-            handleMatches(new_link_regex, "{1}", "{2}", result, startIndex, escapeChars: new[] { '[', ']' });
+            // Every formatted link requires an opening bracket. Keep the original
+            // processing order, since each pass may change the following one's input.
+            if (result.Text.Contains('['))
+            {
+                // handle the [link display] format
+                handleMatches(new_link_regex, "{1}", "{2}", result, startIndex, escapeChars: new[] { '[', ']' });
 
-            // handle the standard markdown []() format
-            handleMatches(markdown_link_regex, "{1}", "{2}", result, startIndex, escapeChars: new[] { '[', ']' });
+                // handle the standard markdown []() format
+                handleMatches(markdown_link_regex, "{1}", "{2}", result, startIndex, escapeChars: new[] { '[', ']' });
 
-            // handle the ()[] link format
-            handleMatches(old_link_regex, "{1}", "{2}", result, startIndex, escapeChars: new[] { '(', ')' });
+                // handle the ()[] link format
+                handleMatches(old_link_regex, "{1}", "{2}", result, startIndex, escapeChars: new[] { '(', ')' });
 
-            // handle wiki links
-            handleMatches(wiki_regex, "{1}", $"https://{WebsiteRootUrl}/wiki/{{1}}", result, startIndex);
+                // handle wiki links
+                handleMatches(wiki_regex, "{1}", $"https://{WebsiteRootUrl}/wiki/{{1}}", result, startIndex);
+            }
 
             // handle bare links
-            handleAdvanced(advanced_link_regex, result, startIndex);
+            if (result.Text.Contains("://", StringComparison.Ordinal))
+                handleAdvanced(advanced_link_regex, result, startIndex);
 
-            // handle editor times
-            handleMatches(EditorTimestampParser.TIME_REGEX_STRICT, "{0}", $@"{OsuGameBase.OSU_PROTOCOL}edit/{{0}}", result, startIndex, LinkAction.OpenEditorTimestamp);
+            // The strict timestamp requires a colon followed by an ASCII seconds
+            // tens digit. Avoid initialising the compiled editor regex for normal text.
+            if (hasTimestampCandidate(result.Text))
+                handleMatches(EditorTimestampParser.TIME_REGEX_STRICT, "{0}", $@"{OsuGameBase.OSU_PROTOCOL}edit/{{0}}", result, startIndex, LinkAction.OpenEditorTimestamp);
 
             // handle channels
-            handleMatches(channel_regex, "{0}", $@"{OsuGameBase.OSU_PROTOCOL}chan/{{0}}", result, startIndex, LinkAction.OpenChannel);
+            if (result.Text.Contains('#'))
+                handleMatches(channel_regex, "{0}", $@"{OsuGameBase.OSU_PROTOCOL}chan/{{0}}", result, startIndex, LinkAction.OpenChannel);
 
             // see: https://github.com/ppy/osu/pull/24190
-            result.Text = Regex.Replace(result.Text, emoji_regex.ToString(), "[emoji]");
+            if (result.Text.Contains('\uD83D'))
+                result.Text = Regex.Replace(result.Text, emoji_regex.ToString(), "[emoji]");
 
             return result;
+        }
+
+        private static bool hasTimestampCandidate(string text)
+        {
+            for (int i = 0; i < text.Length - 1; i++)
+            {
+                if (text[i] == ':' && text[i + 1] is >= '0' and <= '5')
+                    return true;
+            }
+
+            return false;
         }
 
         public static Message FormatMessage(Message inputMessage)

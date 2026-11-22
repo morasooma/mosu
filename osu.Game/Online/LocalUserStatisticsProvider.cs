@@ -125,25 +125,52 @@ namespace osu.Game.Online
             }
         }
 
-        public void RefetchStatistics(RulesetInfo ruleset, Action<UserStatisticsUpdate>? callback = null)
+        public void RefetchStatistics(RulesetInfo ruleset, Action<UserStatisticsUpdate>? callback = null, Action? failure = null)
         {
             if (!ruleset.IsLegacyRuleset() && !MosuServerEnvironment.IsThirdPartyServer && !MosuServerEnvironment.SupportsSpecialRulesets)
                 throw new InvalidOperationException($@"Retrieving statistics is not supported for ruleset {ruleset.ShortName}");
 
-            var request = new GetUserRequest(api.LocalUser.Value.Id, ruleset);
-            request.Success += u => UpdateStatistics(u.Statistics, ruleset, callback);
+            if (MosuServerEnvironment.UsesStableProtocol)
+            {
+                var stable = stableBanchoSession?.GetUserStatistics(api.LocalUser.Value.Id, ruleset.OnlineID);
+                if (stable != null)
+                    UpdateStatistics(toUserStatistics(stable), ruleset, callback);
+                else
+                {
+                    var cached = statisticsCache.GetValueOrDefault(ruleset.ShortName);
+                    callback?.Invoke(new UserStatisticsUpdate(ruleset, cached, cached ?? new UserStatistics()));
+                }
+                // Bancho returns statistics for the active mode. Changing mode is
+                // broadcast by OsuGameBase; v2 users requests are not supported here.
+                return;
+            }
+
+            int userId = api.LocalUser.Value.Id;
+            var request = new GetUserRequest(userId, ruleset);
+            request.Success += u =>
+            {
+                if (api.IsLoggedIn && api.LocalUser.Value.Id == userId)
+                    UpdateStatistics(u.Statistics, ruleset, callback);
+            };
             request.Failure += _ =>
             {
+                if (!api.IsLoggedIn || api.LocalUser.Value.Id != userId)
+                    return;
+                if (failure != null)
+                {
+                    failure();
+                    return;
+                }
                 var cached = statisticsCache.GetValueOrDefault(ruleset.ShortName);
                 callback?.Invoke(new UserStatisticsUpdate(ruleset, cached, cached ?? new UserStatistics()));
             };
             api.Queue(request);
         }
 
-        public void RefetchStatistics(ScoreInfo score, Action<UserStatisticsUpdate>? callback = null)
+        public void RefetchStatistics(ScoreInfo score, Action<UserStatisticsUpdate>? callback = null, Action? failure = null)
         {
             var specialRuleset = score.Ruleset.CreateSpecialRulesetByScore(score);
-            RefetchStatistics(specialRuleset ?? score.Ruleset, callback);
+            RefetchStatistics(specialRuleset ?? score.Ruleset, callback, failure);
         }
 
         protected void UpdateStatistics(UserStatistics newStatistics, RulesetInfo ruleset, Action<UserStatisticsUpdate>? callback = null)

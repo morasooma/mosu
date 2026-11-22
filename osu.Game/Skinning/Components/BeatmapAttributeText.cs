@@ -21,8 +21,10 @@ using osu.Game.Localisation.SkinComponents;
 using osu.Game.Resources.Localisation.Web;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
-using osu.Game.Utils;
+using osu.Game.Screens.Select;
 using osu.Game.Overlays;
+using osuTK;
+using osu.Game.Utils;
 
 namespace osu.Game.Skinning.Components
 {
@@ -34,6 +36,12 @@ namespace osu.Game.Skinning.Components
 
         [SettingSource(typeof(BeatmapAttributeTextStrings), nameof(BeatmapAttributeTextStrings.Template), nameof(BeatmapAttributeTextStrings.TemplateDescription))]
         public Bindable<string> Template { get; } = new Bindable<string>("{Label}: {Value}");
+
+        [SettingSource(typeof(MorasoomaSkinEditorStrings), nameof(MorasoomaSkinEditorStrings.CustomTextSize))]
+        public BindableBool UseCustomSize { get; } = new BindableBool();
+
+        [SettingSource(typeof(MorasoomaSkinEditorStrings), nameof(MorasoomaSkinEditorStrings.ScrollOverflow))]
+        public BindableBool ScrollOverflow { get; } = new BindableBool(true);
 
         [Resolved]
         private IBindable<WorkingBeatmap> beatmap { get; set; } = null!;
@@ -47,51 +55,61 @@ namespace osu.Game.Skinning.Components
         [Resolved]
         private BeatmapDifficultyCache difficultyCache { get; set; } = null!;
 
-        private readonly SkinSpriteText text;
+        [Resolved]
+        private ISongSelect? songSelect { get; set; }
+
+        private readonly AttributeMarquee marquee;
+        private readonly List<SkinSpriteText> texts = new List<SkinSpriteText>();
+        private FontUsage textFont;
+        private Colour4 textColour = Colour4.White;
+        private LocalisableString displayedText;
         private IBindable<StarDifficulty>? difficultyBindable;
         private CancellationTokenSource? difficultyCancellationSource;
         private ModSettingChangeTracker? modSettingTracker;
         private StarDifficulty? starDifficulty;
-        private Colour4 skinTextColour = Colour4.White;
-        private IBindable<Colour4> themeColour = null!;
-
-        [Resolved]
-        private OverlayColourProvider colourProvider { get; set; } = null!;
+        private bool? requestedPerformance;
+        private string numberedTemplate = string.Empty;
+        private readonly List<BeatmapAttribute> templateAttributes = new List<BeatmapAttribute>();
 
         public BeatmapAttributeText()
         {
             AutoSizeAxes = Axes.Both;
 
-            InternalChildren = new Drawable[]
+            InternalChild = marquee = new AttributeMarquee
             {
-                text = new SkinSpriteText
+                RelativeSizeAxes = Axes.None,
+                AutoSizeAxes = Axes.Both,
+                AllowScrolling = false,
+                Anchor = Anchor.CentreLeft,
+                Origin = Anchor.CentreLeft,
+                CreateContent = () =>
                 {
-                    Anchor = Anchor.CentreLeft,
-                    Origin = Anchor.CentreLeft,
-                }
+                    var text = new SkinSpriteText { Text = displayedText, Font = textFont, Colour = textColour };
+                    texts.Add(text);
+                    return text;
+                },
             };
+            UseCustomSize.BindValueChanged(_ => updateTextArea());
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
 
+            updateTextArea();
+            ScrollOverflow.BindValueChanged(_ => marquee.AllowScrolling = UseCustomSize.Value && ScrollOverflow.Value, true);
+            prepareTemplate();
             Attribute.BindValueChanged(_ => updateText());
-            Template.BindValueChanged(_ => updateText());
-
-            beatmap.BindValueChanged(b =>
+            Template.BindValueChanged(_ =>
             {
-                difficultyCancellationSource?.Cancel();
-                difficultyCancellationSource?.Dispose();
-                difficultyCancellationSource = new CancellationTokenSource();
+                prepareTemplate();
+                updateText();
+            });
 
-                difficultyBindable?.UnbindAll();
-                difficultyBindable = difficultyCache.GetBindableDifficulty(b.NewValue.BeatmapInfo, difficultyCancellationSource.Token);
-                difficultyBindable.BindValueChanged(d =>
-                {
-                    starDifficulty = d.NewValue;
-                    updateText();
-                }, true);
+            beatmap.BindValueChanged(_ =>
+            {
+                cancelDifficultyRequest();
+                updateText();
             }, true);
 
             mods.BindValueChanged(m =>
@@ -107,43 +125,88 @@ namespace osu.Game.Skinning.Components
 
             ruleset.BindValueChanged(_ => updateText());
 
-            themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
-            themeColour.BindValueChanged(_ => updateThemeColour(), true);
-
             updateText();
         }
 
-        private void updateThemeColour()
+        private void prepareTemplate()
         {
-            text.Colour = colourProvider == null || !OverlayColourProvider.IsLightTheme ? skinTextColour : colourProvider.Content1;
+            numberedTemplate = Template.Value
+                                       .Replace("{", "{{")
+                                       .Replace("}", "}}")
+                                       .Replace(@"{{Label}}", "{0}")
+                                       .Replace(@"{{Value}}", "{1}");
+
+            templateAttributes.Clear();
+            foreach (var type in Enum.GetValues<BeatmapAttribute>())
+            {
+                string replaced = numberedTemplate.Replace($@"{{{{{type}}}}}", $@"{{{templateAttributes.Count + 2}}}");
+
+                if (numberedTemplate != replaced)
+                {
+                    numberedTemplate = replaced;
+                    templateAttributes.Add(type);
+                }
+            }
         }
 
         private void updateText()
         {
-            string numberedTemplate = Template.Value
-                                              .Replace("{", "{{")
-                                              .Replace("}", "}}")
-                                              .Replace(@"{{Label}}", "{0}")
-                                              .Replace(@"{{Value}}", "{1}");
+            // Use the same recognized placeholders as formatting, not a substring check.
+            // The primary value remains part of the component's contract even without {Value}.
+            bool needsPerformance = Attribute.Value == BeatmapAttribute.MaxPP || templateAttributes.Contains(BeatmapAttribute.MaxPP);
+            bool needsStars = Attribute.Value == BeatmapAttribute.StarRating || templateAttributes.Contains(BeatmapAttribute.StarRating);
+            updateDifficultyRequest(needsPerformance ? true : needsStars ? false : null);
 
-            List<object?> values = new List<object?>
+            List<object?> values = new List<object?>(templateAttributes.Count + 2)
             {
                 getLabelString(Attribute.Value),
                 getValueString(Attribute.Value)
             };
 
-            foreach (var type in Enum.GetValues<BeatmapAttribute>())
+            foreach (var type in templateAttributes)
+                values.Add(getValueString(type));
+
+            displayedText = LocalisableString.Format(numberedTemplate, values.ToArray());
+            foreach (var text in texts) text.Text = displayedText;
+        }
+
+        private void updateDifficultyRequest(bool? calculatePerformance)
+        {
+            if (requestedPerformance == calculatePerformance)
+                return;
+
+            cancelDifficultyRequest();
+            if (calculatePerformance == null)
+                return;
+
+            requestedPerformance = calculatePerformance;
+            difficultyCancellationSource = new CancellationTokenSource();
+            // Skinned song-select SR/PP must use the same admission delay as the carousel.
+            // Otherwise a skin's MaxPP text starts full work for every transient selection,
+            // bypassing the card/wedge debounce. Other screens retain immediate calculation;
+            // cache hits and explicit full ruleset/mod refreshes remain immediate in the cache.
+            int computationDelay = songSelect == null ? 0 : calculatePerformance.Value
+                ? SongSelect.PERFORMANCE_CALCULATION_DEBOUNCE
+                : SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE;
+            difficultyBindable = difficultyCache.GetBindableDifficulty(beatmap.Value.BeatmapInfo, difficultyCancellationSource.Token,
+                computationDelay: computationDelay, calculatePerformance: calculatePerformance.Value);
+            starDifficulty = difficultyBindable.Value;
+            difficultyBindable.BindValueChanged(d =>
             {
-                string replaced = numberedTemplate.Replace($@"{{{{{type}}}}}", $@"{{{values.Count}}}");
+                starDifficulty = d.NewValue;
+                updateText();
+            });
+        }
 
-                if (numberedTemplate != replaced)
-                {
-                    numberedTemplate = replaced;
-                    values.Add(getValueString(type));
-                }
-            }
-
-            text.Text = LocalisableString.Format(numberedTemplate, values.ToArray());
+        private void cancelDifficultyRequest()
+        {
+            difficultyCancellationSource?.Cancel();
+            difficultyCancellationSource?.Dispose();
+            difficultyCancellationSource = null;
+            difficultyBindable?.UnbindAll();
+            difficultyBindable = null;
+            starDifficulty = null;
+            requestedPerformance = null;
         }
 
         private LocalisableString getLabelString(BeatmapAttribute attribute)
@@ -255,22 +318,63 @@ namespace osu.Game.Skinning.Components
             }
         }
 
-        protected override void SetFont(FontUsage font) => text.Font = font.With(size: 40);
-
-        protected override void SetTextColour(Colour4 textColour)
+        private partial class AttributeMarquee : MarqueeContainer
         {
-            skinTextColour = textColour;
-            updateThemeColour();
+            public new Axes AutoSizeAxes
+            {
+                get => base.AutoSizeAxes;
+                set => base.AutoSizeAxes = value;
+            }
+        }
+
+        private void updateTextArea()
+        {
+            Vector2 currentSize = DrawSize;
+            bool custom = UseCustomSize.Value;
+            bool wasAutomatic = AutoSizeAxes != Axes.None;
+            AutoSizeAxes = custom ? Axes.None : Axes.Both;
+            if (custom && wasAutomatic)
+                Size = new Vector2(currentSize.X > 0 ? currentSize.X : 300, currentSize.Y > 0 ? currentSize.Y : 40);
+            Masking = custom;
+            marquee.AutoSizeAxes = Axes.None;
+            marquee.RelativeSizeAxes = custom ? Axes.X : Axes.None;
+            marquee.AutoSizeAxes = custom ? Axes.Y : Axes.Both;
+            marquee.AllowScrolling = custom && ScrollOverflow.Value;
+            if (custom) marquee.Width = 1;
+        }
+
+        internal void RestoreTextArea(SerialisedDrawableInfo info)
+        {
+            if (info.Settings.TryGetValue("use_custom_size", out var custom))
+                UseCustomSize.Value = Convert.ToBoolean(custom, System.Globalization.CultureInfo.InvariantCulture);
+            else
+            {
+                // Read the short-lived slider format, but only write the toggle and normal layout dimensions.
+                float width = info.Settings.TryGetValue("text_area_width", out var w) ? Convert.ToSingle(w) : 0;
+                float height = info.Settings.TryGetValue("text_area_height", out var h) ? Convert.ToSingle(h) : 0;
+                UseCustomSize.Value = width > 0 || height > 0;
+                if (UseCustomSize.Value)
+                    Size = new Vector2(width > 0 ? width : 300, height > 0 ? height : 40);
+            }
+        }
+
+        protected override void SetFont(FontUsage font)
+        {
+            textFont = font.With(size: 40);
+            foreach (var text in texts) text.Font = textFont;
+        }
+
+        protected override void SetTextColour(Colour4 colour)
+        {
+            textColour = colour;
+            foreach (var text in texts) text.Colour = colour;
         }
 
         protected override void Dispose(bool isDisposing)
         {
             base.Dispose(isDisposing);
 
-            difficultyCancellationSource?.Cancel();
-            difficultyCancellationSource?.Dispose();
-            difficultyCancellationSource = null;
-
+            cancelDifficultyRequest();
             modSettingTracker?.Dispose();
         }
     }

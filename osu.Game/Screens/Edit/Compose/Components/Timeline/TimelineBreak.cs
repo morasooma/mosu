@@ -150,7 +150,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                         BypassAutoSizeAxes = Axes.X,
                         Anchor = Anchor,
                         Origin = Anchor,
-                        Text = "Break",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4318,
                         Margin = new MarginPadding { Top = 2, },
                     },
                 };

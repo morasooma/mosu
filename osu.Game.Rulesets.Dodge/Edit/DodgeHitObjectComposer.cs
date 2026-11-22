@@ -34,6 +34,30 @@ namespace osu.Game.Rulesets.Dodge.Edit
         [Cached]
         public readonly DodgeGridToolboxGroup GridToolbox = new DodgeGridToolboxGroup();
 
+        private DodgeObjectAppearance? copiedAppearance;
+
+        public bool CanCopyAppearance => EditorBeatmap.SelectedHitObjects.Count == 1
+                                         && EditorBeatmap.SelectedHitObjects[0] is DodgeHitObject;
+
+        public bool CanPasteAppearance => copiedAppearance != null && EditorBeatmap.SelectedHitObjects.OfType<DodgeHitObject>().Any();
+
+        public void CopyAppearance()
+        {
+            if (CanCopyAppearance)
+                copiedAppearance = DodgeObjectAppearance.Capture((DodgeHitObject)EditorBeatmap.SelectedHitObjects[0]);
+        }
+
+        public void PasteAppearance()
+        {
+            if (copiedAppearance == null || !CanPasteAppearance)
+                return;
+            EditorBeatmap.PerformOnSelection(item =>
+            {
+                if (item is DodgeHitObject target)
+                    copiedAppearance.ApplyTo(target);
+            });
+        }
+
         private DodgeBulletToolboxGroup bulletToolbox = null!;
         private DodgeEmitterToolboxGroup emitterToolbox = null!;
         private DodgeBeamToolboxGroup beamToolbox = null!;
@@ -46,9 +70,18 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
         private DodgeEditorGrid positionSnapGrid = null!;
         private ToolboxContext lastToolboxContext;
+        private readonly BindableBool[] timelineLaneVisibility = Enumerable.Range(0, 6).Select(_ => new BindableBool(true)).ToArray();
+
+        public BindableBool GetTimelineLaneVisibility(int index) => timelineLaneVisibility[index];
+
+        public bool IsTimelineLaneVisible(int index) => timelineLaneVisibility[index].Value;
+
+        public bool IsCanvasPosition(Vector2 screenSpacePosition)
+            => ReceivePositionalInputAt(screenSpacePosition)
+               && !LeftToolbox.Contains(screenSpacePosition) && !RightToolbox.Contains(screenSpacePosition);
 
         public override bool CursorInPlacementArea
-            => BlueprintContainer.ReceivePositionalInputAt(InputManager.CurrentState.Mouse.Position);
+            => !EditorSettings.NavigateEditorView.Value && IsCanvasPosition(InputManager.CurrentState.Mouse.Position);
 
         public DodgeHitObjectComposer(Ruleset ruleset)
             : base(ruleset)
@@ -58,7 +91,29 @@ namespace osu.Game.Rulesets.Dodge.Edit
         [BackgroundDependencyLoader]
         private void load()
         {
+            LeftToolbox.Add(new DodgeTimelineFilterToolboxGroup { Depth = -1 });
+            LeftToolbox.Add(new EditorToolboxGroup(Localisation.DodgeEditorStrings.View)
+            {
+                Depth = -2,
+                Child = new OsuCheckbox
+                {
+                    RelativeSizeAxes = Axes.X,
+                    LabelText = Localisation.DodgeEditorStrings.NavigateEditorView,
+                    Current = EditorSettings.NavigateEditorView,
+                },
+            });
+            for (int index = 0; index < timelineLaneVisibility.Length; index++)
+            {
+                int lane = index;
+                timelineLaneVisibility[index].BindValueChanged(value =>
+                {
+                    if (!value.NewValue)
+                        EditorBeatmap.SelectedHitObjects.RemoveAll(item => GetTimelineLane((DodgeHitObject)item).Index == lane);
+                });
+            }
+
             RightToolbox.Add(new DodgeEditorContextToolboxGroup());
+            RightToolbox.Add(new DodgeAppearanceToolboxGroup());
             RightToolbox.Add(cameraToolbox = new DodgeCameraToolboxGroup());
             RightToolbox.Add(triggerToolbox = new DodgeTriggerToolboxGroup());
             RightToolbox.Add(timingToolbox = new DodgeTimingToolboxGroup
@@ -68,6 +123,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
             RightToolbox.Add(bulletToolbox = new DodgeBulletToolboxGroup());
             RightToolbox.Add(emitterToolbox = new DodgeEmitterToolboxGroup());
             RightToolbox.Add(beamToolbox = new DodgeBeamToolboxGroup());
+            RightToolbox.Add(new DodgeLoopToolboxGroup());
             RightToolbox.Add(transformToolbox = new DodgeTransformToolboxGroup
             {
                 RotationHandler = BlueprintContainer.SelectionHandler.RotationHandler,
@@ -114,12 +170,23 @@ namespace osu.Game.Rulesets.Dodge.Edit
         protected override void LoadComplete()
         {
             base.LoadComplete();
+            EditorSettings.NavigateEditorView.BindValueChanged(value =>
+            {
+                if (value.NewValue)
+                {
+                    // Panning must never commit an unfinished placement.
+                    BlueprintContainer.CurrentPlacement?.EndPlacement(false);
+                    SetSelectTool();
+                }
+            });
             updateToolboxContext(true);
         }
 
         protected override void Update()
         {
             base.Update();
+            if (BlueprintContainer.CurrentTool is not SelectTool)
+                EditorSettings.NavigateEditorView.Value = false;
             updateToolboxContext(false);
         }
 
@@ -218,6 +285,9 @@ namespace osu.Game.Rulesets.Dodge.Edit
             _ => throw new System.ArgumentOutOfRangeException(nameof(index)),
         };
 
+        public float GetTimelineMinimumMarkerWidth(osu.Game.Rulesets.Objects.HitObject hitObject)
+            => hitObject is DodgeTrigger || hitObject is DodgeCameraChange { Mode: not DodgeCameraMode.Scroll } ? 24 : 9;
+
         public object? GetTimelineGroupKey(osu.Game.Rulesets.Objects.HitObject hitObject)
             => hitObject is DodgeBullet or DodgeEmitter ? new TimelineStartTimeGroup(System.Math.Round(hitObject.StartTime, 3)) : null;
 
@@ -225,11 +295,13 @@ namespace osu.Game.Rulesets.Dodge.Edit
         {
             switch (hitObject)
             {
+                // ContinueUntilExit extends gameplay lifetime, not the authored
+                // duration or its resize handle. Keep these coordinate systems separate.
                 case DodgeBullet bullet:
-                    return bullet.MovementEndTime;
+                    return bullet.EndTime;
 
                 case DodgeEmitter emitter:
-                    return emitter.ContinueUntilExit ? emitter.MovementEndTime : emitter.GetEndTime();
+                    return emitter.EndTime;
 
                 case DodgeArenaChange arena:
                     return arena.EndTime;

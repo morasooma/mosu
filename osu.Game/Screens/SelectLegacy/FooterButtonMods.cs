@@ -7,13 +7,16 @@ using osu.Game.Screens.Play.HUD;
 using osu.Game.Rulesets.Mods;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.UserInterface;
+using osu.Game.Beatmaps;
 using osu.Game.Configuration;
+using osu.Game.Rulesets;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osuTK;
@@ -22,9 +25,6 @@ using osu.Game.Input.Bindings;
 using osu.Game.Localisation;
 using osu.Game.Utils;
 
-using osu.Game.Beatmaps;
-using osu.Game.Rulesets;
-using osu.Game.Rulesets.Scoring;
 using osu.Game.Screens.Select;
 
 namespace osu.Game.Screens.SelectLegacy
@@ -44,14 +44,22 @@ namespace osu.Game.Screens.SelectLegacy
 
         private ModSettingChangeTracker? modSettingChangeTracker;
 
-        private Color4 lowMultiplierColour;
-        private Color4 highMultiplierColour;
-
         [Resolved]
-        private IBindable<RulesetInfo> ruleset { get; set; } = null!;
+        private OsuGameBase game { get; set; } = null!;
 
         [Resolved]
         private IBindable<WorkingBeatmap> beatmap { get; set; } = null!;
+
+        private IBindable<RulesetInfo> ruleset = null!;
+
+        [Resolved]
+        private BeatmapDifficultyCache difficultyCache { get; set; } = null!;
+
+        private CancellationTokenSource? difficultyCancellation;
+        private IBindable<StarDifficulty>? starDifficulty;
+
+        private Color4 lowMultiplierColour;
+        private Color4 highMultiplierColour;
 
         public FooterButtonMods()
         {
@@ -72,7 +80,7 @@ namespace osu.Game.Screens.SelectLegacy
             DeselectedColour = SelectedColour.Opacity(0.5f);
             lowMultiplierColour = colours.Green;
             highMultiplierColour = colours.Red;
-            Text = @"mods";
+            Text = global::osu.Game.Localisation.ClientTranslationStrings.J5277;
             Hotkey = GlobalAction.ToggleModSelection;
 
             ButtonContentContainer.AddRange(new Drawable[]
@@ -116,7 +124,9 @@ namespace osu.Game.Screens.SelectLegacy
         {
             base.LoadComplete();
 
-            beatmap.BindValueChanged(_ => updateMultiplierText());
+            // Resolved bindables are already rebound; a second copy loses the intermediate weak binding.
+            ruleset = game.Ruleset.GetBoundCopy();
+            beatmap.BindValueChanged(_ => updateStarDifficulty(), true);
             ruleset.BindValueChanged(_ => updateMultiplierText());
 
             Current.BindValueChanged(mods =>
@@ -133,10 +143,31 @@ namespace osu.Game.Screens.SelectLegacy
             }, true);
         }
 
+        private void updateStarDifficulty()
+        {
+            difficultyCancellation?.Cancel();
+            difficultyCancellation?.Dispose();
+            starDifficulty?.UnbindAll();
+            difficultyCancellation = new CancellationTokenSource();
+            starDifficulty = difficultyCache.GetBindableDifficulty(beatmap.Value.BeatmapInfo, difficultyCancellation.Token,
+                computationDelay: osu.Game.Screens.Select.SongSelect.DIFFICULTY_CALCULATION_DEBOUNCE, calculatePerformance: false);
+            starDifficulty.BindValueChanged(_ => updateMultiplierText(), true);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            difficultyCancellation?.Cancel();
+            difficultyCancellation?.Dispose();
+            starDifficulty?.UnbindAll();
+            modSettingChangeTracker?.Dispose();
+            base.Dispose(isDisposing);
+        }
+
         private void updateMultiplierText() => Schedule(() =>
         {
-            var scoreMultiplierCalculator = ruleset.Value?.CreateInstance().CreateScoreMultiplierCalculator(new ScoreMultiplierContext(beatmap.Value.BeatmapInfo.Difficulty));
-            double multiplier = scoreMultiplierCalculator?.CalculateFor(Current.Value ?? System.Array.Empty<Mod>()) ?? 1;
+            double multiplier = osu.Game.Online.MosuServerEnvironment.UsesStableProtocol && Current.Value != null
+                ? ModUtils.CalculateScoreMultiplierForDisplay(ruleset.Value.CreateInstance(), beatmap.Value.BeatmapInfo, Current.Value)
+                : Current.Value?.Aggregate(1.0, (current, mod) => current * mod.ScoreMultiplier) ?? 1;
             MultiplierText.Text = multiplier == 1 ? string.Empty : ModUtils.FormatScoreMultiplier(multiplier);
 
             if (multiplier > 1)
@@ -151,7 +182,11 @@ namespace osu.Game.Screens.SelectLegacy
             else
                 modDisplay.FadeOut();
 
-            bool anyUnrankedMods = Current.Value?.Any(m => !m.Ranked) == true;
+            bool anyUnrankedMods = Current.Value != null &&
+                                   (!ModPerformancePointHelper.ModsAwardPerformancePoints(beatmap.Value.BeatmapInfo, Current.Value) ||
+                                    !osu.Game.Online.MosuServerEnvironment.UsesStableProtocol && Current.Value.Any(m => !m.Ranked) ||
+                                    !ModPerformancePointHelper.IsWithinRankedStarLimit(ruleset.Value, Current.Value,
+                                        starDifficulty?.Value.Stars ?? beatmap.Value.BeatmapInfo.StarRating));
             UnrankedBadge.FadeTo(anyUnrankedMods ? 1 : 0);
         });
     }

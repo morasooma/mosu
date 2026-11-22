@@ -20,6 +20,7 @@ namespace osu.Game.Skinning
         internal static readonly Guid ARGON_SKIN = new Guid("CFFA69DE-B3E3-4DEE-8563-3C4F425C05D0");
         internal static readonly Guid ARGON_PRO_SKIN = new Guid("9FC9CF5D-0F16-4C71-8256-98868321AC43");
         internal static readonly Guid CLASSIC_SKIN = new Guid("81F02CD3-EEC6-4865-AC23-FAE26A386187");
+        // Retained only to recognise saved selections of the removed built-in skin.
         internal static readonly Guid RETRO_SKIN = new Guid("0555C76A-CC6B-4BB4-9548-DF76BA72EF25");
         internal static readonly Guid MORASOOMA_SKIN = new Guid("901FEED5-631F-4528-AE63-6C9735B08265");
         internal static readonly Guid RANDOM_SKIN = new Guid("D39DFEFB-477C-4372-B1EA-2BCEA5FB8908");
@@ -43,6 +44,13 @@ namespace osu.Game.Skinning
 
         public virtual Skin CreateInstance(IStorageResourceProvider resources)
         {
+            if (ID == RETRO_SKIN)
+                return new MorasoomaSkin(resources);
+
+            // A personal editable copy must keep its files, not become a different built-in skin.
+            if (InstantiationInfo?.Split(',')[0].Trim() == "osu.Game.Skinning.RetroSkin")
+                return new LegacySkin(this, resources);
+
             var type = string.IsNullOrEmpty(InstantiationInfo)
                 // handle the case of skins imported before InstantiationInfo was added.
                 ? typeof(LegacySkin)
@@ -85,8 +93,21 @@ namespace osu.Game.Skinning
             return ID == other.ID;
         }
 
+        /// <summary>
+        /// Built-in names are presentation, not a migration of saved skin metadata.
+        /// Keep original credits available in Creator and licence notices; never
+        /// rewrite the names or authors of imported/editable user skins.
+        /// </summary>
         public override string ToString()
         {
+            if (Protected)
+            {
+                if (ID == MORASOOMA_SKIN) return "Morasooma";
+                if (ID == ARGON_SKIN) return "Argon";
+                if (ID == ARGON_PRO_SKIN) return "Argon Pro";
+                if (ID == TRIANGLES_SKIN) return "Triangles";
+                if (ID == CLASSIC_SKIN) return "Classic";
+            }
             string author = string.IsNullOrEmpty(Creator) ? string.Empty : $"({Creator})";
             return $"{Name} {author}".Trim();
         }

@@ -123,6 +123,49 @@ namespace osu.Game.Tests.Visual.Online
             assertVisiblePanelCount<UserBrickPanel>(3);
         }
 
+        [TestCase(OverlayPanelDisplayStyle.Card, false)]
+        [TestCase(OverlayPanelDisplayStyle.List, false)]
+        [TestCase(OverlayPanelDisplayStyle.Brick, false)]
+        [TestCase(OverlayPanelDisplayStyle.Card, true)]
+        [TestCase(OverlayPanelDisplayStyle.List, true)]
+        [TestCase(OverlayPanelDisplayStyle.Brick, true)]
+        public void TestRelationsWithoutProfiles(OverlayPanelDisplayStyle style, bool onlyIncomplete)
+        {
+            AddStep("set friends with missing profile", () =>
+            {
+                var friends = ((DummyAPIAccess)API).LocalUserState.Friends;
+                friends.Clear();
+                friends.Add(new APIRelation { TargetID = 727, RelationType = RelationType.Friend });
+                if (!onlyIncomplete)
+                {
+                    friends.AddRange(getUsers().Select(u => new APIRelation
+                    {
+                        TargetID = u.OnlineID,
+                        TargetUser = u,
+                        RelationType = RelationType.Friend
+                    }));
+                }
+                this.ChildrenOfType<UserListToolbar>().Single().DisplayStyle.Value = style;
+            });
+
+            // Loading must finish even when there are no renderable profiles.
+            AddUntilStep("list loaded", () => !this.ChildrenOfType<FriendDisplay>().Single().Loading.Value);
+            assertVisiblePanelCount<UserPanel>(onlyIncomplete ? 0 : 3);
+            AddAssert("relationship retained", () => API.LocalUserState.Friends.Any(f => f.TargetID == 727));
+
+            AddStep("complete missing profile", () =>
+            {
+                ((DummyAPIAccess)API).LocalUserState.Friends[0] = new APIRelation
+                {
+                    TargetID = 727,
+                    RelationType = RelationType.Friend,
+                    TargetUser = new APIUser { Id = 727, Username = "New friend" }
+                };
+            });
+            AddUntilStep("refreshed list loaded", () => !this.ChildrenOfType<FriendDisplay>().Single().Loading.Value);
+            assertVisiblePanelCount<UserPanel>(onlyIncomplete ? 1 : 4);
+        }
+
         [Test]
         public void TestOnlinePresence()
         {

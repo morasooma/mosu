@@ -25,7 +25,7 @@ namespace osu.Game.Rulesets.Osu.Mods
         public override string Acronym => "BM";
         public override IconUsage? Icon => OsuIcon.ModBloom;
         public override ModType Type => ModType.Fun;
-        public override LocalisableString Description => "The cursor blooms into.. a larger cursor!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3666;
         protected const float MIN_SIZE = 1;
         protected const float TRANSITION_DURATION = 100;
         public override Type[] IncompatibleMods => new[] { typeof(OsuModFlashlight), typeof(OsuModNoScope), typeof(ModTouchDevice) };
@@ -35,22 +35,14 @@ namespace osu.Game.Rulesets.Osu.Mods
 
         private float currentSize;
 
-        [SettingSource(
-            "Max size at combo",
-            "The combo count at which the cursor reaches its maximum size",
-            SettingControlType = typeof(SettingsSlider<int, MaxSizeComboSlider>)
-        )]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3667), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3668), SettingControlType = typeof(SettingsSlider<int, MaxSizeComboSlider>))]
         public BindableInt MaxSizeComboCount { get; } = new BindableInt(50)
         {
             MinValue = 5,
             MaxValue = 100,
         };
 
-        [SettingSource(
-            "Final size multiplier",
-            "The multiplier applied to cursor size when combo reaches maximum",
-            SettingControlType = typeof(SettingsSlider<float, RoundedSliderBar<float>>)
-        )]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3669), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3670), SettingControlType = typeof(SettingsSlider<float, RoundedSliderBar<float>>))]
         public BindableFloat MaxCursorSize { get; } = new BindableFloat(10f)
         {
             MinValue = 5f,

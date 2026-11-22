@@ -11,6 +11,7 @@ using osu.Framework.Graphics.Shapes;
 using osu.Framework.Input.Events;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Screens.Footer;
 
 namespace osu.Game.Overlays.Mods
@@ -65,11 +66,11 @@ namespace osu.Game.Overlays.Mods
         // Therefore, dimming must be managed locally, since DimMainContent dims the entire screen layer.
         protected sealed override bool DimMainContent => false;
 
-        protected ShearedOverlayContainer(OverlayColourScheme colourScheme)
+        protected ShearedOverlayContainer(OverlayColourScheme colourScheme, ThemeSurfaceContext? surfaceContext = null)
         {
             RelativeSizeAxes = Axes.Both;
 
-            ColourProvider = new OverlayColourProvider(colourScheme);
+            ColourProvider = new OverlayColourProvider(colourScheme, surfaceContext);
         }
 
         [BackgroundDependencyLoader]

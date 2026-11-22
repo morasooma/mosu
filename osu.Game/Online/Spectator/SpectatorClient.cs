@@ -56,6 +56,7 @@ namespace osu.Game.Online.Spectator
         private bool isPlaying { get; set; }
 
         private bool loggedFramesOutsideGameplayScope;
+        private long playSessionId;
 
         /// <summary>
         /// Called whenever new frames arrive from the server.
@@ -99,12 +100,14 @@ namespace osu.Game.Online.Spectator
         private readonly List<TagCoopReplayFrame> pendingTagCoopFrames = new List<TagCoopReplayFrame>();
         private bool replaceTagCoopReplayOnNextBundle;
         private TaskCompletionSource<bool>? replacementTagCoopBundleSent;
+        private FrameDataBundle? replacementTagCoopFinalBundle;
         private Score? nextTagCoopScore;
         private TagCoopReplayPlayer[] nextTagCoopPlayers = Array.Empty<TagCoopReplayPlayer>();
 
         private double lastPurgeTime;
 
         private Task? lastSend;
+        private TaskCompletionSource<bool>? frameDrain;
 
         private const int max_pending_frames = 30;
 
@@ -222,6 +225,7 @@ namespace osu.Game.Online.Spectator
 
                 // transfer state at point of beginning play
                 currentState.BeatmapID = score.ScoreInfo.BeatmapInfo!.OnlineID;
+                currentState.BeatmapChecksum = score.ScoreInfo.BeatmapInfo.MD5Hash;
                 currentState.RulesetID = score.ScoreInfo.RulesetID;
                 currentState.Mods = score.ScoreInfo.Mods.Select(m => new APIMod(m)).ToArray();
                 currentState.State = SpectatedUserState.Playing;
@@ -233,8 +237,9 @@ namespace osu.Game.Online.Spectator
                 nextTagCoopPlayers = Array.Empty<TagCoopReplayPlayer>();
 
                 setStateForScore(scoreToken, state, score);
+                long sessionId = ++playSessionId;
 
-                BeginPlayingInternal(currentScoreToken, currentState).ContinueWith(t =>
+                beginAfterStableFrames(currentScoreToken, SpectatorSnapshot.State(currentState)).ContinueWith(t =>
                 {
                     bool success = t.GetResultSafely();
 
@@ -242,6 +247,10 @@ namespace osu.Game.Online.Spectator
                     {
                         Schedule(() =>
                         {
+                            // Worker/network completion may arrive after EndPlaying/retry.
+                            // A failed old begin must not erase the new session's score/frames.
+                            if (!isPlaying || playSessionId != sessionId)
+                                return;
                             if (IsConnected.Value)
                                 Logger.Log($"Clearing {nameof(SpectatorClient)} state due to failed {nameof(BeginPlayingInternal)} call.");
 
@@ -329,14 +338,36 @@ namespace osu.Game.Online.Spectator
                 pendingFrames.Clear();
                 pendingTagCoopFrames.Clear();
 
-                pendingTagCoopFrames.AddRange(playerFrames);
                 replaceTagCoopReplayOnNextBundle = true;
                 replacementTagCoopBundleSent = completion;
 
+                // Keep each invocation bounded, just like the live stream. A whole native
+                // replay exceeds SignalR's receive limit even for fairly short maps.
+                foreach (TagCoopReplayFrame frame in playerFrames)
+                {
+                    pendingTagCoopFrames.Add(frame);
+                    if (pendingTagCoopFrames.Count >= max_pending_frames)
+                        purgePendingFrames();
+                }
+
                 foreach (ReplayFrame frame in compatibilityFrames)
+                {
                     appendCompatibilityFrame(frame);
+                    if (pendingFrames.Count >= max_pending_frames)
+                        purgePendingFrames();
+                }
 
                 purgePendingFrames();
+
+                // The replacement flag belongs only to the first packet (which clears live
+                // samples). Completion belongs to the last packet, after all tracks arrive.
+                replacementTagCoopFinalBundle = pendingFrameBundles.LastOrDefault();
+                if (replacementTagCoopFinalBundle == null)
+                {
+                    replaceTagCoopReplayOnNextBundle = false;
+                    replacementTagCoopBundleSent = null;
+                    completion.TrySetResult(false);
+                }
             }
 
             if (ThreadSafety.IsUpdateThread)
@@ -361,20 +392,75 @@ namespace osu.Game.Online.Spectator
                 if (currentScore != state.Score)
                     return;
 
-                if (pendingFrames.Count > 0 || pendingTagCoopFrames.Count > 0)
-                    purgePendingFrames();
-
-                clearScoreState();
-
-                if (state.HasPassed)
-                    currentState.State = SpectatedUserState.Passed;
-                else if (state.HasFailed)
-                    currentState.State = SpectatedUserState.Failed;
-                else
-                    currentState.State = SpectatedUserState.Quit;
-
-                EndPlayingInternal(currentState).FireAndForget();
+                endPlaying(state.HasPassed
+                    ? SpectatedUserState.Passed
+                    : state.HasFailed
+                        ? SpectatedUserState.Failed
+                        : SpectatedUserState.Quit);
             });
+        }
+
+        private void endPlaying(SpectatedUserState completedState)
+        {
+            if (pendingFrames.Count > 0 || pendingTagCoopFrames.Count > 0)
+                purgePendingFrames();
+
+            clearScoreState();
+            currentState.State = completedState;
+
+            // The next play may begin immediately. Copy the mutable state before sending it asynchronously so
+            // BeginPlaying cannot overwrite the old session's final beatmap, mods, or result.
+            var finalState = new SpectatorState
+            {
+                BeatmapID = currentState.BeatmapID,
+                BeatmapChecksum = currentState.BeatmapChecksum,
+                RulesetID = currentState.RulesetID,
+                Mods = currentState.Mods.ToArray(),
+                State = currentState.State,
+                MaximumStatistics = currentState.MaximumStatistics == null
+                    ? new Dictionary<HitResult, int>()
+                    : new Dictionary<HitResult, int>(currentState.MaximumStatistics),
+                TagCoopPlayers = currentState.TagCoopPlayers?.ToArray() ?? Array.Empty<TagCoopReplayPlayer>(),
+            };
+
+            if (MosuServerEnvironment.UsesStableProtocol && pendingFrameBundles.Count > 0)
+            {
+                frameDrain ??= new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                stableEnd = finishStableAfterFrames(finalState, frameDrain.Task);
+                stableEnd.FireAndForget();
+            }
+            else
+            {
+                var end = EndPlayingInternal(finalState);
+                if (MosuServerEnvironment.UsesStableProtocol)
+                    stableEnd = end;
+                end.FireAndForget();
+            }
+        }
+
+        private Task stableEnd = Task.CompletedTask;
+
+        private async Task<bool> beginAfterStableFrames(long? token, SpectatorState state)
+        {
+            if (MosuServerEnvironment.UsesStableProtocol)
+            {
+                try
+                {
+                    await stableEnd.ConfigureAwait(false);
+                }
+                catch (Exception e)
+                {
+                    // A failed previous stream must not prevent starting a new play session.
+                    Logger.Log($"Previous stable spectator session failed to finish: {e}");
+                }
+            }
+            return await BeginPlayingInternal(token, state).ConfigureAwait(false);
+        }
+
+        private async Task finishStableAfterFrames(SpectatorState finalState, Task drained)
+        {
+            await drained.ConfigureAwait(false);
+            await EndPlayingInternal(finalState).ConfigureAwait(false);
         }
 
         private void setStateForScore(long? scoreToken, GameplayState state, Score score)
@@ -515,8 +601,6 @@ namespace osu.Game.Online.Spectator
             if (!pendingFrameBundles.TryPeek(out var bundle))
                 return;
 
-            bool completesTagCoopReplacement = bundle.ReplaceTagCoopReplay;
-
             TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
 
             lastSend = tcs.Task;
@@ -524,19 +608,28 @@ namespace osu.Game.Online.Spectator
             SendFramesInternal(bundle).ContinueWith(t =>
             {
                 // Handle exception outside of `Schedule` to ensure it doesn't go unobserved.
-                bool wasSuccessful = t.Exception == null;
+                bool wasSuccessful = t.Status == TaskStatus.RanToCompletion;
+                if (t.Exception is { } exception)
+                    Logger.Log($"Spectator frame send failed: {exception}");
 
                 return Schedule(() =>
                 {
-                    // If the last bundle send wasn't successful, try again without dequeuing.
-                    if (wasSuccessful)
+                    // Stable frames are transient: retrying a failed bundle indefinitely would block
+                    // completion and every subsequent play session. Keep the existing retry policy for lazer.
+                    if (wasSuccessful || MosuServerEnvironment.UsesStableProtocol)
                     {
                         pendingFrameBundles.Dequeue();
-
-                        if (completesTagCoopReplacement)
+                        if (pendingFrameBundles.Count == 0)
                         {
-                            replacementTagCoopBundleSent?.TrySetResult(true);
+                            frameDrain?.TrySetResult(true);
+                            frameDrain = null;
+                        }
+
+                        if (ReferenceEquals(bundle, replacementTagCoopFinalBundle))
+                        {
+                            replacementTagCoopBundleSent?.TrySetResult(wasSuccessful);
                             replacementTagCoopBundleSent = null;
+                            replacementTagCoopFinalBundle = null;
                         }
                     }
 

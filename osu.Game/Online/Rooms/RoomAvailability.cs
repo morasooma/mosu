@@ -9,10 +9,10 @@ namespace osu.Game.Online.Rooms
     {
         Public,
 
-        [Description(@"Friends Only")]
+        [Description(@"Friends Only"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3856))]
         FriendsOnly,
 
-        [Description(@"Invite Only")]
+        [Description(@"Invite Only"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3857))]
         InviteOnly,
     }
 }

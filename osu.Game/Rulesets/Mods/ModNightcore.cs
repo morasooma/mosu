@@ -27,10 +27,10 @@ namespace osu.Game.Rulesets.Mods
         public override string Acronym => "NC";
         public override IconUsage? Icon => OsuIcon.ModNightcore;
         public override ModType Type => ModType.DifficultyIncrease;
-        public override LocalisableString Description => "Uguuuuuuuu...";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4241;
         public override bool Ranked => UsesDefaultConfiguration;
 
-        [SettingSource("Speed increase", "The actual increase to apply", SettingControlType = typeof(MultiplierSettingsSlider))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4212), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4213), SettingControlType = typeof(MultiplierSettingsSlider))]
         public override BindableNumber<double> SpeedChange { get; } = new BindableDouble(1.5)
         {
             MinValue = 1.01,

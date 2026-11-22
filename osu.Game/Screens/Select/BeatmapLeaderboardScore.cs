@@ -117,6 +117,13 @@ namespace osu.Game.Screens.Select
         private Container rankLabelStandalone = null!;
         private Container rankLabelOverlay = null!;
 
+        private Container mainContainer = null!;
+        private Container centreMaskingContainer = null!;
+        private Container avatarMaskingContainer = null!;
+        private Container totalScoreMaskingContainer = null!;
+        private IBindable<float>? radiusBindable;
+        private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
+
         private readonly bool sheared;
 
         public override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
@@ -146,13 +153,17 @@ namespace osu.Game.Screens.Select
             backgroundColour = colourProvider.Background3;
             totalScoreBackgroundGradient = ColourInfo.GradientHorizontal(backgroundColour.Opacity(0), backgroundColour);
 
-            Child = new Container
+            Child = mainContainer = new Container
             {
                 Masking = true,
                 CornerRadius = corner_radius,
                 RelativeSizeAxes = Axes.Both,
                 Children = new Drawable[]
                 {
+                    new osu.Game.Graphics.Containers.SongSelectBackdropSurface
+                    {
+                        GetCornerRadius = () => mainContainer.CornerRadius,
+                    },
                     background = new Box
                     {
                         Alpha = 0.4f,
@@ -168,7 +179,7 @@ namespace osu.Game.Screens.Select
                             highlightGradient = new Container
                             {
                                 RelativeSizeAxes = Axes.Both,
-                                Padding = new MarginPadding { Right = -10f },
+                                Padding = new MarginPadding { Right = -HEIGHT / 2f },
                                 Alpha = Highlight != null ? 1 : 0,
                                 Colour = getHighlightColour(Highlight),
                                 Child = new Box { RelativeSizeAxes = Axes.Both },
@@ -183,7 +194,7 @@ namespace osu.Game.Screens.Select
                     {
                         Name = @"Centre container",
                         RelativeSizeAxes = Axes.Both,
-                        Child = new Container
+                        Child = centreMaskingContainer = new Container
                         {
                             Masking = true,
                             CornerRadius = corner_radius,
@@ -205,6 +216,16 @@ namespace osu.Game.Screens.Select
                                     Origin = Anchor.BottomLeft,
                                     Colour = ColourInfo.GradientHorizontal(Colour4.White.Opacity(0.5f), Colour4.FromHex(@"222A27").Opacity(1)),
                                 },
+                                avatarHighlightGradient = new Container
+                                {
+                                    // The centre background covers the rank highlight. Continue it
+                                    // inside this mask so rounded avatars have colour behind them.
+                                    RelativeSizeAxes = Axes.Y,
+                                    Width = HEIGHT / 2f,
+                                    Alpha = Highlight != null ? 1 : 0,
+                                    Colour = getHighlightColour(Highlight),
+                                    Child = new Box { RelativeSizeAxes = Axes.Both },
+                                },
                                 new GridContainer
                                 {
                                     RelativeSizeAxes = Axes.Both,
@@ -218,7 +239,7 @@ namespace osu.Game.Screens.Select
                                     {
                                         new Drawable[]
                                         {
-                                            new Container
+                                            avatarMaskingContainer = new Container
                                             {
                                                 AutoSizeAxes = Axes.Both,
                                                 CornerRadius = corner_radius,
@@ -406,7 +427,7 @@ namespace osu.Game.Screens.Select
                                     Anchor = Anchor.CentreLeft,
                                     Origin = Anchor.CentreLeft,
                                     Padding = new MarginPadding { Right = grade_width },
-                                    Child = new Container
+                                    Child = totalScoreMaskingContainer = new Container
                                     {
                                         RelativeSizeAxes = Axes.Both,
                                         Masking = true,
@@ -462,6 +483,9 @@ namespace osu.Game.Screens.Select
                     }
                 }
             };
+            // These icons depend on the score, not the selected scoring mode. Create
+            // them while the row is loading off Update, rather than in LoadComplete.
+            updateModDisplay();
             innerAvatar.OnLoadComplete += d => d.FadeInFromZero(200);
         }
 
@@ -498,8 +522,28 @@ namespace osu.Game.Screens.Select
                         break;
                 }
 
-                updateModDisplay();
             }, true);
+
+            radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Card, corner_radius);
+            radiusBindable.BindValueChanged(_ => updateRadius(), true);
+            disableShear.BindValueChanged(_ => updateRadius(), true);
+        }
+
+        private Container avatarHighlightGradient = null!;
+
+        private void updateRadius()
+        {
+            float target = radiusBindable?.Value ?? corner_radius;
+            float maxSafe = sheared && !disableShear.Value ? 12f : 25f;
+            float radius = Math.Min(target, maxSafe);
+            if (mainContainer != null)
+                mainContainer.CornerRadius = radius;
+            if (centreMaskingContainer != null)
+                centreMaskingContainer.CornerRadius = radius;
+            if (avatarMaskingContainer != null)
+                avatarMaskingContainer.CornerRadius = radius;
+            if (totalScoreMaskingContainer != null)
+                totalScoreMaskingContainer.CornerRadius = radius;
         }
 
         private void updateModDisplay()
@@ -507,7 +551,7 @@ namespace osu.Game.Screens.Select
             if (Score.Mods.Length > 0)
             {
                 modsContainer.Padding = new MarginPadding { Top = 4f };
-                modsContainer.ChildrenEnumerable = Score.Mods.AsOrdered().Select(mod => new ModIcon(mod)
+                modsContainer.ChildrenEnumerable = Score.Mods.AsVisible().AsOrdered().Select(mod => new ModIcon(mod)
                 {
                     Scale = new Vector2(0.3f),
                     // trim mod icon height down to its true height for alignment purposes.
@@ -542,6 +586,7 @@ namespace osu.Game.Screens.Select
             background.FadeColour(IsHovered ? backgroundColour.Lighten(0.2f) : backgroundColour, transition_duration, Easing.OutQuint);
             totalScoreBackground.FadeColour(IsHovered ? lightenedGradient : totalScoreBackgroundGradient, transition_duration, Easing.OutQuint);
             highlightGradient.FadeColour(getHighlightColour(Highlight, IsHovered ? 0.2f : 0), transition_duration, Easing.OutQuint);
+            avatarHighlightGradient.FadeColour(getHighlightColour(Highlight, IsHovered ? 0.2f : 0), transition_duration, Easing.OutQuint);
 
             if (IsHovered && currentMode != DisplayMode.Full)
                 rankLabelOverlay.FadeIn(transition_duration, Easing.OutQuint);

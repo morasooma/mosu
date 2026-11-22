@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions;
@@ -81,6 +82,32 @@ namespace osu.Game.Tests.Visual.Matchmaking
         }
 
         [Test]
+        public void TestJoiningQueueWaitsForPendingRoomLeave()
+        {
+            System.Threading.Tasks.TaskCompletionSource leaveAcknowledged = null!;
+            int previousJoins = 0;
+            AddStep("delay server leave acknowledgement", () =>
+            {
+                previousJoins = MultiplayerClient.MatchmakingJoinQueueCallCount;
+                leaveAcknowledged = new System.Threading.Tasks.TaskCompletionSource(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+                MultiplayerClient.LeaveRoomDelay = leaveAcknowledged.Task;
+                MultiplayerClient.LeaveRoom().FireAndForget();
+            });
+            AddUntilStep("local room cleared before server leave", () => MultiplayerClient.ClientRoom == null && MultiplayerClient.RoomJoined);
+            AddStep("join queue while leave is pending", () => QueueController.JoinQueue(new MatchmakingPool { Id = 1, RulesetId = 0 }));
+            AddWaitStep("allow queue request to run", 3);
+            AddStep("acknowledge leave and check admission was deferred", () =>
+            {
+                bool admissionDeferred = MultiplayerClient.MatchmakingJoinQueueCallCount == previousJoins;
+                leaveAcknowledged.SetResult();
+                Assert.That(admissionDeferred, Is.True);
+            });
+            AddUntilStep("server room left", () => !MultiplayerClient.RoomJoined);
+            AddUntilStep("queue joined after leave", () => MultiplayerClient.MatchmakingJoinQueueCallCount == previousJoins + 1);
+            AddStep("restore immediate leaves", () => MultiplayerClient.LeaveRoomDelay = System.Threading.Tasks.Task.CompletedTask);
+        }
+
+        [Test]
         public void TestBasic()
         {
             AddStep("change state to idle", () => QueueController.CurrentState.Value = ScreenQueue.MatchmakingScreenState.Idle);
@@ -92,6 +119,102 @@ namespace osu.Game.Tests.Visual.Matchmaking
 
             AddStep("change state to in room", () => QueueController.CurrentState.Value = ScreenQueue.MatchmakingScreenState.InRoom);
             AddStep("return state to idle", () => QueueController.CurrentState.Value = ScreenQueue.MatchmakingScreenState.Idle);
+        }
+
+        [Test]
+        public void TestPoolRefreshAfterLeavingIdleDoesNotUpdateDisposedDropdown()
+        {
+            FormDropdown<string> previousDropdown = null!;
+
+            AddUntilStep("exit quick play flow", () =>
+            {
+                if (Stack.CurrentScreen == null)
+                    return true;
+
+                Stack.Exit();
+                return false;
+            });
+            AddStep("load ranked screen", () => LoadScreen(new ScreenIntro(MatchmakingPoolType.RankedPlay)));
+            AddUntilStep("wait for ranked queue screen", () => queueScreen?.IsLoaded == true);
+            AddStep("change state to idle", () => QueueController.CurrentState.Value = ScreenQueue.MatchmakingScreenState.Idle);
+            AddStep("select standard pool", () => QueueController.SelectedPool.Value = new MatchmakingPool { Id = 10, RulesetId = 0 });
+            AddUntilStep("idle dropdown loaded", () => queueScreen!.ChildrenOfType<FormDropdown<string>>().SingleOrDefault()?.IsLoaded == true);
+            AddStep("leave idle content", () =>
+            {
+                previousDropdown = queueScreen!.ChildrenOfType<FormDropdown<string>>().Single();
+                QueueController.CurrentState.Value = ScreenQueue.MatchmakingScreenState.Queueing;
+            });
+            AddUntilStep("previous dropdown disposed", () => (bool)typeof(Drawable).GetProperty("IsDisposed", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(previousDropdown)!);
+            // OnResuming triggers this same notification when returning from ranked play.
+            AddStep("refresh pool while dropdown is gone", () => QueueController.SelectedPool.TriggerChange());
+            AddStep("change pool while dropdown is gone", () => QueueController.SelectedPool.Value = new MatchmakingPool { Id = 11, RulesetId = 3 });
+            AddStep("return to idle", () => QueueController.CurrentState.Value = ScreenQueue.MatchmakingScreenState.Idle);
+            AddUntilStep("new dropdown uses current pool", () => queueScreen!.ChildrenOfType<FormDropdown<string>>().SingleOrDefault()?.Items,
+                () => Is.EquivalentTo(new[] { "None", "HD", "CO", "FI" }));
+            AddAssert("new dropdown created", () => queueScreen!.ChildrenOfType<FormDropdown<string>>().Single() != previousDropdown);
+        }
+
+        private void loadRankedQueue()
+        {
+            AddUntilStep("exit quick play", () =>
+            {
+                if (Stack.CurrentScreen == null) return true;
+                Stack.Exit();
+                return false;
+            });
+            AddStep("load ranked queue", () => LoadScreen(new ScreenIntro(MatchmakingPoolType.RankedPlay)));
+            AddUntilStep("ranked queue loaded", () => queueScreen?.IsLoaded == true);
+            AddStep("ranked queue idle", () => QueueController.CurrentState.Value = ScreenQueue.MatchmakingScreenState.Idle);
+        }
+
+        [Test]
+        public void TestActiveMatchesBelowHistoryAndSnapshotsReplaceRows()
+        {
+            loadRankedQueue();
+            AddStep("send ongoing matches", () =>
+            {
+                lobbyStatus.ActiveMatches =
+                [
+                    new RankedPlayActiveMatch { RoomId = 100, UserIds = [1, 2], CurrentRound = 3, Stage = RankedPlayStage.CardPlay },
+                    new RankedPlayActiveMatch { RoomId = 100, UserIds = [1, 2], CurrentRound = 3, Stage = RankedPlayStage.CardPlay },
+                    new RankedPlayActiveMatch { RoomId = 101, UserIds = [3], Stage = RankedPlayStage.Gameplay },
+                    new RankedPlayActiveMatch { RoomId = 102, UserIds = [4, 5], Stage = RankedPlayStage.Ended },
+                ];
+                MultiplayerClient.MatchmakingLobbyStatusChanged(lobbyStatus).WaitSafely();
+            });
+            AddUntilStep("only one valid match displayed", () => queueScreen!.ChildrenOfType<RankedPlayActiveMatchRow>().Count(), () => Is.EqualTo(1));
+            AddAssert("active matches below history", () =>
+            {
+                var active = queueScreen!.ChildrenOfType<RankedPlayActiveMatches>().Single();
+                var history = queueScreen.ChildrenOfType<RankedPlayMatchPanel>().First();
+                return active.ScreenSpaceDrawQuad.TopLeft.Y > history.ScreenSpaceDrawQuad.TopLeft.Y;
+            });
+            AddAssert("watch button has visible geometry", () => queueScreen!.ChildrenOfType<RankedPlayActiveMatchRow>().Single().WatchButton.DrawWidth > 0);
+            AddStep("repeat snapshot", () => MultiplayerClient.MatchmakingLobbyStatusChanged(lobbyStatus).WaitSafely());
+            AddWaitStep("wait for repeated snapshot", 3);
+            AddAssert("not duplicated", () => queueScreen!.ChildrenOfType<RankedPlayActiveMatchRow>().Count() == 1);
+            AddStep("match ends", () =>
+            {
+                lobbyStatus.ActiveMatches = [];
+                MultiplayerClient.MatchmakingLobbyStatusChanged(lobbyStatus).WaitSafely();
+            });
+            AddUntilStep("ended match removed", () => !queueScreen!.ChildrenOfType<RankedPlayActiveMatchRow>().Any());
+            AddUntilStep("empty state displayed", () => queueScreen!.ChildrenOfType<RankedPlayActiveMatches>().Single().EmptyMessage.IsPresent);
+        }
+
+        [Test]
+        public void TestWatchActiveMatchOpensRankedSpectatorLoader()
+        {
+            loadRankedQueue();
+            AddStep("leave fixture room", () => MultiplayerClient.LeaveRoom().FireAndForget());
+            AddUntilStep("fixture room left", () => MultiplayerClient.ClientRoom == null);
+            AddStep("send ongoing match", () => MultiplayerClient.MatchmakingLobbyStatusChanged(new MatchmakingLobbyStatus
+            {
+                ActiveMatches = [new RankedPlayActiveMatch { RoomId = 100, UserIds = [1, 2], Stage = RankedPlayStage.Gameplay }]
+            }).WaitSafely());
+            AddUntilStep("match button loaded", () => queueScreen!.ChildrenOfType<RankedPlayActiveMatchRow>().SingleOrDefault()?.WatchButton.IsLoaded == true);
+            AddStep("click watch", () => queueScreen!.ChildrenOfType<RankedPlayActiveMatchRow>().Single().WatchButton.TriggerClick());
+            AddUntilStep("ranked spectator loader opened", () => Stack.CurrentScreen is osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.RankedPlaySpectatorLoader);
         }
 
         [Test]
@@ -135,6 +258,53 @@ namespace osu.Game.Tests.Visual.Matchmaking
         }
 
         [Test]
+        public void TestManagePoolUsesSelectedModeAndSharedContributors()
+        {
+            var requests = new System.Collections.Generic.List<int>();
+            osu.Game.Online.API.Requests.ReplaceRelaxRankedPoolRequest? saved = null;
+            AddStep("mock shared pools", () =>
+            {
+                var fallback = ((osu.Game.Online.API.DummyAPIAccess)API).HandleRequest;
+                ((osu.Game.Online.API.DummyAPIAccess)API).HandleRequest = request =>
+                {
+                    if (request is osu.Game.Online.API.Requests.GetRelaxRankedPoolRequest get)
+                    {
+                        requests.Add(get.RulesetId);
+                        get.TriggerSuccess(new osu.Game.Online.API.Requests.RelaxRankedPoolResponse
+                        {
+                            RulesetId = get.RulesetId,
+                            Revision = 7,
+                            CanManage = true,
+                            Editors = [new() { Id = 1, Username = "editor one" }, new() { Id = 2, Username = "editor two" }],
+                            Beatmaps = [new() { BeatmapId = 10, BeatmapsetId = 1, Title = "shared map", Version = "test", AddedBy = 2, AddedByUsername = "editor two" }],
+                        });
+                        return true;
+                    }
+                    if (request is osu.Game.Online.API.Requests.ReplaceRelaxRankedPoolRequest replace)
+                    {
+                        saved = replace;
+                        replace.TriggerSuccess(new osu.Game.Online.API.Requests.ReplaceRelaxRankedPoolResponse { Accepted = 1 });
+                        return true;
+                    }
+                    return fallback?.Invoke(request) ?? false;
+                };
+            });
+            loadRankedQueue();
+            AddStep("select standard", () => QueueController.SelectedPool.Value = new MatchmakingPool { Id = 10, RulesetId = 0, Name = "Standard" });
+            AddUntilStep("standard request sent", () => requests.Contains(0));
+            AddStep("select mania", () => QueueController.SelectedPool.Value = new MatchmakingPool { Id = 11, RulesetId = 3, Name = "Mania" });
+            AddUntilStep("mania request sent", () => requests.Contains(3));
+            AddStep("open manage pool", () => queueScreen!.CreateFooterButtons().Single(button => button.Text.ToString() == "Manage pool").TriggerClick());
+            AddUntilStep("mode editor opened", () => Stack.CurrentScreen is RelaxPoolEditorScreen { IsLoaded: true });
+            AddAssert("editor title uses selected mode", () => ((RelaxPoolEditorScreen)Stack.CurrentScreen).Title == "Mania pool");
+            AddUntilStep("playlist loaded", () => ((Drawable)Stack.CurrentScreen).ChildrenOfType<osu.Game.Screens.OnlinePlay.DrawableRoomPlaylistItem>().Any());
+            AddAssert("contributor retained", () => ((Drawable)Stack.CurrentScreen).ChildrenOfType<osu.Game.Screens.OnlinePlay.DrawableRoomPlaylistItem>().Single().PoolContributor == "editor two");
+            AddAssert("map uses mania ruleset", () => ((Drawable)Stack.CurrentScreen).ChildrenOfType<osu.Game.Screens.OnlinePlay.DrawableRoomPlaylistItem>().Single().Item.RulesetID == 3);
+            AddStep("save shared pool", () => ((RelaxPoolEditorScreen)Stack.CurrentScreen).CreateFooterButtons().Single(button => button.Text.ToString() == "Save pool").TriggerClick());
+            AddUntilStep("save uses selected mode and revision", () => saved is { RulesetId: 3, Revision: 7 } && saved.BeatmapIds.SequenceEqual(new[] { 10 }));
+        }
+
+        [Test]
         public void TestRankedPlayDoesNotShowQuickPlayNotice()
         {
             AddUntilStep("exit quick play flow", () =>
@@ -148,6 +318,28 @@ namespace osu.Game.Tests.Visual.Matchmaking
             AddStep("load ranked screen", () => LoadScreen(new ScreenIntro(MatchmakingPoolType.RankedPlay)));
             AddUntilStep("wait for ranked queue screen", () => queueScreen?.IsLoaded == true);
             AddAssert("quick play notice absent", () => !queueScreen!.ChildrenOfType<SpriteText>().Any(text => text.Text.ToString().Contains("continuous and rapid development")));
+            AddUntilStep("visual mod dropdown loaded", () => queueScreen!.ChildrenOfType<FormDropdown<string>>().SingleOrDefault()?.IsLoaded == true);
+            AddStep("select standard pool", () => QueueController.SelectedPool.Value = new MatchmakingPool { Id = 10, RulesetId = 0 });
+            AddUntilStep("standard offers HD and TC", () => queueScreen!.ChildrenOfType<FormDropdown<string>>().Single().Items,
+                () => Is.EquivalentTo(new[] { "None", "HD", "TC" }));
+            AddStep("choose TC", () => queueScreen!.ChildrenOfType<FormDropdown<string>>().Single().Current.Value = "TC");
+            AddStep("select mania pool", () => QueueController.SelectedPool.Value = new MatchmakingPool { Id = 11, RulesetId = 3 });
+            AddUntilStep("mania offers HD CO FI not TC", () => queueScreen!.ChildrenOfType<FormDropdown<string>>().Single().Items,
+                () => Is.EquivalentTo(new[] { "None", "HD", "CO", "FI" }));
+            AddAssert("unsupported TC reset", () => queueScreen!.ChildrenOfType<FormDropdown<string>>().Single().Current.Value == "None");
+            AddStep("select relax pool", () => QueueController.SelectedPool.Value = new MatchmakingPool { Id = 12, RulesetId = 4 });
+            AddUntilStep("relax offers standard visual mods", () => queueScreen!.ChildrenOfType<FormDropdown<string>>().Single().Items,
+                () => Is.EquivalentTo(new[] { "None", "HD", "TC" }));
+            AddAssert("visual mod dropdown width bounded", () => queueScreen!.ChildrenOfType<FormDropdown<string>>().Single().DrawWidth,
+                () => Is.EqualTo(400).Within(1));
+            AddAssert("visual mod dropdown inside screen", () =>
+            {
+                var control = queueScreen!.ChildrenOfType<FormDropdown<string>>().Single();
+                var bounds = control.ScreenSpaceDrawQuad.AABBFloat;
+                var screen = queueScreen!.ScreenSpaceDrawQuad.AABBFloat;
+                return bounds.Left >= screen.Left && bounds.Right <= screen.Right
+                       && bounds.Top >= screen.Top && bounds.Bottom <= screen.Bottom;
+            });
         }
 
         [Test]

@@ -7,7 +7,8 @@ using osu.Framework.Screens;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Screens;
-using osu.Game.Screens.Play;
+using osu.Game.Online.Metadata;
+using osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay;
 
 namespace osu.Game.Online.Chat
 {
@@ -18,6 +19,9 @@ namespace osu.Game.Online.Chat
 
         [Resolved]
         private IPerformFromScreenRunner performer { get; set; } = null!;
+
+        [Resolved]
+        private MetadataClient metadata { get; set; } = null!;
 
         private readonly Channel? target;
         private readonly string username;
@@ -35,7 +39,7 @@ namespace osu.Game.Online.Chat
             var request = new GetUserRequest(username);
             request.Success += user =>
             {
-                performer.PerformFromScreen(s => s.Push(new SoloSpectatorScreen(user)));
+                performer.PerformFromScreen(s => s.Push(RankedPlaySpectatorLoader.Create(user, metadata)));
                 Expire();
             };
             request.Failure += e =>

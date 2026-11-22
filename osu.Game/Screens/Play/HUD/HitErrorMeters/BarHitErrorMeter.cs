@@ -75,9 +75,9 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
         private Container colourBarsEarly = null!;
         private Container colourBarsLate = null!;
 
-        private JudgementsContainer judgementsContainer = null!;
+        private Container judgementsContainer = null!;
 
-        private ColourAxisContainer colourBars = null!;
+        private Container colourBars = null!;
         private Container arrowContainer = null!;
 
         private (HitResult result, double length)[] hitWindows = null!;
@@ -107,7 +107,7 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
                 Children = new Drawable[]
                 {
                     judgementLinePool,
-                    colourBars = new ColourAxisContainer
+                    colourBars = new Container
                     {
                         Name = "colour axis",
                         X = chevron_size,
@@ -136,7 +136,7 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
                                 RelativeSizeAxes = Axes.Y,
                                 Height = 0.5f,
                             },
-                            judgementsContainer = new JudgementsContainer
+                            judgementsContainer = new Container
                             {
                                 Name = "judgements",
                                 Anchor = Anchor.TopCentre,
@@ -294,7 +294,7 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
                 case CentreMarkerStyles.Circle:
                     centreMarkerDrawables = new Drawable[]
                     {
-                        new Circle
+                        new FastCircle
                         {
                             Name = "middle marker behind",
                             Colour = GetColourForHitResult(hitWindows.Last().result),
@@ -303,7 +303,7 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
                             Depth = float.MaxValue,
                             Size = new Vector2(centre_marker_size),
                         },
-                        new Circle
+                        new FastCircle
                         {
                             Name = "middle marker in front",
                             Colour = GetColourForHitResult(hitWindows.Last().result).Darken(0.3f),
@@ -394,14 +394,14 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
                 case LabelStyles.Text:
                     labelEarly.Child = new OsuSpriteText
                     {
-                        Text = "Early",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J5090,
                         Font = OsuFont.Default.With(size: 10),
                         Height = 12,
                     };
 
                     labelLate.Child = new OsuSpriteText
                     {
-                        Text = "Late",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J5091,
                         Font = OsuFont.Default.With(size: 10),
                         Height = 12,
                     };
@@ -522,72 +522,6 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
 
         private float getRelativeJudgementPosition(double value) => Math.Clamp((float)((value / maxHitWindow) + 1) / 2, 0, 1);
 
-        private partial class ColourAxisContainer : Container
-        {
-            private bool directChildrenLifeStable;
-
-            protected override bool CheckChildrenLife()
-            {
-                if (directChildrenLifeStable)
-                    return false;
-
-                bool aliveChanged = base.CheckChildrenLife();
-                directChildrenLifeStable = InternalChildren.Count == AliveInternalChildren.Count;
-                return aliveChanged;
-            }
-
-            protected override void AddInternal(Drawable drawable)
-            {
-                directChildrenLifeStable = false;
-                base.AddInternal(drawable);
-            }
-
-            protected override bool RemoveInternal(Drawable drawable, bool disposeImmediately)
-            {
-                directChildrenLifeStable = false;
-                return base.RemoveInternal(drawable, disposeImmediately);
-            }
-
-            protected override void ClearInternal(bool disposeChildren = true)
-            {
-                directChildrenLifeStable = false;
-                base.ClearInternal(disposeChildren);
-            }
-        }
-
-        private partial class JudgementsContainer : Container
-        {
-            private bool directChildrenLifeStable;
-
-            protected override bool CheckChildrenLife()
-            {
-                if (directChildrenLifeStable)
-                    return false;
-
-                bool aliveChanged = base.CheckChildrenLife();
-                directChildrenLifeStable = InternalChildren.Count == AliveInternalChildren.Count;
-                return aliveChanged;
-            }
-
-            protected override void AddInternal(Drawable drawable)
-            {
-                directChildrenLifeStable = false;
-                base.AddInternal(drawable);
-            }
-
-            protected override bool RemoveInternal(Drawable drawable, bool disposeImmediately)
-            {
-                directChildrenLifeStable = false;
-                return base.RemoveInternal(drawable, disposeImmediately);
-            }
-
-            protected override void ClearInternal(bool disposeChildren = true)
-            {
-                directChildrenLifeStable = false;
-                base.ClearInternal(disposeChildren);
-            }
-        }
-
         internal partial class JudgementLine : PoolableDrawable
         {
             private bool directChildrenLifeStable;
@@ -609,7 +543,7 @@ namespace osu.Game.Screens.Play.HUD.HitErrorMeters
                 Origin = Anchor.Centre;
                 Anchor = Anchor.TopCentre;
 
-                InternalChild = new Circle
+                InternalChild = new FastCircle
                 {
                     RelativeSizeAxes = Axes.Both,
                 };

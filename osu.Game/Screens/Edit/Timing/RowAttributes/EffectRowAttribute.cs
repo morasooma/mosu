@@ -37,7 +37,7 @@ namespace osu.Game.Screens.Edit.Timing.RowAttributes
                     Current = scrollSpeed,
                 },
                 text = new AttributeText(Point) { Width = 45 },
-                kiaiModeBubble = new AttributeText(Point) { Text = "kiai" },
+                kiaiModeBubble = new AttributeText(Point) { Text = global::osu.Game.Localisation.ClientTranslationStrings.J4344 },
             });
 
             if (!Beatmap.BeatmapInfo.Ruleset.CreateInstance().EditorShowScrollSpeed)

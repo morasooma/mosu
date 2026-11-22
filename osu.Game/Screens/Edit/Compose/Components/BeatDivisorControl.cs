@@ -301,13 +301,13 @@ namespace osu.Game.Screens.Edit.Compose.Components
                         divisorTextBox = new AutoSelectTextBox
                         {
                             RelativeSizeAxes = Axes.X,
-                            PlaceholderText = "Beat divisor"
+                            PlaceholderText = global::osu.Game.Localisation.ClientTranslationStrings.J4301
                         },
                         new OsuTextFlowContainer
                         {
                             RelativeSizeAxes = Axes.X,
                             AutoSizeAxes = Axes.Y,
-                            Text = "Related divisors will be added to the list of presets."
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4302
                         }
                     }
                 };

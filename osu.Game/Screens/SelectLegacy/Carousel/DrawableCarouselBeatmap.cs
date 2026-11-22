@@ -127,6 +127,7 @@ namespace osu.Game.Screens.SelectLegacy.Carousel
 
             Header.Children = new Drawable[]
             {
+                new osu.Game.Graphics.Containers.SongSelectBackdropSurface(),
                 background = new Box
                 {
                     RelativeSizeAxes = Axes.Both,
@@ -230,6 +231,12 @@ namespace osu.Game.Screens.SelectLegacy.Carousel
             });
         }
 
+        protected override void Update()
+        {
+            base.Update();
+            background.Alpha = OverlayTransparency.SongSelectSurfaceAlpha;
+        }
+
         protected override void Selected()
         {
             base.Selected();
@@ -326,7 +333,7 @@ namespace osu.Game.Screens.SelectLegacy.Carousel
                     items.AddRange(mainMenuItems);
 
                 if (beatmapInfo.OnlineID > 0 && beatmapOverlay != null)
-                    items.Add(new OsuMenuItem("Details...", MenuItemType.Standard, () => beatmapOverlay.FetchAndShowBeatmap(beatmapInfo.OnlineID)));
+                    items.Add(new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J5301, MenuItemType.Standard, () => beatmapOverlay.FetchAndShowBeatmap(beatmapInfo.OnlineID)));
 
                 var collectionItems = realm.Realm.All<BeatmapCollection>()
                                            .OrderBy(c => c.Name)
@@ -334,15 +341,15 @@ namespace osu.Game.Screens.SelectLegacy.Carousel
                                            .Select(c => new CollectionToggleMenuItem(c.ToLive(realm), beatmapInfo)).Cast<OsuMenuItem>().ToList();
 
                 if (manageCollectionsDialog != null)
-                    collectionItems.Add(new OsuMenuItem("Manage...", MenuItemType.Standard, manageCollectionsDialog.Show));
+                    collectionItems.Add(new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J5302, MenuItemType.Standard, manageCollectionsDialog.Show));
 
-                items.Add(new OsuMenuItem("Collections") { Items = collectionItems });
+                items.Add(new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J5303) { Items = collectionItems });
 
                 if (beatmapInfo.GetOnlineURL(api, ruleset.Value) is string url)
                     items.Add(new OsuMenuItem(CommonStrings.CopyLink, MenuItemType.Standard, () => game?.CopyToClipboard(url)));
 
                 if (manager != null)
-                    items.Add(new OsuMenuItem("Mark as played", MenuItemType.Standard, () => manager.MarkPlayed(beatmapInfo)));
+                    items.Add(new OsuMenuItem(global::osu.Game.Localisation.ClientTranslationStrings.J5304, MenuItemType.Standard, () => manager.MarkPlayed(beatmapInfo)));
 
                 if (hideRequested != null)
                     items.Add(new OsuMenuItem(WebCommonStrings.ButtonsHide.ToSentence(), MenuItemType.Destructive, () => hideRequested(beatmapInfo)));

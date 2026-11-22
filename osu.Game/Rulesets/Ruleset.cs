@@ -331,7 +331,7 @@ namespace osu.Game.Rulesets
         /// Text that describes what variants in a ruleset are.
         /// Override this to provide better copy than the generic "Variant" text which may not tell users much.
         /// </summary>
-        public virtual LocalisableString VariantDescription => "Variant";
+        public virtual LocalisableString VariantDescription => global::osu.Game.Localisation.ClientTranslationStrings.J4075;
 
         /// <summary>
         /// Gets the name for a key binding variant. This is used for display in the settings overlay.

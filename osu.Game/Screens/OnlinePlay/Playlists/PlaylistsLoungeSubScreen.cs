@@ -13,6 +13,8 @@ using osu.Game.Localisation;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.Rooms;
+using osu.Game.Overlays;
+using osu.Game.Overlays.Notifications;
 using osu.Game.Screens.OnlinePlay.Lounge;
 using osu.Game.Screens.OnlinePlay.Lounge.Components;
 using Container = osu.Framework.Graphics.Containers.Container;
@@ -24,6 +26,10 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
         [Resolved]
         private IAPIProvider api { get; set; } = null!;
 
+        [Resolved(canBeNull: true)]
+        private INotificationOverlay? notifications { get; set; }
+
+        private readonly HashSet<long> pendingPins = new HashSet<long>();
         private FormEnumDropdown<PlaylistsCategory> categoryDropdown = null!;
 
         protected override IEnumerable<Drawable> CreateFilterControls()
@@ -98,6 +104,27 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             api.Queue(request);
         }
 
+        internal void SetPinned(Room room, bool pinned)
+        {
+            if (room.RoomID is not long id || room.Pinned == pinned || !pendingPins.Add(id))
+                return;
+
+            var request = new SetPlaylistPinnedRequest(id, pinned);
+            request.Success += () =>
+            {
+                pendingPins.Remove(id);
+                room.Pinned = pinned;
+                RefreshRooms();
+            };
+            request.Failure += exception =>
+            {
+                pendingPins.Remove(id);
+                if (exception is not OperationCanceledException)
+                    notifications?.Post(new SimpleNotification { Text = PlaylistPinStrings.UpdateFailed, IsImportant = true });
+            };
+            api.Queue(request);
+        }
+
         protected override OsuButton CreateNewRoomButton() => new CreatePlaylistsRoomButton();
 
         protected override Room CreateNewRoom()
@@ -117,7 +144,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
             Normal,
             Spotlight,
 
-            [Description("Featured Artist")]
+            [Description("Featured Artist"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5014))]
             FeaturedArtist,
         }
     }

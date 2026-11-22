@@ -29,11 +29,7 @@ namespace osu.Game.Online.Notifications.WebSocket
 
         protected override async Task<PersistentEndpointClient> BuildConnectionAsync(CancellationToken cancellationToken)
         {
-            var req = new GetNotificationsRequest();
-            // must use `PerformAsync()`, since we may not be fully online yet
-            // (see `APIState.RequiresSecondFactorAuth` - in this state queued requests will not execute).
-            await api.PerformAsync(req).ConfigureAwait(false);
-            string endpoint = req.Response!.Endpoint;
+            string endpoint = await GetEndpointAsync(api, cancellationToken).ConfigureAwait(false);
 
             ClientWebSocket socket = new ClientWebSocket();
             socket.Options.SetRequestHeader(@"Authorization", @$"Bearer {api.AccessToken}");
@@ -43,6 +39,34 @@ namespace osu.Game.Online.Notifications.WebSocket
             var client = new WebSocketNotificationsClient(socket, endpoint);
             client.MessageReceived += msg => MessageReceived?.Invoke(msg);
             return client;
+        }
+
+        internal static async Task<string> GetEndpointAsync(IAPIProvider api, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var req = new GetNotificationsRequest();
+            var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            req.Success += response =>
+            {
+                if (Uri.TryCreate(response.Endpoint, UriKind.Absolute, out var uri) && (uri.Scheme == "ws" || uri.Scheme == "wss"))
+                    completion.TrySetResult(response.Endpoint);
+                else
+                    completion.TrySetException(new InvalidOperationException("Notifications response contains no valid WebSocket endpoint."));
+            };
+            req.Failure += exception =>
+            {
+                if (cancellationToken.IsCancellationRequested || exception is OperationCanceledException)
+                    completion.TrySetCanceled();
+                else
+                    completion.TrySetException(exception);
+            };
+
+            using var registration = cancellationToken.Register(req.Cancel);
+            // PerformAsync reports completion of the worker, not success of the request.
+            // Success/failure callbacks are scheduled on the API's update thread.
+            // Bypass Queue because this also runs during second-factor authentication.
+            await api.PerformAsync(req).WaitAsync(cancellationToken).ConfigureAwait(false);
+            return await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public Task SendAsync(SocketMessage message, CancellationToken? cancellationToken = null)

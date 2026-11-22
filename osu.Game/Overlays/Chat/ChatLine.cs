@@ -2,8 +2,10 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions.Color4Extensions;
@@ -13,6 +15,7 @@ using osu.Framework.Testing;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
+using osu.Framework.Localisation;
 using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
@@ -20,6 +23,7 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Localisation;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Extensions;
 using osu.Game.Online.Chat;
 using osuTK;
 using osuTK.Graphics;
@@ -42,7 +46,11 @@ namespace osu.Game.Overlays.Chat
                 if (!IsLoaded)
                     return;
 
+                translatedText = null;
+                sourceLanguage = translatedTarget = requestedTarget = null;
+                showOriginal = false;
                 updateMessageContent();
+                requestTranslation();
             }
         }
 
@@ -72,7 +80,20 @@ namespace osu.Game.Overlays.Chat
 
         private LinkFlowContainer drawableContentFlow = null!;
 
+        [Resolved]
+        private LocalisationManager localisation { get; set; } = null!;
+
         private readonly Bindable<bool> prefer24HourTime = new Bindable<bool>();
+        private readonly Bindable<bool> translatorEnabled = new Bindable<bool>();
+        private IBindable<Language>? targetLanguage;
+        private string? translatedText;
+        private string? sourceLanguage;
+        private string? translatedTarget;
+        private string? requestedTarget;
+        private bool showOriginal;
+        private static int activeTranslations;
+        private const int max_active_translations = 4;
+        private static readonly ConcurrentDictionary<(string Text, string Target), ChatTranslationResult> translationCache = new();
 
         private Container? highlight;
 
@@ -146,9 +167,11 @@ namespace osu.Game.Overlays.Chat
         internal IEnumerable<SpriteText> ContentSpriteTexts => drawableContentFlow.ChildrenOfType<SpriteText>();
 
         [BackgroundDependencyLoader]
-        private void load(OsuConfigManager configManager)
+        private void load(OsuConfigManager configManager, OsuGameBase game)
         {
             configManager.BindWith(OsuSetting.Prefer24HourTime, prefer24HourTime);
+            configManager.BindWith(OsuSetting.ForkChatTranslatorEnabled, translatorEnabled);
+            targetLanguage = game.CurrentLanguage.GetBoundCopy();
             prefer24HourTime.BindValueChanged(_ => updateTimestamp());
 
             Padding = new MarginPadding { Right = 5 };
@@ -206,7 +229,7 @@ namespace osu.Game.Overlays.Chat
                                 Anchor = Anchor.TopRight,
                                 Margin = new MarginPadding { Horizontal = Spacing },
                                 AccentColour = UsernameColour,
-                                Inverted = !string.IsNullOrEmpty(message.Sender.Colour),
+                                Inverted = message.Sender.IsSupporter,
                             },
                             drawableContentFlow = new LinkFlowContainer(styleMessageContent)
                             {
@@ -225,7 +248,10 @@ namespace osu.Game.Overlays.Chat
         {
             base.LoadComplete();
 
+            translatorEnabled.BindValueChanged(_ => { updateMessageContent(); requestTranslation(); });
+            targetLanguage?.BindValueChanged(_ => { updateMessageContent(); requestTranslation(); });
             updateMessageContent();
+            requestTranslation();
 
             if (colourProvider != null)
             {
@@ -348,10 +374,94 @@ namespace osu.Game.Overlays.Chat
             isMention = MessageNotifier.MatchUsername(message.DisplayContent, api.LocalUser.Value.Username).Success;
 
             drawableContentFlow.Clear();
-            drawableContentFlow.AddLinks(message.DisplayContent, message.Links);
+            bool useTranslation = translatorEnabled.Value && !showOriginal && translatedText != null && translatedTarget == targetLanguage?.Value.ToCultureCode();
+
+            if (useTranslation && !string.Equals(sourceLanguage, translatedTarget, System.StringComparison.OrdinalIgnoreCase))
+            {
+                drawableContentFlow.AddText(translatedText!);
+                if (!string.IsNullOrWhiteSpace(sourceLanguage))
+                    drawableContentFlow.AddLink($" [{sourceLanguage}]", () => { showOriginal = true; updateMessageContent(); }, localisation.GetLocalisedString(ForkSettingsStrings.ChatShowOriginal));
+                else
+                    drawableContentFlow.AddLink(ForkSettingsStrings.ChatOriginal, () => { showOriginal = true; updateMessageContent(); }, localisation.GetLocalisedString(ForkSettingsStrings.ChatShowOriginal));
+            }
+            else
+            {
+                drawableContentFlow.AddLinks(message.DisplayContent, message.Links);
+                if (showOriginal && translatedText != null && translatorEnabled.Value && sourceLanguage != translatedTarget)
+                    drawableContentFlow.AddLink(ForkSettingsStrings.ChatTranslation, () => { showOriginal = false; updateMessageContent(); }, localisation.GetLocalisedString(ForkSettingsStrings.ChatShowTranslation));
+                else if (translatorEnabled.Value && !string.IsNullOrWhiteSpace(sourceLanguage))
+                    drawableContentFlow.AddText($" [{sourceLanguage}]");
+            }
 
             if (IsLoaded)
                 updateColours();
+        }
+
+        private void requestTranslation()
+        {
+            if (!translatorEnabled.Value || targetLanguage == null || message is LocalMessage ||
+                string.IsNullOrWhiteSpace(message.Content) || message.Content.Length > 2000 ||
+                message.Content.StartsWith('/') || message.Content.StartsWith('!') ||
+                message.Links?.Count > 0 || !IsPresent)
+                return;
+
+            string target = targetLanguage.Value.ToCultureCode();
+            if (target == requestedTarget || target == translatedTarget)
+                return;
+
+            if (translationCache.TryGetValue((message.Content, target), out var cached))
+            {
+                translatedText = cached.TranslatedText;
+                sourceLanguage = cached.SourceLanguage;
+                translatedTarget = target;
+                updateMessageContent();
+                return;
+            }
+
+            if (Interlocked.Increment(ref activeTranslations) > max_active_translations)
+            {
+                Interlocked.Decrement(ref activeTranslations);
+                Scheduler.AddDelayed(requestTranslation, 500);
+                return;
+            }
+
+            requestedTarget = target;
+            var currentMessage = message;
+            _ = translateAsync(currentMessage, target);
+        }
+
+        private async System.Threading.Tasks.Task translateAsync(Message currentMessage, string target)
+        {
+            ChatTranslationResult? response = null;
+            try
+            {
+                response = await ChatTranslator.TranslateAsync(currentMessage.Content, target).ConfigureAwait(false);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref activeTranslations);
+            }
+
+            Schedule(() =>
+            {
+                if (message != currentMessage || requestedTarget != target)
+                    return;
+
+                if (response == null || !translatorEnabled.Value)
+                {
+                    requestedTarget = null;
+                    return;
+                }
+
+                translatedText = response.TranslatedText;
+                sourceLanguage = response.SourceLanguage;
+                if (translationCache.Count > 512)
+                    translationCache.Clear();
+                translationCache.TryAdd((currentMessage.Content, target), response);
+                translatedTarget = target;
+                showOriginal = false;
+                updateMessageContent();
+            });
         }
 
         private void updateTimestamp()

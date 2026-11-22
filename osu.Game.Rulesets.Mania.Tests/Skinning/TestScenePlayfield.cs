@@ -22,6 +22,15 @@ namespace osu.Game.Rulesets.Mania.Tests.Skinning
         private List<StageDefinition> stageDefinitions = new List<StageDefinition>();
 
         [Test]
+        public void TestDisposeBeforeLoad()
+        {
+            AddStep("dispose a playfield before dependency injection", () =>
+            {
+                using var playfield = new ManiaPlayfield([new StageDefinition(4)]);
+            });
+        }
+
+        [Test]
         public void TestSingleStage()
         {
             AddStep("create stage", () =>

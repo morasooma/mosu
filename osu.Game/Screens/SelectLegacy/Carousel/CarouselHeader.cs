@@ -155,14 +155,13 @@ namespace osu.Game.Screens.SelectLegacy.Carousel
             [BackgroundDependencyLoader]
             private void load(AudioManager audio)
             {
-                sampleHover = audio.Samples.Get("UI/default-hover");
+                sampleHover = audio.Samples.Get($"SongSelectClassic/song-ping-variation-{RNG.Next(1, 5)}");
             }
 
             public override void PlayHoverSample()
             {
                 if (sampleHover == null) return;
 
-                sampleHover.Frequency.Value = 0.99 + RNG.NextDouble(0.02);
                 sampleHover.Play();
             }
         }

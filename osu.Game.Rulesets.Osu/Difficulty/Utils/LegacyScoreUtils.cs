@@ -16,9 +16,6 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Utils
         /// </summary>
         public static double CalculateNestedScorePerObject(IBeatmap beatmap, int objectCount)
         {
-            const double big_tick_score = 30;
-            const double small_tick_score = 10;
-
             int amountOfBigTicks = 0;
             int amountOfSmallTicks = 0;
             double spinnerScore = 0;
@@ -34,20 +31,26 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Utils
                         break;
 
                     case Spinner sp:
-                        spinnerScore += calculateSpinnerScore(sp);
+                        spinnerScore += CalculateSpinnerScore(sp);
                         break;
                 }
             }
 
-            double sliderScore = amountOfBigTicks * big_tick_score + amountOfSmallTicks * small_tick_score;
+            return CalculateNestedScorePerObjectFromCounts(amountOfBigTicks, amountOfSmallTicks, spinnerScore, objectCount);
+        }
 
+        public static double CalculateNestedScorePerObjectFromCounts(int amountOfBigTicks, int amountOfSmallTicks, double spinnerScore, int objectCount)
+        {
+            const double big_tick_score = 30;
+            const double small_tick_score = 10;
+            double sliderScore = amountOfBigTicks * big_tick_score + amountOfSmallTicks * small_tick_score;
             return (sliderScore + spinnerScore) / objectCount;
         }
 
         /// <remarks>
         /// Logic borrowed from <see cref="OsuLegacyScoreSimulator.simulateHit"/> for basic score calculations.
         /// </remarks>
-        private static double calculateSpinnerScore(Spinner spinner)
+        public static double CalculateSpinnerScore(Spinner spinner)
         {
             const int spin_score = 100;
             const int bonus_spin_score = 1000;

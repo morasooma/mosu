@@ -35,6 +35,7 @@ namespace osu.Game.Online.Multiplayer
     [Union(13, typeof(TagCoopReplayFramesRequest))]
     [Union(14, typeof(RankedPlayCursorPositionRequest))]
     [Union(15, typeof(RankedPlayPingRequest))]
+    [Union(16, typeof(RankedPlayModBanRequest))]
     public abstract class MatchUserRequest
     {
     }

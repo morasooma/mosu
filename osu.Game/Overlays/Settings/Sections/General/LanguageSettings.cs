@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
@@ -25,17 +25,26 @@ namespace osu.Game.Overlays.Settings.Sections.General
                     Caption = GeneralSettingsStrings.LanguageDropdown,
                     Current = game.CurrentLanguage,
                     AlwaysShowSearchBar = true,
-                }),
+                })
+                {
+                    FavouriteId = "ui:GeneralSettingsStrings.LanguageDropdown",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GeneralSettingsStrings.PreferOriginalMetadataLanguage,
                     Current = frameworkConfig.GetBindable<bool>(FrameworkSetting.ShowUnicode)
-                }),
+                })
+                {
+                    FavouriteId = "FrameworkSetting.ShowUnicode",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GeneralSettingsStrings.Prefer24HourTimeDisplay,
                     Current = config.GetBindable<bool>(OsuSetting.Prefer24HourTime)
-                }),
+                })
+                {
+                    FavouriteId = "OsuSetting.Prefer24HourTime",
+                },
             };
         }
     }

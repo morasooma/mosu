@@ -32,7 +32,7 @@ namespace osu.Game.Rulesets.Osu.Mods
 
         public override string Acronym => "BU";
 
-        public override LocalisableString Description => "Don't let their popping distract you!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3671;
 
         public override IconUsage? Icon => OsuIcon.ModBubbles;
 

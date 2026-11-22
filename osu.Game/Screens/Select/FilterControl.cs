@@ -26,6 +26,7 @@ using osu.Game.Localisation;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests.Responses;
 using osu.Game.Overlays;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Screens.Select.Filter;
@@ -43,6 +44,8 @@ namespace osu.Game.Screens.Select
         private static readonly Regex mania_key_query_regex = new Regex(@"(?:^|\s)keys?=([0-9,]+)(?=$|\s)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         public IBindable<BeatmapSetInfo?> ScopedBeatmapSet { get; } = new Bindable<BeatmapSetInfo?>();
+
+        public bool SupportsStableStyle { get; init; } = true;
 
         private SongSelectSearchTextBox searchTextBox = null!;
 
@@ -65,11 +68,25 @@ namespace osu.Game.Screens.Select
         private ShearedToggleButton showConvertedBeatmapsButton = null!;
         private DifficultyRangeSlider difficultyRangeSlider = null!;
         private ShearedDropdown<SortMode> sortDropdown = null!;
+        private readonly BindableBool moddedRatings = new BindableBool();
+        private ModSettingChangeTracker? ratingModSettings;
+        private ScheduledDelegate? ratingModDebounce;
         private ShearedDropdown<GroupModeDropdownItem> groupDropdown = null!;
         private CollectionDropdown collectionDropdown = null!;
         private Container maniaControlsRow = null!;
         private ManiaKeyFilterControl maniaKeyFilter = null!;
         private ShearedButton replayPreviewButton = null!;
+
+        private Container backgroundContainer = null!;
+        private Container searchBoxContainer = null!;
+        private GridContainer topRowGrid = null!;
+        private GridContainer dropdownRowGrid = null!;
+        private GridContainer maniaGrid = null!;
+        private IBindable<float>? panelRadiusBindable;
+        private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
+
+        [Resolved]
+        private OverlayColourProvider colourProvider { get; set; } = null!;
 
         /// <summary>
         /// An optional method which can force certain criteria adjustments.
@@ -109,6 +126,7 @@ namespace osu.Game.Screens.Select
         public event Action<FilterCriteria>? CriteriaChanged;
 
         private FilterCriteria currentCriteria = null!;
+        private readonly Bindable<bool> russianLayoutSearch = new Bindable<bool>();
 
         private IDisposable? collectionsSubscription;
 
@@ -123,7 +141,7 @@ namespace osu.Game.Screens.Select
 
             InternalChildren = new Drawable[]
             {
-                new Container
+                backgroundContainer = new Container
                 {
                     RelativeSizeAxes = Axes.Both,
                     CornerRadius = corner_radius,
@@ -150,7 +168,7 @@ namespace osu.Game.Screens.Select
                             Spacing = new Vector2(0f, 5f),
                             Children = new Drawable[]
                             {
-                                new Container
+                                searchBoxContainer = new Container
                                 {
                                     RelativeSizeAxes = Axes.X,
                                     AutoSizeAxes = Axes.Y,
@@ -162,7 +180,7 @@ namespace osu.Game.Screens.Select
                                         ScopedBeatmapSet = { BindTarget = ScopedBeatmapSet },
                                     },
                                 },
-                                new GridContainer
+                                topRowGrid = new GridContainer
                                 {
                                     RelativeSizeAxes = Axes.X,
                                     AutoSizeAxes = Axes.Y,
@@ -195,7 +213,7 @@ namespace osu.Game.Screens.Select
                                         },
                                     }
                                 },
-                                new GridContainer
+                                dropdownRowGrid = new GridContainer
                                 {
                                     RelativeSizeAxes = Axes.X,
                                     Height = 30,
@@ -203,9 +221,10 @@ namespace osu.Game.Screens.Select
                                     RowDimensions = new[] { new Dimension(GridSizeMode.AutoSize) },
                                     ColumnDimensions = new[]
                                     {
-                                        new Dimension(maxSize: 180),
+                                        // Share the row instead of capping translated filters at 180px.
+                                        new Dimension(),
                                         new Dimension(GridSizeMode.Absolute, 5),
-                                        new Dimension(maxSize: 180),
+                                        new Dimension(),
                                         new Dimension(GridSizeMode.Absolute, 5),
                                         new Dimension(),
                                         new Dimension(GridSizeMode.AutoSize),
@@ -237,7 +256,7 @@ namespace osu.Game.Screens.Select
                                     RelativeSizeAxes = Axes.X,
                                     Height = 30,
                                     Masking = true,
-                                    Child = new GridContainer
+                                    Child = maniaGrid = new GridContainer
                                     {
                                         RelativeSizeAxes = Axes.X,
                                         AutoSizeAxes = Axes.Y,
@@ -263,8 +282,8 @@ namespace osu.Game.Screens.Select
                                                     Anchor = Anchor.Centre,
                                                     Origin = Anchor.Centre,
                                                     AutoSizeAxes = Axes.X,
-                                                    Text = "Replay",
-                                                    TooltipText = "Restart the current beatmap preview",
+                                                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5155,
+                                                    TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5156,
                                                     Height = 30f,
                                                 },
                                             }
@@ -287,12 +306,19 @@ namespace osu.Game.Screens.Select
 
         protected override void LoadComplete()
         {
+            using var loading = PerformancePhaseLogger.Begin("FilterControl.LoadComplete");
             base.LoadComplete();
 
             difficultyRangeSlider.LowerBound = config.GetBindable<double>(OsuSetting.DisplayStarsMinimum);
             difficultyRangeSlider.UpperBound = config.GetBindable<double>(OsuSetting.DisplayStarsMaximum);
             config.BindWith(OsuSetting.ShowConvertedBeatmaps, showConvertedBeatmapsButton.Active);
             config.BindWith(OsuSetting.SongSelectSortingMode, sortDropdown.Current);
+            config.BindWith(OsuSetting.ForkRussianLayoutSearch, russianLayoutSearch);
+            russianLayoutSearch.BindValueChanged(_ => updateCriteria());
+            config.BindWith(OsuSetting.ForkSongSelectModdedRatings, moddedRatings);
+            // The carousel refilters its existing criteria when this option changes.
+            // Only rebuild the mod tracker here, avoiding a duplicate filter request.
+            moddedRatings.BindValueChanged(_ => updateRatingModSettings());
 
             ruleset.BindValueChanged(_ =>
             {
@@ -302,6 +328,7 @@ namespace osu.Game.Screens.Select
             }, true);
             mods.BindValueChanged(m =>
             {
+                updateRatingModSettings();
                 // The following is a note carried from old song select and may not be a valid reason anymore:
                 // // Mods are updated once by the mod select overlay when song select is entered,
                 // // regardless of if there are any mods or any changes have taken place.
@@ -312,9 +339,12 @@ namespace osu.Game.Screens.Select
                     return;
 
                 var rulesetCriteria = currentCriteria.RulesetCriteria;
-                if (rulesetCriteria?.FilterMayChangeFromMods(currentCriteria, m) == true)
+                if (rulesetCriteria?.FilterMayChangeFromMods(currentCriteria, m) == true
+                    || (moddedRatings.Value && (currentCriteria.Sort is SortMode.Difficulty or SortMode.Performance
+                        || currentCriteria.Group == GroupMode.Difficulty || currentCriteria.StarDifficulty.HasFilter
+                        || currentCriteria.UserStarDifficulty.HasFilter || currentCriteria.PerformancePoints.HasFilter)))
                     updateCriteria();
-            });
+            }, true);
 
             searchTextBox.Current.BindValueChanged(query =>
             {
@@ -359,13 +389,58 @@ namespace osu.Game.Screens.Select
             maniaKeyFilter.SelectionChanged += updateManiaKeyQuery;
             replayPreviewButton.Action = replayCurrentPreview;
 
+            panelRadiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Panel, corner_radius);
+            panelRadiusBindable.BindValueChanged(_ => updateRadius(), true);
+
+            disableShear.BindValueChanged(_ =>
+            {
+                updateShear();
+                updateRadius();
+            }, true);
+
             updateCriteria();
+        }
+
+        private void updateRatingModSettings()
+        {
+            ratingModSettings?.Dispose();
+            ratingModSettings = null;
+            ratingModDebounce?.Cancel();
+            ratingModDebounce = null;
+            if (!moddedRatings.Value)
+                return;
+
+            ratingModSettings = new ModSettingChangeTracker(mods.Value);
+            ratingModSettings.SettingChanged += _ =>
+            {
+                ratingModDebounce?.Cancel();
+                ratingModDebounce = Scheduler.AddDelayed(() => updateCriteria(), 150);
+            };
+        }
+
+        private void updateShear()
+        {
+            Shear = OsuGame.SHEAR;
+            if (searchBoxContainer != null) searchBoxContainer.Shear = -OsuGame.SHEAR;
+            if (topRowGrid != null) topRowGrid.Shear = -OsuGame.SHEAR;
+            if (dropdownRowGrid != null) dropdownRowGrid.Shear = -OsuGame.SHEAR;
+            if (maniaGrid != null) maniaGrid.Shear = -OsuGame.SHEAR;
+        }
+
+        private void updateRadius()
+        {
+            float target = panelRadiusBindable?.Value ?? corner_radius;
+            float maxSafe = !disableShear.Value ? 12f : 25f;
+            if (backgroundContainer != null)
+                backgroundContainer.CornerRadius = Math.Min(target, maxSafe);
         }
 
         protected override void Dispose(bool isDisposing)
         {
             base.Dispose(isDisposing);
             collectionsSubscription?.Dispose();
+            ratingModSettings?.Dispose();
+            ratingModDebounce?.Cancel();
         }
 
         private void updateManiaControlVisibility()
@@ -434,6 +509,7 @@ namespace osu.Game.Screens.Select
         /// </summary>
         public FilterCriteria CreateCriteria()
         {
+            using var creating = PerformancePhaseLogger.Begin("FilterControl.CreateCriteria");
             string query = searchTextBox.Current.Value;
             bool isValidUser = localUser.Value.Id > 1;
 
@@ -442,7 +518,8 @@ namespace osu.Game.Screens.Select
                 SelectedBeatmapSet = ScopedBeatmapSet.Value,
                 Sort = sortDropdown.Current.Value,
                 Group = groupDropdown.Current.Value?.Value ?? GroupMode.None,
-                AllowConvertedBeatmaps = showConvertedBeatmapsButton.Active.Value,
+                AllowConvertedBeatmaps = config.Get<ForkSongSelectStyle>(OsuSetting.ForkSongSelectStyle).UsesStableStyleOn(SupportsStableStyle)
+                                         || showConvertedBeatmapsButton.Active.Value,
                 Ruleset = ruleset.Value,
                 Mods = mods.Value,
                 Collection = collectionDropdown.Current.Value?.Collection,
@@ -459,6 +536,8 @@ namespace osu.Game.Screens.Select
             criteria.RulesetCriteria = ruleset.Value.CreateInstance().CreateRulesetFilterCriteria();
 
             FilterQueryParser.ApplyQueries(criteria, query);
+            if (russianLayoutSearch.Value)
+                criteria.EnableRussianLayoutSearch();
 
             ApplyRequiredCriteria?.Invoke(criteria);
 
@@ -467,6 +546,7 @@ namespace osu.Game.Screens.Select
 
         private void updateCriteria(bool clearScopedSet = true)
         {
+            using var updating = PerformancePhaseLogger.Begin("FilterControl.UpdateCriteria");
             if (clearScopedSet && ScopedBeatmapSet.Value != null)
             {
                 songSelect?.UnscopeBeatmapSet();
@@ -557,8 +637,8 @@ namespace osu.Game.Screens.Select
 
                 var clearButton = new ShearedButton
                 {
-                    Text = "Keys",
-                    TooltipText = "Clear mania key filter",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5157,
+                    TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J5158,
                     Width = 62,
                     Height = 30,
                 };
@@ -576,7 +656,7 @@ namespace osu.Game.Screens.Select
                         Width = 38,
                         Height = 30,
                         Text = $"{keyCount}K",
-                        TooltipText = $"Filter mania maps by {keyCount} keys",
+                        TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5159(keyCount),
                     };
 
                     int localKeyCount = keyCount;

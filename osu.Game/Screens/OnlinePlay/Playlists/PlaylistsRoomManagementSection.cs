@@ -61,7 +61,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                 Direction = FillDirection.Vertical,
                 Children = new Drawable[]
                 {
-                    new SectionHeader("Management"),
+                    new SectionHeader(global::osu.Game.Localisation.ClientTranslationStrings.J5019),
                     new Container
                     {
                         RelativeSizeAxes = Axes.X,
@@ -89,7 +89,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                                     {
                                         Font = OsuFont.Style.Caption1,
                                         Alpha = 0,
-                                        Text = "No visible users returned by the room API.",
+                                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J5020,
                                     },
                                     participantRows = new FillFlowContainer
                                     {
@@ -206,7 +206,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                 room.EndDate = DateTimeOffset.UtcNow;
                 refreshRoom();
             };
-            request.Failure += ex => showDialog("Room close failed", buildErrorText(ex));
+            request.Failure += ex => showDialog(global::osu.Game.Localisation.ClientTranslationStrings.J5021, buildErrorText(ex));
             api.Queue(request);
         }
 
@@ -231,7 +231,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
 
             var request = new PartUserFromRoomRequest(room.RoomID.Value, user.Id);
             request.Success += refreshRoom;
-            request.Failure += ex => showDialog($"Kick failed for {user.Username}", buildErrorText(ex));
+            request.Failure += ex => showDialog(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5022(user.Username), buildErrorText(ex));
             api.Queue(request);
         }
 
@@ -346,7 +346,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
         {
             public KickRoomUserDialog(APIUser user, Action kickAction)
             {
-                HeaderText = "Kick participant";
+                HeaderText = global::osu.Game.Localisation.ClientTranslationStrings.J5027;
                 BodyText = user.Username;
                 DangerousAction = kickAction;
             }
@@ -364,7 +364,7 @@ namespace osu.Game.Screens.OnlinePlay.Playlists
                 {
                     new PopupDialogOkButton
                     {
-                        Text = "OK",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J5028,
                     },
                 };
             }

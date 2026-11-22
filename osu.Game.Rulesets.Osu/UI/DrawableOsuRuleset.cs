@@ -51,6 +51,10 @@ namespace osu.Game.Rulesets.Osu.UI
         public DrawableOsuRuleset(Ruleset ruleset, IBeatmap beatmap, IReadOnlyList<Mod>? mods = null)
             : base(ruleset, beatmap, mods)
         {
+            foreach (var hitObject in beatmap.HitObjects)
+            {
+                if (hitObject is OsuHitObject osuHitObject) osuHitObject.PrepareGameplayBindings();
+            }
         }
 
         [Resolved]

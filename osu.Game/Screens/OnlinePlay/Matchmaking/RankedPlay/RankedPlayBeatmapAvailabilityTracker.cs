@@ -34,7 +34,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         private BeatmapModelDownloader beatmapDownloader { get; set; } = null!;
 
         private CancellationTokenSource? downloadCheckCancellation;
-        private int? lastDownloadCheckedBeatmapId;
+        private (int BeatmapId, string Checksum)? lastDownloadCheckedBeatmap;
         private ScheduledDelegate? downloadRetry;
 
         protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
@@ -52,6 +52,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             beatmapDownloader.DownloadFailed += onDownloadFailed;
 
             client.SettingsChanged += onSettingsChanged;
+            client.ItemChanged += onItemChanged;
             onSettingsChanged(client.Room!.Settings);
         }
 
@@ -60,6 +61,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             PlaylistItem.Value = new PlaylistItem(client.Room!.CurrentPlaylistItem);
             checkForAutomaticDownload(client.Room!.CurrentPlaylistItem);
             client.ChangeBeatmapAvailability(Availability.Value).FireAndForget();
+        }
+
+        private void onItemChanged(MultiplayerPlaylistItem item)
+        {
+            if (client.Room?.Settings.PlaylistItemId == item.ID)
+                onSettingsChanged(client.Room.Settings);
         }
 
         private void onBeatmapAvailabilityChanged(ValueChangedEvent<BeatmapAvailability> availability)
@@ -73,15 +80,17 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             // This could result in download requests firing far too often, when we only expect them to fire once per beatmap.
             //
             // Without this check, we would see especially egregious behaviour when a user has hit the download rate limit.
-            if (lastDownloadCheckedBeatmapId == item.BeatmapID)
+            var selection = (item.BeatmapID, item.BeatmapChecksum);
+            if (lastDownloadCheckedBeatmap == selection)
                 return;
 
-            lastDownloadCheckedBeatmapId = item.BeatmapID;
+            lastDownloadCheckedBeatmap = selection;
 
             downloadCheckCancellation?.Cancel();
             downloadRetry?.Cancel();
 
-            if (beatmapManager.IsAvailableLocally(new APIBeatmap { OnlineID = item.BeatmapID }))
+            // Having the same online ID is not enough: ranked play requires the advertised revision.
+            if (beatmapManager.QueryOnlineBeatmapId(item.BeatmapID, item.BeatmapChecksum) != null)
                 return;
 
             // In a perfect world we'd use BeatmapAvailability, but there's no event-driven flow for when a selection changes.
@@ -91,39 +100,53 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                 .GetBeatmapAsync(item.BeatmapID, cancellation.Token)
                 .ContinueWith(resolved => Schedule(() =>
                 {
-                    if (cancellation.IsCancellationRequested || client.Room?.CurrentPlaylistItem.BeatmapID != item.BeatmapID)
+                    if (cancellation.IsCancellationRequested || client.Room == null
+                        || (client.Room.CurrentPlaylistItem.BeatmapID, client.Room.CurrentPlaylistItem.BeatmapChecksum) != selection)
                         return;
+
+                    if (!resolved.IsCompletedSuccessfully)
+                    {
+                        // Observe the fault and retry instead of throwing on the update thread.
+                        _ = resolved.Exception;
+                        scheduleRetry(selection);
+                        return;
+                    }
 
                     APIBeatmapSet? beatmapSet = resolved.GetResultSafely()?.BeatmapSet;
 
                     if (beatmapSet == null)
                     {
-                        scheduleRetry(item.BeatmapID);
+                        scheduleRetry(selection);
                         return;
                     }
 
                     if (!beatmapDownloader.Download(beatmapSet, config.Get<bool>(OsuSetting.PreferNoVideo))
                         && beatmapDownloader.GetExistingDownload(beatmapSet) == null
-                        && !beatmapManager.IsAvailableLocally(new APIBeatmap { OnlineID = item.BeatmapID }))
-                        scheduleRetry(item.BeatmapID);
+                        && beatmapManager.QueryOnlineBeatmapId(item.BeatmapID, item.BeatmapChecksum) == null)
+                        scheduleRetry(selection);
                 }));
         }
 
         private void onDownloadFailed(ArchiveDownloadRequest<IBeatmapSetInfo> request)
         {
-            if (client.Room?.CurrentPlaylistItem.BeatmapID == request.Model.OnlineID)
-                Schedule(() => scheduleRetry(request.Model.OnlineID));
+            // Archive models are beatmap *sets*, not individual beatmaps.
+            Schedule(() =>
+            {
+                if (client.Room != null)
+                    scheduleRetry((client.Room.CurrentPlaylistItem.BeatmapID, client.Room.CurrentPlaylistItem.BeatmapChecksum));
+            });
         }
 
-        private void scheduleRetry(int beatmapId)
+        private void scheduleRetry((int BeatmapId, string Checksum) selection)
         {
             downloadRetry?.Cancel();
             downloadRetry = Scheduler.AddDelayed(() =>
             {
-                if (client.Room?.CurrentPlaylistItem.BeatmapID != beatmapId)
+                if (client.Room == null
+                    || (client.Room.CurrentPlaylistItem.BeatmapID, client.Room.CurrentPlaylistItem.BeatmapChecksum) != selection)
                     return;
 
-                lastDownloadCheckedBeatmapId = null;
+                lastDownloadCheckedBeatmap = null;
                 checkForAutomaticDownload(client.Room.CurrentPlaylistItem);
             }, 3000);
         }
@@ -133,7 +156,10 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             base.Dispose(isDisposing);
 
             if (client.IsNotNull())
+            {
                 client.SettingsChanged -= onSettingsChanged;
+                client.ItemChanged -= onItemChanged;
+            }
 
             if (beatmapDownloader.IsNotNull())
                 beatmapDownloader.DownloadFailed -= onDownloadFailed;

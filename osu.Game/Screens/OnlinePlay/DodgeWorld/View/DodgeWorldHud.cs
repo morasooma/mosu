@@ -5,6 +5,7 @@ using System.Globalization;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
+using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Online.API.Requests;
 using osu.Game.Screens.OnlinePlay.DodgeWorld.Net;
@@ -34,17 +35,17 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
 
             InternalChildren = new Drawable[]
             {
-                room = new HudChip(colours, FontAwesome.Solid.MapMarkerAlt, "LOADING WORLD…", colours.Pink1)
+                room = new HudChip(colours, FontAwesome.Solid.MapMarkerAlt, global::osu.Game.Localisation.ClientTranslationStrings.J4725, colours.Pink1)
                 {
                     Position = new Vector2(16, 12),
                     Width = 205,
                 },
-                health = new HudChip(colours, FontAwesome.Solid.Heart, "HP —", colours.Red1)
+                health = new HudChip(colours, FontAwesome.Solid.Heart, global::osu.Game.Localisation.ClientTranslationStrings.J4726, colours.Red1)
                 {
                     Position = new Vector2(16, 56),
                     Width = 205,
                 },
-                progression = new HudChip(colours, FontAwesome.Solid.Star, "LV —  •  XP —", colours.Yellow)
+                progression = new HudChip(colours, FontAwesome.Solid.Star, global::osu.Game.Localisation.ClientTranslationStrings.J4727, colours.Yellow)
                 {
                     Position = new Vector2(16, 100),
                     Width = 205,
@@ -60,18 +61,18 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                     Children = new Drawable[]
                     {
                         currency = new HudChip(colours, FontAwesome.Solid.Gem, "—", colours.Purple1) { Width = 112 },
-                        online = new HudChip(colours, FontAwesome.Solid.Users, "ONLINE —", colours.Green1) { Width = 135 },
+                        online = new HudChip(colours, FontAwesome.Solid.Users, global::osu.Game.Localisation.ClientTranslationStrings.J4728, colours.Green1) { Width = 135 },
                     },
                 },
             };
 
             session.Progression.BindValueChanged(value => setProgression(value.NewValue), true);
-            session.OnlineUsers.BindValueChanged(value => online.SetText($"ONLINE {value.NewValue:#,0}"), true);
+            session.OnlineUsers.BindValueChanged(value => online.SetText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4729(value.NewValue)), true);
         }
 
-        public void SetRoom(string name) => room.SetText(name.ToUpperInvariant());
+        public void SetRoom(LocalisableString name) => room.SetText(new CaseTransformableString(name, Casing.UpperCase));
 
-        public void SetHealth(int current) => health.SetText($"HP {current} / {PlayerState.MAXIMUM_HEALTH}");
+        public void SetHealth(int current) => health.SetText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4730(current, PlayerState.MAXIMUM_HEALTH));
 
         /// <summary>
         /// Flashes the progression chip to acknowledge a reward attempt.
@@ -82,12 +83,12 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
         {
             if (value == null || value.Level < 1 || value.ExperienceForNextLevel < 1)
             {
-                progression.SetText("LV —  •  XP —");
+                progression.SetText(global::osu.Game.Localisation.ClientTranslationStrings.J4727);
                 currency.SetText("—");
                 return;
             }
 
-            progression.SetText($"LV {value.Level:#,0}  •  XP {value.Experience:#,0}/{value.ExperienceForNextLevel:#,0}");
+            progression.SetText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4731(value.Level, value.Experience, value.ExperienceForNextLevel));
             currency.SetText(value.Coins.ToString("#,0", CultureInfo.InvariantCulture));
         }
     }

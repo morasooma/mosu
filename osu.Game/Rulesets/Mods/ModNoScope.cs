@@ -37,11 +37,7 @@ namespace osu.Game.Rulesets.Mods
 
         protected float ComboBasedAlpha;
 
-        [SettingSource(
-            "Hidden at combo",
-            "The combo count at which the cursor becomes completely hidden",
-            SettingControlType = typeof(SettingsSlider<int, HiddenComboSlider>)
-        )]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4244), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4245), SettingControlType = typeof(SettingsSlider<int, HiddenComboSlider>))]
         public abstract BindableInt HiddenComboCount { get; }
 
         public ScoreRank AdjustRank(ScoreRank rank, double accuracy) => rank;

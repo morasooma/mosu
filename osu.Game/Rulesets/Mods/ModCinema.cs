@@ -28,7 +28,7 @@ namespace osu.Game.Rulesets.Mods
         public override string Name => "Cinema";
         public override string Acronym => "CN";
         public override IconUsage? Icon => OsuIcon.ModCinema;
-        public override LocalisableString Description => "Watch the video without visual distractions.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4198;
 
         public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[] { typeof(ModAutoplay), typeof(ModNoFail), typeof(ModFailCondition) }).ToArray();
 

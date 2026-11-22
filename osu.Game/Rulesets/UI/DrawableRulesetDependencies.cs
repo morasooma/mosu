@@ -57,7 +57,9 @@ namespace osu.Game.Rulesets.UI
         public DrawableRulesetDependencies(Ruleset ruleset, IReadOnlyDependencyContainer parent)
             : base(parent)
         {
-            var resources = ruleset.CreateResourceStore();
+            var resources = new osu.Framework.IO.Stores.ResourceStore<byte[]>();
+            resources.AddStore(new NamespacedResourceStore<byte[]>(osu.Game.IO.GameResourcePackStore.Borrow(parent.Get<OsuGameBase>().Resources), "Rulesets/" + (ruleset.ShortName == "taiko" ? "Taiko" : ruleset.ShortName)));
+            resources.AddStore(ruleset.CreateResourceStore());
 
             var host = parent.Get<GameHost>();
 

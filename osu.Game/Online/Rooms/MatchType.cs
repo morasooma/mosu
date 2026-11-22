@@ -32,7 +32,7 @@ namespace osu.Game.Online.Rooms
         /// <summary>
         /// Unranked osu!-only cooperative play. Players take turns playing complete combos.
         /// </summary>
-        [Description("Tag Co-op")]
+        [Description("Tag Co-op"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3855))]
         TagCoop
     }
 

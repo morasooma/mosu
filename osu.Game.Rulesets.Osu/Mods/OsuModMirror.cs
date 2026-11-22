@@ -14,10 +14,10 @@ namespace osu.Game.Rulesets.Osu.Mods
 {
     public class OsuModMirror : ModMirror, IApplicableToHitObject
     {
-        public override LocalisableString Description => "Flip objects on the chosen axes.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3705;
         public override Type[] IncompatibleMods => new[] { typeof(ModHardRock) };
 
-        [SettingSource("Flipped axes")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3706))]
         public Bindable<MirrorType> Reflection { get; } = new Bindable<MirrorType>();
 
         public void ApplyToHitObject(HitObject hitObject)

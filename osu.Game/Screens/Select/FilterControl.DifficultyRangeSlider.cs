@@ -30,6 +30,9 @@ namespace osu.Game.Screens.Select
         {
             private Container borderContainer = null!;
             private Container border = null!;
+            private Container spectrumContainer = null!;
+            private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
+            private IBindable<float>? sliderRadius;
             private IBindable<Colour4> themeColour = null!;
 
             private readonly LayoutValue drawSizeLayout = new LayoutValue(Invalidation.DrawSize);
@@ -52,7 +55,7 @@ namespace osu.Game.Screens.Select
             {
                 SliderContainer.AddRange(new Drawable[]
                 {
-                    new Container
+                    spectrumContainer = new Container
                     {
                         Depth = 1,
                         RelativeSizeAxes = Axes.Both,
@@ -93,6 +96,19 @@ namespace osu.Game.Screens.Select
 
                 themeColour = colourProvider.GetColourBindable(OverlayColour.Highlight1);
                 themeColour.BindValueChanged(_ => border.BorderColour = colourProvider.Highlight1, true);
+
+                sliderRadius = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Input, 5f);
+                sliderRadius.BindValueChanged(_ => updateSliderRadius(), true);
+                disableShear.BindValueChanged(_ => updateSliderRadius(), true);
+            }
+
+            private void updateSliderRadius()
+            {
+                float target = sliderRadius?.Value ?? 5f;
+                float maxSafe = !disableShear.Value ? 12f : 15f;
+                float radius = Math.Min(target, maxSafe);
+                spectrumContainer.CornerRadius = radius;
+                border.CornerRadius = radius;
             }
 
             protected override void LoadComplete()

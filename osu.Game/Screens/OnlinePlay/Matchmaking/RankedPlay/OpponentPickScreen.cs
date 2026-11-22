@@ -2,7 +2,6 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Linq;
-using System.Threading.Tasks;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
@@ -22,7 +21,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         public CardFlow CenterRow { get; private set; } = null!;
 
         public override bool ShowStageOverlay => true;
-        public override LocalisableString StageHeading => "Pick Phase";
+        public override LocalisableString StageHeading => global::osu.Game.Localisation.ClientTranslationStrings.J4916;
 
         protected override RankedPlayColourScheme ColourScheme => RankedPlayColourScheme.RED;
 
@@ -39,7 +38,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
         public OpponentPickScreen()
         {
-            StageCaption = "Waiting for your opponent...";
+            StageCaption = global::osu.Game.Localisation.ClientTranslationStrings.J4898;
         }
 
         [BackgroundDependencyLoader]
@@ -140,43 +139,43 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
             matchInfo.CardPlayed += cardPlayed;
         }
 
-        private void cardPlayed(RankedPlayCardWithPlaylistItem item) => Task.Run(async () =>
+        private void cardPlayed(RankedPlayCardWithPlaylistItem item)
         {
-            if (opponentHand.Cards.FirstOrDefault(it => it.Card.Item.Equals(item)) is { } c)
-                await c.Card.CardRevealed.ConfigureAwait(false);
+            // CardPlayed is delivered on the update thread. Transfer ownership immediately:
+            // the server may enter warmup in the same frame when both maps are installed.
+            // Metadata and the card flip can finish in its new parent without blocking this.
+            if (CenterRow.Children.Any(card => card.Item.Equals(item)))
+                return;
 
-            Schedule(() =>
+            RankedPlayCard? card;
+
+            if (opponentHand.RemoveCard(item, out card, out var drawQuad))
             {
-                RankedPlayCard? card;
+                card.MatchScreenSpaceDrawQuad(drawQuad, CenterRow);
+            }
+            else
+            {
+                Logger.Log($"Played card {item.Card.ID} was not present in hand.", level: LogLevel.Error);
 
-                if (opponentHand.RemoveCard(item, out card, out var drawQuad))
+                card = new RankedPlayCard(item)
                 {
-                    card.MatchScreenSpaceDrawQuad(drawQuad, CenterRow);
-                }
-                else
-                {
-                    Logger.Log($"Played card {item.Card.ID} was not present in hand.", level: LogLevel.Error);
+                    Anchor = Anchor.Centre,
+                    Origin = Anchor.Centre,
+                };
+            }
 
-                    card = new RankedPlayCard(item)
-                    {
-                        Anchor = Anchor.Centre,
-                        Origin = Anchor.Centre,
-                    };
-                }
+            CenterRow.Add(card);
 
-                CenterRow.Add(card);
+            SamplePlaybackHelper.PlayWithRandomPitch(cardPlaySamples);
 
-                SamplePlaybackHelper.PlayWithRandomPitch(cardPlaySamples);
+            card
+                .MoveTo(new Vector2(0), 600, Easing.OutExpo)
+                .ScaleTo(CENTERED_CARD_SCALE, 600, Easing.OutExpo)
+                .RotateTo(0, 400, Easing.OutExpo);
 
-                card
-                    .MoveTo(new Vector2(0), 600, Easing.OutExpo)
-                    .ScaleTo(CENTERED_CARD_SCALE, 600, Easing.OutExpo)
-                    .RotateTo(0, 400, Easing.OutExpo);
-
-                opponentHand.Contract();
-                playerHand.Contract();
-            });
-        });
+            opponentHand.Contract();
+            playerHand.Contract();
+        }
 
         protected override void Dispose(bool isDisposing)
         {

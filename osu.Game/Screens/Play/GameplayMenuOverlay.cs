@@ -70,6 +70,8 @@ namespace osu.Game.Screens.Play
         protected SelectionCycleFillFlowContainer<DialogButton> InternalButtons = null!;
         public IReadOnlyList<DialogButton> Buttons => InternalButtons;
 
+        protected Container SupplementaryButtons { get; private set; } = null!;
+
         private TextFlowContainer playInfoText = null!;
 
         [Resolved]
@@ -136,12 +138,33 @@ namespace osu.Game.Screens.Play
                         },
                         new Drawable[]
                         {
-                            playInfoText = new OsuTextFlowContainer(cp => cp.Font = OsuFont.GetFont(size: 18))
+                            new FillFlowContainer
                             {
                                 Anchor = Anchor.Centre,
                                 Origin = Anchor.Centre,
-                                TextAnchor = Anchor.Centre,
-                                AutoSizeAxes = Axes.Both,
+                                RelativeSizeAxes = Axes.X,
+                                AutoSizeAxes = Axes.Y,
+                                Direction = FillDirection.Vertical,
+                                Spacing = new Vector2(0, 12),
+                                Children = new Drawable[]
+                                {
+                                    playInfoText = new OsuTextFlowContainer(cp => cp.Font = OsuFont.GetFont(size: 18))
+                                    {
+                                        Anchor = Anchor.TopCentre,
+                                        Origin = Anchor.TopCentre,
+                                        TextAnchor = Anchor.Centre,
+                                        AutoSizeAxes = Axes.Both,
+                                    },
+                                    SupplementaryButtons = new Container
+                                    {
+                                        Alpha = 0,
+                                        Anchor = Anchor.TopCentre,
+                                        Origin = Anchor.TopCentre,
+                                        RelativeSizeAxes = Axes.X,
+                                        AutoSizeAxes = Axes.Y,
+                                        Padding = new MarginPadding { Horizontal = 50 },
+                                    }
+                                }
                             }
                         },
                         new Drawable[]
@@ -203,9 +226,11 @@ namespace osu.Game.Screens.Play
             stopPauseLoop();
         }
 
-        protected void AddButton(LocalisableString text, Color4 colour, Action? action)
+        protected void AddButton(LocalisableString text, Color4 colour, Action? action) => InternalButtons.Add(CreateButton(text, colour, action));
+
+        protected DialogButton CreateButton(LocalisableString text, Color4 colour, Action? action)
         {
-            var button = new Button
+            return new Button
             {
                 Text = text,
                 ButtonColour = colour,
@@ -218,8 +243,6 @@ namespace osu.Game.Screens.Play
                     Hide();
                 }
             };
-
-            InternalButtons.Add(button);
         }
 
         public virtual bool OnPressed(KeyBindingPressEvent<GlobalAction> e)

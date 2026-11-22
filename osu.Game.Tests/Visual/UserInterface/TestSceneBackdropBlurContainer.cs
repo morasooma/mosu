@@ -53,6 +53,138 @@ namespace osu.Game.Tests.Visual.UserInterface
         public void TearDown() => OverlayTransparency.Enabled.Value = previousTransparency;
 
         [Test]
+        public void TestEffectGateSkipsConsumerVisibilityChecks()
+        {
+            int checks = 0;
+            System.IDisposable lease = null!;
+            AddStep("disable source and register consumer", () =>
+            {
+                surfaceParent.Alpha = 0;
+                backdropSource.AllowEffects = () => false;
+                lease = backdropSource.Acquire(() =>
+                {
+                    checks++;
+                    return true;
+                });
+            });
+            AddWaitStep("disabled frames", 10);
+            AddAssert("no visibility work while disabled", () => checks == 0);
+            AddStep("allow effect", () => backdropSource.AllowEffects = () => true);
+            AddUntilStep("consumer checked and capture active", () => checks > 0 && backdropSource.BufferingActive);
+            AddStep("release consumer", () => lease.Dispose());
+            AddUntilStep("capture released", () => !backdropSource.BufferingActive);
+        }
+
+        [Test]
+        public void TestOriginalCaptureDoesNotRenderUnusedEffect()
+        {
+            AddStep("capture sharp original without glass", () =>
+            {
+                previousTransparency = OverlayTransparency.Enabled.Value;
+                OverlayTransparency.Enabled.Value = false;
+                surfaceParent.Alpha = 0;
+                backdropSource.CaptureOriginal = () => true;
+            });
+            AddUntilStep("original remains captured", () => backdropSource.BufferingActive);
+            AddAssert("unused blur effect hidden", () => !backdropSource.EffectActive);
+            AddStep("show glass consumer", () =>
+            {
+                OverlayTransparency.Enabled.Value = true;
+                surfaceParent.Alpha = 1;
+            });
+            AddUntilStep("effect enabled for consumer", () => backdropSource.EffectActive);
+            AddStep("hide glass", () => surfaceParent.Alpha = 0);
+            AddUntilStep("effect released but original retained", () => !backdropSource.EffectActive && backdropSource.BufferingActive);
+            AddStep("release original", () => backdropSource.CaptureOriginal = () => false);
+        }
+
+        [Test]
+        public void TestStableSurfaceDoesNotReapplyAppearanceEveryFrame()
+        {
+            int applied = 0;
+            double previousDim = 0;
+            AddStep("show glass", () =>
+            {
+                previousTransparency = OverlayTransparency.Enabled.Value;
+                previousDim = OverlayTransparency.DimAmount.Value;
+                OverlayTransparency.Enabled.Value = true;
+                surfaceParent.Alpha = 1;
+            });
+            AddUntilStep("capture active", () => backdropSource.BufferingActive);
+            AddWaitStep("settle appearance", 3);
+            AddStep("record appearance updates", () => applied = ((BackdropBlurSurface)surfaceParent.Child).AppearanceUpdateCount);
+            AddWaitStep("stable visible frames", 10);
+            AddAssert("appearance unchanged", () => ((BackdropBlurSurface)surfaceParent.Child).AppearanceUpdateCount == applied);
+            AddStep("change dim", () => OverlayTransparency.DimAmount.Value = previousDim == 0.25 ? 0.5 : 0.25);
+            AddUntilStep("appearance responds", () => ((BackdropBlurSurface)surfaceParent.Child).AppearanceUpdateCount > applied);
+            AddStep("restore dim and hide", () =>
+            {
+                OverlayTransparency.DimAmount.Value = previousDim;
+                surfaceParent.Alpha = 0;
+            });
+            AddUntilStep("hidden surface releases capture", () => !backdropSource.BufferingActive);
+        }
+
+        [Test]
+        public void TestReducedEffectResolutionPreservesRadius()
+        {
+            double previousStrength = 0;
+            AddStep("enable blur", () =>
+            {
+                previousTransparency = OverlayTransparency.Enabled.Value;
+                previousStrength = OverlayTransparency.BlurStrength.Value;
+                OverlayTransparency.Enabled.Value = true;
+                OverlayTransparency.BlurStrength.Value = 1;
+                surfaceParent.Alpha = 1;
+            });
+            AddUntilStep("buffering enabled", () => backdropSource.BufferingActive);
+            AddAssert("effect uses quarter pixel count", () => backdropSource.EffectFrameBufferScale == new osuTK.Vector2(0.5f));
+            AddUntilStep("sigma compensates for resolution", () => backdropSource.EffectBlurSigma == new osuTK.Vector2(OverlayTransparency.MAX_BLUR_SIGMA * 0.5f));
+            AddStep("restore strength", () => OverlayTransparency.BlurStrength.Value = previousStrength);
+        }
+
+        [Test]
+        public void TestGameplayGateDisablesCaptureWithVisibleConsumer()
+        {
+            AddStep("show glass", () =>
+            {
+                OverlayTransparency.Enabled.Value = true;
+                surfaceParent.Alpha = 1;
+            });
+            AddUntilStep("capture active", () => backdropSource.BufferingActive);
+            AddStep("enter gameplay", () => backdropSource.AllowEffects = () => false);
+            AddUntilStep("capture bypassed", () => !backdropSource.BufferingActive);
+            AddStep("return to selection", () => backdropSource.AllowEffects = () => true);
+            AddUntilStep("capture resumes", () => backdropSource.BufferingActive);
+            AddStep("hide consumer", () => surfaceParent.Alpha = 0);
+            AddUntilStep("capture released", () => !backdropSource.BufferingActive);
+        }
+
+        [Test]
+        public void TestOverlayToggleDoesNotFollowCarouselToggle()
+        {
+            bool previousCarousel = false;
+            AddStep("enable carousel only", () =>
+            {
+                previousTransparency = OverlayTransparency.Enabled.Value;
+                previousCarousel = OverlayTransparency.SongSelectEnabled.Value;
+                OverlayTransparency.Enabled.Value = false;
+                OverlayTransparency.SongSelectEnabled.Value = true;
+                surfaceParent.Alpha = 1;
+            });
+            AddAssert("overlay stays opaque without capture", () => !backdropSource.BufferingActive);
+            AddStep("enable overlays", () => OverlayTransparency.Enabled.Value = true);
+            AddUntilStep("overlay starts capture", () => backdropSource.BufferingActive);
+            AddStep("disable overlays", () => OverlayTransparency.Enabled.Value = false);
+            AddUntilStep("overlay releases capture", () => !backdropSource.BufferingActive);
+            AddStep("restore carousel toggle and hide surface", () =>
+            {
+                OverlayTransparency.SongSelectEnabled.Value = previousCarousel;
+                surfaceParent.Alpha = 0;
+            });
+        }
+
+        [Test]
         public void TestHiddenParentReleasesBuffering()
         {
             AddStep("enable transparency", () =>

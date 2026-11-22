@@ -53,6 +53,13 @@ namespace osu.Game.Online.Multiplayer
             MaxParticipants = room.MaxParticipants;
         }
 
+        public MultiplayerRoomSettings WithoutPassword()
+        {
+            var copy = (MultiplayerRoomSettings)MemberwiseClone();
+            copy.Password = string.Empty;
+            return copy;
+        }
+
         public bool Equals(MultiplayerRoomSettings? other)
         {
             if (ReferenceEquals(this, other)) return true;

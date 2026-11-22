@@ -4,10 +4,13 @@
 using System.Linq;
 using NUnit.Framework;
 using osu.Framework.Allocation;
-using osu.Framework.Graphics.Containers;
 using osu.Framework.Testing;
 using osu.Game.Configuration;
+using osu.Game.Graphics.UserInterface;
+using osu.Game.Localisation;
+using osu.Game.Rulesets.Mania.Edit;
 using osu.Game.Rulesets.Mania.UI;
+using osu.Game.Screens.Edit.Components.Menus;
 using osu.Game.Tests.Visual;
 using osuTK.Input;
 
@@ -15,6 +18,8 @@ namespace osu.Game.Rulesets.Mania.Tests.Editor
 {
     public partial class TestSceneObjectPlacement : EditorTestScene
     {
+        protected override bool UseFreshStoragePerRun => true;
+
         protected override Ruleset CreateEditorRuleset() => new ManiaRuleset();
 
         [Resolved]
@@ -25,12 +30,13 @@ namespace osu.Game.Rulesets.Mania.Tests.Editor
         {
             AddStep("Seek to 0", () => EditorClock.Seek(0));
             AddStep("Select note", () => InputManager.Key(Key.Number2));
-            AddStep("Hover negative span", () =>
-            {
-                InputManager.MoveMouseTo(this.ChildrenOfType<Container>().First(x => x.Name == "Icons").Children[0]);
-            });
+            AddStep("clear beatmap", () => EditorBeatmap.Clear());
+            AddStep("hover before track start", () => InputManager.MoveMouseTo(this.ChildrenOfType<Column>().First().ScreenSpacePositionAtTime(-100)));
+            AddAssert("cursor is in the placement area", () => this.ChildrenOfType<ManiaHitObjectComposer>().Single().CursorInPlacementArea);
+            AddAssert("hovered time before snapping is negative", () =>
+                this.ChildrenOfType<Column>().First().TimeAtScreenSpacePosition(InputManager.CurrentState.Mouse.Position), () => Is.LessThan(0));
             AddStep("Click", () => InputManager.Click(MouseButton.Left));
-            AddAssert("No notes placed", () => EditorBeatmap.HitObjects.All(x => x.StartTime >= 0));
+            AddAssert("No notes placed", () => EditorBeatmap.HitObjects.Count == 0);
         }
 
         [Test]
@@ -39,28 +45,42 @@ namespace osu.Game.Rulesets.Mania.Tests.Editor
             double? initialTime = null;
 
             AddStep("store initial time", () => initialTime = EditorClock.CurrentTime);
-            AddStep("change seek setting to true", () => config.SetValue(OsuSetting.EditorAutoSeekOnPlacement, true));
+            AddStep("enable mania auto-scroll", () => config.SetValue(OsuSetting.ForkManiaEditorAutoSeekOnPlacement, true));
+            AddAssert("editor menu reflects the mania setting", () => autoSeekMenuItem().State.Value);
             placeObject();
             AddUntilStep("wait for seek to complete", () => !EditorClock.IsSeeking);
             AddAssert("seeked forward to object", () => EditorClock.CurrentTime, () => Is.GreaterThan(initialTime!));
         }
 
         [Test]
-        public void TestNoSeekOnNotePlacement()
+        public void TestNoSeekOnNotePlacementByDefault()
         {
-            double? initialTime = null;
+            double initialTime = 0;
 
             AddStep("store initial time", () => initialTime = EditorClock.CurrentTime);
-            AddStep("change seek setting to false", () => config.SetValue(OsuSetting.EditorAutoSeekOnPlacement, false));
+            AddStep("clear beatmap", () => EditorBeatmap.Clear());
+            AddAssert("auto-scroll is off in the mania editor menu", () => !autoSeekMenuItem().State.Value);
+            AddAssert("auto-scroll remains on by default for other rulesets", () => config.Get<bool>(OsuSetting.EditorAutoSeekOnPlacement));
             placeObject();
+            AddAssert("a note was placed ahead of the current time", () => EditorBeatmap.HitObjects.Single().StartTime, () => Is.GreaterThan(initialTime));
             AddAssert("not seeking", () => !EditorClock.IsSeeking);
             AddAssert("time is unchanged", () => EditorClock.CurrentTime, () => Is.EqualTo(initialTime));
         }
 
         [Test]
+        public void TestEditorMenuChangesOnlyManiaAutoScroll()
+        {
+            AddStep("enable mania auto-scroll from the editor menu", () => autoSeekMenuItem().Action.Value?.Invoke());
+            AddAssert("mania setting is enabled", () => config.Get<bool>(OsuSetting.ForkManiaEditorAutoSeekOnPlacement));
+            AddStep("disable mania auto-scroll from the editor menu", () => autoSeekMenuItem().Action.Value?.Invoke());
+            AddAssert("mania setting is disabled", () => !config.Get<bool>(OsuSetting.ForkManiaEditorAutoSeekOnPlacement));
+            AddAssert("other rulesets keep their setting", () => config.Get<bool>(OsuSetting.EditorAutoSeekOnPlacement));
+        }
+
+        [Test]
         public void TestNoTwoObjectsAtSameTimeAndColumn()
         {
-            AddStep("change seek setting to false", () => config.SetValue(OsuSetting.EditorAutoSeekOnPlacement, false));
+            AddStep("disable mania auto-scroll", () => config.SetValue(OsuSetting.ForkManiaEditorAutoSeekOnPlacement, false));
             AddStep("clear beatmap", () => EditorBeatmap.Clear());
 
             AddStep("select note placement tool", () => InputManager.Key(Key.Number2));
@@ -78,6 +98,11 @@ namespace osu.Game.Rulesets.Mania.Tests.Editor
             AddStep("place note", () => InputManager.Click(MouseButton.Left));
             AddAssert("beatmap has 2 objects", () => EditorBeatmap.HitObjects, () => Has.Count.EqualTo(2));
         }
+
+        private ToggleMenuItem autoSeekMenuItem() => Editor.ChildrenOfType<EditorMenuBar>().Single().Items
+                                                          .SelectMany(item => item.Items)
+                                                          .OfType<ToggleMenuItem>()
+                                                          .Single(item => item.Text.Value.Equals(EditorStrings.AutoSeekOnPlacement));
 
         private void placeObject()
         {

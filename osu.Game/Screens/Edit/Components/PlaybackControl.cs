@@ -1,6 +1,7 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Linq;
 using osuTK;
 using osuTK.Graphics;
@@ -53,6 +54,12 @@ namespace osu.Game.Screens.Edit.Components
                 updatePlayButtonColours(colourProvider);
             });
 
+            playbackSpeedText = new OsuSpriteText
+            {
+                Text = EditorStrings.PlaybackSpeed,
+                Colour = colourProvider.Content2,
+            };
+
             Children = new Drawable[]
             {
                 playButton = new IconButton
@@ -64,7 +71,7 @@ namespace osu.Game.Screens.Edit.Components
                     Icon = FontAwesome.Regular.PlayCircle,
                     Action = togglePause,
                 },
-                playbackSpeedControl = new PlaybackSpeedControl
+                playbackSpeedControl = new PlaybackSpeedControl(playbackSpeedText)
                 {
                     AutoSizeAxes = Axes.Y,
                     RelativeSizeAxes = Axes.X,
@@ -74,11 +81,7 @@ namespace osu.Game.Screens.Edit.Components
                     Direction = FillDirection.Vertical,
                     Children = new Drawable[]
                     {
-                        playbackSpeedText = new OsuSpriteText
-                        {
-                            Text = EditorStrings.PlaybackSpeed,
-                            Colour = colourProvider.Content2,
-                        },
+                        playbackSpeedText,
                         new PlaybackTabControl
                         {
                             Current = tempoAdjustment,
@@ -117,7 +120,7 @@ namespace osu.Game.Screens.Edit.Components
                     tempoAdjustment.Value = 1;
                     tempoAdjustment.Disabled = true;
                     playbackSpeedControl.FadeTo(0.5f, 400, Easing.OutQuint);
-                    playbackSpeedControl.TooltipText = "Speed adjustment is unavailable in timing mode. Timing at slower speeds is inaccurate due to resampling artifacts.";
+                    playbackSpeedControl.TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J4291;
                 }
                 else
                 {
@@ -156,7 +159,21 @@ namespace osu.Game.Screens.Edit.Components
 
         private partial class PlaybackSpeedControl : FillFlowContainer, IHasTooltip
         {
+            private readonly OsuSpriteText label;
+
             public LocalisableString TooltipText { get; set; }
+
+            public PlaybackSpeedControl(OsuSpriteText label)
+            {
+                this.label = label;
+            }
+
+            protected override void UpdateAfterChildren()
+            {
+                // Fit the full translation above the buttons without changing their hit areas.
+                label.Scale = new Vector2(Math.Clamp(ChildSize.X / Math.Max(1, label.DrawWidth), 0, 1));
+                base.UpdateAfterChildren();
+            }
         }
 
         public partial class PlaybackTabControl : OsuTabControl<double>

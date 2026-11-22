@@ -19,8 +19,13 @@ namespace osu.Game.Rulesets.Osu.Scoring
         private readonly Stack<State> states = new Stack<State>();
         private readonly int difficultyMultiplier;
         private readonly double modMultiplier;
+        private readonly bool stableSpinnerScoring = osu.Game.Online.MosuServerEnvironment.UsesStableProtocol;
 
         private int combo;
+        public int Combo => combo;
+        public int MaxCombo { get; private set; }
+        public int? CurrentCombo => Combo;
+        public int? MaximumCombo => MaxCombo;
 
         public long TotalScore { get; private set; }
 
@@ -50,17 +55,17 @@ namespace osu.Game.Rulesets.Osu.Scoring
 
         public void ApplyResult(JudgementResult result)
         {
-            states.Push(new State(TotalScore, combo));
+            states.Push(new State(TotalScore, combo, MaxCombo));
 
             switch (result.HitObject)
             {
                 case SpinnerBonusTick:
-                    if (result.IsHit)
+                    if (result.IsHit && !stableSpinnerScoring)
                         TotalScore += 1100;
                     return;
 
                 case SpinnerTick:
-                    if (result.IsHit)
+                    if (result.IsHit && !stableSpinnerScoring)
                         TotalScore += 100;
                     return;
 
@@ -79,6 +84,11 @@ namespace osu.Game.Rulesets.Osu.Scoring
                     return;
 
                 case Spinner:
+                    if (stableSpinnerScoring && result is Judgements.OsuSpinnerJudgementResult spinnerResult && spinnerResult.StableState != null)
+                        TotalScore += spinnerResult.StableState.SpinScore;
+                    applyBasicResult(result, increaseCombo: true);
+                    return;
+
                 case HitCircle:
                     applyBasicResult(result, increaseCombo: true);
                     return;
@@ -93,6 +103,7 @@ namespace osu.Game.Rulesets.Osu.Scoring
             State state = states.Pop();
             TotalScore = state.TotalScore;
             combo = state.Combo;
+            MaxCombo = state.MaxCombo;
         }
 
         private void applySliderPart(JudgementResult result, int score)
@@ -101,6 +112,7 @@ namespace osu.Game.Rulesets.Osu.Scoring
             {
                 TotalScore += score;
                 combo++;
+                MaxCombo = Math.Max(MaxCombo, combo);
             }
             else if (result.Type.BreaksCombo())
                 combo = 0;
@@ -121,7 +133,10 @@ namespace osu.Game.Rulesets.Osu.Scoring
             TotalScore += (int)(Math.Max(0, combo - 1) * (baseScore / 25 * (difficultyMultiplier * modMultiplier)));
 
             if (increaseCombo)
+            {
                 combo++;
+                MaxCombo = Math.Max(MaxCombo, combo);
+            }
         }
 
         private static int getBaseScore(HitResult result)
@@ -146,11 +161,13 @@ namespace osu.Game.Rulesets.Osu.Scoring
         {
             public readonly long TotalScore;
             public readonly int Combo;
+            public readonly int MaxCombo;
 
-            public State(long totalScore, int combo)
+            public State(long totalScore, int combo, int maxCombo)
             {
                 TotalScore = totalScore;
                 Combo = combo;
+                MaxCombo = maxCombo;
             }
         }
     }

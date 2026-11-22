@@ -16,6 +16,7 @@ using osu.Game.Configuration;
 using osu.Game.Database;
 using osu.Game.Extensions;
 using osu.Game.IO.Archives;
+using osu.Game.Localisation;
 using osu.Game.Online.API;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Rulesets;
@@ -240,19 +241,33 @@ namespace osu.Game.Scoring
         /// The <see cref="IScoreInfo"/> is re-retrieved from the database to ensure all the required data
         /// for exporting a replay are present (may have missing properties if it was retrieved from online data).
         /// </remarks>
-        public Task Export(ScoreInfo scoreInfo)
+        public async Task Export(ScoreInfo scoreInfo)
         {
-            ScoreInfo? databasedScoreInfo = getDatabasedScoreInfo(scoreInfo);
+            try
+            {
+                ScoreInfo? databasedScoreInfo = getDatabasedScoreInfo(scoreInfo);
 
-            if (databasedScoreInfo == null)
-                return Task.CompletedTask;
+                if (databasedScoreInfo == null)
+                    return;
 
-            var score = GetScore(databasedScoreInfo);
-            if (score == null || databasedScoreInfo.BeatmapInfo == null)
-                return Task.CompletedTask;
+                var score = GetScore(databasedScoreInfo);
+                if (score == null || databasedScoreInfo.BeatmapInfo == null)
+                    return;
 
-            var workingBeatmap = beatmaps().GetWorkingBeatmap(databasedScoreInfo.BeatmapInfo.Detach());
-            return scoreExporter.ExportAsync(score, workingBeatmap.Beatmap);
+                var workingBeatmap = beatmaps().GetWorkingBeatmap(databasedScoreInfo.BeatmapInfo.Detach());
+                await scoreExporter.ExportAsync(score, workingBeatmap.Beatmap).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // The exporter already marks the progress notification as cancelled.
+            }
+            catch (Exception ex)
+            {
+                // Export is also triggered by fire-and-forget hotkeys. Neither replay
+                // decoding failures nor write errors should escape into the input loop.
+                Logger.Error(ex, $"Failed to export replay {scoreInfo.ID}.");
+                PostNotification?.Invoke(new SimpleNotification { Text = EditorStrings.ExportFailed });
+            }
         }
 
         public Task<Live<ScoreInfo>?> ImportAsUpdate(ProgressNotification notification, ImportTask task, ScoreInfo original) => scoreImporter.ImportAsUpdate(notification, task, original);

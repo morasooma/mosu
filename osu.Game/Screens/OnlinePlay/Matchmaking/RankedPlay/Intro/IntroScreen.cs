@@ -31,10 +31,13 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Intro
         [Resolved]
         private UserLookupCache userLookupCache { get; set; } = null!;
 
+        [Resolved(canBeNull: true)]
+        private RankedPlayMatchInfo? matchInfo { get; set; }
+
         [Resolved]
         private IAPIProvider api { get; set; } = null!;
 
-        [Resolved]
+        [Resolved(canBeNull: true)]
         private RankedPlayChatDisplay? chat { get; set; }
 
         private Sample? windupSample;
@@ -64,10 +67,12 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.Intro
 
             var users = await userLookupCache.GetUsersAsync(userIds).ConfigureAwait(false);
 
-            var player = users.OfType<APIUser>().FirstOrDefault(it => it.Id == api.LocalUser.Value.Id)
-                         ?? api.LocalUser.Value;
-            var opponent = users.OfType<APIUser>().FirstOrDefault(it => it.Id != api.LocalUser.Value.Id)
-                           ?? APIUser.UnknownUser(userIds.First(id => id != api.LocalUser.Value.Id));
+            int playerId = matchInfo?.PlayerId ?? api.LocalUser.Value.Id;
+            int opponentId = userIds.Single(id => id != playerId);
+            var player = users.OfType<APIUser>().FirstOrDefault(it => it.Id == playerId)
+                         ?? APIUser.UnknownUser(playerId);
+            var opponent = users.OfType<APIUser>().FirstOrDefault(it => it.Id == opponentId)
+                           ?? APIUser.UnknownUser(opponentId);
 
             int playerRating = roomState.Users[player.Id].Rating;
             int opponentRating = roomState.Users[opponent.Id].Rating;

@@ -14,6 +14,7 @@ namespace osu.Game.Scoring.Render
     public static class RenderEncodingSelector
     {
         public const string AutoEncoderLabel = "Auto (Recommended)";
+        internal const string CompactEncoder = "libx265";
 
         private static readonly Lazy<string[]> detectedGpuNames = new Lazy<string[]>(detectGpuNames);
 
@@ -21,6 +22,7 @@ namespace osu.Game.Scoring.Render
             => new[]
             {
                 AutoEncoderLabel,
+                CompactEncoder,
                 "libx264 (CPU)",
                 "h264_nvenc (NVIDIA)",
                 "h264_amf (AMD)",

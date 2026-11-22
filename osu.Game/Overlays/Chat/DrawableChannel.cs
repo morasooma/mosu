@@ -23,6 +23,10 @@ namespace osu.Game.Overlays.Chat
         protected FillFlowContainer ChatLineFlow;
         private ChannelScrollContainer scroll;
 
+        private const int lines_per_update = 8;
+        private readonly Queue<Message> pendingMessages = new Queue<Message>();
+        private bool scrollToEndAfterPending;
+
         private bool scrollbarVisible = true;
 
         public bool ScrollbarVisible
@@ -105,6 +109,7 @@ namespace osu.Game.Overlays.Chat
             Channel.NewMessagesArrived -= newMessagesArrived;
             Channel.MessageRemoved -= messageRemoved;
             Channel.PendingMessageResolved -= pendingMessageResolved;
+            pendingMessages.Clear();
         }
 
         [CanBeNull]
@@ -114,21 +119,41 @@ namespace osu.Game.Overlays.Chat
 
         private void newMessagesArrived(IEnumerable<Message> newMessages) => Schedule(() =>
         {
-            if (newMessages.Min(m => m.Id) < chatLines.Max(c => c.Message.Id))
+            var incoming = newMessages.ToArray();
+            long? latestId = pendingMessages.Select(m => m.Id).Concat(chatLines.Select(c => c.Message.Id)).Max();
+            if (incoming.Min(m => m.Id) < latestId)
             {
-                // there is a case (on initial population) that we may receive past messages and need to reorder.
-                // easiest way is to just combine messages and recreate drawables (less worrying about day separators etc.)
-                newMessages = newMessages.Concat(chatLines.Select(c => c.Message)).OrderBy(m => m.Id).ToList();
+                // Include not-yet-admitted history when older messages arrive.
+                // Reordering still rebuilds the same complete chronological view.
+                incoming = incoming.Concat(pendingMessages).Concat(chatLines.Select(c => c.Message)).OrderBy(m => m.Id).ToArray();
                 ChatLineFlow.Clear();
+                pendingMessages.Clear();
             }
 
-            // Add up to last Channel.MAX_HISTORY messages
-            var displayMessages = newMessages.Skip(Math.Max(0, newMessages.Count() - Channel.MAX_HISTORY));
+            foreach (var message in incoming.Skip(Math.Max(0, incoming.Length - Channel.MAX_HISTORY)))
+                pendingMessages.Enqueue(message);
+
+            // Only the newest history can eventually be displayed. A fast stream
+            // must not build an unbounded queue while admission catches up.
+            while (pendingMessages.Count > Channel.MAX_HISTORY)
+                pendingMessages.Dequeue();
+
+            scrollToEndAfterPending |= incoming.Any(m => m is LocalMessage);
+        });
+
+        protected override void Update()
+        {
+            base.Update();
+
+            if (pendingMessages.Count == 0)
+                return;
 
             ChatLine lastLine = chatLines.LastOrDefault();
             Message lastMessage = lastLine?.Message;
 
-            foreach (var message in displayMessages)
+            // ChatLine construction, dependency loading and its first text layout
+            // all run here. Bound that work instead of doing 300 lines in one frame.
+            for (int i = 0; i < lines_per_update && pendingMessages.TryDequeue(out var message); i++)
             {
                 addDaySeparatorIfRequired(lastMessage, message);
 
@@ -163,14 +188,38 @@ namespace osu.Game.Overlays.Chat
 
             // due to the scroll adjusts from old messages removal above, a scroll-to-end must be enforced,
             // to avoid making the container think the user has scrolled back up and unwantedly disable auto-scrolling.
-            if (newMessages.Any(m => m is LocalMessage))
+            if (pendingMessages.Count == 0 && scrollToEndAfterPending)
+            {
                 scroll.ScrollToEnd();
+                scrollToEndAfterPending = false;
+            }
 
             processMessageHighlighting();
-        });
+        }
+
+        private bool removePendingMessage(Message message)
+        {
+            bool removed = false;
+            int count = pendingMessages.Count;
+            for (int i = 0; i < count; i++)
+            {
+                var pending = pendingMessages.Dequeue();
+                if (pending == message)
+                    removed = true;
+                else
+                    pendingMessages.Enqueue(pending);
+            }
+            return removed;
+        }
 
         private void pendingMessageResolved(Message existing, Message updated) => Schedule(() =>
         {
+            if (removePendingMessage(existing))
+            {
+                pendingMessages.Enqueue(updated);
+                return;
+            }
+
             var found = chatLines.LastOrDefault(c => c.Message == existing);
 
             if (found != null)
@@ -221,6 +270,7 @@ namespace osu.Game.Overlays.Chat
 
         private void messageRemoved(Message removed) => Schedule(() =>
         {
+            removePendingMessage(removed);
             const double fade_time = 600;
 
             ChatLine removedLine = chatLines.FirstOrDefault(c => c.Message == removed);

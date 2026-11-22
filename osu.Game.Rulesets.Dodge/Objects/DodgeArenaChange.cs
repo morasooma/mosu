@@ -12,12 +12,13 @@ namespace osu.Game.Rulesets.Dodge.Objects
 {
     /// <summary>
     /// Changes the playable arena to a target rectangle.
-    /// The earliest change (or any change at or before time zero) is applied immediately;
-    /// subsequent changes interpolate over <see cref="Duration"/>.
+    /// The earliest legacy change (or any change at or before time zero) is applied immediately;
+    /// world-space events and subsequent changes interpolate over <see cref="Duration"/>.
     /// </summary>
     public class DodgeArenaChange : DodgeHitObject, IHasDuration, IHasPosition
     {
         public const float MIN_SIZE = 32;
+        public const float MAX_WORLD_SIZE = 4096;
 
         /// <summary>
         /// Opacity of the arena border, independently of the background opacity.
@@ -53,6 +54,9 @@ namespace osu.Game.Rulesets.Dodge.Objects
 
         public Vector2 TargetSize { get; set; } = UI.DodgePlayfield.BASE_SIZE;
 
+        /// <summary>Allow this event to define an arena outside the legacy 512 × 384 field.</summary>
+        public bool WorldSpace { get; set; }
+
         /// <summary>
         /// Rotation angle of the target arena rectangle in degrees.
         /// </summary>
@@ -80,15 +84,26 @@ namespace osu.Game.Rulesets.Dodge.Objects
 
         public override Judgement CreateJudgement() => new DodgeArenaChangeJudgement();
 
+        /// <summary>Resize without moving the arena centre.</summary>
+        public void ResizeFromCentre(Vector2 size)
+        {
+            Vector2 centre = TargetPosition + TargetSize / 2;
+            TargetSize = new Vector2(
+                System.Math.Clamp(size.X, MIN_SIZE, WorldSpace ? MAX_WORLD_SIZE : UI.DodgePlayfield.WIDTH),
+                System.Math.Clamp(size.Y, MIN_SIZE, WorldSpace ? MAX_WORLD_SIZE : UI.DodgePlayfield.HEIGHT));
+            TargetPosition = centre - TargetSize / 2;
+            ClampToBaseBounds();
+        }
+
         public void ClampToBaseBounds()
         {
             TargetSize = new Vector2(
-                System.Math.Clamp(TargetSize.X, MIN_SIZE, UI.DodgePlayfield.WIDTH),
-                System.Math.Clamp(TargetSize.Y, MIN_SIZE, UI.DodgePlayfield.HEIGHT));
+                System.Math.Clamp(TargetSize.X, MIN_SIZE, WorldSpace ? MAX_WORLD_SIZE : UI.DodgePlayfield.WIDTH),
+                System.Math.Clamp(TargetSize.Y, MIN_SIZE, WorldSpace ? MAX_WORLD_SIZE : UI.DodgePlayfield.HEIGHT));
 
             TargetPosition = new Vector2(
-                System.Math.Clamp(TargetPosition.X, 0, UI.DodgePlayfield.WIDTH - TargetSize.X),
-                System.Math.Clamp(TargetPosition.Y, 0, UI.DodgePlayfield.HEIGHT - TargetSize.Y));
+                System.Math.Clamp(TargetPosition.X, WorldSpace ? -MAX_WORLD_SIZE : 0, WorldSpace ? MAX_WORLD_SIZE : UI.DodgePlayfield.WIDTH - TargetSize.X),
+                System.Math.Clamp(TargetPosition.Y, WorldSpace ? -MAX_WORLD_SIZE : 0, WorldSpace ? MAX_WORLD_SIZE : UI.DodgePlayfield.HEIGHT - TargetSize.Y));
         }
     }
 }

@@ -53,7 +53,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.Match.BeatmapSelect
                             Y = 20,
                             Anchor = Anchor.Centre,
                             Origin = Anchor.Centre,
-                            Text = "Random"
+                            Text = global::osu.Game.Localisation.ClientTranslationStrings.J4817
                         },
                         Dice = new SpriteIcon
                         {

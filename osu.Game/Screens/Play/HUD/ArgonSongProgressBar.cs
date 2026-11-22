@@ -29,8 +29,10 @@ namespace osu.Game.Screens.Play.HUD
 
         private readonly Box background;
 
-        private readonly ColourInfo mainColour;
+        private ColourInfo mainColour;
         private ColourInfo catchUpColour;
+        private Colour4 defaultCatchUpColour;
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
 
         public double Progress { get; set; }
 
@@ -103,7 +105,22 @@ namespace osu.Game.Screens.Play.HUD
         [BackgroundDependencyLoader]
         private void load(OsuColour colours)
         {
-            catchUpColour = colours.BlueDark;
+            catchUpColour = defaultCatchUpColour = colours.BlueDark;
+        }
+
+        internal void ApplyCornerRadius(float radius)
+        {
+            CornerRadius = audioBar.CornerRadius = playfieldBar.CornerRadius = radius;
+        }
+
+        internal void ApplyThemeColours(bool useTheme)
+        {
+            mainColour = useTheme ? themeColours.GetColour(Overlays.OverlayColour.Highlight1, OsuColour.Gray(0.9f)) : OsuColour.Gray(0.9f);
+            catchUpColour = useTheme ? themeColours.GetColour(Overlays.OverlayColour.Colour4, defaultCatchUpColour) : defaultCatchUpColour;
+            background.Colour = useTheme ? themeColours.GetColour(Overlays.OverlayColour.Background3, OsuColour.Gray(0.2f)) : OsuColour.Gray(0.2f);
+            playfieldBar.TransformTo(nameof(playfieldBar.AccentColour), mainColour);
+            lastAudioAccent = usingCatchUpAccent ? catchUpColour : mainColour;
+            audioBar.AccentColour = lastAudioAccent;
         }
 
         protected override void LoadComplete()

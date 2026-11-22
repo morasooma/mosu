@@ -13,7 +13,7 @@ namespace osu.Game.Rulesets.Mania.Mods
         public override string Name => "Ten Keys";
         public override string Acronym => "10K";
         public override IconUsage? Icon => OsuIcon.ModTenKeys;
-        public override LocalisableString Description => @"Play with ten keys.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3639;
         public override bool Ranked => false;
     }
 }

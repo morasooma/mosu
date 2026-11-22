@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using Microsoft.VisualBasic.FileIO;
 
 namespace osu.Game.Performance.Diagnostics
 {
@@ -34,7 +35,7 @@ namespace osu.Game.Performance.Diagnostics
         public static ParsedBenchmarkMetrics? TryParseSegments(string performanceDirectory, string benchmarkIdPrefix)
         {
             var segmentFiles = Directory.Exists(performanceDirectory)
-                ? Directory.GetFiles(performanceDirectory, "mosu-performance-*.segments.csv", SearchOption.TopDirectoryOnly)
+                ? Directory.GetFiles(performanceDirectory, "mosu-performance-*.segments.csv", System.IO.SearchOption.TopDirectoryOnly)
                 : Array.Empty<string>();
 
             var matchingRows = new List<Dictionary<string, string>>();
@@ -89,7 +90,7 @@ namespace osu.Game.Performance.Diagnostics
                 AvgFps = average(matchingRows, "draw_fps_avg"),
                 P5Fps = average(matchingRows, "draw_fps_p5"),
                 P1Fps = average(matchingRows, "draw_fps_p1"),
-                MinFps = (int?)average(matchingRows, "draw_fps_min"),
+                MinFps = (int?)matchingRows.Select(r => tryParseDouble(r, "draw_fps_min")).Min(),
                 DrawP99Ms = average(matchingRows, "draw_ms_max_p99"),
                 UpdateP99Ms = average(matchingRows, "update_ms_max_p99"),
                 DrawWorkP99Ms = average(matchingRows, "draw_work_ms_max_p99"),
@@ -138,28 +139,43 @@ namespace osu.Game.Performance.Diagnostics
 
         private static IEnumerable<Dictionary<string, string>> readCsvRows(string path)
         {
-            using var reader = new StreamReader(path);
-            string? headerLine = reader.ReadLine();
+            using var reader = new TextFieldParser(path)
+            {
+                TextFieldType = FieldType.Delimited,
+                HasFieldsEnclosedInQuotes = true,
+                TrimWhiteSpace = false,
+            };
+            reader.SetDelimiters(",");
 
-            if (headerLine == null)
+            string[]? headers = readFields(reader);
+            if (headers == null)
                 yield break;
 
-            string[] headers = headerLine.Split(',');
-
-            while (!reader.EndOfStream)
+            while (!reader.EndOfData)
             {
-                string? line = reader.ReadLine();
+                string[]? values = readFields(reader);
 
-                if (string.IsNullOrWhiteSpace(line))
+                // Never report shifted or truncated columns as valid measurements.
+                if (values == null || values.Length != headers.Length)
                     continue;
 
-                string[] values = line.Split(',');
                 var row = new Dictionary<string, string>(StringComparer.Ordinal);
-
-                for (int i = 0; i < headers.Length && i < values.Length; i++)
+                for (int i = 0; i < headers.Length; i++)
                     row[headers[i]] = values[i];
 
                 yield return row;
+            }
+        }
+
+        private static string[]? readFields(TextFieldParser reader)
+        {
+            try
+            {
+                return reader.ReadFields();
+            }
+            catch (MalformedLineException)
+            {
+                return null;
             }
         }
 

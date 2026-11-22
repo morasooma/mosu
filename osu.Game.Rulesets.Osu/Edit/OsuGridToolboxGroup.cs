@@ -132,7 +132,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                         Precision = 0.1f,
                     },
                     KeyboardStep = 1,
-                    ExpandedLabelText = "X offset",
+                    ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3291,
                 },
                 startPositionYSlider = new ExpandableSlider<float>
                 {
@@ -143,19 +143,19 @@ namespace osu.Game.Rulesets.Osu.Edit
                         Precision = 0.1f,
                     },
                     KeyboardStep = 1,
-                    ExpandedLabelText = "Y offset",
+                    ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3292,
                 },
                 spacingSlider = new ExpandableSlider<float>
                 {
                     Current = GridLineSpacing,
                     KeyboardStep = 1,
-                    ExpandedLabelText = "Spacing",
+                    ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3293,
                 },
                 gridLinesRotationSlider = new ExpandableSlider<float>
                 {
                     Current = GridLinesRotation,
                     KeyboardStep = 1,
-                    ExpandedLabelText = "Rotation",
+                    ExpandedLabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3294,
                 },
                 new FillFlowContainer
                 {
@@ -172,13 +172,13 @@ namespace osu.Game.Rulesets.Osu.Edit
                 },
             };
 
-            gridTypeButtons.AddButton(new EditorRadioButton("Square",
+            gridTypeButtons.AddButton(new EditorRadioButton(global::osu.Game.Localisation.ClientTranslationStrings.J3295,
                 () => GridType.Value = PositionSnapGridType.Square,
                 () => new SpriteIcon { Icon = FontAwesome.Regular.Square }));
-            gridTypeButtons.AddButton(new EditorRadioButton("Triangle",
+            gridTypeButtons.AddButton(new EditorRadioButton(global::osu.Game.Localisation.ClientTranslationStrings.J3296,
                 () => GridType.Value = PositionSnapGridType.Triangle,
                 () => new OutlineTriangle(true, 20)));
-            gridTypeButtons.AddButton(new EditorRadioButton("Circle",
+            gridTypeButtons.AddButton(new EditorRadioButton(global::osu.Game.Localisation.ClientTranslationStrings.J3297,
                 () => GridType.Value = PositionSnapGridType.Circle,
                 () => new SpriteIcon { Icon = FontAwesome.Regular.Circle }));
 

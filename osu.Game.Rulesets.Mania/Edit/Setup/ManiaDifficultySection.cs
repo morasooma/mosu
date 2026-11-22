@@ -50,20 +50,20 @@ namespace osu.Game.Rulesets.Mania.Edit.Setup
                 keyCountSlider = new FormSliderBar<int>
                 {
                     Caption = BeatmapsetsStrings.ShowStatsCsMania,
-                    HintText = "The number of columns in the beatmap",
+                    HintText = global::osu.Game.Localisation.ClientTranslationStrings.J3392,
                     Current = singleStageKeyCount,
                     TransferValueOnCommit = true,
                     TabbableContentContainer = this,
                 },
                 dualStages = new FormCheckBox
                 {
-                    Caption = "Dual stages",
-                    HintText = "Doubles the number of keys by adding a second stage."
+                    Caption = global::osu.Game.Localisation.ClientTranslationStrings.J3393,
+                    HintText = global::osu.Game.Localisation.ClientTranslationStrings.J3394
                 },
                 specialStyle = new FormCheckBox
                 {
-                    Caption = "Use special (N+1) style",
-                    HintText = "Changes one column to act as a classic \"scratch\" or \"special\" column, which can be moved around by the user's skin (to the left/right/centre). Generally used in 6K (5+1) or 8K (7+1) configurations.",
+                    Caption = global::osu.Game.Localisation.ClientTranslationStrings.J3395,
+                    HintText = global::osu.Game.Localisation.ClientTranslationStrings.J3396,
                     Current = { Value = Beatmap.SpecialStyle }
                 },
                 healthDrainSlider = new FormSliderBar<float>

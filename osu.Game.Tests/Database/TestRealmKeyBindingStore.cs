@@ -65,6 +65,55 @@ namespace osu.Game.Tests.Database
         }
 
         [Test]
+        public void TestMappingOrderPreservesDefaultActionPriority()
+        {
+            var defaults = new IKeyBinding[]
+            {
+                new KeyBinding(InputKey.A, GlobalAction.Select),
+                new KeyBinding(InputKey.B, GlobalAction.Select),
+                new KeyBinding(InputKey.C, GlobalAction.Back),
+            };
+            var bindings = new[]
+            {
+                new RealmKeyBinding(GlobalAction.Back, new KeyCombination(InputKey.C)),
+                new RealmKeyBinding((int)GlobalAction.Back + 10000, new KeyCombination(InputKey.D)),
+                new RealmKeyBinding(GlobalAction.Select, new KeyCombination(InputKey.A)),
+                new RealmKeyBinding(GlobalAction.Back, new KeyCombination(InputKey.E)),
+                new RealmKeyBinding(GlobalAction.Select, new KeyCombination(InputKey.B)),
+            };
+
+            var ordered = DatabasedKeyBindingContainer<GlobalAction>.OrderByDefaultActionPriority(bindings, defaults);
+
+            // Unknown actions came first with FindIndex (-1), and ties kept the database's order.
+            Assert.That(ordered, Is.EqualTo(new[] { bindings[1], bindings[2], bindings[4], bindings[0], bindings[3] }));
+        }
+
+        [Test]
+        public void TestDetachedBindingCopiesAllPersistedFields()
+        {
+            RunTestWithRealm((realm, _) =>
+            {
+                var original = new RealmKeyBinding(GlobalAction.Back, new KeyCombination(InputKey.Escape), "osu", 0);
+                realm.Write(r => r.Add(original));
+
+                var detached = realm.Run(r => RealmKeyBinding.CreateDetached(r.All<RealmKeyBinding>().Single()));
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(detached.IsManaged, Is.False);
+                    Assert.That(detached.ID, Is.EqualTo(original.ID));
+                    Assert.That(detached.RulesetName, Is.EqualTo(original.RulesetName));
+                    Assert.That(detached.Variant, Is.EqualTo(original.Variant));
+                    Assert.That(detached.ActionInt, Is.EqualTo(original.ActionInt));
+                    Assert.That(detached.KeyCombinationString, Is.EqualTo(original.KeyCombinationString));
+                });
+
+                realm.Write(r => r.Find<RealmKeyBinding>(original.ID)!.KeyCombination = new KeyCombination(InputKey.BackSpace));
+                Assert.That(detached.KeyCombination, Is.EqualTo(new KeyCombination(InputKey.Escape)));
+            });
+        }
+
+        [Test]
         public void TestUpdateViaQueriedReference()
         {
             RunTestWithRealm((realm, _) =>

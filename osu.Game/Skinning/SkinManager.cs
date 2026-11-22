@@ -39,7 +39,8 @@ namespace osu.Game.Skinning
     public class SkinManager : ModelManager<SkinInfo>, ISkinSource, IStorageResourceProvider, IModelImporter<SkinInfo>
     {
         /// <summary>
-        /// The default "classic" skin.
+        /// Legacy-format fallback, backed by the built-in Morasooma skin.
+        /// The historical property name is retained for existing consumers.
         /// </summary>
         public Skin DefaultClassicSkin { get; }
 
@@ -65,6 +66,8 @@ namespace osu.Game.Skinning
         private readonly LegacySkinExporter skinExporter;
 
         private readonly IResourceStore<byte[]> userFiles;
+
+        private Skin argonSkin { get; }
 
         private Skin trianglesSkin { get; }
 
@@ -103,10 +106,10 @@ namespace osu.Game.Skinning
 
             var defaultSkins = new[]
             {
-                DefaultClassicSkin = new MorasoomaSkin(this),
                 new DefaultLegacySkin(this),
+                DefaultClassicSkin = new MorasoomaSkin(this),
                 trianglesSkin = new TrianglesSkin(this),
-                new ArgonSkin(this),
+                argonSkin = new ArgonSkin(this),
                 new ArgonProSkin(this),
             };
 
@@ -122,6 +125,14 @@ namespace osu.Game.Skinning
 
             CurrentSkinInfo.ValueChanged += skin =>
             {
+                // Retired built-in entries may remain in an existing Realm or pinned selection.
+                // Do not delete library records; resolve only this removed built-in to the current default.
+                if (skin.NewValue.ID == SkinInfo.RETRO_SKIN)
+                {
+                    CurrentSkinInfo.Value = DefaultClassicSkin.SkinInfo;
+                    return;
+                }
+
                 CurrentSkin.Value = skin.NewValue.PerformRead(GetSkin);
             };
 
@@ -151,11 +162,11 @@ namespace osu.Game.Skinning
 
             Realm.Run(realm =>
             {
+                skins.Add(realm.Find<SkinInfo>(SkinInfo.MORASOOMA_SKIN).ToLive(Realm));
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_SKIN).ToLive(Realm));
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.ARGON_PRO_SKIN).ToLive(Realm));
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.TRIANGLES_SKIN).ToLive(Realm));
                 skins.Add(realm.Find<SkinInfo>(SkinInfo.CLASSIC_SKIN).ToLive(Realm));
-                skins.Add(realm.Find<SkinInfo>(SkinInfo.MORASOOMA_SKIN).ToLive(Realm));
 
                 skins.Add(random_skin_info);
 
@@ -248,7 +259,7 @@ namespace osu.Game.Skinning
         /// </summary>
         /// <param name="skinInfo">The skin to lookup.</param>
         /// <returns>A <see cref="Skin"/> instance correlating to the provided <see cref="SkinInfo"/>.</returns>
-        public Skin GetSkin(SkinInfo skinInfo) => skinInfo.ID == SkinInfo.RETRO_SKIN ? DefaultClassicSkin : skinInfo.CreateInstance(this);
+        public Skin GetSkin(SkinInfo skinInfo) => skinInfo.CreateInstance(this);
 
         /// <summary>
         /// Ensure that the current skin is in a state it can accept user modifications.
@@ -354,7 +365,7 @@ namespace osu.Game.Skinning
                 // This handles cases where a user skin doesn't have the required resources for complete display of
                 // certain elements.
 
-                if (CurrentSkin.Value is LegacySkin && CurrentSkin.Value != DefaultClassicSkin)
+                if (CurrentSkin.Value is not MorasoomaSkin)
                     yield return DefaultClassicSkin;
 
                 if (CurrentSkin.Value != trianglesSkin)
@@ -458,6 +469,15 @@ namespace osu.Game.Skinning
 
             if (Guid.TryParse(guidString, out var guid) && guid != SkinInfo.RETRO_SKIN)
                 skinInfo = Query(s => s.ID == guid);
+
+            if (skinInfo == null)
+            {
+                if (guid == SkinInfo.MORASOOMA_SKIN)
+                    skinInfo = DefaultClassicSkin.SkinInfo;
+
+                if (guid == SkinInfo.CLASSIC_SKIN)
+                    skinInfo = DefaultLegacySkin.CreateInfo().ToLiveUnmanaged();
+            }
 
             CurrentSkinInfo.Value = skinInfo ?? DefaultClassicSkin.SkinInfo;
         }

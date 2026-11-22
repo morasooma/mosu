@@ -208,11 +208,20 @@ namespace osu.Game.Screens.Edit.Submission
             configManager.BindWith(OsuSetting.EditorSubmissionNotifyOnDiscussionReplies, settings.NotifyOnDiscussionReplies);
         }
 
+        internal static bool UsesServerSubmission(string apiUrl, string rulesetShortName) =>
+            osu.Game.Online.MosuServerEnvironment.IsMosuServerUrl(apiUrl)
+            || rulesetShortName == RulesetInfo.DODGE_MODE_SHORTNAME;
+
+        internal static bool IsUpdate(string apiUrl, string rulesetShortName, int onlineBeatmapSetId) =>
+            UsesServerSubmission(apiUrl, rulesetShortName)
+                ? onlineBeatmapSetId >= BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD
+                : onlineBeatmapSetId > 0;
+
         private void createBeatmapSet()
         {
-            if (Beatmap.Value.BeatmapInfo.Ruleset.ShortName == RulesetInfo.DODGE_MODE_SHORTNAME)
+            if (UsesServerSubmission(api.Endpoints.APIUrl, Beatmap.Value.BeatmapInfo.Ruleset.ShortName))
             {
-                createDodgeBeatmapSet();
+                createServerBeatmapSet();
                 return;
             }
 
@@ -266,39 +275,39 @@ namespace osu.Game.Screens.Edit.Submission
             api.Queue(createRequest);
         }
 
-        private void createDodgeBeatmapSet()
+        private void createServerBeatmapSet()
         {
             int onlineBeatmapSetId = Beatmap.Value.BeatmapSetInfo.OnlineID;
 
             createSetStep.SetInProgress();
 
-            if (onlineBeatmapSetId < BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD)
+            if (!IsUpdate(api.Endpoints.APIUrl, Beatmap.Value.BeatmapInfo.Ruleset.ShortName, onlineBeatmapSetId))
             {
                 createSetStep.SetCompleted();
-                _ = createDodgeBeatmapPackage(null);
+                _ = createServerBeatmapPackage(null);
                 return;
             }
 
-            log($"Retrieving Dodge beatmap set upload state (id:{onlineBeatmapSetId})");
+            log($"Retrieving server beatmap set upload state (id:{onlineBeatmapSetId})");
 
             var stateRequest = new GetServerBeatmapSetUploadStateRequest(onlineBeatmapSetId);
             stateRequest.Success += state =>
             {
                 createSetStep.SetCompleted();
                 beatmapSetId = (uint)onlineBeatmapSetId;
-                _ = createDodgeBeatmapPackage(state.Revision);
+                _ = createServerBeatmapPackage(state.Revision);
             };
             stateRequest.Failure += ex =>
             {
                 createSetStep.SetFailed(ex.Message);
-                log($"Dodge beatmap set state lookup failed: {ex}");
+                log($"server beatmap set state lookup failed: {ex}");
                 allowExit();
             };
 
             api.Queue(stateRequest);
         }
 
-        private async Task createDodgeBeatmapPackage(int? baseRevision)
+        private async Task createServerBeatmapPackage(int? baseRevision)
         {
             Debug.Assert(ThreadSafety.IsUpdateThread);
 
@@ -312,9 +321,11 @@ namespace osu.Game.Screens.Edit.Submission
                 exportProgressNotification = new ProgressNotification();
                 origin = beatmaps.GetRulesetBeatmapSetOrigin(Beatmap.Value.BeatmapSetInfo);
 
-                var rawBeatmapExporter = new RawBeatmapExporter(storage);
+                LegacyArchiveExporter<BeatmapSetInfo> exporter = Beatmap.Value.BeatmapInfo.Ruleset.ShortName == RulesetInfo.DODGE_MODE_SHORTNAME
+                    ? new RawBeatmapExporter(storage)
+                    : new ServerBeatmapExporter(storage);
 
-                await rawBeatmapExporter
+                await exporter
                       .ExportToStreamAsync(Beatmap.Value.BeatmapSetInfo.ToLive(realmAccess), beatmapPackageStream, exportProgressNotification)
                       .ConfigureAwait(true);
             }
@@ -322,7 +333,7 @@ namespace osu.Game.Screens.Edit.Submission
             {
                 exportStep.SetFailed(ex.Message);
                 exportProgressNotification = null;
-                log($"Dodge export failed: {ex}");
+                log($"Server export failed: {ex}");
                 allowExit();
                 return;
             }
@@ -341,8 +352,8 @@ namespace osu.Game.Screens.Edit.Submission
 
             if (baseRevision == null)
             {
-                log("Uploading new Dodge beatmap set...");
-                uploadRequest = UploadServerBeatmapSetRequest.CreateDodge(
+                log("Uploading new server beatmap set...");
+                uploadRequest = UploadServerBeatmapSetRequest.Create(
                     archive,
                     filename,
                     settings.Target.Value,
@@ -352,8 +363,8 @@ namespace osu.Game.Screens.Edit.Submission
             else
             {
                 Debug.Assert(beatmapSetId != null);
-                log($"Uploading Dodge beatmap set revision (id:{beatmapSetId} baseRevision:{baseRevision})...");
-                uploadRequest = UploadServerBeatmapSetRequest.UpdateDodge(
+                log($"Uploading server beatmap set revision (id:{beatmapSetId} baseRevision:{baseRevision})...");
+                uploadRequest = UploadServerBeatmapSetRequest.Update(
                     (int)beatmapSetId.Value,
                     baseRevision.Value,
                     archive,
@@ -363,11 +374,11 @@ namespace osu.Game.Screens.Edit.Submission
                     origin?.SourceBeatmapOnlineID);
             }
 
-            uploadRequest.Success += handleDodgeUploadSuccess;
+            uploadRequest.Success += handleServerUploadSuccess;
             uploadRequest.Failure += ex =>
             {
                 uploadStep.SetFailed(ex.Message);
-                log($"Dodge upload failed: {ex}");
+                log($"Server upload failed: {ex}");
                 allowExit();
             };
             uploadRequest.Progressed += (current, total) => uploadStep.SetInProgress(total > 0 ? (float)current / total : null);
@@ -376,13 +387,13 @@ namespace osu.Game.Screens.Edit.Submission
             uploadStep.SetInProgress();
         }
 
-        private async void handleDodgeUploadSuccess(APIBeatmapSet uploadedBeatmapSet)
+        private async void handleServerUploadSuccess(APIBeatmapSet uploadedBeatmapSet)
         {
             if (uploadedBeatmapSet.OnlineID < BeatmapApiProvider.SERVER_EXCLUSIVE_ID_THRESHOLD)
             {
-                var exception = new InvalidOperationException("The server returned an invalid Dodge beatmap set ID.");
+                var exception = new InvalidOperationException("The server returned an invalid server beatmap set ID.");
                 uploadStep.SetFailed(exception.Message);
-                log($"Dodge upload failed: {exception}");
+                log($"Server upload failed: {exception}");
                 allowExit();
                 return;
             }
@@ -406,16 +417,16 @@ namespace osu.Game.Screens.Edit.Submission
                 // The canonical archive import below normally persists all assigned IDs.
                 // Keep going so a transient local database failure does not strand a
                 // successful server upload without attempting the canonical update.
-                log($"Could not persist the assigned Dodge beatmap set ID before canonical download: {ex}");
+                log($"Could not persist the assigned server beatmap set ID before canonical download: {ex}");
             }
 
             uploadStep.SetCompleted();
-            downloadUploadedDodgeBeatmapSet(uploadedBeatmapSet);
+            downloadUploadedServerBeatmapSet(uploadedBeatmapSet);
         }
 
-        private void downloadUploadedDodgeBeatmapSet(APIBeatmapSet uploadedBeatmapSet)
+        private void downloadUploadedServerBeatmapSet(APIBeatmapSet uploadedBeatmapSet)
         {
-            log($"Downloading canonical Dodge beatmap set (id:{uploadedBeatmapSet.OnlineID})...");
+            log($"Downloading canonical server beatmap set (id:{uploadedBeatmapSet.OnlineID})...");
 
             updateStep.SetInProgress();
 
@@ -425,20 +436,20 @@ namespace osu.Game.Screens.Edit.Submission
             };
 
             downloadRequest.DownloadProgressed += progress => updateStep.SetInProgress(progress);
-            downloadRequest.Success += importDownloadedDodgeBeatmapSet;
+            downloadRequest.Success += importDownloadedServerBeatmapSet;
             downloadRequest.Failure += ex =>
             {
                 updateStep.SetFailed(ex.Message);
-                log($"Canonical Dodge beatmap set download failed: {ex}");
+                log($"Canonical server beatmap set download failed: {ex}");
                 allowExit();
             };
 
             api.Queue(downloadRequest);
         }
 
-        private async void importDownloadedDodgeBeatmapSet(string filename)
+        private async void importDownloadedServerBeatmapSet(string filename)
         {
-            log(@"Updating local Dodge beatmap set from the canonical server archive...");
+            log(@"Updating local server beatmap set from the canonical server archive...");
 
             try
             {
@@ -448,12 +459,12 @@ namespace osu.Game.Screens.Edit.Submission
                     Beatmap.Value.BeatmapSetInfo).ConfigureAwait(true);
 
                 if (importedSet == null)
-                    throw new InvalidOperationException("The canonical Dodge beatmap set could not be imported.");
+                    throw new InvalidOperationException("The canonical server beatmap set could not be imported.");
             }
             catch (Exception ex)
             {
                 updateStep.SetFailed(ex.Message);
-                log($@"Local Dodge update failed: {ex}");
+                log($@"Local server update failed: {ex}");
                 allowExit();
                 return;
             }

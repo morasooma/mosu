@@ -32,6 +32,9 @@ namespace osu.Game.Online.Legacy
         public Bindable<StableBanchoMatch?> CurrentMatch { get; } = new Bindable<StableBanchoMatch?>();
         public BindableBool IsInLobby { get; } = new BindableBool();
 
+        public event Action<int>? SpectatorJoined;
+        public event Action<int>? SpectatorLeft;
+        public event Action<StableSpectatorFrames>? SpectatorFramesReceived;
         public event Action? MatchStarted;
         public event Action<StableBanchoMatch>? MatchJoined;
         public event Action<StableBanchoMatch>? MatchUpdated;
@@ -52,6 +55,9 @@ namespace osu.Game.Online.Legacy
 
         private readonly object matchScoresLock = new object();
         private readonly Dictionary<int, StableBanchoMatchScore> latestMatchScores = new Dictionary<int, StableBanchoMatchScore>();
+        private readonly Dictionary<int, StableBanchoUserStatistics> latestUserStatistics = new Dictionary<int, StableBanchoUserStatistics>();
+        public StableBanchoUserStatistics? GetLatestUserStatistics(int userId) => latestUserStatistics.GetValueOrDefault(userId);
+
         private readonly Dictionary<(int UserId, int RulesetId), StableBanchoUserStatistics> userStatistics = new Dictionary<(int, int), StableBanchoUserStatistics>();
 
         public StableBanchoSession(StableScoreSubmissionClient client, IAPIProvider api, ServerProfile profile)
@@ -148,6 +154,9 @@ namespace osu.Game.Online.Legacy
 
         public async Task JoinLobbyAsync(CancellationToken cancellationToken = default)
         {
+            // Clear before sending: the response can contain the fresh match
+            // snapshot, and clients inside a match miss lobby disposal packets.
+            Schedule(() => Matches.Clear());
             await client.SendBanchoPacketsAsync([new StableBanchoPacket(StableBanchoClientPacket.JoinLobby)], cancellationToken).ConfigureAwait(false);
             Schedule(() => IsInLobby.Value = true);
         }
@@ -186,6 +195,9 @@ namespace osu.Game.Online.Legacy
             Schedule(() => CurrentMatch.Value = null);
         }
 
+        public Task SendPacketAsync(StableBanchoPacket packet, CancellationToken cancellationToken = default)
+            => sendAsync(packet, cancellationToken);
+
         public Task SetReadyAsync(bool ready, CancellationToken cancellationToken = default)
             => sendAsync(new StableBanchoPacket(ready ? StableBanchoClientPacket.MatchReady : StableBanchoClientPacket.MatchNotReady), cancellationToken);
 
@@ -206,9 +218,6 @@ namespace osu.Game.Online.Legacy
 
         public Task RequestSkipAsync(CancellationToken cancellationToken = default)
             => sendAsync(new StableBanchoPacket(StableBanchoClientPacket.MatchSkipRequest), cancellationToken);
-
-        public Task SendScoreFrameAsync(StableBanchoScoreFrame frame, CancellationToken cancellationToken = default)
-            => sendAsync(StableBanchoPacketCodec.CreateScoreFramePacket(frame), cancellationToken);
 
         public Task SendChannelMessageAsync(string channel, string message, CancellationToken cancellationToken = default)
         {
@@ -265,6 +274,15 @@ namespace osu.Game.Online.Legacy
                 {
                     switch ((StableBanchoServerPacket)packet.Id)
                     {
+                        case StableBanchoServerPacket.SpectatorJoined:
+                            SpectatorJoined?.Invoke(StableBanchoPacketCodec.DecodeInt32(packet.Payload));
+                            break;
+                        case StableBanchoServerPacket.SpectatorLeft:
+                            SpectatorLeft?.Invoke(StableBanchoPacketCodec.DecodeInt32(packet.Payload));
+                            break;
+                        case StableBanchoServerPacket.SpectateFrames:
+                            SpectatorFramesReceived?.Invoke(StableSpectatorFrameCodec.Decode(packet.Payload));
+                            break;
                         case StableBanchoServerPacket.NewMatch:
                         case StableBanchoServerPacket.UpdateMatch:
                         {
@@ -416,6 +434,7 @@ namespace osu.Game.Online.Legacy
                         {
                             StableBanchoUserStatistics statistics = StableBanchoPacketCodec.DecodeUserStatistics(packet.Payload);
                             userStatistics[(statistics.UserId, statistics.RulesetId)] = statistics;
+                            latestUserStatistics[statistics.UserId] = statistics;
                             UserStatisticsUpdated?.Invoke(statistics);
                             break;
                         }

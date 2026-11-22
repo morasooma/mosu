@@ -44,7 +44,7 @@ namespace osu.Game.Rulesets.UI
         private OverlayColourProvider? overlayColours;
         private OsuColour? osuColours;
 
-        public ModSwitchTiny(IMod mod, bool showExtendedInformation = false)
+        public ModSwitchTiny(IMod mod, bool showExtendedInformation = false, bool iconCaption = false)
         {
             Mod = mod;
             this.showExtendedInformation = showExtendedInformation;
@@ -94,11 +94,14 @@ namespace osu.Game.Rulesets.UI
                             Anchor = Anchor.Centre,
                             Origin = Anchor.Centre,
                             Shadow = false,
-                            Font = OsuFont.Numeric.With(size: 24, weight: FontWeight.Black),
+                            // Captions under icons need a readable text face, not display digits
+                            // compressed to a handful of pixels. Standalone acronym pills stay unchanged.
+                            Font = iconCaption ? OsuFont.Default.With(size: 26, weight: FontWeight.Bold)
+                                : OsuFont.Numeric.With(size: 24, weight: FontWeight.Black),
                             Text = mod.Acronym,
                             Margin = new MarginPadding
                             {
-                                Top = 4
+                                Top = iconCaption ? 0 : 4
                             }
                         },
                     },
@@ -118,6 +121,7 @@ namespace osu.Game.Rulesets.UI
             {
                 themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
                 themeColour.BindValueChanged(_ => updateThemeColours(), true);
+                colourProvider.PaletteVersion.BindValueChanged(_ => updateThemeColours());
             }
             else
                 updateThemeColours();
@@ -125,7 +129,12 @@ namespace osu.Game.Rulesets.UI
 
         private void updateThemeColours()
         {
-            if (overlayColours != null && OverlayColourProvider.IsDarkTheme)
+            if (overlayColours != null && OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom)
+            {
+                inactiveBackgroundColour = overlayColours.Background5;
+                inactiveForegroundColour = overlayColours.Content2;
+            }
+            else if (overlayColours != null && OverlayColourProvider.IsDarkTheme)
             {
                 inactiveBackgroundColour = overlayColours.Background5;
                 inactiveForegroundColour = overlayColours.Light4;

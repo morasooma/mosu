@@ -286,6 +286,53 @@ namespace osu.Game.Tests.Visual.Gameplay
                 () => pauseOverlay.Buttons.All(button => button.State == SelectionState.NotSelected));
         }
 
+        [TestCase(1024, 768)]
+        [TestCase(1280, 720)]
+        [TestCase(1920, 1080)]
+        public void TestPracticeButtonDoesNotMoveOriginalButtons(float width, float height)
+        {
+            FailOverlay practice = null!;
+            bool continued = false;
+            bool quit = false;
+            AddStep("create comparison overlay", () =>
+            {
+                globalActionContainer.RelativeSizeAxes = Axes.None;
+                globalActionContainer.Size = new Vector2(width, height);
+                globalActionContainer.Scale = new Vector2(System.Math.Min(DrawWidth / width, DrawHeight / height));
+                globalActionContainer.Add(practice = new FailOverlay
+                {
+                    OnRetry = () => { },
+                    OnQuit = () => quit = true,
+                    OnPracticeContinue = () => continued = true,
+                });
+                failOverlay.Show();
+                practice.Show();
+            });
+            AddUntilStep("overlays loaded", () => practice.IsLoaded);
+            AddWaitStep("layout settles", 3);
+            AddAssert("only original buttons in main flow", () => practice.Buttons.Count == 2);
+            AddAssert("original geometry unchanged", () => practice.Buttons.Select(b => b.ScreenSpaceDrawQuad)
+                .SequenceEqual(failOverlay.Buttons.Select(b => b.ScreenSpaceDrawQuad)));
+            AddAssert("practice below quit and above footer", () =>
+            {
+                var button = practice.ChildrenOfType<DialogButton>().Single(b => !practice.Buttons.Any(original => original == b));
+                return button.ScreenSpaceDrawQuad.TopLeft.Y > practice.Buttons.Last().ScreenSpaceDrawQuad.BottomLeft.Y
+                       && button.ScreenSpaceDrawQuad.BottomLeft.Y < practice.FooterContent.ScreenSpaceDrawQuad.TopLeft.Y;
+            });
+            AddStep("click practice", () =>
+            {
+                InputManager.MoveMouseTo(practice.ChildrenOfType<DialogButton>().Single(b => !practice.Buttons.Any(original => original == b)));
+                InputManager.Click(MouseButton.Left);
+            });
+            AddAssert("practice continues", () => continued && practice.State.Value == Visibility.Hidden);
+            AddStep("show and escape", () =>
+            {
+                practice.Show();
+                InputManager.Key(Key.Escape);
+            });
+            AddAssert("escape still quits", () => quit);
+        }
+
         private void showOverlay() => AddStep("Show overlay", () => pauseOverlay.Show());
         private void hideOverlay() => AddStep("Hide overlay", () => pauseOverlay.Hide());
 

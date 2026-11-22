@@ -2,7 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using NUnit.Framework;
-using osu.Framework.Utils;
+using osu.Framework.Audio.Track;
 using osu.Game.Screens.Menu;
 
 namespace osu.Game.Tests.Visual.Menus
@@ -18,7 +18,7 @@ namespace osu.Game.Tests.Visual.Menus
             base.TestPlayIntro();
 
             AddUntilStep("wait for load", () => MusicController.TrackLoaded);
-            AddAssert("correct track", () => Precision.AlmostEquals(MusicController.CurrentTrack.Length, 48000, 1));
+            AddAssert("silent placeholder instead of removed theme", () => Intro.Beatmap.Value.Track is TrackVirtual);
             AddAssert("check if menu music loops", () => MusicController.CurrentTrack.Looping);
         }
     }

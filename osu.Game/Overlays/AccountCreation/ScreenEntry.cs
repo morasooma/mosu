@@ -140,9 +140,9 @@ namespace osu.Game.Overlays.AccountCreation
             emailAddressDescription.AddText(AccountCreationStrings.EmailDescription1);
             emailAddressDescription.AddText(AccountCreationStrings.EmailDescription2, cp => cp.Font = cp.Font.With(Typeface.Torus, weight: FontWeight.Bold));
 
-            passwordDescription.AddText("At least ");
-            characterCheckText = passwordDescription.AddText("8 characters long");
-            passwordDescription.AddText(". Choose something long but also something you will remember, like a line from your favourite song.");
+            passwordDescription.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3871);
+            characterCheckText = passwordDescription.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3872);
+            passwordDescription.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3873);
 
             passwordTextBox.Current.BindValueChanged(_ => updateCharacterCheckTextColour(), true);
             characterCheckText.DrawablePartsRecreated += _ => updateCharacterCheckTextColour();

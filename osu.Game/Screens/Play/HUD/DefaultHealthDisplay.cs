@@ -118,11 +118,16 @@ namespace osu.Game.Screens.Play.HUD
                 .FadeEdgeEffectTo(base_glow_opacity, glow_fade_time, Easing.OutQuint);
         }
 
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+
         [BackgroundDependencyLoader]
         private void load(OsuColour colours)
         {
-            AccentColour = colours.BlueLighter;
-            GlowColour = colours.BlueDarker;
+            themeColours.Bind(action => Scheduler.Add(action), () =>
+            {
+                AccentColour = themeColours.GetColour(Overlays.OverlayColour.Highlight1, colours.BlueLighter);
+                GlowColour = themeColours.GetColour(Overlays.OverlayColour.Colour4, colours.BlueDarker);
+            });
         }
 
         protected override void Update()

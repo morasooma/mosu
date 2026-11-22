@@ -128,7 +128,7 @@ namespace osu.Game.Overlays.Profile.Header.Components
                                     },
                                     ppInfo = new ProfileValueDisplay
                                     {
-                                        Title = "pp",
+                                        Title = global::osu.Game.Localisation.ClientTranslationStrings.J3974,
                                     },
                                     new TotalPlayTime
                                     {

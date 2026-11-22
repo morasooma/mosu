@@ -27,8 +27,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
         private double scoreMultiplier;
 
-        public LegacyScoreAttributes Simulate(IWorkingBeatmap workingBeatmap, IBeatmap playableBeatmap)
+        public void BeginTimedSimulation(IWorkingBeatmap workingBeatmap)
         {
+            legacyBonusScore = 0;
+            standardisedBonusScore = 0;
+            combo = 0;
             IBeatmap baseBeatmap = workingBeatmap.Beatmap;
 
             int countNormal = 0;
@@ -65,15 +68,23 @@ namespace osu.Game.Rulesets.Osu.Difficulty
 
             scoreMultiplier = LegacyRulesetExtensions.CalculateDifficultyPeppyStars(baseBeatmap.Difficulty, objectCount, drainLength);
 
-            LegacyScoreAttributes attributes = new LegacyScoreAttributes();
+        }
 
-            foreach (var obj in playableBeatmap.HitObjects)
-                simulateHit(obj, ref attributes);
-
+        public LegacyScoreAttributes SimulatePrefixObject(HitObject hitObject, LegacyScoreAttributes attributes)
+        {
+            simulateHit(hitObject, ref attributes);
             attributes.BonusScoreRatio = legacyBonusScore == 0 ? 0 : (double)standardisedBonusScore / legacyBonusScore;
             attributes.BonusScore = legacyBonusScore;
             attributes.MaxCombo = combo;
+            return attributes;
+        }
 
+        public LegacyScoreAttributes Simulate(IWorkingBeatmap workingBeatmap, IBeatmap playableBeatmap)
+        {
+            BeginTimedSimulation(workingBeatmap);
+            LegacyScoreAttributes attributes = new LegacyScoreAttributes();
+            foreach (var obj in playableBeatmap.HitObjects)
+                attributes = SimulatePrefixObject(obj, attributes);
             return attributes;
         }
 

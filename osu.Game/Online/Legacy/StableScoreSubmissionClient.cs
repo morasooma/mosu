@@ -192,10 +192,15 @@ namespace osu.Game.Online.Legacy
 
         public async Task<IReadOnlyList<StableBanchoPacket>> SendBanchoPacketsAsync(IEnumerable<StableBanchoPacket> packets, CancellationToken cancellationToken = default)
         {
+            StableBanchoPacket[] outgoing = packets.Where(packet => packet.Id is not (ushort)StableBanchoClientPacket.SpectateFrames
+                                                                               and not (ushort)StableBanchoClientPacket.MatchScoreUpdate).ToArray();
+            if (outgoing.Length == 0)
+                return Array.Empty<StableBanchoPacket>();
+
             await LoginAsync(cancellationToken).ConfigureAwait(false);
 
             string token = choToken ?? throw new InvalidOperationException("Stable Bancho session has no token.");
-            byte[] requestBody = StableBanchoPacketCodec.Encode(packets.ToArray());
+            byte[] requestBody = StableBanchoPacketCodec.Encode(outgoing);
 
             await banchoRequestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 

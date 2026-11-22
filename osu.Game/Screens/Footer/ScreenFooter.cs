@@ -51,6 +51,7 @@ namespace osu.Game.Screens.Footer
 
         private Box background = null!;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<int>? paletteVersionBindable;
         private GridContainer buttonsGrid = null!;
         private FillFlowContainer<ScreenFooterButton> buttonsFlow = null!;
         private Container overlayContentContainer = null!;
@@ -71,6 +72,23 @@ namespace osu.Game.Screens.Footer
         /// </summary>
         public bool DefaultChromeVisible { get; private set; } = true;
 
+        public bool SongSelectActive { get; set; }
+        private float backgroundAlpha = 1f;
+
+        protected override void Update()
+        {
+            base.Update();
+
+            float targetAlpha = DefaultChromeVisible
+                ? (SongSelectActive && !HasActiveOverlay ? OverlayTransparency.SongSelectSurfaceAlpha : 1f)
+                : 0f;
+            if (backgroundAlpha != targetAlpha)
+            {
+                backgroundAlpha = targetAlpha;
+                background.FadeTo(targetAlpha, 120, Easing.OutQuint);
+            }
+        }
+
         /// <summary>
         /// Hands the footer presentation between the default lazer chrome and the legacy chrome.
         /// </summary>
@@ -78,7 +96,10 @@ namespace osu.Game.Screens.Footer
         {
             DefaultChromeVisible = visible;
 
-            background.FadeTo(visible ? 1 : 0, 120, Easing.OutQuint);
+            backgroundAlpha = visible
+                ? (SongSelectActive && !HasActiveOverlay ? OverlayTransparency.SongSelectSurfaceAlpha : 1f)
+                : 0f;
+            background.FadeTo(backgroundAlpha, 120, Easing.OutQuint);
             buttonsGrid.FadeTo(visible ? 1 : 0, 120, Easing.OutQuint);
             BackButton.FadeTo(visible ? 1 : 0, 120, Easing.OutQuint);
         }
@@ -87,6 +108,11 @@ namespace osu.Game.Screens.Footer
         /// Triggers a footer button by its display index. Used by the legacy footer.
         /// </summary>
         public void TriggerFooterButton(int index) => buttonsFlow.ElementAtOrDefault(index)?.TriggerClick();
+
+        /// <summary>
+        /// Opens the legacy beatmap options menu when the stable footer is active.
+        /// </summary>
+        public Func<bool>? TriggerLegacyOptions { get; set; }
 
         private LogoTrackingContainer logoTrackingContainer = null!;
         private IDisposable? logoTracking;
@@ -97,7 +123,7 @@ namespace osu.Game.Screens.Footer
         //
         // For now it's locked to Blue to match song select (the most prominent usage).
         [Cached]
-        private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Blue);
+        private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Blue, osu.Game.Overlays.CustomTheme.ThemeSurfaceContext.SongSelect);
 
         public ScreenFooter(BackReceptor? receptor = null)
         {
@@ -117,6 +143,10 @@ namespace osu.Game.Screens.Footer
         {
             InternalChildren = new Drawable[]
             {
+                new osu.Game.Graphics.Containers.SongSelectBackdropSurface
+                {
+                    IsActive = () => SongSelectActive && DefaultChromeVisible && !HasActiveOverlay,
+                },
                 background = new Box
                 {
                     RelativeSizeAxes = Axes.Both,
@@ -182,7 +212,18 @@ namespace osu.Game.Screens.Footer
             };
 
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background5);
-            themeColour.BindValueChanged(colour => background.Colour = colour.NewValue, true);
+            themeColour.BindValueChanged(_ => updateFooterBackground(), true);
+
+            paletteVersionBindable = colourProvider.PaletteVersion.GetBoundCopy();
+            paletteVersionBindable.BindValueChanged(_ => updateFooterBackground());
+        }
+
+        private Colour4 getFooterBackground() =>
+            OverlayColourProvider.GetEffectiveContextColour(osu.Game.Overlays.CustomTheme.ThemeSurfaceContext.Footer, osu.Game.Overlays.CustomTheme.SurfaceColourRole.SurfaceBackground, colourProvider.Background5);
+
+        private void updateFooterBackground()
+        {
+            background.FadeColour(getFooterBackground(), OverlayColourProvider.ThemeTransitionDuration(150), Easing.OutQuint);
         }
 
         private ScheduledDelegate? changeLogoDepthDelegate;

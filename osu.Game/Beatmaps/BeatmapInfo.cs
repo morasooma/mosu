@@ -31,6 +31,11 @@ namespace osu.Game.Beatmaps
         [PrimaryKey]
         public Guid ID { get; set; }
 
+        /// <summary>Screen-owned remote catalogue metadata, never a local library entry.</summary>
+        [Ignored]
+        [JsonIgnore]
+        public bool IsExternalCatalogue { get; set; }
+
         public string DifficultyName { get; set; } = string.Empty;
 
         public RulesetInfo Ruleset { get; set; } = null!;

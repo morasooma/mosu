@@ -144,7 +144,7 @@ namespace osu.Game.Screens.Edit.Timing
             else
             {
                 textBox.Text = null;
-                textBox.PlaceholderText = "(multiple)";
+                textBox.PlaceholderText = global::osu.Game.Localisation.ClientTranslationStrings.J4335;
             }
         }
     }

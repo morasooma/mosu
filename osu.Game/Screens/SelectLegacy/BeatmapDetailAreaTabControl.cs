@@ -76,7 +76,7 @@ namespace osu.Game.Screens.SelectLegacy
                 {
                     Anchor = Anchor.BottomRight,
                     Origin = Anchor.BottomRight,
-                    Text = @"Selected Mods",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5272,
                     Alpha = 0,
                 },
             };

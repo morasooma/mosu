@@ -124,7 +124,7 @@ namespace osu.Game.Overlays.Dashboard.Home
                                                 Margin = new MarginPadding { Top = 2 }
                                             }.With(c =>
                                             {
-                                                c.AddText("by", t => t.Colour = ColourProvider.Content2);
+                                                c.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J3948, t => t.Colour = ColourProvider.Content2);
                                                 c.AddUserLink(BeatmapSet.Author);
                                                 c.AddArbitraryDrawable(CreateInfo());
                                             })

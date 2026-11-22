@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
@@ -16,14 +17,16 @@ namespace osu.Game.Screens.Edit.Components.Timelines.Summary
     /// </summary>
     public partial class SummaryTimeline : BottomBarContainer
     {
+        private Container centreLine = null!;
+        private IBindable<Colour4>? bgColourBindable;
+        private IBindable<Colour4>? centreLineColourBindable;
+
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
-            Background.Colour = colourProvider.Background6;
-
             Children = new Drawable[]
             {
-                new Container
+                centreLine = new Container
                 {
                     Name = "centre line",
                     RelativeSizeAxes = Axes.Both,
@@ -86,6 +89,12 @@ namespace osu.Game.Screens.Edit.Components.Timelines.Summary
                 },
                 new MarkerPart { RelativeSizeAxes = Axes.Both },
             };
+
+            bgColourBindable = colourProvider.GetColourBindable(OverlayColour.Background6);
+            bgColourBindable.BindValueChanged(c => Background.Colour = c.NewValue, true);
+
+            centreLineColourBindable = colourProvider.GetColourBindable(OverlayColour.Background2);
+            centreLineColourBindable.BindValueChanged(c => centreLine.Colour = c.NewValue, true);
         }
     }
 }

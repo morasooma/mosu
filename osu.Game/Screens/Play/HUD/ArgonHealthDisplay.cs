@@ -26,7 +26,7 @@ namespace osu.Game.Screens.Play.HUD
     {
         public bool UsesFixedAnchor { get; set; }
 
-        [SettingSource("Bar height")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5083))]
         public BindableFloat BarHeight { get; } = new BindableFloat(20)
         {
             MinValue = 0,
@@ -47,8 +47,9 @@ namespace osu.Game.Screens.Play.HUD
         private Container content = null!;
         private IBindable<bool> skinPerformanceMode = new BindableBool();
 
-        private static readonly Colour4 main_bar_colour = Colour4.White;
-        private static readonly Colour4 main_bar_glow_colour = Color4Extensions.FromHex("#7ED7FD").Opacity(0.5f);
+        private Colour4 main_bar_colour = Colour4.White;
+        private Colour4 main_bar_glow_colour = Color4Extensions.FromHex("#7ED7FD").Opacity(0.5f);
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
 
         private ScheduledDelegate? resetMissBarDelegate;
 
@@ -137,6 +138,19 @@ namespace osu.Game.Screens.Play.HUD
             Width = previousWidth;
 
             BarHeight.BindValueChanged(_ => updateContentSize(), true);
+            themeColours.Bind(action => Scheduler.Add(action), () =>
+            {
+                main_bar_colour = themeColours.GetColour(Overlays.OverlayColour.Highlight1, Colour4.White);
+                main_bar_glow_colour = themeColours.GetColour(Overlays.OverlayColour.Highlight1, Color4Extensions.FromHex("#7ED7FD")).Opacity(0.5f);
+                mainBar.BarColour = main_bar_colour;
+                mainBar.GlowColour = main_bar_glow_colour;
+                // Do not recolour an in-progress red damage animation.
+                if (!displayingMiss)
+                {
+                    glowBar.TransformTo(nameof(ArgonHealthDisplayBar.BarColour), main_bar_colour);
+                    glowBar.TransformTo(nameof(ArgonHealthDisplayBar.GlowColour), main_bar_glow_colour);
+                }
+            });
         }
 
         private void onNewJudgement(JudgementResult result)

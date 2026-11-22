@@ -31,7 +31,8 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
 
         public override Vector2 ScreenSpaceSelectionPoint => ToScreenSpace(HitObject.Position);
 
-        protected override Vector2[] ScreenSpaceAdditionalNodes => new[] { ToScreenSpace(HitObject.EndPosition) };
+        protected override Vector2[] ScreenSpaceAdditionalNodes => HitObject.Mode == DodgeCameraMode.Scroll
+            ? new[] { ToScreenSpace(HitObject.EndPosition) } : Array.Empty<Vector2>();
 
         public override Quad SelectionQuad
         {
@@ -49,6 +50,7 @@ namespace osu.Game.Rulesets.Dodge.Edit.Blueprints
             }
         }
 
-        public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => pathPiece.ReceivePositionalInputAt(screenSpacePos);
+        public override bool ReceivePositionalInputAt(Vector2 screenSpacePos) => HitObject.Mode == DodgeCameraMode.Scroll
+            ? pathPiece.ReceivePositionalInputAt(screenSpacePos) : SelectionQuad.Contains(screenSpacePos);
     }
 }

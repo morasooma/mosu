@@ -28,7 +28,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         /// </summary>
         public Action<bool>? ExitRequested { get; init; }
 
-        public override LocalisableString StageHeading => "Results";
+        public override LocalisableString StageHeading => global::osu.Game.Localisation.ClientTranslationStrings.J4899;
 
         [Resolved]
         private RankedPlayMatchInfo matchInfo { get; set; } = null!;
@@ -60,7 +60,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                     {
                         Anchor = Anchor.TopCentre,
                         Origin = Anchor.TopCentre,
-                        Text = "VICTORY",
+                        Text = global::osu.Game.Localisation.ClientTranslationStrings.J4900,
                         Font = OsuFont.Torus.With(size: 100, weight: FontWeight.SemiBold),
                         UseFullGlyphHeight = false,
                         Colour = colours.Green1,
@@ -162,7 +162,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                             new ShearedButton
                             {
                                 Width = 100,
-                                Text = "Quit",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4901,
                                 Action = () => ExitRequested?.Invoke(false),
                                 DarkerColour = colours.Red3,
                                 LighterColour = colours.Red4,
@@ -170,7 +170,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
                             new ShearedButton
                             {
                                 Width = 200,
-                                Text = "Play Again",
+                                Text = global::osu.Game.Localisation.ClientTranslationStrings.J4902,
                                 Action = () => ExitRequested?.Invoke(true),
                                 DarkerColour = colours.Green3,
                                 LighterColour = colours.Green4,
@@ -196,38 +196,38 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
 
         private void updateResults(RankedPlayRoomState state, bool playSample)
         {
-            RankedPlayUserInfo localUser = state.Users[Client.LocalUser!.UserID];
-            RankedPlayUserInfo otherUser = state.Users.Single(user => user.Key != Client.LocalUser.UserID).Value;
+            RankedPlayUserInfo localUser = state.Users[matchInfo.PlayerId];
+            RankedPlayUserInfo otherUser = state.Users[matchInfo.OpponentId];
 
             if (state.WinningUserId == null)
             {
-                titleText.Text = "DRAW";
+                titleText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4903;
                 titleText.Colour = titleSeparator.Colour = colours.Orange1;
                 if (playSample)
                     drawSample.Play();
             }
-            else if (state.WinningUserId == Client.LocalUser.UserID)
+            else if (state.WinningUserId == matchInfo.PlayerId)
             {
-                titleText.Text = "VICTORY";
+                titleText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4900;
                 titleText.Colour = titleSeparator.Colour = colours.Green1;
                 if (playSample)
                     winSample.Play();
             }
             else
             {
-                titleText.Text = "DEFEAT";
+                titleText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4904;
                 titleText.Colour = titleSeparator.Colour = colours.Red1;
                 if (playSample)
                     loseSample.Play();
             }
 
             localRatingText.Clear();
-            localRatingText.AddText("Your Rating: ", s => s.Font = OsuFont.Style.Heading1.With(weight: FontWeight.Regular));
+            localRatingText.AddText(matchInfo.IsSpectating ? global::osu.Game.Localisation.ClientTranslationStrings.J4905 : global::osu.Game.Localisation.ClientTranslationStrings.J4906, s => s.Font = OsuFont.Style.Heading1.With(weight: FontWeight.Regular));
             localRatingText.AddText(localUser.RatingAfter.ToString("N0"), s => s.Font = OsuFont.Style.Heading1);
             addRatingChange(localRatingText, localUser);
 
             opponentRatingText.Clear();
-            opponentRatingText.AddText("Opponent Rating: ", s => s.Font = OsuFont.Style.Heading1.With(weight: FontWeight.Regular));
+            opponentRatingText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4907, s => s.Font = OsuFont.Style.Heading1.With(weight: FontWeight.Regular));
             opponentRatingText.AddText(otherUser.RatingAfter.ToString("N0"), s => s.Font = OsuFont.Style.Heading1);
             addRatingChange(opponentRatingText, otherUser);
         }
@@ -236,7 +236,7 @@ namespace osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay
         {
             int change = user.RatingAfter - user.Rating;
 
-            text.AddText(change == 0 ? " (calculating...)" : $" ({change:+0;-0;+0})", s =>
+            text.AddText(change == 0 ? global::osu.Game.Localisation.ClientTranslationStrings.J4908 : $" ({change:+0;-0;+0})", s =>
             {
                 s.Font = OsuFont.Style.Caption1;
                 s.Colour = change >= 0 ? colours.GreenDark : colours.RedDark;

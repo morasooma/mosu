@@ -26,7 +26,7 @@ namespace osu.Game.Beatmaps.Drawables
             {
                 beatmapSet = value;
 
-                if (IsLoaded)
+                if (LoadState >= LoadState.Ready)
                     updateDisplay();
             }
         }
@@ -46,18 +46,19 @@ namespace osu.Game.Beatmaps.Drawables
                 Spacing = new Vector2(10, 0),
                 Direction = FillDirection.Horizontal,
             };
-        }
 
-        protected override void LoadComplete()
-        {
-            base.LoadComplete();
+            // Initial groups include ruleset icons and glyphs. Prepare them in the
+            // dependency-loading context, not synchronously on first publication.
             updateDisplay();
         }
 
         private void updateDisplay()
         {
             foreach (var group in flow)
+            {
                 group.Alpha = 0;
+                group.Beatmaps = [];
+            }
 
             if (beatmapSet == null)
             {
@@ -78,6 +79,9 @@ namespace osu.Game.Beatmaps.Drawables
                 if (group == null)
                 {
                     group = new RulesetDifficultyGroup(rulesetId);
+                    group.Beatmaps = rulesetGrouping.ToArray();
+                    group.Collapsed = collapsed;
+                    LoadComponent(group);
                     flow.Add(group);
                     flow.SetLayoutPosition(group, rulesetId);
                 }
@@ -99,7 +103,8 @@ namespace osu.Game.Beatmaps.Drawables
                 set
                 {
                     beatmaps = value.OrderBy(bi => bi.StarRating).ToArray();
-                    updateDisplay();
+                    if (LoadState >= LoadState.Ready)
+                        updateDisplay();
                 }
             }
 
@@ -111,7 +116,8 @@ namespace osu.Game.Beatmaps.Drawables
                 set
                 {
                     collapsed = value;
-                    updateDisplay();
+                    if (LoadState >= LoadState.Ready)
+                        updateDisplay();
                 }
             }
 
@@ -146,11 +152,7 @@ namespace osu.Game.Beatmaps.Drawables
                     Origin = Anchor.Centre,
                     Padding = new MarginPadding { Bottom = 1 }
                 });
-            }
 
-            protected override void LoadComplete()
-            {
-                base.LoadComplete();
                 updateDisplay();
             }
 

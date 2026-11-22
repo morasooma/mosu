@@ -81,7 +81,7 @@ namespace osu.Game.Screens.Edit.Components.Timelines.Summary.Parts
                 InternalChild = new FastCircle { RelativeSizeAxes = Axes.Both };
             }
 
-            public LocalisableString TooltipText => $"{((double)StartTime).ToEditorFormattedString()} bookmark";
+            public LocalisableString TooltipText => global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4295(((double)StartTime).ToEditorFormattedString());
         }
     }
 }

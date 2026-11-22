@@ -14,7 +14,7 @@ namespace osu.Game.Rulesets.Mods
     {
         public override string Name => "Synesthesia";
         public override string Acronym => "SY";
-        public override LocalisableString Description => "Colours hit objects based on the rhythm.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4257;
         public override IconUsage? Icon => OsuIcon.ModSynesthesia;
         public override ModType Type => ModType.Fun;
     }

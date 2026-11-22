@@ -5,6 +5,7 @@
 
 using System;
 using System.Threading;
+using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -19,9 +20,9 @@ namespace osu.Game.Overlays
     {
         private readonly Bindable<string> article = new Bindable<string>();
 
-        private readonly Container sidebarContainer;
-        private readonly NewsSidebar sidebar;
-        private readonly Container content;
+        private Container sidebarContainer;
+        private NewsSidebar sidebar;
+        private Container content;
 
         private GetNewsRequest request;
 
@@ -39,6 +40,12 @@ namespace osu.Game.Overlays
         public NewsOverlay()
             : base(OverlayColourScheme.Purple, false)
         {
+        }
+
+        [BackgroundDependencyLoader]
+        private void load()
+        {
+            // Build the content during asynchronous loading, not in the first update frame.
             Child = new GridContainer
             {
                 RelativeSizeAxes = Axes.X,

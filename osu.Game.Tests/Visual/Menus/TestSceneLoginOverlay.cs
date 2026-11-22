@@ -47,6 +47,9 @@ namespace osu.Game.Tests.Visual.Menus
                 Anchor = Anchor.Centre,
                 Origin = Anchor.Centre,
             };
+            // Rank panels now refetch on selection changes, so their cached provider
+            // must be dependency-loaded rather than only constructed by this fixture.
+            Add(statisticsProvider);
         }
 
         [SetUpSteps]

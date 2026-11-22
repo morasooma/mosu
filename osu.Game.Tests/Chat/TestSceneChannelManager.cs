@@ -5,6 +5,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
 using NUnit.Framework;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics.Containers;
@@ -218,6 +219,38 @@ namespace osu.Game.Tests.Chat
                 TargetID = 1234,
             }));
             AddAssert("channel has no messages", () => channel.Messages, () => Is.Empty);
+        }
+
+        [TestCase("{\"channel_id\":1056}", 0)]
+        [TestCase("{\"channel_id\":1056,\"recent_messages\":null}", 0)]
+        [TestCase("{\"channel_id\":1056,\"recent_messages\":[]}", 0)]
+        [TestCase("{\"channel_id\":1056,\"recent_messages\":[{\"message_id\":1,\"channel_id\":1056,\"sender_id\":1234,\"content\":\"hello\"}]}", 1)]
+        public void TestJoinPrivateChannelWithRecentMessages(string responseJson, int expectedMessages)
+        {
+            Channel channel = null;
+
+            AddStep("register channel creation response", () =>
+            {
+                var api = (DummyAPIAccess)API;
+                var previousHandler = api.HandleRequest;
+                api.HandleRequest = req =>
+                {
+                    if (req is CreateChannelRequest createRequest)
+                    {
+                        createRequest.TriggerSuccess(JsonConvert.DeserializeObject<APIChatChannel>(responseJson));
+                        return true;
+                    }
+
+                    return previousHandler(req);
+                };
+            });
+
+            AddStep("join private channel", () => channel = channelManager.JoinChannel(createChannel(1001, ChannelType.PM)));
+            AddUntilStep("history loaded", () => channel.MessagesLoaded);
+            AddAssert("server channel ID applied", () => channel.Id == 1056);
+            AddAssert("channel is joined", () => channel.Joined.Value);
+            AddAssert("channel selected", () => channelManager.CurrentChannel.Value == channel);
+            AddAssert("expected messages loaded", () => channel.Messages.Count == expectedMessages);
         }
 
         [Test]

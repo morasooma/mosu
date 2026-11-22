@@ -124,6 +124,8 @@ namespace osu.Game.Rulesets.UI
                             RelativeSizeAxes = Axes.Both,
                             FillMode = FillMode.Fit,
                             Texture = textures.Get("Icons/BeatmapDetails/mod-icon-extender"),
+                            // Close the plate seam without moving the parameter text towards the icon.
+                            X = -6,
                             Anchor = Anchor.Centre,
                             Origin = Anchor.Centre,
                         },
@@ -174,7 +176,10 @@ namespace osu.Game.Rulesets.UI
                             // height is divided by 135 rather than by 100, because this entire component is square-sized.
                             Width = 131 / 135f,
                             Height = 92 / 135f,
-                            Icon = FontAwesome.Solid.Question
+                            // Load the actual icon with this drawable. Assigning it
+                            // for the first time in LoadComplete performs a cold font
+                            // lookup on Update even when the row was loaded async.
+                            Icon = mod.Icon ?? FontAwesome.Solid.Question
                         },
                         adjustmentMarker = new Container
                         {
@@ -211,6 +216,9 @@ namespace osu.Game.Rulesets.UI
 
             Selected.BindValueChanged(_ => updateColour());
 
+            if (colourProvider != null)
+                colourProvider.PaletteVersion.BindValueChanged(_ => updateMod(mod));
+
             updateMod(mod);
         }
 
@@ -240,7 +248,11 @@ namespace osu.Game.Rulesets.UI
                 modAcronym.FadeOut();
             }
 
-            backgroundColour = colours.ForModType(value.Type);
+            if (colourProvider != null)
+                backgroundColour = colourProvider.GetModTypeColour(value.Type, colours);
+            else
+                backgroundColour = colours.ForModType(value.Type);
+
             updateColour();
 
             updateExtendedInformation();

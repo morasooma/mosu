@@ -100,6 +100,72 @@ namespace osu.Game.Tests.Visual.Online
         }
 
         [Test]
+        public void TestAggregateCountDoesNotCreateHiddenPanels()
+        {
+            AddStep("three connected users", () => metadataClient.OnlineUserCountUpdated(3));
+            AddStep("one visible user", () => metadataClient.UserPresenceUpdated(streamingUser.Id, new UserPresence
+            {
+                Status = UserStatus.Online, Platform = "Linux", BuildKind = "Dev",
+                Activity = new UserActivity.InSoloGame { RulesetID = 0, ModAcronyms = new[] { "RX" } }
+            }));
+            AddUntilStep("visible panel loaded", () => currentlyOnline.ChildrenOfType<OnlineUserPanel>().Count() == 1);
+            AddAssert("count includes hidden users", () => metadataClient.OnlineUserCount.Value == 3);
+            AddAssert("no duplicate count in tab", () => !currentlyOnline.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>()
+                .Any(text => text.Text.ToString().StartsWith("Online:")));
+            AddStep("visible user goes invisible", () => metadataClient.UserPresenceUpdated(streamingUser.Id, null));
+            AddUntilStep("no visible panels", () => !currentlyOnline.ChildrenOfType<OnlineUserPanel>().Any());
+            AddAssert("count unchanged by invisibility", () => metadataClient.OnlineUserCount.Value == 3);
+        }
+
+        [Test]
+        public void TestRankedSpectateAvailableBetweenMapsAndRoutesToRanked()
+        {
+            AddStep("ranked between maps", () => metadataClient.UserPresenceUpdated(streamingUser.Id, new UserPresence
+            {
+                Status = UserStatus.Online,
+                Activity = new UserActivity.InLobby { IsRankedPlay = true, RoomID = 42 }
+            }));
+            AddUntilStep("panel loaded", () => currentlyOnline.ChildrenOfType<OnlineUserPanel>().Count() == 1);
+            AddAssert("watch enabled between maps", () => currentlyOnline.ChildrenOfType<OnlineUserPanel>().Single().CanSpectate.Value);
+            AddAssert("ranked route", () => osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.RankedPlaySpectatorLoader.Create(streamingUser, metadataClient)
+                is osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.RankedPlaySpectatorLoader);
+            AddStep("ranked gameplay", () => metadataClient.UserPresenceUpdated(streamingUser.Id, new UserPresence
+            {
+                Status = UserStatus.Online,
+                Activity = new UserActivity.InMultiplayerGame { RankedPlayRoomID = 42 }
+            }));
+            AddAssert("same ranked route during gameplay", () => osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.RankedPlaySpectatorLoader.Create(streamingUser, metadataClient)
+                is osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.RankedPlaySpectatorLoader);
+            AddStep("solo gameplay", () => metadataClient.UserPresenceUpdated(streamingUser.Id, new UserPresence
+            {
+                Status = UserStatus.Online, Activity = new UserActivity.InSoloGame()
+            }));
+            AddAssert("solo route preserved", () => osu.Game.Screens.OnlinePlay.Matchmaking.RankedPlay.RankedPlaySpectatorLoader.Create(streamingUser, metadataClient)
+                is osu.Game.Screens.Play.SoloSpectatorScreen);
+        }
+
+        [Test]
+        public void TestExactBatchDoesNotRequestEmptyIds()
+        {
+            bool requestedEmptyIds = false;
+            var api = (DummyAPIAccess)API;
+            var handler = api.HandleRequest;
+            AddStep("track lookups", () => api.HandleRequest = request =>
+            {
+                if (request is LookupUsersRequest lookup && lookup.UserIds.Length == 0)
+                    requestedEmptyIds = true;
+                return handler!(request);
+            });
+            AddStep("add fifty users", () =>
+            {
+                for (int id = 100; id < 150; id++)
+                    metadataClient.UserPresenceUpdated(id, new UserPresence { Status = UserStatus.Online });
+            });
+            AddUntilStep("fifty panels loaded", () => currentlyOnline.ChildrenOfType<OnlineUserPanel>().Count() == 50);
+            AddAssert("no empty lookup", () => !requestedEmptyIds);
+        }
+
+        [Test]
         public void TestBasicDisplay()
         {
             IDisposable token = null!;

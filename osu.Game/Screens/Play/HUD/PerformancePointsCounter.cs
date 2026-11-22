@@ -11,11 +11,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
 using osu.Framework.Allocation;
+using osu.Framework.Bindables;
 using osu.Framework.Audio.Track;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Logging;
 using osu.Game.Beatmaps;
+using osu.Game.Configuration;
 using osu.Game.Graphics.UserInterface;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Difficulty;
@@ -32,11 +34,14 @@ namespace osu.Game.Screens.Play.HUD
     {
         public bool UsesFixedAnchor { get; set; }
 
-        [Resolved]
+        [Resolved(CanBeNull = true)]
         private ScoreProcessor scoreProcessor { get; set; }
 
         [Resolved]
         private GameplayState gameplayState { get; set; }
+
+        [Resolved(CanBeNull = true)]
+        private IBindable<WorkingBeatmap> sourceBeatmap { get; set; }
 
         [CanBeNull]
         private List<TimedDifficultyAttributes> timedAttributes;
@@ -58,21 +63,51 @@ namespace osu.Game.Screens.Play.HUD
 
         private const double live_performance_throttle_seconds = 1.5;
 
+        private ProgressivePerformanceCalculation progressivePerformance;
+        private LivePerformanceScoreSnapshot progressiveScoreSnapshot;
+        private long progressiveEpoch;
+
         private BackgroundPerformanceCalculation pendingPerformanceCalculation;
         private bool backgroundPerformanceCalculationRunning;
         private long backgroundPerformanceCalculationVersion;
+        private readonly LivePerformanceMissSnapshot liveMissSnapshot = new LivePerformanceMissSnapshot();
 
         [BackgroundDependencyLoader]
         private void load(BeatmapDifficultyCache difficultyCache)
         {
             if (gameplayState != null)
             {
+                scoreProcessor ??= gameplayState.ScoreProcessor;
+                gameplayState.LivePerformanceCounters.TryAdd(this, 0);
                 performanceCalculator = gameplayState.Ruleset.CreatePerformanceCalculator();
                 clonedMods = gameplayState.Mods.Select(m => m.DeepClone()).ToArray();
 
                 scoreInfo = new ScoreInfo(gameplayState.Score.ScoreInfo.BeatmapInfo, gameplayState.Score.ScoreInfo.Ruleset) { Mods = clonedMods };
 
-                var gameplayWorkingBeatmap = new GameplayWorkingBeatmap(gameplayState.Beatmap);
+                // Keep the actual gameplay geometry for timed attributes. The prerelease also
+                // requests a separately prepared RX-only reference to cap gains from mods.
+                var gameplayWorkingBeatmap = new GameplayWorkingBeatmap(gameplayState.Beatmap, clonedMods, sourceBeatmap?.Value);
+                var difficultyCalculator = gameplayState.Ruleset.CreateDifficultyCalculator(gameplayWorkingBeatmap);
+                if (performanceCalculator != null && difficultyCalculator.SupportsProgressiveCalculation(clonedMods))
+                {
+                    progressiveScoreSnapshot = new LivePerformanceScoreSnapshot(scoreInfo);
+                    progressivePerformance = new ProgressivePerformanceCalculation(
+                        token => difficultyCalculator.CreateProgressiveCalculation(clonedMods, token),
+                        performanceCalculator,
+                        (result, epoch) => Schedule(() =>
+                        {
+                            if (loadCancellationSource.IsCancellationRequested || epoch != progressiveEpoch)
+                                return;
+                            publishPerformance(roundPerformance(result));
+                        }),
+                        exception =>
+                        {
+                            Logger.Error(exception, "Progressive live performance calculation failed");
+                            Schedule(() => IsValid = false);
+                        });
+                    return;
+                }
+
                 difficultyCache.GetTimedDifficultyAttributesAsync(gameplayWorkingBeatmap, gameplayState.Ruleset, clonedMods, loadCancellationSource.Token)
                                .ContinueWith(task => Schedule(() =>
                                {
@@ -94,13 +129,32 @@ namespace osu.Game.Screens.Play.HUD
             {
                 scoreProcessor.NewJudgement += onNewJudgement;
                 scoreProcessor.JudgementReverted += onJudgementReverted;
+                scoreProcessor.OnResetFromReplayFrame += liveMissSnapshot.Invalidate;
             }
 
             if (gameplayState?.LastJudgementResult.Value != null)
                 onJudgementChanged(gameplayState.LastJudgementResult.Value, false);
         }
 
-        public virtual bool IsValid { get; set; }
+        private bool isValid;
+        public virtual bool IsValid
+        {
+            get => isValid;
+            set
+            {
+                isValid = value;
+                if (!value && gameplayState != null)
+                    gameplayState.LivePerformance.Value = null;
+            }
+        }
+
+        private void publishPerformance(int value)
+        {
+            Current.Value = value;
+            IsValid = true;
+            if (gameplayState != null)
+                gameplayState.LivePerformance.Value = value;
+        }
 
         private void onNewJudgement(JudgementResult judgement) => onJudgementChanged(judgement, false);
 
@@ -109,6 +163,19 @@ namespace osu.Game.Screens.Play.HUD
         private void onJudgementChanged(JudgementResult judgement, bool isReverting)
         {
             lastJudgement = judgement;
+            if (isReverting)
+                liveMissSnapshot.Invalidate();
+
+            if (progressivePerformance != null && scoreProcessor != null)
+            {
+                scoreProcessor.PopulateScore(scoreInfo);
+                if (!performanceCalculator.ShouldCalculateLivePerformance(scoreInfo, judgement.HitObject, isReverting))
+                    return;
+                if (isReverting)
+                    IsValid = false;
+                progressiveEpoch = progressivePerformance.Queue(progressiveScoreSnapshot.Create(scoreInfo), judgement.HitObject.GetEndTime(), isReverting);
+                return;
+            }
 
             var attrib = getAttributeAtTime(judgement);
 
@@ -138,12 +205,14 @@ namespace osu.Game.Screens.Play.HUD
                     return;
 
                 lastLivePerformanceUpdateTime = now;
-                queueBackgroundPerformanceCalculation(createScoreSnapshot(scoreInfo), attrib);
+                ScoreInfo snapshot = createScoreSnapshot(scoreInfo);
+                if (RelaxPpSystemSelection.UsesContextualMissEvidence)
+                    snapshot.HitEvents = liveMissSnapshot.Capture(scoreInfo.HitEvents);
+                queueBackgroundPerformanceCalculation(snapshot, attrib);
             }
             else
             {
-                Current.Value = roundPerformance(performanceCalculator.Calculate(scoreInfo, attrib));
-                IsValid = true;
+                publishPerformance(roundPerformance(performanceCalculator.Calculate(scoreInfo, attrib)));
             }
         }
 
@@ -186,8 +255,7 @@ namespace osu.Game.Screens.Play.HUD
                                          // request before publishing prevents the counter from moving backwards.
                                          if (calculation.Version == backgroundPerformanceCalculationVersion && result != null)
                                          {
-                                             Current.Value = roundPerformance(result);
-                                             IsValid = true;
+                                             publishPerformance(roundPerformance(result));
                                          }
 
                                          startNextBackgroundPerformanceCalculation();
@@ -239,9 +307,17 @@ namespace osu.Game.Screens.Play.HUD
             {
                 scoreProcessor.NewJudgement -= onNewJudgement;
                 scoreProcessor.JudgementReverted -= onJudgementReverted;
+                scoreProcessor.OnResetFromReplayFrame -= liveMissSnapshot.Invalidate;
             }
 
+            if (gameplayState != null)
+            {
+                gameplayState.LivePerformanceCounters.TryRemove(this, out _);
+                if (gameplayState.LivePerformanceCounters.Count == 0)
+                    gameplayState.LivePerformance.Value = null;
+            }
             loadCancellationSource?.Cancel();
+            progressivePerformance?.Dispose();
             pendingPerformanceCalculation = null;
         }
 
@@ -251,15 +327,27 @@ namespace osu.Game.Screens.Play.HUD
         private class GameplayWorkingBeatmap : WorkingBeatmap
         {
             private readonly IBeatmap gameplayBeatmap;
+            private readonly Mod[] gameplayMods;
+            private readonly WorkingBeatmap source;
 
-            public GameplayWorkingBeatmap(IBeatmap gameplayBeatmap)
+            public GameplayWorkingBeatmap(IBeatmap gameplayBeatmap, Mod[] gameplayMods, WorkingBeatmap source)
                 : base(gameplayBeatmap.BeatmapInfo, null)
             {
                 this.gameplayBeatmap = gameplayBeatmap;
+                this.gameplayMods = gameplayMods;
+                this.source = source;
             }
 
             public override IBeatmap GetPlayableBeatmap(IRulesetInfo ruleset, IReadOnlyList<Mod> mods, CancellationToken cancellationToken)
-                => gameplayBeatmap;
+            {
+                // Only the prerelease asks for a second, smaller mod set on this wrapper.
+                // In particular, do not return the already modded gameplay map as its baseline.
+                if (mods.Count < gameplayMods.Length)
+                    return (source ?? throw new InvalidOperationException("The Relax PP reference requires the original working beatmap."))
+                        .GetPlayableBeatmap(ruleset, mods, cancellationToken);
+
+                return gameplayBeatmap;
+            }
 
             protected override IBeatmap GetBeatmap() => gameplayBeatmap;
 

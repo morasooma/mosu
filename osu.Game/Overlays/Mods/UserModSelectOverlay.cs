@@ -8,6 +8,7 @@ using osu.Framework.Bindables;
 using osu.Framework.Input.Events;
 using osu.Game.Configuration;
 using osu.Game.Input.Bindings;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Screens.Select;
 using osu.Game.Utils;
@@ -21,7 +22,7 @@ namespace osu.Game.Overlays.Mods
         private readonly BindableInt ratePitchSettingVersion = new BindableInt();
 
         public UserModSelectOverlay(OverlayColourScheme colourScheme = OverlayColourScheme.Green)
-            : base(colourScheme)
+            : base(colourScheme, ThemeSurfaceContext.ModSelect)
         {
         }
 

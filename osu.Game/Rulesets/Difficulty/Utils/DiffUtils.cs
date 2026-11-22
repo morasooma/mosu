@@ -53,6 +53,25 @@ namespace osu.Game.Rulesets.Difficulty.Utils
         /// <returns>The output of logistic function</returns>
         public static double Logistic(double exponent, double maxValue = 1) => maxValue / (1 + Math.Exp(exponent));
 
+        // Keep the same left-to-right accumulation (including the initial zero)
+        // without allocating a params array in per-object evaluator calls.
+        public static double Norm(double p, double first, double second)
+        {
+            double sum = 0;
+            sum += Pow(first, p);
+            sum += Pow(second, p);
+            return Pow(sum, 1.0 / p);
+        }
+
+        public static double Norm(double p, double first, double second, double third)
+        {
+            double sum = 0;
+            sum += Pow(first, p);
+            sum += Pow(second, p);
+            sum += Pow(third, p);
+            return Pow(sum, 1.0 / p);
+        }
+
         /// <summary>
         /// Returns the <i>p</i>-norm of an <i>n</i>-dimensional vector (https://en.wikipedia.org/wiki/Norm_(mathematics))
         /// </summary>

@@ -12,7 +12,6 @@ using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Online.Chat;
-using osu.Game.Resources.Localisation.Web;
 
 namespace osu.Game.Overlays.Profile.Header.Components
 {
@@ -22,7 +21,7 @@ namespace osu.Game.Overlays.Profile.Header.Components
         private readonly FillFlowContainer iconContainer;
         private readonly CircularContainer content;
 
-        public override LocalisableString TooltipText => UsersStrings.ShowIsSupporter;
+        public override LocalisableString TooltipText => "mora supporter";
 
         public int SupportLevel
         {

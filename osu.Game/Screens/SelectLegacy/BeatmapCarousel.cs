@@ -9,7 +9,6 @@ using System.Linq;
 using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
-using osu.Framework.Audio.Sample;
 using osu.Framework.Bindables;
 using osu.Framework.Caching;
 using osu.Framework.Graphics;
@@ -196,8 +195,7 @@ namespace osu.Game.Screens.SelectLegacy
 
         private readonly DrawablePool<DrawableCarouselBeatmapSet> setPool = new DrawablePool<DrawableCarouselBeatmapSet>(100);
 
-        private Sample? spinSample;
-        private Sample? randomSelectSample;
+
 
         private int visibleSetsCount;
 
@@ -224,8 +222,7 @@ namespace osu.Game.Screens.SelectLegacy
         [BackgroundDependencyLoader]
         private void load(OsuConfigManager config, AudioManager audio, BeatmapStore beatmaps, CancellationToken? cancellationToken)
         {
-            spinSample = audio.Samples.Get("SongSelect/random-spin");
-            randomSelectSample = audio.Samples.Get(@"SongSelect/select-random");
+            // The original classic carousel had no random-spin / select-random samples.
 
             config.BindWith(OsuSetting.RandomSelectAlgorithm, RandomAlgorithm);
 
@@ -540,10 +537,7 @@ namespace osu.Game.Screens.SelectLegacy
             else
                 set = visibleSets.ElementAt(RNG.Next(visibleSets.Count));
 
-            if (selectedBeatmapSet != null)
-                playSpinSample(distanceBetween(set, selectedBeatmapSet));
-
-            select(set);
+            selectRandom(set);
             return true;
         }
 
@@ -561,28 +555,21 @@ namespace osu.Game.Screens.SelectLegacy
                         if (RandomAlgorithm.Value == RandomSelectAlgorithm.RandomPermutation)
                             previouslyVisitedRandomSets.Remove(selectedBeatmapSet);
 
-                        playSpinSample(distanceBetween(beatmap, selectedBeatmapSet));
                     }
 
-                    select(beatmap);
+                    selectRandom(beatmap);
                     break;
                 }
             }
         }
 
-        private double distanceBetween(CarouselItem item1, CarouselItem item2) => Math.Ceiling(Math.Abs(item1.CarouselYPosition - item2.CarouselYPosition) / DrawableCarouselItem.MAX_HEIGHT);
-
-        private void playSpinSample(double distance)
+        private void selectRandom(CarouselItem item)
         {
-            var chan = spinSample?.GetChannel();
+            var previous = selectedBeatmap;
+            select(item);
 
-            if (chan != null)
-            {
-                chan.Frequency.Value = 1f + Math.Min(1f, distance / visibleSetsCount);
-                chan.Play();
-            }
-
-            randomSelectSample?.Play();
+            if (selectedBeatmap != previous)
+                pendingScrollOperation = PendingScrollOperation.Random;
         }
 
         private void select(CarouselItem? item)
@@ -1002,6 +989,12 @@ namespace osu.Game.Screens.SelectLegacy
                         Scroll.ScrollTo(scrollTarget.Value);
                         break;
 
+                    case PendingScrollOperation.Random:
+                        // Jump over distant sets instead of loading their panels along the way.
+                        // Keep the usual animation when the destination is nearby.
+                        Scroll.ScrollTo(scrollTarget.Value, animated: Math.Abs(scrollTarget.Value - Scroll.Current) <= visibleHalfHeight * 2);
+                        break;
+
                     case PendingScrollOperation.Immediate:
 
                         // in order to simplify animation logic, rather than using the animated version of ScrollTo,
@@ -1052,12 +1045,16 @@ namespace osu.Game.Screens.SelectLegacy
             // adjusting the item's overall X position can cause it to become masked away when
             // child items (difficulties) are still visible.
             item.Header.X = offsetX(dist, visibleHalfHeight) - (parent?.X ?? 0);
+
+            // Restore the edge fade shared by the upstream 2020 and 2024 carousels.
+            item.SetMultiplicativeAlpha(Math.Clamp(1.75f - 1.5f * dist, 0, 1));
         }
 
         private enum PendingScrollOperation
         {
             None,
             Standard,
+            Random,
             Immediate,
         }
 

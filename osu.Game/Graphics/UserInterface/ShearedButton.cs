@@ -12,6 +12,7 @@ using osu.Framework.Localisation;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 
 namespace osu.Game.Graphics.UserInterface
 {
@@ -72,8 +73,11 @@ namespace osu.Game.Graphics.UserInterface
 
         private readonly Container backgroundLayer;
         private readonly Box flashLayer;
+        private IBindable<bool>? buttonFooterGradientsBindable;
         private IBindable<Colour4> themeColour = null!;
         private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
+        private IBindable<float>? cornerRadiusBindable;
+        private IBindable<osu.Game.Configuration.InterfaceAnimationMode>? animationMode;
 
         protected readonly Container ButtonContent;
 
@@ -135,6 +139,10 @@ namespace osu.Game.Graphics.UserInterface
         {
             base.LoadComplete();
 
+            animationMode = InterfaceAnimation.Observe(this, true);
+            cornerRadiusBindable = ColourProvider.GetRadiusBindable(GeometryRole.Button, CORNER_RADIUS);
+            cornerRadiusBindable.BindValueChanged(_ => updateRadius(), true);
+
             Enabled.BindValueChanged(_ => Scheduler.AddOnce(updateState));
 
             themeColour = ColourProvider.GetColourBindable(OverlayColour.Content1);
@@ -143,10 +151,25 @@ namespace osu.Game.Graphics.UserInterface
             // click (and so ThemeTransitionDuration can suppress the fade).
             themeColour.BindValueChanged(_ => updateState(), true);
 
-            disableShear.BindValueChanged(_ => UpdateShear(), true);
+            buttonFooterGradientsBindable = OverlayColourProvider.ButtonFooterGradients.GetBoundCopy();
+            buttonFooterGradientsBindable.BindValueChanged(_ => updateState());
+
+            disableShear.BindValueChanged(_ =>
+            {
+                UpdateShear();
+                updateRadius();
+            }, true);
 
             updateState();
             FinishTransforms(true);
+        }
+
+        private void updateRadius()
+        {
+            float target = cornerRadiusBindable?.Value ?? CORNER_RADIUS;
+            float radius = !disableShear.Value ? System.Math.Min(target, 12f) : target;
+            Content.CornerRadius = radius;
+            backgroundLayer.CornerRadius = radius;
         }
 
         protected virtual void UpdateShear()
@@ -158,7 +181,7 @@ namespace osu.Game.Graphics.UserInterface
 
         protected override bool OnClick(ClickEvent e)
         {
-            if (Enabled.Value)
+            if (Enabled.Value && InterfaceAnimation.AllowDecorativeMovement)
                 flashLayer.FadeOutFromOne(800, Easing.OutQuint);
 
             return base.OnClick(e);
@@ -178,13 +201,13 @@ namespace osu.Game.Graphics.UserInterface
 
         protected override bool OnMouseDown(MouseDownEvent e)
         {
-            Content.ScaleTo(0.9f, 2000, Easing.OutQuint);
+            Content.ScaleTo(InterfaceAnimation.AllowDecorativeMovement ? 0.9f : 1, InterfaceAnimation.MovementDuration(2000), Easing.OutQuint);
             return true;
         }
 
         protected override void OnMouseUp(MouseUpEvent e)
         {
-            Content.ScaleTo(1, 1000, Easing.OutElastic);
+            Content.ScaleTo(1, InterfaceAnimation.MovementDuration(1000), Easing.OutElastic);
             base.OnMouseUp(e);
         }
 
@@ -207,7 +230,12 @@ namespace osu.Game.Graphics.UserInterface
 
             double duration = OverlayColourProvider.ThemeTransitionDuration(150);
             background.FadeColour(colourDark, duration, Easing.OutQuint);
-            backgroundLayer.TransformTo(nameof(BorderColour), ColourInfo.GradientVertical(colourDark, colourLight), duration, Easing.OutQuint);
+
+            bool enableGradients = OverlayColourProvider.ButtonFooterGradients.Value;
+            var borderColour = enableGradients
+                ? ColourInfo.GradientVertical(colourDark, colourLight)
+                : ColourInfo.SingleColour(colourDark);
+            backgroundLayer.TransformTo(nameof(BorderColour), borderColour, duration, Easing.OutQuint);
 
             if (!Enabled.Value)
                 colourContent = colourContent.Opacity(0.6f);

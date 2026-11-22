@@ -34,13 +34,13 @@ namespace osu.Game.Rulesets.Mods
         public override string Acronym => "FL";
         public override IconUsage? Icon => OsuIcon.ModFlashlight;
         public override ModType Type => ModType.DifficultyIncrease;
-        public override LocalisableString Description => "Restricted view area.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4220;
         public override bool Ranked => UsesDefaultConfiguration;
 
-        [SettingSource("Flashlight size", "Multiplier applied to the default flashlight size.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4221), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4222))]
         public abstract BindableFloat SizeMultiplier { get; }
 
-        [SettingSource("Change size based on combo", "Decrease the flashlight size as combo increases.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4223), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4224))]
         public abstract BindableBool ComboBasedSize { get; }
 
         /// <summary>

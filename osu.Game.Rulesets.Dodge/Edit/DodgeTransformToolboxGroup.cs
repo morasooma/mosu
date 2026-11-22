@@ -112,7 +112,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
             editorBeatmap.PerformOnSelection(item =>
             {
-                if (item is not (Objects.DodgeBullet or Objects.DodgeEmitter or Objects.DodgeArenaChange))
+                if (item is not Objects.DodgeHitObject)
                     return;
 
                 var points = DodgeSelectionTransformUtils.GetPoints(item);

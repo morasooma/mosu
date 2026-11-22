@@ -60,6 +60,13 @@ namespace osu.Game.Graphics.Containers
         {
             base.Update();
 
+            if (!InterfaceAnimation.AllowDecorativeMovement)
+            {
+                content.Position = Vector2.Zero;
+                content.Scale = Vector2.One;
+                return;
+            }
+
             float amount = ParallaxAmount * parallaxScale.Value;
 
             if (amount == 0 && content.Position == Vector2.Zero && content.Scale == Vector2.One)

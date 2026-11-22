@@ -32,7 +32,7 @@ namespace osu.Game.Screens.OnlinePlay.Multiplayer.Match.Playlist
             protected override void LoadComplete()
             {
                 base.LoadComplete();
-                QueueItems.BindCollectionChanged((_, _) => Text.Text = QueueItems.Count > 0 ? $"Up next ({QueueItems.Count})" : "Up next", true);
+                QueueItems.BindCollectionChanged((_, _) => Text.Text = QueueItems.Count > 0 ? global::osu.Game.Localisation.ClientTranslationStrings.FormatJ4986(QueueItems.Count) : global::osu.Game.Localisation.ClientTranslationStrings.J4987, true);
             }
         }
     }

@@ -40,6 +40,7 @@ using osu.Game.Localisation;
 using osu.Game.Online.API;
 using osu.Game.Online.Multiplayer;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Overlays.Notifications;
 using osu.Game.Overlays.OSD;
 using osu.Game.Rulesets;
@@ -209,7 +210,7 @@ namespace osu.Game.Screens.Edit
         public readonly EditorClipboard Clipboard = new EditorClipboard();
 
         [Cached]
-        private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Aquamarine);
+        private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Aquamarine, ThemeSurfaceContext.Editor);
 
         [Resolved(canBeNull: true)]
         private OnScreenDisplay onScreenDisplay { get; set; }
@@ -331,7 +332,7 @@ namespace osu.Game.Screens.Edit
             editorBackgroundDim = config.GetBindable<float>(OsuSetting.EditorDim);
             editorShowStoryboard = config.GetBindable<bool>(OsuSetting.EditorShowStoryboard);
             editorHitMarkers = config.GetBindable<bool>(OsuSetting.EditorShowHitMarkers);
-            editorAutoSeekOnPlacement = config.GetBindable<bool>(OsuSetting.EditorAutoSeekOnPlacement);
+            editorAutoSeekOnPlacement = config.GetEditorAutoSeekOnPlacement(editorBeatmap.BeatmapInfo.Ruleset.ShortName);
             editorLimitedDistanceSnap = config.GetBindable<bool>(OsuSetting.EditorLimitedDistanceSnap);
             editorTimelineShowTimingChanges = config.GetBindable<bool>(OsuSetting.EditorTimelineShowTimingChanges);
             editorTimelineShowBreaks = config.GetBindable<bool>(OsuSetting.EditorTimelineShowBreaks);
@@ -1346,10 +1347,14 @@ namespace osu.Game.Screens.Edit
             bool isSetMadeOfLegacyRulesetBeatmaps = (isNewBeatmap && Ruleset.Value.IsLegacyRuleset())
                                                     || (!isNewBeatmap && Beatmap.Value.BeatmapSetInfo.Beatmaps.All(b => b.Ruleset.IsLegacyRuleset()));
             bool submissionAvailable = api.Endpoints.BeatmapSubmissionServiceUrl != null;
+            bool isServerDodgeSet = osu.Game.Online.MosuServerEnvironment.IsMosuServerUrl(api.Endpoints.APIUrl)
+                                    && Beatmap.Value.BeatmapSetInfo.Beatmaps.All(b => b.Ruleset.ShortName == RulesetInfo.DODGE_MODE_SHORTNAME);
 
-            if (isSetMadeOfLegacyRulesetBeatmaps && submissionAvailable)
+            if ((isSetMadeOfLegacyRulesetBeatmaps || isServerDodgeSet) && submissionAvailable)
             {
-                var upload = new EditorMenuItem(EditorStrings.SubmitBeatmap, MenuItemType.Standard, submitBeatmap)
+                var upload = new EditorMenuItem(BeatmapSubmissionScreen.IsUpdate(api.Endpoints.APIUrl,
+                    Beatmap.Value.BeatmapInfo.Ruleset.ShortName, Beatmap.Value.BeatmapSetInfo.OnlineID)
+                    ? BeatmapSubmissionStrings.UpdateBeatmap : EditorStrings.SubmitBeatmap, MenuItemType.Standard, submitBeatmap)
                 {
                     Hotkey = new Hotkey(GlobalAction.EditorSubmitBeatmap)
                 };
@@ -1509,7 +1514,7 @@ namespace osu.Game.Screens.Edit
                 rulesetItems.Add(new EditorMenuItem(ruleset.Name, MenuItemType.Standard, () => CreateNewDifficulty(ruleset)));
 
             BeatmapSetInfo currentSet = Beatmap.Value.BeatmapSetInfo;
-            RulesetInfo dodgeRuleset = currentSet.Beatmaps.FirstOrDefault(beatmap => beatmap.Ruleset.OnlineID == 10)?.Ruleset;
+            RulesetInfo? dodgeRuleset = currentSet.Beatmaps.FirstOrDefault(beatmap => beatmap.Ruleset.OnlineID == 10)?.Ruleset;
 
             if (dodgeRuleset != null && currentSet.Beatmaps.Any(beatmap => beatmap.Ruleset.OnlineID != 10))
             {
@@ -1624,7 +1629,7 @@ namespace osu.Game.Screens.Edit
                 foreach (var beatmapInfo in Beatmap.Value.BeatmapSetInfo.Beatmaps)
                 {
                     var menuItem = difficultyItems.OfType<DifficultyMenuItem>().FirstOrDefault(i => i.BeatmapInfo.Equals(beatmapInfo));
-                    menuItem?.Text.Value = string.IsNullOrEmpty(beatmapInfo.DifficultyName) ? "(unnamed)" : beatmapInfo.DifficultyName;
+                    menuItem?.Text.Value = string.IsNullOrEmpty(beatmapInfo.DifficultyName) ? global::osu.Game.Localisation.ClientTranslationStrings.J4290 : beatmapInfo.DifficultyName;
                 }
             };
 

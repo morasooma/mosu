@@ -7,43 +7,28 @@ namespace osu.Game.Localisation
 {
     public static class SupporterQuestsStrings
     {
-        private const string prefix = @"osu.Game.Resources.Localisation.SupporterQuests";
+        private const string prefix = @"osu.Game.Localisation.SupporterQuests";
 
-        /// <summary>
-        /// "Задания"
-        /// </summary>
-        public static LocalisableString Tasks => new TranslatableString(getKey(@"tasks"), @"Задания");
+        public static LocalisableString Tasks => new TranslatableString($@"{prefix}:tasks", @"Quests");
 
-        /// <summary>
-        /// "Текущее задание"
-        /// </summary>
-        public static LocalisableString Active => new TranslatableString(getKey(@"active"), @"Текущее задание");
+        public static LocalisableString Active => new TranslatableString($@"{prefix}:active", @"Current quest");
 
-        /// <summary>
-        /// "Выполнено"
-        /// </summary>
-        public static LocalisableString Completed => new TranslatableString(getKey(@"completed"), @"Выполнено");
+        public static LocalisableString Completed => new TranslatableString($@"{prefix}:completed", @"Complete");
 
-        /// <summary>
-        /// "Откроется позже"
-        /// </summary>
-        public static LocalisableString Locked => new TranslatableString(getKey(@"locked"), @"Откроется позже");
+        public static LocalisableString Locked => new TranslatableString($@"{prefix}:locked", @"Unlocks later");
 
-        /// <summary>
-        /// "Сейчас нет доступных заданий. Попробуйте обновить список позже."
-        /// </summary>
-        public static LocalisableString Empty => new TranslatableString(getKey(@"empty"), @"Сейчас нет доступных заданий. Попробуйте обновить список позже.");
+        public static LocalisableString Empty => new TranslatableString($@"{prefix}:empty", @"No quests are available. Try refreshing later.");
 
-        /// <summary>
-        /// "Не удалось загрузить задания. Проверьте подключение и попробуйте ещё раз."
-        /// </summary>
-        public static LocalisableString LoadFailed => new TranslatableString(getKey(@"load_failed"), @"Не удалось загрузить задания. Проверьте подключение и попробуйте ещё раз.");
+        public static LocalisableString LoadFailed => new TranslatableString($@"{prefix}:load_failed", @"Could not load quests. Check your connection and try again.");
 
-        /// <summary>
-        /// "Обновить задания"
-        /// </summary>
-        public static LocalisableString Retry => new TranslatableString(getKey(@"retry"), @"Обновить задания");
+        public static LocalisableString Retry => new TranslatableString($@"{prefix}:retry", @"Refresh quests");
 
-        private static string getKey(string key) => $@"{prefix}:{key}";
+        public static LocalisableString ShowAll(int count) => new TranslatableString($@"{prefix}:show_all", @"Show all quests ({0})", count);
+
+        public static LocalisableString OtherQuests => new TranslatableString($@"{prefix}:other_quests", @"Other quests");
+
+        public static LocalisableString CollapseAll => new TranslatableString($@"{prefix}:collapse_all", @"Collapse quest list");
+
+        public static LocalisableString AllCompleted => new TranslatableString($@"{prefix}:all_completed", @"All quests complete. Expand to view the full list.");
     }
 }

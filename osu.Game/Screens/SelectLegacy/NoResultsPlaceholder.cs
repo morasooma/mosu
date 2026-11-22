@@ -108,22 +108,22 @@ namespace osu.Game.Screens.SelectLegacy
 
             if (beatmaps.QueryBeatmapSet(s => !s.Protected && !s.DeletePending) == null)
             {
-                textFlow.AddParagraph("No beatmaps found!");
+                textFlow.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J5281);
                 textFlow.AddParagraph(string.Empty);
 
-                textFlow.AddParagraph("- Consider running the \"");
+                textFlow.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J5282);
                 textFlow.AddLink(FirstRunSetupOverlayStrings.FirstRunSetupTitle, () => firstRunSetupOverlay?.Show());
-                textFlow.AddText("\" to download or import some beatmaps!");
+                textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5174);
             }
             else
             {
-                textFlow.AddParagraph("No beatmaps match your filter criteria!");
+                textFlow.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J3057);
                 textFlow.AddParagraph(string.Empty);
 
                 if (filter?.UserStarDifficulty.HasFilter == true)
                 {
-                    textFlow.AddParagraph("- Try ");
-                    textFlow.AddLink("removing", () =>
+                    textFlow.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J5283);
+                    textFlow.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J5284, () =>
                     {
                         config.SetValue(OsuSetting.DisplayStarsMinimum, 0.0);
                         config.SetValue(OsuSetting.DisplayStarsMaximum, 10.1);
@@ -132,24 +132,24 @@ namespace osu.Game.Screens.SelectLegacy
                     string lowerStar = $"{filter.UserStarDifficulty.Min ?? 0:N1}";
                     string upperStar = filter.UserStarDifficulty.Max == null ? "∞" : $"{filter.UserStarDifficulty.Max:N1}";
 
-                    textFlow.AddText($" the {lowerStar} - {upperStar} star difficulty filter.");
+                    textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5179(lowerStar, upperStar));
                 }
 
                 // TODO: Add realm queries to hint at which ruleset results are available in (and allow clicking to switch).
                 // TODO: Make this message more certain by ensuring the osu! beatmaps exist before suggesting.
                 if (filter?.Ruleset?.OnlineID != 0 && filter?.AllowConvertedBeatmaps == false)
                 {
-                    textFlow.AddParagraph("- Try ");
-                    textFlow.AddLink("enabling ", () => config.SetValue(OsuSetting.ShowConvertedBeatmaps, true));
-                    textFlow.AddText("automatic conversion!");
+                    textFlow.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J5283);
+                    textFlow.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J5285, () => config.SetValue(OsuSetting.ShowConvertedBeatmaps, true));
+                    textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5286);
                 }
             }
 
             if (!string.IsNullOrEmpty(filter?.SearchText))
             {
-                textFlow.AddParagraph("- Try ");
-                textFlow.AddLink("searching online", LinkAction.SearchBeatmapSet, filter.SearchText);
-                textFlow.AddText($" for \"{filter.SearchText}\".");
+                textFlow.AddParagraph(global::osu.Game.Localisation.ClientTranslationStrings.J5283);
+                textFlow.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J5287, LinkAction.SearchBeatmapSet, filter.SearchText);
+                textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5288(filter.SearchText));
             }
             // TODO: add clickable link to reset criteria.
         }

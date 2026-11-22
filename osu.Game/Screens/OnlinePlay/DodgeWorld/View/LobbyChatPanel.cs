@@ -74,7 +74,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                     Child = title = new OsuSpriteText
                     {
                         Position = new Vector2(15, 12),
-                        Text = languageProvider() == "ru" ? "ЧАТ DODGE WORLD • ПОДКЛЮЧЕНИЕ" : "DODGE WORLD CHAT • CONNECTING",
+                        Text = languageProvider() == "ru" ? global::osu.Game.Localisation.ClientTranslationStrings.J4737 : global::osu.Game.Localisation.ClientTranslationStrings.J4738,
                         Font = OsuFont.Default.With(size: 13, weight: FontWeight.Bold),
                     },
                 },
@@ -139,7 +139,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
 
             if (channelManager == null)
             {
-                title.Text = languageProvider() == "ru" ? "ЧАТ DODGE WORLD • НЕДОСТУПЕН В PREVIEW" : "DODGE WORLD CHAT • PREVIEW";
+                title.Text = languageProvider() == "ru" ? global::osu.Game.Localisation.ClientTranslationStrings.J4739 : global::osu.Game.Localisation.ClientTranslationStrings.J4740;
                 return;
             }
 
@@ -150,7 +150,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
 
             channel = channelManager.JoinChannel(available);
             display.Channel.Value = channel;
-            title.Text = languageProvider() == "ru" ? "ЧАТ DODGE WORLD" : "DODGE WORLD CHAT";
+            title.Text = languageProvider() == "ru" ? global::osu.Game.Localisation.ClientTranslationStrings.J4741 : global::osu.Game.Localisation.ClientTranslationStrings.J4742;
         }
 
         public void ReleaseFocus() => display.ReleaseFocus();
@@ -220,7 +220,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.View
                 if (TextBox == null)
                     return;
 
-                TextBox.PlaceholderText = languageProvider() == "ru" ? "Сообщение в Dodge World" : "Message Dodge World";
+                TextBox.PlaceholderText = languageProvider() == "ru" ? global::osu.Game.Localisation.ClientTranslationStrings.J4743 : global::osu.Game.Localisation.ClientTranslationStrings.J4744;
                 TextBox.ReleaseFocusOnCommit = true;
                 TextBox.HoldFocus = false;
                 TextBox.Focus = () => FocusGained?.Invoke();

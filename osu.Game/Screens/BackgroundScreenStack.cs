@@ -2,13 +2,19 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
+using osu.Framework.Allocation;
+using osu.Framework.Graphics.Sprites;
+using osu.Game.Graphics.Backgrounds;
 using osu.Framework.Graphics;
 using osu.Framework.Screens;
 
 namespace osu.Game.Screens
 {
-    public partial class BackgroundScreenStack : ScreenStack
+    [Cached(typeof(IBackgroundSceneSource))]
+    public partial class BackgroundScreenStack : ScreenStack, IBackgroundSceneSource
     {
+        public Sprite? BackgroundSprite => (CurrentScreen as IBackgroundSceneSource)?.BackgroundSprite;
+
         public BackgroundScreenStack()
             : base(false)
         {

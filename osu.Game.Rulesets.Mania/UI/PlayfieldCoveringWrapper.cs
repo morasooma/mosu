@@ -159,13 +159,13 @@ namespace osu.Game.Rulesets.Mania.UI
         /// <summary>
         /// The cover expands along the scrolling direction.
         /// </summary>
-        [Description("Along scroll")]
+        [Description("Along scroll"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5377))]
         AlongScroll,
 
         /// <summary>
         /// The cover expands against the scrolling direction.
         /// </summary>
-        [Description("Against scroll")]
+        [Description("Against scroll"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5378))]
         AgainstScroll
     }
 }

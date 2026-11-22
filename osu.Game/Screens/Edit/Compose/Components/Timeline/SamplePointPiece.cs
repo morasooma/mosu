@@ -711,9 +711,9 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             private void updateLabelFormat()
             {
                 LabelFormat = isMultipleValues
-                    ? static _ => "(multiple)"
+                    ? static _ => global::osu.Game.Localisation.ClientTranslationStrings.J4316
                     : v => LocalisableString.Interpolate($"{v / 100.0:P0}");
-                TextBox.PlaceholderText = isMultipleValues ? "(multiple)" : string.Empty;
+                TextBox.PlaceholderText = isMultipleValues ? global::osu.Game.Localisation.ClientTranslationStrings.J4316 : string.Empty;
             }
 
             public VolumeControl()

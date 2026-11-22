@@ -13,7 +13,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Relax.MosuPpRelax
     /// <summary>
     /// Content-based Arles detection shared by MosuPp RX and its lab. Wide jumps mixed with bursts require changes of
     /// cursor speed and direction. Names, authors, map IDs and score accuracy are deliberately absent from the features.
-    /// Thresholds are calibrated on the ten labelled maps in tools/MosuPpLab/dataset.txt; they are not a trained ML model.
+    /// The thresholds are heuristic, not a learned model.
     /// </summary>
     public static class RxArles
     {

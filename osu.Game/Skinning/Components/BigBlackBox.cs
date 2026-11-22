@@ -23,10 +23,10 @@ namespace osu.Game.Skinning.Components
     {
         public bool UsesFixedAnchor { get; set; }
 
-        [SettingSource("Spinning text", "Whether the big text should spin")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5352), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5353))]
         public Bindable<bool> TextSpin { get; } = new BindableBool();
 
-        [SettingSource("Alpha", "The alpha value of this box")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5354), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5355))]
         public BindableNumber<float> BoxAlpha { get; } = new BindableNumber<float>(1)
         {
             MinValue = 0,
@@ -55,14 +55,14 @@ namespace osu.Game.Skinning.Components
                 },
                 text = new OsuSpriteText
                 {
-                    Text = "Big Black Box",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5356,
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
                     Font = OsuFont.Default.With(size: 40)
                 },
                 disclaimer = new OsuTextFlowContainer(st => st.Font = OsuFont.Default.With(size: 10))
                 {
-                    Text = "This is intended to be a test component and may disappear in the future!",
+                    Text = global::osu.Game.Localisation.ClientTranslationStrings.J5357,
                     RelativeSizeAxes = Axes.X,
                     AutoSizeAxes = Axes.Y,
                     Margin = new MarginPadding(10),

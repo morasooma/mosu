@@ -76,7 +76,7 @@ namespace osu.Game.Rulesets.Osu.Edit
                     relativeCheckbox = new OsuCheckbox(false)
                     {
                         RelativeSizeAxes = Axes.X,
-                        LabelText = "Relative movement"
+                        LabelText = global::osu.Game.Localisation.ClientTranslationStrings.J3316
                     }
                 }
             };

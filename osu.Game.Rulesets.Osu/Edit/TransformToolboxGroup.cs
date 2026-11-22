@@ -51,13 +51,13 @@ namespace osu.Game.Rulesets.Osu.Edit
                 Spacing = new Vector2(5),
                 Children = new Drawable[]
                 {
-                    moveButton = new EditorToolButton("Move",
+                    moveButton = new EditorToolButton(global::osu.Game.Localisation.ClientTranslationStrings.J3335,
                         () => new SpriteIcon { Icon = FontAwesome.Solid.ArrowsAlt },
                         () => new PreciseMovementPopover()),
-                    rotateButton = new EditorToolButton("Rotate",
+                    rotateButton = new EditorToolButton(global::osu.Game.Localisation.ClientTranslationStrings.J3336,
                         () => new SpriteIcon { Icon = FontAwesome.Solid.Undo },
                         () => new PreciseRotationPopover(RotationHandler, GridToolbox)),
-                    scaleButton = new EditorToolButton("Scale",
+                    scaleButton = new EditorToolButton(global::osu.Game.Localisation.ClientTranslationStrings.J3322,
                         () => new SpriteIcon { Icon = FontAwesome.Solid.ExpandArrowsAlt },
                         () => new PreciseScalePopover(ScaleHandler, GridToolbox))
                 }

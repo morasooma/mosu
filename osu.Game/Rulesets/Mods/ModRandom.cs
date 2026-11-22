@@ -16,7 +16,7 @@ namespace osu.Game.Rulesets.Mods
         public override ModType Type => ModType.Conversion;
         public override IconUsage? Icon => OsuIcon.ModRandom;
 
-        [SettingSource("Seed", "Use a custom seed instead of a random one", SettingControlType = typeof(SettingsNumberBox))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4252), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3738), SettingControlType = typeof(SettingsNumberBox))]
         public Bindable<int?> Seed { get; } = new Bindable<int?>();
     }
 }

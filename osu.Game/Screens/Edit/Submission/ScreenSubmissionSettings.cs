@@ -25,14 +25,20 @@ namespace osu.Game.Screens.Edit.Submission
     {
         private readonly BindableBool loadInBrowserAfterSubmission = new BindableBool();
 
-        public override LocalisableString? NextStepText => BeatmapSubmissionStrings.ConfirmSubmission;
+        public override LocalisableString? NextStepText => isUpdate
+            ? BeatmapSubmissionStrings.UpdateBeatmap
+            : BeatmapSubmissionStrings.ConfirmSubmission;
+
+        private bool isUpdate;
 
         [Resolved]
         private BeatmapSubmissionSettings settings { get; set; } = null!;
 
         [BackgroundDependencyLoader]
-        private void load(OsuConfigManager configManager, OsuColour colours)
+        private void load(OsuConfigManager configManager, OsuColour colours, IAPIProvider api, IBindable<WorkingBeatmap> beatmap)
         {
+            isUpdate = BeatmapSubmissionScreen.IsUpdate(api.Endpoints.APIUrl, beatmap.Value.BeatmapInfo.Ruleset.ShortName,
+                beatmap.Value.BeatmapSetInfo.OnlineID);
             configManager.BindWith(OsuSetting.EditorSubmissionLoadInBrowserAfterSubmission, loadInBrowserAfterSubmission);
 
             Content.Add(new FillFlowContainer

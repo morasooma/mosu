@@ -78,9 +78,13 @@ namespace osu.Game.Rulesets.Dodge.Edit
                 Scheduler.AddOnce(readFromSelection);
         }
 
+        private static bool canAdjustDuration(HitObject item)
+            => item is IHasDuration && item is not IEditorTimelineEndTimeAdjustable { CanAdjustEditorTimelineEndTime: false };
+
         private void readFromSelection()
         {
-            DodgeHitObject? first = selectedHitObjects.OfType<DodgeHitObject>().FirstOrDefault();
+            DodgeHitObject? first = selectedHitObjects.OfType<DodgeHitObject>().FirstOrDefault(canAdjustDuration);
+            durationSlider.Alpha = first != null ? 1 : 0;
 
             if (first is not IHasDuration duration)
                 return;
@@ -110,7 +114,7 @@ namespace osu.Game.Rulesets.Dodge.Edit
 
             foreach (DodgeHitObject hitObject in selected)
             {
-                if (hitObject is not IHasDuration duration)
+                if (!canAdjustDuration(hitObject) || hitObject is not IHasDuration duration)
                     continue;
 
                 duration.Duration = beatSnapProvider.GetBeatLengthAtTime(hitObject.StartTime) * DurationSnapUnits.Value;

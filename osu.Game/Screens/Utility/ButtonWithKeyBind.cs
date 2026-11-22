@@ -23,7 +23,7 @@ namespace osu.Game.Screens.Utility
         public new LocalisableString Text
         {
             get => base.Text;
-            set => base.Text = $"{value} (Press {key.ToString().Replace("Number", string.Empty)})";
+            set => base.Text = global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5310(value, key.ToString().Replace("Number", string.Empty));
         }
 
         protected override bool OnKeyDown(KeyDownEvent e)

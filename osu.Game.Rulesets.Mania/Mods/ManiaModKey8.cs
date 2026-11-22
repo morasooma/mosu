@@ -13,6 +13,6 @@ namespace osu.Game.Rulesets.Mania.Mods
         public override string Name => "Eight Keys";
         public override string Acronym => "8K";
         public override IconUsage? Icon => OsuIcon.ModEightKeys;
-        public override LocalisableString Description => @"Play with eight keys.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3646;
     }
 }

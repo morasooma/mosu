@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using osu.Framework.Localisation;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Game.Screens.OnlinePlay.DodgeWorld.Editor;
@@ -36,7 +37,7 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities
             if (!SupportsRotation)
                 yield break;
 
-            yield return new EntityField("Поворот", "градусы по часовой; 0 — как нарисовано",
+            yield return new EntityField(global::osu.Game.Localisation.ClientTranslationStrings.J4632, global::osu.Game.Localisation.ClientTranslationStrings.J4633,
                 entity => EditorValue.Format(entity.FacingDegrees),
                 (entity, text) => entity.FacingDegrees = EditorValue.Float(text, entity.FacingDegrees, -360, 360));
         }
@@ -47,35 +48,35 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities
         /// </summary>
         private static IEnumerable<EntityField> storyFields()
         {
-            yield return new EntityField("Ставит флаг", "имя вроде mora.met; пусто — объект не часть сюжета",
+            yield return new EntityField(global::osu.Game.Localisation.ClientTranslationStrings.J4634, global::osu.Game.Localisation.ClientTranslationStrings.J4635,
                 entity => entity.StoryFlag ?? string.Empty,
                 (entity, text) => entity.StoryFlag = string.IsNullOrWhiteSpace(text) ? null : text.Trim());
 
-            yield return new EntityField("Значение флага", "флаг поднимается до этого числа, а не прибавляется",
+            yield return new EntityField(global::osu.Game.Localisation.ClientTranslationStrings.J4636, global::osu.Game.Localisation.ClientTranslationStrings.J4637,
                 entity => EditorValue.Format(entity.StoryFlagValue),
                 (entity, text) => entity.StoryFlagValue = EditorValue.Int(text, entity.StoryFlagValue, 1, 1_000_000));
 
-            yield return new EntityField("Награда: опыт", "выдаётся один раз, когда флаг поднялся впервые",
+            yield return new EntityField(global::osu.Game.Localisation.ClientTranslationStrings.J4638, global::osu.Game.Localisation.ClientTranslationStrings.J4639,
                 entity => EditorValue.Format(entity.StoryExperience),
                 (entity, text) => entity.StoryExperience = EditorValue.Int(text, entity.StoryExperience, 0, 1_000_000));
 
-            yield return new EntityField("Награда: монеты", "тоже один раз; повторный разговор не платит",
+            yield return new EntityField(global::osu.Game.Localisation.ClientTranslationStrings.J4640, global::osu.Game.Localisation.ClientTranslationStrings.J4641,
                 entity => EditorValue.Format(entity.StoryCoins),
                 (entity, text) => entity.StoryCoins = EditorValue.Int(text, entity.StoryCoins, 0, 1_000_000));
 
-            yield return new EntityField("Виден, если флаг", "пусто — виден всегда",
+            yield return new EntityField(global::osu.Game.Localisation.ClientTranslationStrings.J4642, global::osu.Game.Localisation.ClientTranslationStrings.J4643,
                 entity => entity.Visibility.Flag ?? string.Empty,
                 (entity, text) => entity.Visibility = Model.StoryCondition.Read(text, entity.Visibility.AtLeast,
                     entity.Visibility.Below));
 
-            yield return new EntityField("не меньше", "значение флага, с которого объект появляется",
+            yield return new EntityField(global::osu.Game.Localisation.ClientTranslationStrings.J4644, global::osu.Game.Localisation.ClientTranslationStrings.J4645,
                 entity => EditorValue.Format((int)entity.Visibility.AtLeast),
                 (entity, text) => entity.Visibility = entity.Visibility with
                 {
                     AtLeast = EditorValue.Int(text, (int)entity.Visibility.AtLeast, 0, 1_000_000),
                 });
 
-            yield return new EntityField("и меньше", "значение, с которого объект снова исчезает; пусто — не исчезает",
+            yield return new EntityField(global::osu.Game.Localisation.ClientTranslationStrings.J4646, global::osu.Game.Localisation.ClientTranslationStrings.J4647,
                 entity => entity.Visibility.Below is long below ? EditorValue.Format((int)below) : string.Empty,
                 (entity, text) => entity.Visibility = entity.Visibility with
                 {
@@ -93,14 +94,14 @@ namespace osu.Game.Screens.OnlinePlay.DodgeWorld.Entities
         /// <summary>
         /// Declares one property, saving each kind from having to cast the entity itself.
         /// </summary>
-        protected static EntityField Field(string label, string? hint, Func<T, string> read, Action<T, string> write) =>
+        protected static EntityField Field(LocalisableString label, LocalisableString? hint, Func<T, string> read, Action<T, string> write) =>
             new EntityField(label, hint, entity => read((T)entity), (entity, value) => write((T)entity, value));
 
         /// <summary>
         /// Declares a yes-or-no property, which the panel shows as a switch rather than as a text box
         /// holding the word «да».
         /// </summary>
-        protected static EntityField Switch(string label, string? hint, Func<T, bool> read, Action<T, bool> write) =>
+        protected static EntityField Switch(LocalisableString label, LocalisableString? hint, Func<T, bool> read, Action<T, bool> write) =>
             new EntityField(label, hint,
                 entity => EditorValue.Format(read((T)entity)),
                 (entity, value) => write((T)entity, EditorValue.Bool(value, read((T)entity))),

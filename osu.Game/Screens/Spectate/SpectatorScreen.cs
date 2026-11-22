@@ -166,7 +166,9 @@ namespace osu.Game.Screens.Spectate
             if (resolvedRuleset == null)
                 return;
 
-            var resolvedBeatmap = beatmaps.QueryBeatmap(b => b.OnlineID == spectatorState.BeatmapID);
+            var resolvedBeatmap = spectatorState.BeatmapID.HasValue
+                ? beatmaps.QueryOnlineBeatmapId(spectatorState.BeatmapID.Value, spectatorState.BeatmapChecksum)
+                : null;
             if (resolvedBeatmap == null)
                 return;
 

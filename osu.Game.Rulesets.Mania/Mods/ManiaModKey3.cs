@@ -13,7 +13,7 @@ namespace osu.Game.Rulesets.Mania.Mods
         public override string Name => "Three Keys";
         public override string Acronym => "3K";
         public override IconUsage? Icon => OsuIcon.ModThreeKeys;
-        public override LocalisableString Description => @"Play with three keys.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3641;
         public override bool Ranked => false;
     }
 }

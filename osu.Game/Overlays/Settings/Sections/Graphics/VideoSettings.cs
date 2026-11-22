@@ -31,7 +31,10 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                 new SettingsItemV2(hwAccelCheckbox = new FormCheckBox
                 {
                     Caption = GraphicsSettingsStrings.UseHardwareAcceleration,
-                }),
+                })
+                {
+                    FavouriteId = "ui:GraphicsSettingsStrings.UseHardwareAcceleration",
+                },
             };
 
             hwAccelCheckbox.Current.Default = hardwareVideoDecoder.Default != HardwareVideoDecoder.None;

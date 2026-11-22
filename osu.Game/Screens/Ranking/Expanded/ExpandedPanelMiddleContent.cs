@@ -198,7 +198,7 @@ namespace osu.Game.Screens.Ranking.Expanded
                                     {
                                         if (!string.IsNullOrEmpty(creator))
                                         {
-                                            t.AddText("mapped by ");
+                                            t.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5116);
                                             t.AddText(creator, s => s.Font = s.Font.With(weight: FontWeight.SemiBold));
                                         }
                                     })

@@ -1,5 +1,7 @@
 using System;
 using osu.Framework.Bindables;
+using osu.Framework.Graphics.Sprites;
+using osu.Game.Graphics;
 using osu.Framework.Localisation;
 using osu.Framework.Utils;
 using osu.Game.Configuration;
@@ -23,6 +25,8 @@ namespace osu.Game.Rulesets.Osu.Mods
         public override string Name => "Anti Aim Assist";
 
         public override string Acronym => "AA!";
+
+        public override IconUsage? Icon => OsuIcon.ModMosuAntiAimAssist;
 
         public override ModType Type => ModType.Mosu;
 

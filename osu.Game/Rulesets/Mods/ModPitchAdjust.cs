@@ -24,7 +24,7 @@ namespace osu.Game.Rulesets.Mods
         public override string Acronym => "PA";
         public override IconUsage? Icon => FontAwesome.Solid.Music;
         public override ModType Type => ModType.Fun;
-        public override LocalisableString Description => "Shift the song's pitch up or down without changing playback speed.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J4247;
         public override bool Ranked => true;
 
         public override Type[] IncompatibleMods => new[]
@@ -37,10 +37,7 @@ namespace osu.Game.Rulesets.Mods
         private const double extended_min = 0.1;
         private const double extended_max = 3.0;
 
-        [SettingSource(
-            "Pitch shift",
-            "Multiplier applied to pitch (1.0 = no change).",
-            SettingControlType = typeof(MultiplierSettingsSlider))]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4248), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4249), SettingControlType = typeof(MultiplierSettingsSlider))]
         public BindableNumber<double> PitchShift { get; } = new BindableDouble(1.0)
         {
             MinValue = safe_min,
@@ -49,9 +46,7 @@ namespace osu.Game.Rulesets.Mods
             Precision = 0.01,
         };
 
-        [SettingSource(
-            "Extended limits",
-            "Allow extreme pitch shifts from 0.1× to 3.0×. Values outside the normal range may heavily distort audio.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4250), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J4251))]
         public BindableBool ExtendedLimits { get; } = new BindableBool();
 
         private readonly BindableDouble frequencyAdjustment = new BindableDouble(1);

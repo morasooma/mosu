@@ -37,6 +37,40 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
         public void TearDownSystem() => RelaxPpSystemSelection.Current = originalSystem;
 
         [Test]
+        public void MosuRelaxUsesNormalPpRegardlessOfRelaxSystem()
+        {
+            IWorkingBeatmap working = GetBeatmap("801165");
+            var calculator = new OsuPerformanceCalculator();
+            var values = new List<double>();
+
+            foreach (ForkRelaxPpSystem system in new[] { ForkRelaxPpSystem.MosuRealistik, ForkRelaxPpSystem.LazerVanilla, ForkRelaxPpSystem.MosuPp, ForkRelaxPpSystem.TazikPp })
+            {
+                RelaxPpSystemSelection.Current = system;
+                Mod[] mods = { new OsuModMosuRelax() };
+                var difficulty = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
+                var score = createPerfectScore(working, difficulty, mods);
+                var performance = (OsuPerformanceAttributes)calculator.Calculate(score, difficulty);
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(difficulty.MosuRelaxAimDifficulty, Is.Zero);
+                    Assert.That(performance.Speed, Is.GreaterThan(0));
+                    Assert.That(performance.Accuracy, Is.GreaterThan(0));
+                    Assert.That(calculator.RequiresBackgroundLivePerformanceCalculation(score), Is.False);
+                });
+                var noModDifficulty = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(Array.Empty<Mod>());
+                var noModPerformance = (OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(
+                    createPerfectScore(working, noModDifficulty, Array.Empty<Mod>()), noModDifficulty);
+
+                Assert.That(performance.Total, Is.EqualTo(noModPerformance.Total).Within(0.0001));
+                values.Add(performance.Total);
+            }
+
+            Assert.That(values[0], Is.EqualTo(values[1]).Within(0.0001));
+            Assert.That(values[1], Is.EqualTo(values[2]).Within(0.0001));
+        }
+
+        [Test]
         public void MosuSystemDelegatesToRealistikCalculator()
         {
             RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuRealistik;
@@ -133,11 +167,89 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
         }
 
         [Test]
+        public void MosuPpCalculatesAndRestoresPreparedScore()
+        {
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuPp;
+            IWorkingBeatmap working = GetBeatmap("801165");
+            Mod[] mods = { new OsuModRelax() };
+            var attributes = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
+            ScoreInfo score = createPerfectScore(working, attributes, mods);
+            var calculator = new OsuPerformanceCalculator();
+            double first = ((OsuPerformanceAttributes)calculator.Calculate(score, attributes)).Total;
+            // Pinned client integration value; intentional formula revisions must update this test and the cache version.
+            Assert.That(first, Is.EqualTo(230.92538612202915).Within(0.001));
+            Assert.That(calculator.RequiresBackgroundLivePerformanceCalculation(score), Is.True);
+
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuRealistik;
+            calculateRelax("801165");
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuPp;
+            double second = ((OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(score, attributes)).Total;
+            Assert.That(second, Is.EqualTo(first).Within(0.0001));
+        }
+
+        [Test]
+        public void MosuPpEmptyBeatmapReturnsZero()
+        {
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuPp;
+            var working = new TestWorkingBeatmap(new TestBeatmap(new OsuRuleset().RulesetInfo, false));
+            Mod[] mods = { new OsuModRelax() };
+            var attributes = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
+            var score = createPerfectScore(working, attributes, mods);
+            Assert.That(((OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(score, attributes)).Total, Is.Zero);
+        }
+
+        [Test]
+        public void MosuPpCalculatesPerformanceFromTimedAttributes()
+        {
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuPp;
+            IWorkingBeatmap working = GetBeatmap("801165");
+            Mod[] mods = { new OsuModRelax() };
+            var timed = new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).CalculateTimed(mods);
+            var last = (OsuDifficultyAttributes)timed[^1].Attributes;
+            var score = createPerfectScore(working, last, mods);
+            Assert.That(((OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(score, last)).Total, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void MosuPpTraceableMatchesHidden()
+        {
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuPp;
+            IWorkingBeatmap working = GetBeatmap("801165");
+
+            double calculate(Mod visibility, bool doubleTime)
+            {
+                Mod[] mods = doubleTime
+                    ? new Mod[] { new OsuModRelax(), visibility, new OsuModDoubleTime() }
+                    : new Mod[] { new OsuModRelax(), visibility };
+                var attributes = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
+                return ((OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(
+                    createPerfectScore(working, attributes, mods), attributes)).Total;
+            }
+
+            Assert.That(calculate(new OsuModTraceable(), false), Is.EqualTo(calculate(new OsuModHidden(), false)).Within(0.0001));
+            Assert.That(calculate(new OsuModTraceable(), true), Is.EqualTo(calculate(new OsuModHidden(), true)).Within(0.0001));
+        }
+
+        [Test]
+        public void MosuPpAccuracyAffectsPerformance()
+        {
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuPp;
+            IWorkingBeatmap working = GetBeatmap("801165");
+            Mod[] mods = { new OsuModRelax() };
+            var attributes = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
+            ScoreInfo perfect = createPerfectScore(working, attributes, mods);
+            double expected = ((OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(perfect, attributes)).Total;
+            perfect.Statistics[HitResult.Great]--;
+            perfect.Statistics[HitResult.Ok] = 1;
+            Assert.That(((OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(perfect, attributes)).Total, Is.LessThan(expected));
+        }
+
+        [Test]
         public void RelaxPerformanceCacheDistinguishesAccuracyAtSameCombo()
         {
             RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuRealistik;
             IWorkingBeatmap working = GetBeatmap("801165");
-            Mod[] mods = { new OsuModMosuRelax() };
+            Mod[] mods = { new OsuModRelax() };
             var difficulty = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
             ScoreInfo perfect = createPerfectScore(working, difficulty, mods);
             double perfectPp = ((OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(perfect, difficulty)).Total;
@@ -155,7 +267,7 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
         {
             RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuRealistik;
             IWorkingBeatmap working = GetBeatmap("801165");
-            Mod[] mods = { new OsuModMosuRelax() };
+            Mod[] mods = { new OsuModRelax() };
             var difficulty = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
             var score = createPerfectScore(working, difficulty, mods);
             double expected = ((OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(score, difficulty)).Total;
@@ -166,7 +278,7 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
             {
                 var variedMods = new Mod[]
                 {
-                    new OsuModMosuRelax(),
+                    new OsuModRelax(),
                     new OsuModDifficultyAdjust { CircleSize = { Value = 4 + i * 0.05f } },
                 };
                 var variedAttributes = new OsuDifficultyAttributes { Mods = variedMods };
@@ -183,13 +295,13 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
         [TestCase("1124896", true)]
         [TestCase("2496318", false)]
         [TestCase("2496318", true)]
-        public void MosuPpMapMultipliersDoNotRewardMisses(string beatmapName, bool doubleTime)
+        public void TazikPpMapMultipliersDoNotRewardMisses(string beatmapName, bool doubleTime)
         {
-            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.MosuPp;
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.TazikPp;
             IWorkingBeatmap working = GetBeatmap(beatmapName);
             Mod[] mods = doubleTime
-                ? new Mod[] { new OsuModMosuRelax(), new OsuModDoubleTime() }
-                : new Mod[] { new OsuModMosuRelax() };
+                ? new Mod[] { new OsuModRelax(), new OsuModDoubleTime() }
+                : new Mod[] { new OsuModRelax() };
             var difficulty = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
             var calculator = new OsuPerformanceCalculator();
             ScoreInfo perfect = createPerfectScore(working, difficulty, mods);
@@ -209,10 +321,42 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
                 Assert.That(ss.Total, Is.GreaterThan(0));
                 Assert.That(double.IsFinite(actual.Total), Is.True);
                 Assert.That(actual.Total, Is.InRange(0, ss.Total));
-                Assert.That(actual.MosuPpRespectPointsMultiplier, Is.EqualTo(ss.MosuPpRespectPointsMultiplier));
-                Assert.That(actual.MosuPpControlMultiplier, Is.EqualTo(ss.MosuPpControlMultiplier));
-                Assert.That(actual.MosuPpArlesMultiplier, Is.EqualTo(ss.MosuPpArlesMultiplier));
-                Assert.That(actual.MosuPpArlesMultiplier, Is.InRange(1, 1.3));
+                Assert.That(actual.TazikPpRespectPointsMultiplier, Is.EqualTo(ss.TazikPpRespectPointsMultiplier));
+                Assert.That(actual.TazikPpControlMultiplier, Is.EqualTo(ss.TazikPpControlMultiplier));
+                Assert.That(actual.TazikPpArlesMultiplier, Is.EqualTo(ss.TazikPpArlesMultiplier));
+                Assert.That(actual.TazikPpArlesMultiplier, Is.InRange(1, 1.3));
+            });
+        }
+
+        [TestCase(2f, false)]
+        [TestCase(8f, false)]
+        [TestCase(8f, true)]
+        public void TazikPpCsRulesRunThroughPreparedPipeline(float cs, bool hardRock)
+        {
+            RelaxPpSystemSelection.Current = ForkRelaxPpSystem.TazikPp;
+            Mod[] extra = hardRock
+                ? new Mod[] { new OsuModHardRock(), new OsuModDifficultyAdjust { CircleSize = { Value = cs } } }
+                : new Mod[] { new OsuModDifficultyAdjust { CircleSize = { Value = cs } } };
+            var result = calculateRelax("801165", extra);
+            var pp = result.Performance;
+            Assert.Multiple(() =>
+            {
+                Assert.That(double.IsFinite(pp.Total), Is.True);
+                Assert.That(pp.Total, Is.GreaterThan(0));
+                Assert.That(pp.TazikPpBreakdown, Is.Not.Null);
+                Assert.That(pp.TazikPpRpType, Is.Not.Null);
+                Assert.That(pp.TazikPpStreamWeight, Is.InRange(0, 1));
+                if (cs == 2)
+                {
+                    Assert.That(pp.TazikPpCsReductionMultiplier, Is.InRange(0, 0.999));
+                    Assert.That(pp.TazikPpCsReferencePp, Is.Null);
+                }
+                else
+                {
+                    Assert.That(pp.TazikPpCsReductionMultiplier, Is.EqualTo(1));
+                    Assert.That(pp.TazikPpCsReferencePp, Is.GreaterThan(0));
+                    Assert.That(pp.TazikPpBreakdown!.Exists(x => x.Key == "csGain" && double.IsFinite(x.Value) && x.Value > 0 && x.Value <= 1), Is.True);
+                }
             });
         }
 
@@ -225,7 +369,7 @@ namespace osu.Game.Rulesets.Osu.Tests.Difficulty
 
             Mod[] mods = new Mod[extraMods.Length + 1];
             extraMods.CopyTo(mods, 0);
-            mods[^1] = new OsuModMosuRelax();
+            mods[^1] = new OsuModRelax();
 
             var difficulty = (OsuDifficultyAttributes)new OsuDifficultyCalculator(new OsuRuleset().RulesetInfo, working).Calculate(mods);
             var performance = (OsuPerformanceAttributes)new OsuPerformanceCalculator().Calculate(createPerfectScore(working, difficulty, mods), difficulty);

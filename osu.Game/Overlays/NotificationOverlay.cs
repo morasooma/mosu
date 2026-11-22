@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
@@ -70,6 +70,8 @@ namespace osu.Game.Overlays
 
         private Container mainContent = null!;
         private BackdropBlurSurface mainBackground = null!;
+
+        protected override BackdropBlurSurface OpaqueBackground => mainBackground;
         private IBindable<Colour4> themeColour = null!;
 
         [BackgroundDependencyLoader]
@@ -234,9 +236,9 @@ namespace osu.Game.Overlays
 
         protected override void PopIn()
         {
-            this.MoveToX(0, TRANSITION_LENGTH, Easing.OutQuint);
-            mainContent.FadeTo(1, TRANSITION_LENGTH / 2, Easing.OutQuint);
-            mainContent.FadeEdgeEffectTo(WaveContainer.SHADOW_OPACITY, WaveContainer.APPEAR_DURATION, Easing.Out);
+            this.MoveToX(0, InterfaceAnimation.TransitionDuration(TRANSITION_LENGTH), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+            mainContent.FadeTo(1, InterfaceAnimation.TransitionFadeDuration(TRANSITION_LENGTH / 2), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+            mainContent.FadeEdgeEffectTo(WaveContainer.SHADOW_OPACITY, InterfaceAnimation.FadeDuration(WaveContainer.APPEAR_DURATION), Easing.Out);
 
             toastTray.FlushAllToasts(true);
         }
@@ -247,9 +249,9 @@ namespace osu.Game.Overlays
 
             markAllRead();
 
-            this.MoveToX(WIDTH, TRANSITION_LENGTH, Easing.OutQuint);
-            mainContent.FadeTo(0, TRANSITION_LENGTH / 2, Easing.OutQuint);
-            mainContent.FadeEdgeEffectTo(0, WaveContainer.DISAPPEAR_DURATION, Easing.In);
+            this.MoveToX(WIDTH, InterfaceAnimation.TransitionDuration(TRANSITION_LENGTH), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+            mainContent.FadeTo(0, InterfaceAnimation.TransitionFadeDuration(TRANSITION_LENGTH / 2), InterfaceAnimation.TransitionEasing(Easing.OutQuint));
+            mainContent.FadeEdgeEffectTo(0, InterfaceAnimation.FadeDuration(WaveContainer.DISAPPEAR_DURATION), Easing.In);
         }
 
         private void notificationClosed(Notification notification) => Schedule(() =>

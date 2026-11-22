@@ -30,6 +30,8 @@ namespace osu.Game.Skinning.Components
         [SettingSource(typeof(SkinnableComponentStrings), nameof(SkinnableComponentStrings.Colour))]
         public BindableColour4 AccentColour { get; } = new BindableColour4(Colour4.White);
 
+        private readonly SkinComponentColourProvider themeColours = new SkinComponentColourProvider();
+
         public BoxElement()
         {
             Size = new Vector2(400, 80);
@@ -50,7 +52,9 @@ namespace osu.Game.Skinning.Components
         {
             base.LoadComplete();
 
-            AccentColour.BindValueChanged(_ => Colour = AccentColour.Value, true);
+            void updateColour() => Colour = themeColours.GetColour(Overlays.OverlayColour.Background3, AccentColour);
+            AccentColour.BindValueChanged(_ => updateColour());
+            themeColours.Bind(action => Scheduler.Add(action), updateColour);
         }
 
         protected override void Update()

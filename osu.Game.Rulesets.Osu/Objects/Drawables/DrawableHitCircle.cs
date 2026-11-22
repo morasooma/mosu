@@ -144,7 +144,10 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
             if (!userTriggered)
             {
-                if (!HitObject.HitWindows.CanBeHit(timeOffset))
+                bool expired = osu.Game.Online.MosuServerEnvironment.UsesStableProtocol
+                    ? timeOffset > HitObject.HitWindows.WindowFor(HitResult.Meh) + 0.5
+                    : !HitObject.HitWindows.CanBeHit(timeOffset);
+                if (expired)
                 {
                     ApplyResult((r, position) =>
                     {
@@ -305,6 +308,10 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
                         if (IsHovered)
                         {
+                            // Stable's slider head press handler selects the held key before
+                            // evaluating the head. Make the action available to that handler.
+                            if (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol)
+                                HitAction = e.Action;
                             Hit();
                             HitAction ??= e.Action;
                             return true;

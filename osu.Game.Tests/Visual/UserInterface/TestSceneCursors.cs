@@ -1,7 +1,9 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Linq;
 using NUnit.Framework;
+using osu.Framework.Allocation;
 using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -9,6 +11,7 @@ using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Input.Events;
 using osu.Framework.Utils;
+using osu.Game.Configuration;
 using osu.Game.Graphics.Cursor;
 using osu.Game.Graphics.Sprites;
 using osuTK;
@@ -82,8 +85,38 @@ namespace osu.Game.Tests.Visual.UserInterface
             AddToggleStep("Smooth transitions", b => cursorBoxes.ForEach(box => box.SmoothTransition = b));
         }
 
+        [Resolved]
+        private OsuConfigManager config { get; set; } = null!;
+
         [SetUp]
         public void SetUp() => Schedule(moveOut);
+
+        [Test]
+        public void TestMenuCursorSizeWithSkinCursor([Values] bool initiallyUseSkinCursor)
+        {
+            float originalSize = 1;
+            bool originalUseSkinCursor = false;
+
+            AddStep("set initial cursor mode", () =>
+            {
+                originalSize = config.Get<float>(OsuSetting.MenuCursorSize);
+                originalUseSkinCursor = config.Get<bool>(OsuSetting.ForkUseSkinCursorOutsideGameplay);
+                config.SetValue(OsuSetting.ForkUseSkinCursorOutsideGameplay, initiallyUseSkinCursor);
+                config.SetValue(OsuSetting.MenuCursorSize, 0.75f);
+            });
+            AddAssert("initial cursor scale", () => Precision.AlmostEquals(cursorScale(), 0.75f * (initiallyUseSkinCursor ? 1 : 0.15f)));
+            AddStep("toggle cursor mode", () => config.SetValue(OsuSetting.ForkUseSkinCursorOutsideGameplay, !initiallyUseSkinCursor));
+            AddAssert("size preserved after toggle", () => Precision.AlmostEquals(cursorScale(), 0.75f * (initiallyUseSkinCursor ? 0.15f : 1)));
+            AddStep("change menu cursor size", () => config.SetValue(OsuSetting.MenuCursorSize, 1.5f));
+            AddAssert("size updates live", () => Precision.AlmostEquals(cursorScale(), 1.5f * (initiallyUseSkinCursor ? 0.15f : 1)));
+            AddStep("restore settings", () =>
+            {
+                config.SetValue(OsuSetting.MenuCursorSize, originalSize);
+                config.SetValue(OsuSetting.ForkUseSkinCursorOutsideGameplay, originalUseSkinCursor);
+            });
+
+            float cursorScale() => ((MenuCursorContainer.Cursor)globalCursorDisplay.MenuCursor.ActiveCursor).Children.OfType<Container>().Single().Scale.X;
+        }
 
         /// <summary>
         /// -- Green Box --

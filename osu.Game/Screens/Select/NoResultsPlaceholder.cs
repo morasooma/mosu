@@ -172,9 +172,9 @@ namespace osu.Game.Screens.Select
             if (beatmaps.QueryBeatmapSet(s => !s.Protected && !s.DeletePending) == null)
             {
                 addBulletPoint();
-                textFlow.AddText("Consider running the \"");
+                textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5173);
                 textFlow.AddLink(FirstRunSetupOverlayStrings.FirstRunSetupTitle, () => firstRunSetupOverlay?.Show());
-                textFlow.AddText("\" to download or import some beatmaps!");
+                textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5174);
             }
             else
             {
@@ -184,20 +184,20 @@ namespace osu.Game.Screens.Select
                 if (!string.IsNullOrEmpty(filter?.SearchText))
                 {
                     addBulletPoint();
-                    textFlow.AddText("Try ");
-                    textFlow.AddLink("clearing", () =>
+                    textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5175);
+                    textFlow.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J5176, () =>
                     {
                         RequestClearFilterText?.Invoke();
                     });
 
-                    textFlow.AddText(" your current search criteria.");
+                    textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5177);
                 }
 
                 if (filter?.UserStarDifficulty.HasFilter == true)
                 {
                     addBulletPoint();
-                    textFlow.AddText("Try ");
-                    textFlow.AddLink("removing", () =>
+                    textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5175);
+                    textFlow.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J5178, () =>
                     {
                         config.SetValue(OsuSetting.DisplayStarsMinimum, 0.0);
                         config.SetValue(OsuSetting.DisplayStarsMaximum, 10.1);
@@ -206,7 +206,7 @@ namespace osu.Game.Screens.Select
                     string lowerStar = $"{filter.UserStarDifficulty.Min ?? 0:N1}";
                     string upperStar = filter.UserStarDifficulty.Max == null ? "∞" : $"{filter.UserStarDifficulty.Max:N1}";
 
-                    textFlow.AddText($" the {lowerStar} - {upperStar} star difficulty filter.");
+                    textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5179(lowerStar, upperStar));
                 }
 
                 // TODO: Add realm queries to hint at which ruleset results are available in (and allow clicking to switch).
@@ -214,18 +214,18 @@ namespace osu.Game.Screens.Select
                 if (filter?.Ruleset?.OnlineID is not 0 and not 10 && filter?.AllowConvertedBeatmaps == false)
                 {
                     addBulletPoint();
-                    textFlow.AddText("Try ");
-                    textFlow.AddLink("enabling", () => config.SetValue(OsuSetting.ShowConvertedBeatmaps, true));
-                    textFlow.AddText(" automatic conversion!");
+                    textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5175);
+                    textFlow.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J5180, () => config.SetValue(OsuSetting.ShowConvertedBeatmaps, true));
+                    textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5181);
                 }
             }
 
             if (!string.IsNullOrEmpty(filter?.SearchText))
             {
                 addBulletPoint();
-                textFlow.AddText("Try ");
-                textFlow.AddLink("searching online", LinkAction.SearchBeatmapSet, filter.SearchText);
-                textFlow.AddText($" for \"{filter.SearchText}\".");
+                textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J5175);
+                textFlow.AddLink(global::osu.Game.Localisation.ClientTranslationStrings.J5182, LinkAction.SearchBeatmapSet, filter.SearchText);
+                textFlow.AddText(global::osu.Game.Localisation.ClientTranslationStrings.FormatJ5183(filter.SearchText));
             }
             // TODO: add clickable link to reset criteria.
         }

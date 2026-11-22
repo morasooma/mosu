@@ -16,12 +16,7 @@ namespace osu.Game.Rulesets.Osu.Edit
         public GridFromPointsTool()
             : base(OsuEditorStrings.GridFromPointsTool)
         {
-            TooltipText = """
-                          Left click to set the origin.
-                          Left click again to set the spacing and rotation.
-                          Right click to reset to default.
-                          Click and drag to set the origin, spacing and rotation.
-                          """;
+            TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J3290;
             Action = OsuAction.EditorGridFromPointsTool;
         }
 

@@ -17,6 +17,12 @@ namespace osu.Game.Rulesets
     {
         private const string ruleset_library_prefix = @"osu.Game.Rulesets";
 
+        // Mosu does not support executable third-party rulesets. Check before loading
+        // any assembly or constructing a ruleset, not after plugin code has run.
+        internal static bool IsBundledRulesetAssemblyName(string? name) => name is
+            "osu.Game.Rulesets.Osu" or "osu.Game.Rulesets.Taiko" or
+            "osu.Game.Rulesets.Catch" or "osu.Game.Rulesets.Mania" or "osu.Game.Rulesets.Dodge";
+
         protected readonly Dictionary<Assembly, Type> LoadedAssemblies = new Dictionary<Assembly, Type>();
         protected readonly HashSet<Assembly> UserRulesetAssemblies = new HashSet<Assembly>();
         protected readonly Storage? RulesetStorage;
@@ -45,7 +51,7 @@ namespace osu.Game.Rulesets
 
             RulesetStorage = storage?.GetStorageForDirectory(@"rulesets");
             if (RulesetStorage != null)
-                loadUserRulesets(RulesetStorage);
+                logUnsupportedUserRulesets(RulesetStorage);
         }
 
         /// <summary>
@@ -121,23 +127,17 @@ namespace osu.Game.Rulesets
                 if (rulesetName == null)
                     continue;
 
-                if (!rulesetName.StartsWith(ruleset_library_prefix, StringComparison.InvariantCultureIgnoreCase) || rulesetName.Contains(@"Tests"))
+                if (!IsBundledRulesetAssemblyName(rulesetName))
                     continue;
 
                 addRuleset(ruleset);
             }
         }
 
-        private void loadUserRulesets(Storage rulesetStorage)
+        private void logUnsupportedUserRulesets(Storage rulesetStorage)
         {
-            var rulesets = rulesetStorage.GetFiles(@".", @$"{ruleset_library_prefix}.*.dll");
-
-            foreach (string? ruleset in rulesets.Where(f => !f.Contains(@"Tests")))
-            {
-                var assembly = loadRulesetFromFile(rulesetStorage.GetFullPath(ruleset));
-                if (assembly != null)
-                    UserRulesetAssemblies.Add(assembly);
-            }
+            foreach (string ruleset in rulesetStorage.GetFiles(@".", @$"{ruleset_library_prefix}.*.dll"))
+                Logger.Log($"External ruleset '{Path.GetFileName(ruleset)}' was not loaded. Mosu only supports bundled rulesets.", level: LogLevel.Important);
         }
 
         private void loadFromDisk()
@@ -146,7 +146,7 @@ namespace osu.Game.Rulesets
             {
                 string[] files = Directory.GetFiles(RuntimeInfo.StartupDirectory, @$"{ruleset_library_prefix}.*.dll");
 
-                foreach (string file in files.Where(f => !Path.GetFileName(f).Contains("Tests")))
+                foreach (string file in files.Where(f => IsBundledRulesetAssemblyName(Path.GetFileNameWithoutExtension(f))))
                     loadRulesetFromFile(file);
             }
             catch (Exception e)
@@ -158,6 +158,9 @@ namespace osu.Game.Rulesets
         private Assembly? loadRulesetFromFile(string file)
         {
             string filename = Path.GetFileNameWithoutExtension(file);
+
+            if (!IsBundledRulesetAssemblyName(filename))
+                return null;
 
             if (LoadedAssemblies.Values.Any(t => Path.GetFileNameWithoutExtension(t.Assembly.Location) == filename))
                 return null;
@@ -178,6 +181,17 @@ namespace osu.Game.Rulesets
 
         private void addRuleset(Assembly assembly)
         {
+            if (!IsBundledRulesetAssemblyName(assembly.GetName().Name))
+                return;
+
+            // Android bundles assemblies in memory. Disk-backed rulesets must come
+            // from the application, never from user storage or an unrelated path.
+            if (!string.IsNullOrEmpty(assembly.Location) &&
+                !string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetDirectoryName(assembly.Location)!)),
+                    Path.TrimEndingDirectorySeparator(Path.GetFullPath(RuntimeInfo.StartupDirectory)),
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                return;
+
             if (LoadedAssemblies.ContainsKey(assembly))
                 return;
 

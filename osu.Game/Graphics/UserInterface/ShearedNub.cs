@@ -29,6 +29,7 @@ namespace osu.Game.Graphics.UserInterface
         private readonly Container main;
         private readonly Container shadow;
         private IBindable<Colour4>? themeColour;
+        private IBindable<float>? radiusBindable;
         private readonly IBindable<bool> disableShear = OsuGame.DisableShear.GetBoundCopy();
 
         public ShearedNub()
@@ -96,6 +97,9 @@ namespace osu.Game.Graphics.UserInterface
             {
                 themeColour = colourProvider.GetColourBindable(OverlayColour.Highlight1);
                 themeColour.BindValueChanged(_ => updateColours(), true);
+
+                radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Button, CORNER_RADIUS);
+                radiusBindable.BindValueChanged(_ => updateRadius());
             }
             else
                 updateColours();
@@ -109,10 +113,21 @@ namespace osu.Game.Graphics.UserInterface
             {
                 shadow.Shear = OsuGame.SHEAR;
                 main.Shear = OsuGame.SHEAR;
+                updateRadius();
             }, true);
 
             Current.BindValueChanged(onCurrentValueChanged, true);
+            updateRadius();
             FinishTransforms(true);
+        }
+
+        private void updateRadius()
+        {
+            float target = radiusBindable?.Value ?? CORNER_RADIUS;
+            float maxSafe = !disableShear.Value ? 12f : 15f;
+            float radius = Math.Min(target, maxSafe);
+            shadow.CornerRadius = radius;
+            main.CornerRadius = radius;
         }
 
         private bool glowing;

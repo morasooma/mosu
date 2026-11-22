@@ -47,7 +47,11 @@ namespace osu.Game.Overlays
 
         public int UnreadCount => Notifications.Count(n => !n.WasClosed && !n.Read);
 
+        private static readonly bool retainFrameBufferHeight = Environment.GetEnvironmentVariable("MOSU_QUICK_TOAST_EXACT_BUFFER") != "1";
+
         private int runningDepth;
+        private readonly Dictionary<Notification, double> remainingLifetime = new Dictionary<Notification, double>();
+        private readonly List<KeyValuePair<Notification, double>> lifetimeSnapshot = new List<KeyValuePair<Notification, double>>();
 
         [BackgroundDependencyLoader]
         private void load()
@@ -71,6 +75,7 @@ namespace osu.Game.Overlays
                 {
                     PadExtent = true,
                     Sigma = new Vector2(20),
+                    RetainFrameBufferHeight = retainFrameBufferHeight,
                 }).With(postEffectDrawable =>
                 {
                     postEffectDrawable.Scale = new Vector2(1.5f, 1);
@@ -116,28 +121,8 @@ namespace osu.Game.Overlays
 
             toastFlow.Insert(depth, notification);
 
-            scheduleDismissal();
-
-            void scheduleDismissal() => Scheduler.AddDelayed(() =>
-            {
-                // Notification dismissed by user.
-                if (notification.WasClosed)
-                    return;
-
-                // Notification forwarded away.
-                if (notification.Parent != toastFlow)
-                    return;
-
-                // Notification hovered; delay dismissal.
-                if (notification.IsHovered || notification.IsDragged)
-                {
-                    scheduleDismissal();
-                    return;
-                }
-
-                // All looks good, forward away!
-                forwardNotification(notification);
-            }, notification.IsImportant ? 12000 : 2500);
+            remainingLifetime[notification] = notification.IsImportant ? 12000 : 2500;
+            notification.ToastLifetimeProgress = 1;
         }
 
         private void forwardNotification(Notification notification)
@@ -145,6 +130,7 @@ namespace osu.Game.Overlays
             if (!notification.IsInToastTray)
                 return;
 
+            remainingLifetime.Remove(notification);
             Debug.Assert(notification.Parent == toastFlow);
 
             // Temporarily remove from flow so we can animate the position off to the right.
@@ -171,6 +157,37 @@ namespace osu.Game.Overlays
         protected override void Update()
         {
             base.Update();
+
+            // Dismissing a toast mutates the dictionary. Reuse the snapshot rather than
+            // allocating an array on every Update while any toast is present.
+            lifetimeSnapshot.AddRange(remainingLifetime);
+            try
+            {
+                foreach (var (notification, remaining) in lifetimeSnapshot)
+                {
+                    if (notification.WasClosed || notification.Parent != toastFlow)
+                    {
+                        remainingLifetime.Remove(notification);
+                        continue;
+                    }
+
+                    // Keep the bar and dismissal in sync, including while the toast is hovered or dragged.
+                    if (notification.IsHovered || notification.IsDragged)
+                        continue;
+
+                    double duration = notification.IsImportant ? 12000 : 2500;
+                    double next = Math.Max(0, remaining - Clock.ElapsedFrameTime);
+                    remainingLifetime[notification] = next;
+                    notification.ToastLifetimeProgress = (float)(next / duration);
+
+                    if (next == 0)
+                        forwardNotification(notification);
+                }
+            }
+            finally
+            {
+                lifetimeSnapshot.Clear();
+            }
 
             float height = 0;
             float alpha = 0;

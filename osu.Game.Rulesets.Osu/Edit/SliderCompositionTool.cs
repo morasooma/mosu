@@ -16,13 +16,7 @@ namespace osu.Game.Rulesets.Osu.Edit
         public SliderCompositionTool()
             : base(OsuEditorStrings.SliderTool)
         {
-            TooltipText = """
-                Left click for new point.
-                Left click twice or S key for new segment.
-                Tab, Shift-Tab, or Alt-1~4 to change current segment type.
-                Right click to finish.
-                Click and drag for drawing mode.
-                """;
+            TooltipText = global::osu.Game.Localisation.ClientTranslationStrings.J3334;
             Action = OsuAction.EditorSliderTool;
         }
 

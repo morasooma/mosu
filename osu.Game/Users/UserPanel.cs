@@ -54,6 +54,7 @@ namespace osu.Game.Users
         private readonly List<OsuSpriteText> usernameTexts = new List<OsuSpriteText>();
         private IBindable<Colour4>? backgroundColour;
         private IBindable<Colour4>? contentColour;
+        private IBindable<float>? radiusBindable;
 
         protected UserPanel(APIUser user)
             : base(HoverSampleSet.Button)
@@ -100,6 +101,10 @@ namespace osu.Game.Users
         private void load()
         {
             Masking = true;
+
+            radiusBindable = ColourProvider?.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Card, CornerRadius)
+                ?? OverlayColourProvider.GetGeometryRadius(osu.Game.Overlays.CustomTheme.GeometryRole.Card, CornerRadius);
+            radiusBindable.BindValueChanged(r => CornerRadius = r.NewValue, true);
 
             Add(panelBackground = new Box
             {

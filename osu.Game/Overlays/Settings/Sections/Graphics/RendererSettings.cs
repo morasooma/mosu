@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
@@ -32,14 +32,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
             automaticRendererInUse = confirmedRendererChoice == RendererType.Automatic;
             startupResolvedRenderer = host.ResolvedRenderer;
 
-            IEnumerable<RendererType> availableRenderers = host.GetPreferredRenderersForCurrentPlatform().Order();
-
-            // Vulkan renderers are pretty broken to the point it may result in a startup crash at worst.
-            // If a user isn't already using it let's hide it until we can fix.
-            if (renderer.Value != RendererType.Deferred_Vulkan)
-                availableRenderers = availableRenderers.Where(t => t != RendererType.Deferred_Vulkan);
-            if (renderer.Value != RendererType.Vulkan)
-                availableRenderers = availableRenderers.Where(t => t != RendererType.Vulkan);
+            IEnumerable<RendererType> availableRenderers = GetAvailableRenderers(host.GetPreferredRenderersForCurrentPlatform());
 
             Children = new Drawable[]
             {
@@ -50,8 +43,10 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                     Items = availableRenderers,
                 })
                 {
-                    Keywords = new[] { @"compatibility", @"directx" },
+                    FavouriteId = "ui:GraphicsSettingsStrings.Renderer",
+                    Keywords = new[] { @"compatibility", @"directx", @"vulkan", @"opengl", @"renderer" },
                 },
+                new GraphicsAdapterSettings(),
                 // TODO: this needs to be a custom dropdown at some point
                 new SettingsItemV2(new FormEnumDropdown<FrameSync>
                 {
@@ -59,19 +54,34 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                     Current = config.GetBindable<FrameSync>(FrameworkSetting.FrameSync),
                 })
                 {
+                    FavouriteId = "FrameworkSetting.FrameSync",
                     Keywords = new[] { @"fps", @"framerate" },
+                },
+                new SettingsItemV2(new FormCheckBox
+                {
+                    Caption = ForkSettingsStrings.UncappedFpsCaption,
+                    HintText = ForkSettingsStrings.UncappedFpsHint,
+                    Current = osuConfig.GetBindable<bool>(OsuSetting.ForkUncappedFrameRate),
+                })
+                {
+                    FavouriteId = "OsuSetting.ForkUncappedFrameRate",
+                    Keywords = new[] { @"fps", @"framerate", @"frametime", @"latency", @"unlimited" },
                 },
                 new SettingsItemV2(new FormEnumDropdown<ExecutionMode>
                 {
                     Caption = GraphicsSettingsStrings.ThreadingMode,
                     Current = config.GetBindable<ExecutionMode>(FrameworkSetting.ExecutionMode)
-                }),
+                })
+                {
+                    FavouriteId = "FrameworkSetting.ExecutionMode",
+                },
                 new SettingsItemV2(new FormCheckBox
                 {
                     Caption = GraphicsSettingsStrings.ShowFPS,
                     Current = osuConfig.GetBindable<bool>(OsuSetting.ShowFpsDisplay),
                 })
                 {
+                    FavouriteId = "OsuSetting.ShowFpsDisplay",
                     Keywords = new[] { @"framerate", @"counter" },
                 },
             };
@@ -104,6 +114,13 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                 }
             });
         }
+
+        /// <summary>
+        /// Exposes platform-supported backends, including experimental Vulkan, without changing
+        /// the host's automatic preference order or offering unsupported platform backends.
+        /// </summary>
+        public static IEnumerable<RendererType> GetAvailableRenderers(IEnumerable<RendererType> platformRenderers)
+            => platformRenderers.Distinct().Order();
 
         private partial class RendererDropdown : FormEnumDropdown<RendererType>
         {

@@ -18,7 +18,7 @@ namespace osu.Game.Rulesets.Mania.Mods
         public override string Acronym => "CO";
         public override IconUsage? Icon => OsuIcon.ModCover;
 
-        public override LocalisableString Description => @"Decrease the playfield's viewing area.";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3627;
 
         protected override CoverExpandDirection ExpandDirection => Direction.Value;
 
@@ -32,7 +32,7 @@ namespace osu.Game.Rulesets.Mania.Mods
 
         public override bool ValidForFreestyleAsRequiredMod => false;
 
-        [SettingSource("Coverage", "The proportion of playfield height that notes will be hidden for.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3628), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3629))]
         public override BindableNumber<float> Coverage { get; } = new BindableFloat(0.5f)
         {
             Precision = 0.1f,
@@ -41,7 +41,7 @@ namespace osu.Game.Rulesets.Mania.Mods
             Default = 0.5f,
         };
 
-        [SettingSource("Direction", "The direction on which the cover is applied")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3630), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3631))]
         public Bindable<CoverExpandDirection> Direction { get; } = new Bindable<CoverExpandDirection>();
     }
 }

@@ -30,6 +30,7 @@ using osu.Game.Online.API;
 using osu.Game.Online.Chat;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays;
+using osu.Game.Overlays.CustomTheme;
 using osu.Game.Screens.OnlinePlay.Components;
 using osuTK;
 using Container = osu.Framework.Graphics.Containers.Container;
@@ -72,6 +73,8 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
         /// A fully-populated representation of the selected item's current beatmap.
         /// </summary>
         private readonly Bindable<IBeatmapInfo?> currentBeatmap = new Bindable<IBeatmapInfo?>();
+        private Container? innerContentContainer;
+        private IBindable<float>? panelRadius;
 
         protected RoomPanel(Room room)
         {
@@ -101,6 +104,14 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
                 Colour = colourProvider.Background6.Opacity(0.4f),
                 Radius = 4,
             };
+
+            panelRadius = colourProvider.GetRadiusBindable(GeometryRole.Panel, CORNER_RADIUS);
+            panelRadius.BindValueChanged(r =>
+            {
+                CornerRadius = r.NewValue;
+                if (innerContentContainer != null)
+                    innerContentContainer.CornerRadius = r.NewValue;
+            }, true);
 
             IEnumerable<Drawable> createNameAndStatus()
             {
@@ -145,11 +156,11 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
                         RelativeSizeAxes = Axes.Both,
                         // This negative padding resolves 1px gaps between this background and the background above.
                         Padding = new MarginPadding { Left = 10, Vertical = -0.5f },
-                        Child = new Container
+                        Child = innerContentContainer = new Container
                         {
                             RelativeSizeAxes = Axes.Both,
                             Masking = true,
-                            CornerRadius = CORNER_RADIUS,
+                            CornerRadius = CornerRadius,
                             Children = new Drawable[]
                             {
                                 new Box
@@ -381,7 +392,8 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
                               .ContinueWith(task => Schedule(() =>
                               {
                                   if (!cancellationSource.IsCancellationRequested)
-                                      currentBeatmap.Value = task.GetResultSafely();
+                                      currentBeatmap.Value = task.GetResultSafely()
+                                          ?? (osu.Game.Online.MosuServerEnvironment.UsesStableProtocol ? item.NewValue.Beatmap as osu.Game.Online.API.Requests.Responses.APIBeatmap : null);
                               }), cancellationSource.Token);
         }
 
@@ -563,11 +575,11 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
 
                 if (room.Type == MatchType.Playlists)
                 {
-                    statusText.Text = "Ready to play";
+                    statusText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4802;
                     return;
                 }
 
-                statusText.Text = "Currently playing ";
+                statusText.Text = global::osu.Game.Localisation.ClientTranslationStrings.J4803;
 
                 if (beatmap.NewValue != null)
                 {
@@ -577,7 +589,7 @@ namespace osu.Game.Screens.OnlinePlay.Lounge.Components
                         creationParameters: s => s.Truncate = true);
                 }
                 else
-                    beatmapText.AddText("unknown beatmap");
+                    beatmapText.AddText(global::osu.Game.Localisation.ClientTranslationStrings.J4804);
             }
         }
 

@@ -18,7 +18,7 @@ namespace osu.Game.Rulesets.Mania.Mods
 
         public override string Acronym => "CS";
 
-        public override LocalisableString Description => "No more tricky speed changes!";
+        public override LocalisableString Description => global::osu.Game.Localisation.ClientTranslationStrings.J3626;
 
         public override IconUsage? Icon => OsuIcon.ModConstantSpeed;
 

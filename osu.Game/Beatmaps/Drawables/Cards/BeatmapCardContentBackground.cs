@@ -16,7 +16,13 @@ namespace osu.Game.Beatmaps.Drawables.Cards
         public BindableBool Dimmed { get; } = new BindableBool();
 
         private readonly Box background;
-        private readonly DelayedLoadUnloadWrapper cover;
+        private readonly UpdateableOnlineBeatmapSetCover cover;
+
+        internal void ChangeBeatmapSet(IBeatmapSetOnlineInfo info)
+        {
+            Dimmed.Value = false;
+            cover.ResetOnlineInfo(info);
+        }
         private IBindable<Colour4> themeColour = null!;
 
         [Resolved]
@@ -30,27 +36,24 @@ namespace osu.Game.Beatmaps.Drawables.Cards
                 {
                     RelativeSizeAxes = Axes.Both,
                 },
-                cover = new DelayedLoadUnloadWrapper(() => createCover(onlineInfo), keepLoaded ? 0 : 500, keepLoaded ? double.MaxValue : 1000)
+                cover = new UpdateableOnlineBeatmapSetCover(BeatmapSetCoverType.Card, keepLoaded ? 0 : 500, keepLoaded ? double.MaxValue : 1000, displayPlaceholder: false)
                 {
                     RelativeSizeAxes = Axes.Both,
+                    OnlineInfo = onlineInfo,
                     Colour = Colour4.Transparent
                 }
             };
         }
 
-        private static Drawable createCover(IBeatmapSetOnlineInfo onlineInfo) => new OnlineBeatmapSetCover(onlineInfo)
-        {
-            RelativeSizeAxes = Axes.Both,
-            Anchor = Anchor.Centre,
-            Origin = Anchor.Centre,
-            FillMode = FillMode.Fill
-        };
-
         [BackgroundDependencyLoader]
         private void load(OverlayColourProvider colourProvider)
         {
             themeColour = colourProvider.GetColourBindable(OverlayColour.Background2);
-            themeColour.BindValueChanged(_ => updateState(), true);
+            // Initialise before the first draw. Scheduling a FadeColour from a
+            // Box's default white here could expose a white card on first publication.
+            background.Colour = Dimmed.Value ? colourProvider.Background4 : colourProvider.Background2;
+            cover.Colour = ColourInfo.GradientHorizontal(Colour4.White.Opacity(0), Colour4.White.Opacity(0.2f));
+            themeColour.BindValueChanged(_ => updateState());
         }
 
         protected override void LoadComplete()

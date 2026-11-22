@@ -81,6 +81,11 @@ namespace osu.Game.Rulesets.Catch.Scoring
                     baseIncrease = 300;
                     break;
 
+                case HitResult.Ok:
+                case HitResult.Meh:
+                    baseIncrease = GetBaseScoreForResult(result.Type);
+                    break;
+
                 case HitResult.LargeTickHit:
                     baseIncrease = 100;
                     break;

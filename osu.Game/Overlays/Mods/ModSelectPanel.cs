@@ -52,7 +52,11 @@ namespace osu.Game.Overlays.Mods
         protected virtual float ExpandedSwitchWidth => 30;
         protected virtual Colour4 BackgroundColour => Active.Value
             ? AccentColour.Darken(0.3f)
-            : ColourProvider.Background3;
+            : OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom
+                // The exposed ends belong to the same control as the text plate, not the page backdrop.
+                // Image themes can make Background3 almost black; keep a subtle step from Background2 instead.
+                ? Interpolation.ValueAt<Colour4>(0.7f, ColourProvider.Background3, ColourProvider.Background2, 0, 1)
+                : ColourProvider.Background3;
         protected virtual Colour4 ForegroundColour => Active.Value ? AccentColour : ColourProvider.Background2;
         protected virtual Colour4 TextColour => Active.Value
             ? ColourProvider.GetDefaultColour(0.1f, 0.1f)
@@ -80,6 +84,9 @@ namespace osu.Game.Overlays.Mods
 
         private Bindable<double?> lastPlaybackTime = null!;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<int>? paletteVersionBindable;
+        private IBindable<float>? radiusBindable;
+        private readonly Bindable<bool> disableShear = new BindableBool();
 
         protected ModSelectPanel()
         {
@@ -177,8 +184,11 @@ namespace osu.Game.Overlays.Mods
         [BackgroundDependencyLoader]
         private void load(AudioManager audio, SessionStatics statics, ISamplePlaybackDisabler? samplePlaybackDisabler)
         {
-            sampleOn = audio.Samples.Get(@"UI/check-on");
-            sampleOff = audio.Samples.Get(@"UI/check-off");
+            string sampleNamespace = samplePlaybackDisabler is osu.Game.Screens.SelectLegacy.ClassicModSelectOverlay
+                ? "SongSelectClassic"
+                : "UI";
+            sampleOn = audio.Samples.Get($"{sampleNamespace}/check-on");
+            sampleOff = audio.Samples.Get($"{sampleNamespace}/check-off");
 
             if (samplePlaybackDisabler != null)
                 ((IBindable<bool>)samplePlaybackDisabled).BindTo(samplePlaybackDisabler.SamplePlaybackDisabled);
@@ -193,14 +203,37 @@ namespace osu.Game.Overlays.Mods
             base.LoadComplete();
             themeColour = ColourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ => UpdateState());
+            paletteVersionBindable = ColourProvider.PaletteVersion.GetBoundCopy();
+            paletteVersionBindable.BindValueChanged(_ => UpdateState());
             Active.BindValueChanged(_ =>
             {
                 playStateChangeSamples();
                 UpdateState();
             });
 
+            disableShear.BindTo(OsuGame.DisableShear);
+            radiusBindable = ColourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Card, CORNER_RADIUS);
+
+            void updateRadius()
+            {
+                float effectiveRadius = getEffectiveRadius();
+
+                Content.CornerRadius = effectiveRadius;
+                if (MainContentContainer.Child is Container inner)
+                    inner.CornerRadius = effectiveRadius;
+            }
+
+            disableShear.BindValueChanged(_ => updateRadius());
+            radiusBindable.BindValueChanged(_ => updateRadius(), true);
+
             UpdateState();
             FinishTransforms(true);
+        }
+
+        private float getEffectiveRadius()
+        {
+            float target = radiusBindable?.Value ?? CORNER_RADIUS;
+            return System.Math.Clamp(target, 0f, HEIGHT / 2f);
         }
 
         private void playStateChangeSamples()
@@ -278,16 +311,22 @@ namespace osu.Game.Overlays.Mods
                 transitionDuration *= 4;
             }
 
+            float effectiveRadius = getEffectiveRadius();
+
             Content.TransformTo(nameof(BorderColour), ColourInfo.GradientVertical(backgroundColour, foregroundColour), transitionDuration, Easing.OutQuint);
             Background.FadeColour(backgroundColour, transitionDuration, Easing.OutQuint);
             SwitchContainer.ResizeWidthTo(targetWidth, transitionDuration, Easing.OutQuint);
             MainContentContainer.TransformTo(nameof(Padding), new MarginPadding
             {
                 Left = targetWidth,
-                Right = CORNER_RADIUS
+                Right = effectiveRadius
             }, transitionDuration, Easing.OutQuint);
             TextBackground.FadeColour(foregroundColour, transitionDuration, Easing.OutQuint);
             TextFlow.FadeColour(textColour, transitionDuration, Easing.OutQuint);
+            if (!Active.Value)
+                descriptionText.FadeColour(ColourProvider.Content2, transitionDuration, Easing.OutQuint);
+            else
+                descriptionText.FadeColour(textColour.Opacity(0.8f), transitionDuration, Easing.OutQuint);
         }
 
         #region IFilterable

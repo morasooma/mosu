@@ -46,6 +46,8 @@ namespace osu.Game.Overlays
 
         private LoadingSpinner loading = null!;
         private BackdropBlurSurface screenBackground = null!;
+
+        protected override BackdropBlurSurface OpaqueBackground => screenBackground;
         private IBindable<Colour4> themeColour = null!;
         private ScheduledDelegate? loadingShowDelegate;
 

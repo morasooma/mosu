@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Difficulty.Utils;
 using osu.Game.Rulesets.Objects;
@@ -300,14 +299,18 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 slider.StartTime + slider.Duration / 2
             );
 
-            IList<HitObject> nestedObjects = slider.NestedHitObjects;
-
+            var nestedObjects = slider.NestedHitObjects;
+            int nestedCount = nestedObjects.Count;
+            int movedTickIndex = -1;
             SliderTick? lastRealTick = null;
 
-            foreach (var hitobject in slider.NestedHitObjects)
+            for (int i = nestedCount - 1; i >= 0; i--)
             {
-                if (hitobject is SliderTick tick)
+                if (nestedObjects[i] is SliderTick tick)
+                {
                     lastRealTick = tick;
+                    break;
+                }
             }
 
             if (lastRealTick?.StartTime > trackingEndTime)
@@ -321,12 +324,9 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 // To reiterate, this is definitely not correct from a difficulty calculation perspective
                 // and should be revisited at a later date (likely by replacing this whole code with the commented
                 // version above).
-                List<HitObject> reordered = nestedObjects.ToList();
-
-                reordered.Remove(lastRealTick);
-                reordered.Add(lastRealTick);
-
-                nestedObjects = reordered;
+                // Read the same Remove+Add order through indices instead of copying the
+                // complete list. Keep the slider's actual nested-object order untouched.
+                movedTickIndex = nestedObjects.IndexOf(lastRealTick);
             }
 
             LazyTravelTime = trackingEndTime - slider.StartTime;
@@ -343,9 +343,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
 
             double scalingFactor = NORMALISED_RADIUS / getSignedRadius(slider); // lazySliderDistance is coded to be sensitive to scaling, this makes the maths easier with the thresholds being used.
 
-            for (int i = 1; i < nestedObjects.Count; i++)
+            for (int i = 1; i < nestedCount; i++)
             {
-                var currMovementObj = (OsuHitObject)nestedObjects[i];
+                int sourceIndex = movedTickIndex < 0 || i < movedTickIndex ? i
+                    : i == nestedCount - 1 ? movedTickIndex : i + 1;
+                var currMovementObj = (OsuHitObject)nestedObjects[sourceIndex];
 
                 Vector2 currMovement = Vector2.Subtract(currMovementObj.StackedPosition, currCursorPosition);
                 double currMovementLength = scalingFactor * currMovement.Length;
@@ -353,7 +355,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                 // Amount of movement required so that the cursor position needs to be updated.
                 double requiredMovement = assumed_slider_radius;
 
-                if (i == nestedObjects.Count - 1)
+                if (i == nestedCount - 1)
                 {
                     // The end of a slider has special aim rules due to the relaxed time constraint on position.
                     // There is both a lazy end position as well as the actual end slider position. We assume the player takes the simpler movement.
@@ -380,7 +382,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Preprocessing
                     LazyTravelDistance += currMovementLength;
                 }
 
-                if (i == nestedObjects.Count - 1)
+                if (i == nestedCount - 1)
                     LazyEndPosition = currCursorPosition;
             }
         }

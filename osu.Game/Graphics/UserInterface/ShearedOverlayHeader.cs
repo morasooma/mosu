@@ -147,6 +147,7 @@ namespace osu.Game.Graphics.UserInterface
         {
             themeColour = colourProvider.GetColourBindable(OverlayColour.Content1);
             themeColour.BindValueChanged(_ => updateThemeColours(colourProvider), true);
+            colourProvider.PaletteVersion.BindValueChanged(_ => updateThemeColours(colourProvider));
         }
 
         private void updateThemeColours(OverlayColourProvider colourProvider)
@@ -161,8 +162,12 @@ namespace osu.Game.Graphics.UserInterface
 
             closeButton.IconHoverColour = colourProvider.Highlight1;
 
-            titleSpriteText.Colour = OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : Colour4.White;
-            descriptionText.Colour = OverlayColourProvider.IsLightTheme ? colourProvider.Content2 : Colour4.White;
+            titleSpriteText.Colour = OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom
+                ? colourProvider.Content1
+                : (OverlayColourProvider.IsLightTheme ? colourProvider.Content1 : Colour4.White);
+            descriptionText.Colour = OverlayColourProvider.CurrentTheme.Value == ThemeMode.Custom
+                ? colourProvider.Content2
+                : (OverlayColourProvider.IsLightTheme ? colourProvider.Content2 : Colour4.White);
         }
     }
 }

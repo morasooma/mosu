@@ -15,7 +15,7 @@ namespace osu.Game.Users
         [LocalisableDescription(typeof(UsersStrings), nameof(UsersStrings.StatusOffline))]
         Offline,
 
-        [Description("Do not disturb")]
+        [Description("Do not disturb"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J5669))]
         DoNotDisturb,
 
         [LocalisableDescription(typeof(UsersStrings), nameof(UsersStrings.StatusOnline))]

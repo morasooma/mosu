@@ -152,6 +152,16 @@ namespace osu.Game.Overlays.Settings
             }, true);
         }
 
+        public override bool UpdateSubTree()
+        {
+            // Keep the complete section list available for filtering and direct
+            // navigation, but do not initialise every ready section in one frame.
+            if (!IsLoaded && LoadState == LoadState.Ready && settingsPanel?.AdmitSectionFirstUpdate() == false)
+                return false;
+
+            return base.UpdateSubTree();
+        }
+
         private bool isCurrentSection => selectedSection.Value == this;
 
         protected override bool OnHover(HoverEvent e)

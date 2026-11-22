@@ -29,7 +29,7 @@ else
 fi
 
 PRIVATE_PATHS=$(git -C "$REPO_DIR" ls-files | grep -Ei \
-    '(^|/)(AGENTS\.md|DODGE_IMPLEMENTATION_STATUS\.md|[^/]*(AntiCheat|GameplayIntegrity|ObservedHitObjectGraph|ForkSecuritySettings|CheatLikeness|PlatformSeal|ScoreProof)[^/]*\.cs)$' || true)
+    '(^|/)(AGENTS\.md|DODGE_IMPLEMENTATION_STATUS\.md|[^/]*WORKLOG[^/]*\.md|[^/]*(AntiCheat|GameplayIntegrity|ObservedHitObjectGraph|ForkSecuritySettings|CheatLikeness|PlatformSeal|ScoreProof|InputLatencyTelemetry|InputEventTimingCapture)[^/]*\.cs)$' || true)
 if [ -n "$PRIVATE_PATHS" ]; then
     printf 'FAIL: Private files tracked by Git:\n%s\n' "$PRIVATE_PATHS"
     FAILED=1
@@ -148,6 +148,21 @@ else
         echo "FAIL: OnlineSpectatorClient.SendFramesInternal is not a verified Task.CompletedTask no-op"
         FAILED=1
     fi
+fi
+
+# The only client .resx permitted here is the original neutral Tag Co-op resource.
+TRANSLATIONS=$(git -C "$REPO_DIR" ls-files '*.resx' | grep -Fvx 'osu.Game/Localisation/TagCoop.resx' || true)
+if [ -n "$TRANSLATIONS" ]; then
+    printf 'FAIL: Unexpected localisation resources:\n%s\n' "$TRANSLATIONS"
+    FAILED=1
+fi
+
+# Check other live gameplay paths, not just the spectator hub.
+if git -C "$REPO_DIR" grep -q -I -E \
+    'SendScoreFrameAsync|ForkDebugAnticheatTestSignal|new (DodgePlayerPosition|RankedPlayCursorPosition|TagCoopCursorPosition|TagCoopReplayFrames|TagCoopJudgement|RankedPlayCardHandReplay)Request[[:space:]]*$|nameof\(IDodgeWorldServer\.(Attack|UpdateState|JoinRoom)\)' \
+    -- osu.Game ':!osu.Game/Tests'; then
+    echo "FAIL: Outbound gameplay producer or private debug signal found"
+    FAILED=1
 fi
 
 # 7. Authentication credentials stub and score submission disabled

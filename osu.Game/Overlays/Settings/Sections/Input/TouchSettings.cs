@@ -34,7 +34,10 @@ namespace osu.Game.Overlays.Settings.Sections.Input
             {
                 Caption = TouchSettingsStrings.DisableTapsDuringGameplay,
                 Current = osuConfig.GetBindable<bool>(OsuSetting.TouchDisableGameplayTaps)
-            }));
+            })
+            {
+                FavouriteId = "OsuSetting.TouchDisableGameplayTaps",
+            });
         }
 
         public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[] { @"touchscreen" });

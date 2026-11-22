@@ -129,6 +129,36 @@ namespace osu.Game.Tests.Online
         }
 
         [Test]
+        public void TestStableChecksumWithoutSetMetadata()
+        {
+            bool previous = MosuServerEnvironment.UsesStableProtocol;
+            AddStep("enable stable profile", () => MosuServerEnvironment.UsesStableProtocol = true);
+            AddStep("join room with stable metadata", () =>
+            {
+                ((DummyAPIAccess)API).HandleRequest = req =>
+                {
+                    if (req is GetBeatmapsRequest lookup)
+                    {
+                        lookup.TriggerSuccess(new GetBeatmapsResponse { Beatmaps = new List<APIBeatmap>() });
+                        return true;
+                    }
+                    return false;
+                };
+                var room = CreateDefaultRoom();
+                room.Playlist = [new PlaylistItem(new APIBeatmap
+                {
+                    OnlineID = availableBeatmap.OnlineID,
+                    Checksum = availableBeatmap.MD5Hash,
+                    BeatmapSet = new APIBeatmapSet { Title = "Stable match placeholder" },
+                })];
+                JoinRoom(room);
+            });
+            WaitForJoined();
+            AddUntilStep("checksum finds local map", () => tracker.Availability.Value.State, () => Is.EqualTo(DownloadState.LocallyAvailable));
+            AddStep("restore profile", () => MosuServerEnvironment.UsesStableProtocol = previous);
+        }
+
+        [Test]
         public void TestAvailabilityUpdatesOnItemEdit()
         {
             AddStep("join room", () =>

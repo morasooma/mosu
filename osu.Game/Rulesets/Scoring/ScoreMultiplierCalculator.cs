@@ -128,6 +128,12 @@ namespace osu.Game.Rulesets.Scoring
         public bool IsRankedPlay { get; }
 
         /// <summary>
+        /// Request the original osu! multiplier for locally stored gameplay scores.
+        /// Server-facing Mosu scores are computed independently when submitting.
+        /// </summary>
+        public bool UseOriginalMultipliers { get; }
+
+        /// <summary>
         /// Constructs a new instance.
         /// </summary>
         /// <param name="beatmapDifficultyWithoutMods">
@@ -143,11 +149,12 @@ namespace osu.Game.Rulesets.Scoring
         /// Pass <see langword="true"/> when the score is being played in Ranked Play mode.
         /// All mod multipliers will be forced to 1.00x.
         /// </param>
-        public ScoreMultiplierContext(IBeatmapDifficultyInfo beatmapDifficultyWithoutMods, ScoreInfo? score = null, bool isRankedPlay = false)
+        public ScoreMultiplierContext(IBeatmapDifficultyInfo beatmapDifficultyWithoutMods, ScoreInfo? score = null, bool isRankedPlay = false, bool useOriginalMultipliers = false)
         {
             BeatmapDifficultyWithoutMods = beatmapDifficultyWithoutMods;
             Score = score;
             IsRankedPlay = isRankedPlay;
+            UseOriginalMultipliers = useOriginalMultipliers;
         }
     }
 }

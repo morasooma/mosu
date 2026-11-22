@@ -24,7 +24,7 @@ namespace osu.Game.Rulesets.Osu.Mods
             ? string.Empty
             : $"{StartScale.Value.ToStandardFormattedString(2)}x";
 
-        [SettingSource("Starting Size", "The initial size multiplier applied to all objects.")]
+        [SettingSource(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3722), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3723))]
         public abstract BindableNumber<float> StartScale { get; }
 
         protected virtual float EndScale => 1;

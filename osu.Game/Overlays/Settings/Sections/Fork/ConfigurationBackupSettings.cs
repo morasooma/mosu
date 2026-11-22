@@ -66,6 +66,7 @@ namespace osu.Game.Overlays.Settings.Sections.Fork
                     ReadOnly = true,
                 })
                 {
+                    FavouriteId = "ui:ForkSettingsStrings.ConfigBackupDate",
                     ShowRevertToDefaultButton = false,
                 },
                 loadButton = new DangerousSettingsButtonV2

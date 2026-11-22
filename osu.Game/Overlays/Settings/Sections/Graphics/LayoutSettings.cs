@@ -110,6 +110,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                     Current = config.GetBindable<WindowMode>(FrameworkSetting.WindowMode),
                 })
                 {
+                    FavouriteId = "FrameworkSetting.WindowMode",
                     CanBeShown = { Value = window?.SupportedWindowModes.Count() > 1 },
                     Note = { BindTarget = windowModeDropdownNote },
                 },
@@ -120,6 +121,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                     Current = currentDisplay,
                 })
                 {
+                    FavouriteId = "ui:GraphicsSettingsStrings.Display",
                     CanBeShown = { BindTarget = displayDropdownCanBeShown }
                 },
                 new SettingsItemV2(new ResolutionDropdown
@@ -129,6 +131,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                     Current = sizeFullscreen
                 })
                 {
+                    FavouriteId = "FrameworkSetting.SizeFullscreen",
                     CanBeShown = { BindTarget = resolutionFullscreenCanBeShown },
                     ShowRevertToDefaultButton = false,
                 },
@@ -139,6 +142,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                     Current = windowedResolution
                 })
                 {
+                    FavouriteId = "FrameworkSetting.SizeWindowed",
                     CanBeShown = { BindTarget = resolutionWindowedCanBeShown },
                     ShowRevertToDefaultButton = false,
                 },
@@ -148,6 +152,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                     Current = config.GetBindable<bool>(FrameworkSetting.MinimiseOnFocusLossInFullscreen),
                 })
                 {
+                    FavouriteId = "FrameworkSetting.MinimiseOnFocusLossInFullscreen",
                     CanBeShown = { BindTarget = minimiseOnFocusLossCanBeShown },
                     Keywords = new[] { "alt-tab", "minimize", "focus", "hide" },
                 },
@@ -157,6 +162,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                     Current = osuConfig.GetBindable<bool>(OsuSetting.SafeAreaConsiderations),
                 })
                 {
+                    FavouriteId = "OsuSetting.SafeAreaConsiderations",
                     CanBeShown = { BindTarget = safeAreaConsiderationsCanBeShown },
                 },
                 new SettingsItemV2(new FormSliderBar<float>
@@ -168,6 +174,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                     LabelFormat = v => $@"{v:0.##}x",
                 })
                 {
+                    FavouriteId = "OsuSetting.UIScale",
                     Keywords = new[] { "scale", "letterbox" },
                 },
                 new SettingsItemV2(new FormEnumDropdown<ScalingMode>
@@ -176,6 +183,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                     Current = osuConfig.GetBindable<ScalingMode>(OsuSetting.Scaling),
                 })
                 {
+                    FavouriteId = "OsuSetting.Scaling",
                     Keywords = new[] { "scale", "letterbox" },
                 },
                 scalingSettings = new FillFlowContainer<SettingsItemV2>
@@ -195,6 +203,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                             DisplayAsPercentage = true,
                         }.With(bindPreviewEvent))
                         {
+                            FavouriteId = "ui:GraphicsSettingsStrings.HorizontalPosition",
                             Keywords = new[] { "screen", "scaling" },
                         },
                         new SettingsItemV2(new FormSliderBar<float>
@@ -205,6 +214,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                             DisplayAsPercentage = true,
                         }.With(bindPreviewEvent))
                         {
+                            FavouriteId = "ui:GraphicsSettingsStrings.VerticalPosition",
                             Keywords = new[] { "screen", "scaling" },
                         },
                         new SettingsItemV2(new FormSliderBar<float>
@@ -215,6 +225,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                             DisplayAsPercentage = true,
                         }.With(bindPreviewEvent))
                         {
+                            FavouriteId = "ui:GraphicsSettingsStrings.HorizontalScale",
                             Keywords = new[] { "screen", "scaling" },
                         },
                         new SettingsItemV2(new FormSliderBar<float>
@@ -225,6 +236,7 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                             DisplayAsPercentage = true,
                         }.With(bindPreviewEvent))
                         {
+                            FavouriteId = "ui:GraphicsSettingsStrings.VerticalScale",
                             Keywords = new[] { "screen", "scaling" },
                         },
                         new SettingsItemV2(dimSlider = new FormSliderBar<float>
@@ -233,7 +245,10 @@ namespace osu.Game.Overlays.Settings.Sections.Graphics
                             Current = scalingBackgroundDim,
                             KeyboardStep = 0.01f,
                             DisplayAsPercentage = true,
-                        }.With(bindPreviewEvent)),
+                        }.With(bindPreviewEvent))
+                        {
+                            FavouriteId = "ui:GameplaySettingsStrings.BackgroundDim",
+                        },
                     }
                 },
             };

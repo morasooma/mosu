@@ -183,13 +183,13 @@ namespace osu.Game.Performance
         /// a masking <c>CircularContainer</c> border plus an additive interior fill.
         /// </summary>
         /// <remarks>
-        /// Dropping the interior fill is a visible change, so it is opt-in per the project rule (2026-07-26):
+        /// Dropping the interior fill is a visible change, so it is opt-in:
         /// the user-facing opt-in is the <c>OsuSetting.ForkArgonFollowRing</c> checkbox (bridged through
         /// <c>SkinPerformanceMode.ArgonFollowRing</c>), and this environment variable is a kill-switch AND'ed
         /// on top — the same composition as <see cref="PERF_BLACK_BACKGROUND"/>. Set
         /// <c>MOSU_ARGON_FOLLOW_RING=0</c> to force-disable regardless of config for A/B.
         /// While a slider is tracked, the layered version rasterises ~155k px/frame of
-        /// additive fill through a masking container (audit R13.G), whose masking push/pop also forces a batch
+        /// additive fill through a masking container, whose masking push/pop also forces a batch
         /// flush. The ring mesh keeps ~38% of that quad (~59k px, same geometry rule as
         /// <see cref="APPROACH_RING_MESH"/>) on the standard sprite shader and default batch, saving ~96k
         /// additively blended px per tracked frame on the write-bound iGPU path. Only the fill goes: the

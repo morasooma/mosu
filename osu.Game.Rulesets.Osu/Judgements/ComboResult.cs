@@ -10,10 +10,10 @@ namespace osu.Game.Rulesets.Osu.Judgements
         [Description(@"")]
         None,
 
-        [Description(@"Good")]
+        [Description(@"Good"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3606))]
         Good,
 
-        [Description(@"Amazing")]
+        [Description(@"Amazing"), global::osu.Framework.Localisation.LocalisableDescription(typeof(global::osu.Game.Localisation.ClientTranslationStrings), nameof(global::osu.Game.Localisation.ClientTranslationStrings.J3607))]
         Perfect
     }
 }

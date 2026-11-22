@@ -78,9 +78,9 @@ namespace osu.Game.Database
                         string osuFile = readOsuString(reader);
                         
                         byte rankedStatus = reader.ReadByte();
-                        short hitcircleCount = reader.ReadInt16();
-                        short sliderCount = reader.ReadInt16();
-                        short spinnerCount = reader.ReadInt16();
+                        int hitcircleCount = reader.ReadUInt16();
+                        int sliderCount = reader.ReadUInt16();
+                        int spinnerCount = reader.ReadUInt16();
                         reader.ReadInt64(); // modificationTime
                         
                         float ar = version >= 20140609 ? reader.ReadSingle() : reader.ReadByte();
@@ -105,8 +105,9 @@ namespace osu.Game.Database
                         double firstBpm = 0;
                         for (int j = 0; j < timingPointsCount; j++)
                         {
-                            reader.ReadDouble(); // offset
+                            // osu!.db stores milliseconds per beat BEFORE the offset (unlike .osu).
                             double beatLength = reader.ReadDouble();
+                            reader.ReadDouble(); // offset
                             bool uninherited = reader.ReadBoolean();
 
                             if (uninherited && beatLength > 0 && firstBpm == 0)
@@ -132,7 +133,7 @@ namespace osu.Game.Database
                         short onlineOffset = reader.ReadInt16();
                         string titleFont = readOsuString(reader);
                         bool isUnplayed = reader.ReadBoolean();
-                        reader.ReadInt64(); // lastPlayed
+                        long lastPlayedTicks = reader.ReadInt64();
                         bool isOsz2 = reader.ReadBoolean();
                         
                         string folderName = readOsuString(reader);
@@ -191,7 +192,12 @@ namespace osu.Game.Database
                             DifficultyName = difficulty,
                             OnlineID = beatmapId,
                             Length = totalTime,
-                            BPM = firstBpm, // Approximate
+                            BPM = firstBpm, // Approximate until the .osu file is decoded.
+                            TotalObjectCount = hitcircleCount + sliderCount + spinnerCount,
+                            EndTimeObjectCount = sliderCount + spinnerCount,
+                            LastPlayed = !isUnplayed && lastPlayedTicks > 0 && lastPlayedTicks <= DateTime.MaxValue.Ticks
+                                ? new DateTimeOffset(lastPlayedTicks, TimeSpan.Zero)
+                                : null,
                             Hash = md5,
                             MD5Hash = md5,
                             Metadata = metadata,
@@ -322,7 +328,8 @@ namespace osu.Game.Database
                     current.ChecksumsByOnlineId,
                     current.PathsByOnlineId,
                     current.BeatmapsByOnlineId,
-                    current.PathsByBeatmapSetOnlineId));
+                    current.PathsByBeatmapSetOnlineId,
+                    current.SongMetadata));
             }
         }
 
@@ -337,7 +344,8 @@ namespace osu.Game.Database
                     current.ChecksumsByOnlineId,
                     current.PathsByOnlineId,
                     current.BeatmapsByOnlineId,
-                    current.PathsByBeatmapSetOnlineId));
+                    current.PathsByBeatmapSetOnlineId,
+                    current.SongMetadata));
             }
         }
 
@@ -347,6 +355,14 @@ namespace osu.Game.Database
             var pathsByOnlineId = new Dictionary<int, string>();
             var beatmapsByOnlineId = new Dictionary<int, BeatmapInfo>();
             var pathsByBeatmapSetOnlineId = new Dictionary<int, string[]>();
+            var songMetadata = new List<(BeatmapMetadata Metadata, string Path)>();
+            beatmapSets = beatmapSets?.ToArray();
+            if (beatmapSets != null)
+            {
+                foreach (var map in beatmapSets.SelectMany(s => s.Beatmaps))
+                    if (newBeatmapPaths.TryGetValue(map.ID, out string? path) && !string.IsNullOrEmpty(path))
+                        songMetadata.Add((map.Metadata, path));
+            }
 
             if (beatmapSets != null)
             {
@@ -380,7 +396,8 @@ namespace osu.Game.Database
                 checksumsByOnlineId,
                 pathsByOnlineId,
                 beatmapsByOnlineId,
-                pathsByBeatmapSetOnlineId);
+                pathsByBeatmapSetOnlineId,
+                songMetadata);
             checksumCache.Clear();
             Volatile.Write(ref current, replacement);
             AvailabilityChanged?.Invoke();
@@ -416,6 +433,13 @@ namespace osu.Game.Database
             // Consumers may mutate status and hashes while loading. Never expose the snapshot's
             // shared instance, otherwise one failed load could poison future lookups.
             return beatmapInfo.Clone();
+        }
+
+        /// <summary>Song metadata from the already-loaded stable database, including local-only maps.</summary>
+        public static IReadOnlyList<BeatmapMetadata> GetAvailableSongMetadata()
+        {
+            var snapshot = Volatile.Read(ref current);
+            return snapshot.SongMetadata.Where(m => File.Exists(m.Path)).Select(m => m.Metadata).ToArray();
         }
 
         public static bool IsBeatmapSetAvailableLocally(int onlineId)
@@ -478,12 +502,14 @@ namespace osu.Game.Database
             public IReadOnlyDictionary<int, string> PathsByOnlineId { get; }
             public IReadOnlyDictionary<int, BeatmapInfo> BeatmapsByOnlineId { get; }
             public IReadOnlyDictionary<int, string[]> PathsByBeatmapSetOnlineId { get; }
+            public IReadOnlyList<(BeatmapMetadata Metadata, string Path)> SongMetadata { get; }
 
             public PathSnapshot(IReadOnlyDictionary<Guid, string> beatmapPaths, IReadOnlyDictionary<Guid, string> audioPaths,
                                 IReadOnlyDictionary<int, HashSet<string>> checksumsByOnlineId,
                                 IReadOnlyDictionary<int, string> pathsByOnlineId,
                                 IReadOnlyDictionary<int, BeatmapInfo> beatmapsByOnlineId,
-                                IReadOnlyDictionary<int, string[]> pathsByBeatmapSetOnlineId)
+                                IReadOnlyDictionary<int, string[]> pathsByBeatmapSetOnlineId,
+                                IReadOnlyList<(BeatmapMetadata Metadata, string Path)>? songMetadata = null)
             {
                 BeatmapPaths = beatmapPaths;
                 AudioPaths = audioPaths;
@@ -491,6 +517,7 @@ namespace osu.Game.Database
                 PathsByOnlineId = pathsByOnlineId;
                 BeatmapsByOnlineId = beatmapsByOnlineId;
                 PathsByBeatmapSetOnlineId = pathsByBeatmapSetOnlineId;
+                SongMetadata = songMetadata ?? Array.Empty<(BeatmapMetadata, string)>();
             }
         }
     }

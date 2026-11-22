@@ -18,6 +18,7 @@ using osu.Game.Beatmaps.Drawables.Cards;
 using osu.Game.Beatmaps.Drawables.Cards.Buttons;
 using osu.Game.Beatmaps.Drawables.Cards.Statistics;
 using osu.Game.Graphics.Containers;
+using osu.Game.Online;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using osu.Game.Online.API.Requests.Responses;
@@ -33,6 +34,26 @@ namespace osu.Game.Tests.Visual.Beatmaps
         /// All cards on this scene use a common online ID to ensure that map download, preview tracks, etc. can be tested manually with online sources.
         /// </summary>
         private const int online_id = 163112;
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void TestCardBackgroundUsesCardSizedCover(bool hasCardCover)
+        {
+            var set = new APIBeatmapSet
+            {
+                Covers = new BeatmapSetOnlineCovers { Card = hasCardCover ? "card-asset" : null, Cover = "banner-asset" }
+            };
+            BeatmapCardContentBackground background = null;
+            AddStep("create background", () => Child = new DependencyProvidingContainer
+            {
+                RelativeSizeAxes = Axes.Both,
+                CachedDependencies = new (Type, object)[] { (typeof(OverlayColourProvider), new OverlayColourProvider(OverlayColourScheme.Blue)) },
+                Child = background = new BeatmapCardContentBackground(set, keepLoaded: true) { RelativeSizeAxes = Axes.Both }
+            });
+            AddUntilStep("cover created", () => background.ChildrenOfType<OnlineBeatmapSetCover>().Any());
+            AddAssert("correct asset selected", () => background.ChildrenOfType<OnlineBeatmapSetCover>().Single().ResourceName,
+                () => Is.EqualTo(hasCardCover ? "card-asset" : "banner-asset"));
+        }
 
         private DummyAPIAccess dummyAPI => (DummyAPIAccess)API;
 
@@ -302,6 +323,7 @@ namespace osu.Game.Tests.Visual.Beatmaps
             AddStep("Hover spectrum display", () => InputManager.MoveMouseTo(firstCard().ChildrenOfType<DifficultySpectrumDisplay>().Single()));
             AddUntilStep("card is expanded", () => firstCard().Expanded.Value);
 
+            AddUntilStep("difficulty content loaded", () => firstCard().ChildrenOfType<BeatmapCardDifficultyList>().Any(d => d.IsLoaded));
             AddStep("Hover difficulty content", () => InputManager.MoveMouseTo(firstCard().ChildrenOfType<BeatmapCardDifficultyList>().Single()));
             AddWaitStep("wait for potential state change", 5);
             AddAssert("card is still expanded", () => firstCard().Expanded.Value);
@@ -316,10 +338,56 @@ namespace osu.Game.Tests.Visual.Beatmaps
             BeatmapCardNormal firstCard() => this.ChildrenOfType<BeatmapCardNormal>().First();
         }
 
+        [TestCase(BeatmapCardSize.Normal)]
+        [TestCase(BeatmapCardSize.Extra)]
+        public void TestDifficultyContentLoadedOnceOnExpansion(BeatmapCardSize size)
+        {
+            BeatmapCard card = null;
+            BeatmapCardDifficultyList loadedList = null;
+            AddStep("move mouse away", () => InputManager.MoveMouseTo(Vector2.Zero));
+            AddStep("create collapsed card", () => Child = createContent(OverlayColourScheme.Blue,
+                new Drawable[] { card = BeatmapCard.Create(getManyDifficultiesBeatmapSet(100), size) }));
+            AddUntilStep("card loaded", () => card.IsLoaded);
+            AddAssert("background initially themed", () =>
+            {
+                var background = card.ChildrenOfType<BeatmapCardContentBackground>().Single();
+                return background.ChildrenOfType<Box>().Single().Colour != Colour4.White;
+            });
+            AddAssert("one download tracker", () => card.ChildrenOfType<BeatmapDownloadTracker>().Count() == 1);
+            AddAssert("no closed difficulty tree", () => !card.ChildrenOfType<BeatmapCardDifficultyList>().Any());
+            AddStep("expand", () => ((osu.Framework.Bindables.Bindable<bool>)card.Expanded).Value = true);
+            AddUntilStep("difficulty tree loaded", () => card.ChildrenOfType<BeatmapCardDifficultyList>().Any(d => d.IsLoaded));
+            AddStep("remember loaded tree", () => loadedList = card.ChildrenOfType<BeatmapCardDifficultyList>().Single());
+            AddStep("collapse", () => ((osu.Framework.Bindables.Bindable<bool>)card.Expanded).Value = false);
+            AddStep("expand again", () => ((osu.Framework.Bindables.Bindable<bool>)card.Expanded).Value = true);
+            AddAssert("same difficulty tree", () => ReferenceEquals(loadedList, card.ChildrenOfType<BeatmapCardDifficultyList>().Single()));
+        }
+
+        [Test]
+        public void TestNanoHasNoDifficultyTree()
+        {
+            BeatmapCard card = null;
+            AddStep("create nano", () => Child = createContent(OverlayColourScheme.Blue,
+                new Drawable[] { card = new BeatmapCardNano(getManyDifficultiesBeatmapSet(100)) }));
+            AddUntilStep("card loaded", () => card.IsLoaded);
+            AddAssert("one download tracker", () => card.ChildrenOfType<BeatmapDownloadTracker>().Count() == 1);
+            AddAssert("expansion disabled", () => card.Expanded.Disabled);
+            AddAssert("no unreachable tree", () => !card.ChildrenOfType<BeatmapCardDifficultyList>().Any());
+        }
+
         [Test]
         public void TestPlayButtonByTouchInput()
         {
-            AddStep("create cards", () => Child = createContent(OverlayColourScheme.Blue, beatmapSetInfo => new BeatmapCardNormal(beatmapSetInfo)));
+            AddStep("create cards with local virtual preview", () =>
+            {
+                var tracks = new osu.Game.Tests.Visual.Components.TestScenePreviewTrackManager.TestPreviewTrackManager(new osu.Framework.Audio.AudioAdjustments());
+                Child = new DependencyProvidingContainer
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    CachedDependencies = new (Type, object)[] { (typeof(osu.Game.Audio.PreviewTrackManager), tracks) },
+                    Children = new Drawable[] { tracks, createContent(OverlayColourScheme.Blue, beatmapSetInfo => new BeatmapCardNormal(beatmapSetInfo)) }
+                };
+            });
 
             // mimics touch input
             AddStep("touch play button area on first card", () =>

@@ -43,6 +43,10 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
         private readonly TimelineHitObjectBlueprint.DragArea? durationHandle;
         private readonly Func<HitObject, double> getDisplayEndTime;
         private float expandedRowSpacing = GROUP_ROW_SPACING;
+        private readonly float minimumMarkerWidth;
+        private bool durationEditable;
+        private bool canAdjustDuration => Item is IHasDuration
+                                          && (Item is not IEditorTimelineEndTimeAdjustable adjustable || adjustable.CanAdjustEditorTimelineEndTime);
 
         public Action<DragEvent?>? OnDragHandled;
 
@@ -55,12 +59,14 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
         public bool IsDetailed => IsSelected || IsHovered;
         public bool IsGroupMarkerVisible => Alpha > 0;
         public override bool IsSelectable => IsGroupMarkerVisible && base.IsSelectable;
-        public double TimelineEndTime => Math.Max(Item.GetEndTime(), getDisplayEndTime(Item));
+        public double TimelineEndTime => Math.Max(Item.StartTime, getDisplayEndTime(Item));
 
-        public LaneTimelineHitObjectBlueprint(HitObject item, EditorTimelineLane lane, Func<HitObject, double> getDisplayEndTime)
+        public LaneTimelineHitObjectBlueprint(HitObject item, EditorTimelineLane lane, Func<HitObject, double> getDisplayEndTime, float minimumMarkerWidth = 9)
             : base(item)
         {
             this.getDisplayEndTime = getDisplayEndTime;
+            this.minimumMarkerWidth = minimumMarkerWidth;
+            durationEditable = canAdjustDuration;
             LaneIndex = lane.Index;
             Anchor = Anchor.CentreLeft;
             Origin = Anchor.CentreLeft;
@@ -93,7 +99,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
                 {
                     Anchor = Anchor.CentreLeft,
                     Origin = Anchor.Centre,
-                    Size = new Vector2(9),
+                    Size = new Vector2(minimumMarkerWidth, minimumMarkerWidth > 9 ? 16 : 9),
                     Colour = lane.Colour,
                 },
                 shortName = new OsuSpriteText
@@ -135,6 +141,17 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             if (Width != duration)
                 Width = duration;
 
+            // Keep a real pixel-sized grab target even for a zero-duration event.
+            // Do not manufacture a time range just to make a marker clickable.
+            float padding = Math.Max(4, (minimumMarkerWidth - DrawWidth) / 2);
+            bar.Padding = new MarginPadding { Horizontal = -padding };
+
+            if (durationEditable != canAdjustDuration)
+            {
+                durationEditable = canAdjustDuration;
+                updateDetailedState();
+            }
+
             if (durationHandle != null)
             {
                 double editableDuration = Item.GetEndTime() - Item.StartTime;
@@ -162,7 +179,7 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
 
             int representativeIndex = count / 2;
             bool representative = index == representativeIndex;
-            bool visible = laneVisible && (count == 1 || expanded || representative);
+            bool visible = laneVisible && (count == 1 || expanded || representative || IsSelected);
             Alpha = visible ? 1 : 0;
             groupCount.Text = count > 1 && !expanded && representative ? $"×{count}" : string.Empty;
             groupCount.Alpha = count > 1 && !expanded && representative ? 1 : 0;
@@ -186,7 +203,9 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
         protected override bool OnHover(HoverEvent e)
         {
             updateDetailedState();
-            return true;
+            // Do not terminate hover propagation: an overlapping, already selected
+            // blueprint must also be hovered so the container can prioritise it.
+            return false;
         }
 
         protected override void OnHoverLost(HoverLostEvent e)
@@ -200,52 +219,63 @@ namespace osu.Game.Screens.Edit.Compose.Components.Timeline
             // A selected layer may contain dozens of objects. Keep every bar
             // inside its allocated row instead of allowing fixed 5px bars and
             // 9px markers to merge into one solid block.
-            float maximumRowHeight = IsGroupExpanded
-                ? Math.Max(0.75f, expandedRowSpacing * 0.7f)
-                : IDLE_HEIGHT;
-            float targetHeight = Math.Min(IsDetailed ? detailed_height : IDLE_HEIGHT, maximumRowHeight);
+            float maximumRowHeight = expandedRowSpacing * 0.7f;
+            float targetHeight = Math.Min(IsDetailed ? detailed_height : minimumMarkerWidth > 9 ? 10 : IDLE_HEIGHT, maximumRowHeight);
             bar.ResizeHeightTo(targetHeight, 100, Easing.OutQuint);
             bar.CornerRadius = targetHeight / 2;
             bar.BorderThickness = IsSelected ? Math.Min(2, targetHeight / 3) : 0;
 
             float desiredMarkerScale = IsDetailed ? 1.35f : IsGroupExpanded && GroupCount > 1 ? 0.6f : 1;
-            float maximumMarkerScale = IsGroupExpanded ? Math.Max(0.08f, maximumRowHeight / 9) : desiredMarkerScale;
-            startMarker.ScaleTo(Math.Min(desiredMarkerScale, maximumMarkerScale), 100, Easing.OutQuint);
+            float maximumMarkerScale = maximumRowHeight / startMarker.Height;
+            float markerScale = Math.Min(desiredMarkerScale, maximumMarkerScale);
+            startMarker.ScaleTo(new Vector2(minimumMarkerWidth > 9 ? 1 : markerScale, markerScale), 100, Easing.OutQuint);
 
             float desiredTextScale = IsDetailed ? 1.1f : 1;
-            float maximumTextScale = IsGroupExpanded ? Math.Max(0.08f, maximumRowHeight / 9) : desiredTextScale;
+            float maximumTextScale = maximumRowHeight / 9;
             shortName.ScaleTo(Math.Min(desiredTextScale, maximumTextScale), 100, Easing.OutQuint);
-            durationHandle?.FadeTo(IsDetailed && maximumRowHeight >= 4 ? 1 : 0, 100, Easing.OutQuint);
+            durationHandle?.FadeTo(durationEditable && IsSelected && expandedRowSpacing >= 4 ? 1 : 0, 100, Easing.OutQuint);
         }
 
-        protected override bool ShouldBeConsideredForInput(Drawable child) => true;
+        protected override bool ShouldBeConsideredForInput(Drawable child)
+            => IsLaneVisible && IsGroupMarkerVisible
+               && (child != durationHandle || IsSelected && durationEditable && expandedRowSpacing >= 4)
+               && base.ShouldBeConsideredForInput(child);
+
+        protected override bool ReceivePositionalInputAtSubTree(Vector2 screenSpacePos)
+            => IsLaneVisible && IsGroupMarkerVisible && ReceivePositionalInputAt(screenSpacePos);
 
         public override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
         {
+            if (!IsLaneVisible || !IsGroupMarkerVisible)
+                return false;
+
             RectangleF hitArea = bar.ScreenSpaceDrawQuad.AABBFloat.Inflate(new Vector2(2, IsGroupExpanded ? 1 : 5));
+            float minimumScreenWidth = (ToScreenSpace(new Vector2(minimumMarkerWidth, 0)) - ToScreenSpace(Vector2.Zero)).Length;
+            float markerLeft = ScreenSpaceSelectionPoint.X - minimumScreenWidth / 2;
+            float markerRight = ScreenSpaceSelectionPoint.X + minimumScreenWidth / 2;
+            float left = Math.Min(hitArea.Left, markerLeft);
+            float right = Math.Max(hitArea.Right, markerRight);
+            hitArea = new RectangleF(left, hitArea.Top, right - left, hitArea.Height);
 
-            if (IsGroupExpanded)
-            {
-                // Detailed bars and their markers are intentionally taller than the compact
-                // row step. Keep input confined to this row so a selected bar cannot steal
-                // clicks from the adjacent object in a densely expanded lane.
-                float rowHeight = Math.Max(0.5f, expandedRowSpacing * 0.9f);
-                hitArea = new RectangleF(
-                    hitArea.Left,
-                    ScreenSpaceSelectionPoint.Y - rowHeight / 2,
-                    hitArea.Width,
-                    rowHeight);
+            if (durationEditable && IsSelected && durationHandle != null)
+                hitArea = RectangleF.Union(hitArea, durationHandle.ScreenSpaceDrawQuad.AABBFloat);
 
-                return hitArea.Contains(screenSpacePos);
-            }
-
-            if (IsDetailed && durationHandle?.ReceivePositionalInputAt(screenSpacePos) == true)
-                return true;
-
-            return hitArea.Contains(screenSpacePos) || startMarker.ReceivePositionalInputAt(screenSpacePos);
+            // Input stays inside its assigned type band (or detail row), even
+            // when a hovered marker or duration handle is larger than the band.
+            float rowHeight = expandedRowSpacing * 0.9f;
+            float screenRowHeight = (ToScreenSpace(new Vector2(0, rowHeight)) - ToScreenSpace(Vector2.Zero)).Length;
+            hitArea = new RectangleF(
+                hitArea.Left,
+                ScreenSpaceSelectionPoint.Y - screenRowHeight / 2,
+                hitArea.Width,
+                screenRowHeight);
+            return hitArea.Contains(screenSpacePos);
         }
 
-        public override Quad SelectionQuad => bar.ScreenSpaceDrawQuad;
+        protected override bool ComputeIsMaskedAway(RectangleF maskingBounds)
+            => !IsLaneVisible || !maskingBounds.IntersectsWith(SelectionQuad.AABBFloat.Inflate(new Vector2(4)));
+
+        public override Quad SelectionQuad => RectangleF.Union(bar.ScreenSpaceDrawQuad.AABBFloat, startMarker.ScreenSpaceDrawQuad.AABBFloat);
 
         public override Vector2 ScreenSpaceSelectionPoint => startMarker.ScreenSpaceDrawQuad.Centre;
     }

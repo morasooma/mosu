@@ -32,13 +32,19 @@ namespace osu.Game.Rulesets.Taiko
                 {
                     Caption = RulesetSettingsStrings.TouchControlScheme,
                     Current = config.GetBindable<TaikoTouchControlScheme>(TaikoRulesetSetting.TouchControlScheme)
-                }),
+                })
+                {
+                    FavouriteId = "TaikoRulesetSetting.TouchControlScheme",
+                },
                 new SettingsItemV2(hitAnimations = new FormCheckBox
                 {
                     Caption = RulesetSettingsStrings.HitAnimations,
                     HintText = RulesetSettingsStrings.HitAnimationsTaikoTooltip,
                     Current = config.GetBindable<bool>(TaikoRulesetSetting.HitAnimations)
-                }),
+                })
+                {
+                    FavouriteId = "TaikoRulesetSetting.HitAnimations",
+                },
                 new SettingsItemV2(rateAdjustedAnimations = new FormCheckBox
                 {
                     Caption = RulesetSettingsStrings.RateAdjustedHitAnimation,
@@ -46,6 +52,7 @@ namespace osu.Game.Rulesets.Taiko
                     Current = config.GetBindable<bool>(TaikoRulesetSetting.RateAdjustedHitAnimation)
                 })
                 {
+                    FavouriteId = "TaikoRulesetSetting.RateAdjustedHitAnimation",
                     ApplyClassicDefault = c => ((IHasCurrentValue<bool>)c).Current.Value = false,
                 }
             };

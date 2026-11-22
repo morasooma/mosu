@@ -38,6 +38,8 @@ namespace osu.Game.Screens.Ranking.Contracted
     {
         private readonly ScoreInfo score;
         private Box backgroundBox = null!;
+        private Container mainContainer = null!;
+        private IBindable<float>? radiusBindable;
         private readonly List<OsuSpriteText> labelTexts = new List<OsuSpriteText>();
         private IBindable<Colour4>? themeColour;
 
@@ -64,7 +66,7 @@ namespace osu.Game.Screens.Ranking.Contracted
                 {
                     new Drawable[]
                     {
-                        new Container
+                        mainContainer = new Container
                         {
                             RelativeSizeAxes = Axes.Both,
                             Masking = true,
@@ -159,7 +161,7 @@ namespace osu.Game.Screens.Ranking.Contracted
                                                     Margin = new MarginPadding { Right = 2 }
                                                 },
                                                 ..
-                                                score.Mods.AsOrdered().Select(m => new ModIcon(m)
+                                                score.Mods.AsVisible().AsOrdered().Select(m => new ModIcon(m)
                                                 {
                                                     Anchor = Anchor.TopCentre,
                                                     Origin = Anchor.TopCentre,
@@ -229,6 +231,9 @@ namespace osu.Game.Screens.Ranking.Contracted
                     foreach (var label in labelTexts)
                         label.Colour = colourProvider.Content1;
                 }, true);
+
+                radiusBindable = colourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Card, 20f);
+                radiusBindable.BindValueChanged(r => mainContainer.CornerRadius = r.NewValue, true);
             }
         }
 

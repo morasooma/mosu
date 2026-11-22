@@ -382,9 +382,12 @@ namespace osu.Game.Rulesets.Dodge.Edit
                         hash.Add(emitter.WaveAmplitude);
                         hash.Add(emitter.WaveCycles);
                         hash.Add(emitter.WavePhase);
+                        hash.Add(emitter.LoopScope);
+                        hash.Add(emitter.LoopOffset);
                         break;
 
                     case DodgeArenaChange arena:
+                        hash.Add(arena.WorldSpace);
                         hash.Add(arena.TargetPosition);
                         hash.Add(arena.TargetSize);
                         hash.Add(arena.TargetRotation);
@@ -397,7 +400,17 @@ namespace osu.Game.Rulesets.Dodge.Edit
                         hash.Add(beam.BeamWidth);
                         break;
 
+                    case DodgeTrigger trigger:
+                        hash.Add(trigger.Action);
+                        hash.Add(trigger.MoveFromCurrentPosition);
+                        hash.Add(trigger.SourcePosition);
+                        hash.Add(trigger.TargetPosition);
+                        hash.Add(trigger.TargetSize);
+                        hash.Add(trigger.Easing);
+                        break;
+
                     case DodgeCameraChange camera:
+                        hash.Add(camera.Mode);
                         hash.Add(camera.Position);
                         hash.Add(camera.EndPosition);
                         hash.Add(camera.Continuous);

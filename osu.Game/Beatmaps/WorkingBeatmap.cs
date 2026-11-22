@@ -16,6 +16,7 @@ using osu.Framework.Audio.Track;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Logging;
+using osu.Framework.Statistics;
 using osu.Game.Overlays;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
@@ -42,6 +43,7 @@ namespace osu.Game.Beatmaps
         private CancellationTokenSource loadCancellationSource = new CancellationTokenSource();
 
         private readonly Lock beatmapFetchLock = new Lock();
+        private bool beatmapDecodeStarted;
 
         private readonly Lazy<Storyboard> storyboard;
         private readonly Lazy<ISkin> skin;
@@ -72,8 +74,22 @@ namespace osu.Game.Beatmaps
 
         protected abstract IBeatmap GetBeatmap();
         public abstract Texture? GetBackground();
+
+        /// <summary>Source bytes for optional worker-only image analysis. Does not touch GPU textures.</summary>
+        internal virtual Stream? OpenBackgroundStream()
+        {
+            string? filename = Metadata?.BackgroundFile;
+            return string.IsNullOrEmpty(filename) ? null : GetStream(BeatmapSetInfo.GetPathForFile(filename) ?? filename);
+        }
+
+        internal virtual string? BackgroundContentHash => string.IsNullOrEmpty(Metadata?.BackgroundFile)
+            ? null : BeatmapSetInfo.GetFile(Metadata.BackgroundFile)?.File.Hash;
+        /// <summary>Session-local identity for sharing pending/completed artwork across UI surfaces.</summary>
+        internal virtual string? BackgroundSafetyCacheKey => BackgroundContentHash;
+
         public virtual Texture? GetLegacyPreviewBackground() => GetBackground();
         public virtual Texture? GetLegacyPreviewBackground(int resolutionPercent) => GetLegacyPreviewBackground();
+        public virtual Texture? GetClassicPreviewBackground(int resolutionPercent) => GetBackground();
         public virtual Texture? GetPanelBackground() => GetBackground();
         public virtual Texture? GetPanelBackground(int resolutionPercent) => GetPanelBackground();
         protected abstract Track? GetBeatmapTrack();
@@ -101,7 +117,9 @@ namespace osu.Game.Beatmaps
                 loadCancellationSource?.Cancel();
                 loadCancellationSource = new CancellationTokenSource();
 
-                if (beatmapLoadTask?.IsCompleted != true)
+                // Cancellation cannot interrupt GetBeatmap() once decoding starts. A queued task,
+                // however, must be retried even if it has not yet transitioned to Canceled.
+                if (beatmapLoadTask?.IsCompleted != true && !beatmapDecodeStarted)
                     beatmapLoadTask = null;
             }
         }
@@ -234,10 +252,29 @@ namespace osu.Game.Beatmaps
         {
             lock (beatmapFetchLock)
             {
-                return beatmapLoadTask ??= Task.Factory.StartNew(() =>
+                if (beatmapLoadTask?.IsCanceled == true)
+                    beatmapLoadTask = null;
+
+                if (beatmapLoadTask != null)
+                    return beatmapLoadTask;
+
+                beatmapDecodeStarted = false;
+                var token = loadCancellationSource.Token;
+                var calculationContext = BackgroundCalculationLimiter.CaptureContext();
+                return beatmapLoadTask = Task.Factory.StartNew(() =>
                 {
+                    // Serialize the transition into parsing with cancellation. If cancellation wins,
+                    // this delegate must not decode after its task was removed from the cache.
+                    lock (beatmapFetchLock)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        beatmapDecodeStarted = true;
+                    }
+
                     // Todo: Handle cancellation during beatmap parsing
-                    var b = GetBeatmap() ?? new Beatmap();
+                    IBeatmap b;
+                    using (StutterTraceEventSource.Log.Measure("Beatmap.Decode"))
+                        b = calculationContext.Run(() => GetBeatmap() ?? new Beatmap());
 
                     // Copy across values of key properties for which the database-backed model has data that the decoded beatmap isn't going to.
                     b.BeatmapInfo.ID = BeatmapInfo.ID;
@@ -253,7 +290,7 @@ namespace osu.Game.Beatmaps
                     b.BeatmapInfo.StarRating = BeatmapInfo.StarRating; // this could be recomputed in the decoding process but it's a bit annoying to do.
 
                     return b;
-                }, loadCancellationSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                }, token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             }
         }
 
@@ -277,17 +314,30 @@ namespace osu.Game.Beatmaps
             }
         }
 
+        /// <summary>
+        /// Whether the ordinary preparation pipeline owns fresh playable objects. A custom
+        /// override may return externally mutable gameplay state and must opt in explicitly.
+        /// </summary>
+        public bool SupportsBatchPreparationReuse => GetType().GetMethod(nameof(GetPlayableBeatmap),
+            new[] { typeof(IRulesetInfo), typeof(IReadOnlyList<Mod>), typeof(CancellationToken) })?.DeclaringType == typeof(WorkingBeatmap);
+
         public virtual IBeatmap GetPlayableBeatmap(IRulesetInfo ruleset, IReadOnlyList<Mod> mods, CancellationToken token)
         {
+            // Do not enter lazy decoding or converter setup for an already-obsolete request.
+            token.ThrowIfCancellationRequested();
             var rulesetInstance = ruleset.CreateInstance();
 
             if (rulesetInstance == null)
                 throw new RulesetLoadException("Creating ruleset instance failed when attempting to create playable beatmap.");
 
-            IBeatmapConverter converter = CreateBeatmapConverter(Beatmap, rulesetInstance);
+            token.ThrowIfCancellationRequested();
+            IBeatmap decoded = Beatmap;
+            token.ThrowIfCancellationRequested();
+            IBeatmapConverter converter = CreateBeatmapConverter(decoded, rulesetInstance);
+            converter.CloneHitObjects = mods.OfType<ModSegmentRate>().Any(m => m.BakedTiming.Value);
 
             // Check if the beatmap can be converted
-            if (Beatmap.HitObjects.Count > 0 && !converter.CanConvert())
+            if (decoded.HitObjects.Count > 0 && !converter.CanConvert())
                 throw new BeatmapInvalidForRulesetException($"{nameof(Beatmaps.Beatmap)} can not be converted for the ruleset (ruleset: {ruleset.InstantiationInfo}, converter: {converter}).");
 
             // Apply conversion mods
@@ -298,7 +348,9 @@ namespace osu.Game.Beatmaps
             }
 
             // Convert
-            IBeatmap converted = converter.Convert(token);
+            IBeatmap converted;
+            using (StutterTraceEventSource.Log.Measure("Beatmap.Convert"))
+                converted = converter.Convert(token);
 
             // Apply conversion mods to the result
             foreach (var mod in mods.OfType<IApplicableAfterBeatmapConversion>())
@@ -317,21 +369,30 @@ namespace osu.Game.Beatmaps
                 }
             }
 
+            token.ThrowIfCancellationRequested();
             var processor = rulesetInstance.CreateBeatmapProcessor(converted);
 
             if (processor != null)
             {
                 foreach (var mod in mods.OfType<IApplicableToBeatmapProcessor>())
+                {
+                    token.ThrowIfCancellationRequested();
                     mod.ApplyToBeatmapProcessor(processor);
+                }
 
+                token.ThrowIfCancellationRequested();
                 processor.PreProcess();
+                token.ThrowIfCancellationRequested();
             }
 
             // Compute default values for hitobjects, including creating nested hitobjects in-case they're needed
-            foreach (var obj in converted.HitObjects)
+            using (StutterTraceEventSource.Log.Measure("Beatmap.ApplyDefaults", converted.HitObjects.Count))
             {
-                token.ThrowIfCancellationRequested();
-                obj.ApplyDefaults(converted.ControlPointInfo, converted.Difficulty, token);
+                foreach (var obj in converted.HitObjects)
+                {
+                    token.ThrowIfCancellationRequested();
+                    obj.ApplyDefaults(converted.ControlPointInfo, converted.Difficulty, token);
+                }
             }
 
             foreach (var mod in mods.OfType<IApplicableToHitObject>())
@@ -343,14 +404,22 @@ namespace osu.Game.Beatmaps
                 }
             }
 
+            token.ThrowIfCancellationRequested();
             processor?.PostProcess();
+            token.ThrowIfCancellationRequested();
 
-            foreach (var mod in mods.OfType<IApplicableToBeatmap>())
+            // Baked tempo rebuilds sustained objects and their defaults. Do this before
+            // beatmap mods such as Hidden/Freeze Frame adjust those objects, otherwise
+            // their changes are lost (and the result depends on mod selection order).
+            // OrderBy is stable, preserving the relative order of all other mods.
+            foreach (var mod in mods.OfType<IApplicableToBeatmap>()
+                                    .OrderBy(m => m is ModSegmentRate rate && rate.BakedTiming.Value ? 0 : 1))
             {
                 token.ThrowIfCancellationRequested();
                 mod.ApplyToBeatmap(converted);
             }
 
+            token.ThrowIfCancellationRequested();
             return converted;
         }
 

@@ -7,6 +7,7 @@ using osu.Framework.Graphics;
 using osu.Game.Configuration;
 using osu.Game.Database;
 using osu.Game.Extensions;
+using osu.Game.Performance.Debug;
 using osu.Game.Rulesets.Configuration;
 
 namespace osu.Game.Rulesets
@@ -26,6 +27,7 @@ namespace osu.Game.Rulesets
 
         protected override void LoadComplete()
         {
+            using var loading = PerformancePhaseLogger.Begin("RulesetConfigCache.LoadComplete");
             base.LoadComplete();
 
             var settingsStore = new SettingsStore(realm);
@@ -36,6 +38,7 @@ namespace osu.Game.Rulesets
                 if (string.IsNullOrEmpty(ruleset.ShortName))
                     continue;
 
+                using var entry = PerformancePhaseLogger.Begin("RulesetConfigCache.CreateConfig", detail: ruleset.ShortName);
                 var instance = ruleset.CreateInstance();
                 var config = instance.CreateConfig(settingsStore);
 

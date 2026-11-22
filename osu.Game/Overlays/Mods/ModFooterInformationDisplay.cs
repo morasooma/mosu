@@ -21,6 +21,7 @@ namespace osu.Game.Overlays.Mods
 
         private Container innerContent = null!;
         private IBindable<Colour4> themeColour = null!;
+        private IBindable<float>? buttonRadius;
 
         protected Box MainBackground { get; private set; } = null!;
         protected Box FrontBackground { get; private set; } = null!;
@@ -99,6 +100,13 @@ namespace osu.Game.Overlays.Mods
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            buttonRadius = ColourProvider.GetRadiusBindable(osu.Game.Overlays.CustomTheme.GeometryRole.Button, ShearedButton.CORNER_RADIUS);
+            buttonRadius.BindValueChanged(r =>
+            {
+                Content.CornerRadius = r.NewValue;
+                innerContent.CornerRadius = r.NewValue;
+            }, true);
 
             themeColour = ColourProvider.GetColourBindable(OverlayColour.Background4);
             themeColour.BindValueChanged(_ => updateThemeColours(), true);
